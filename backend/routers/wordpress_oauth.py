@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from ..config import FRONTEND_URL
+from ..config import FRONTEND_URL, WP_OAUTH_CLIENT_ID
 from ..services.wordpress_oauth_service import (
     get_authorize_url,
     exchange_code_for_token,
@@ -14,7 +14,7 @@ from ..services.wordpress_oauth_service import (
 )
 
 logger = logging.getLogger("backend.routers.wordpress_oauth")
-router = APIRouter(prefix="/api/wordpress/oauth", tags=["wordpress-oauth"])
+router = APIRouter(prefix="/wordpress/oauth", tags=["wordpress-oauth"])
 
 
 class AuthorizeResponse(BaseModel):

@@ -3,13 +3,136 @@ import aiohttp
 import os
 import base64
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+
+import httpx
+
+from ..config import WP_API_URL
 from ..database import get_supabase
+from .wordpress_sites import get_site, list_sites
 
 logger = logging.getLogger("backend.services.wordpress_service")
 
+REQUEST_TIMEOUT = 30.0
+
+
+class WordPressError(Exception):
+    """Raised when the WordPress REST API rejects a request."""
+
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class WordPressClient:
+    """Self-hosted WordPress client using Application Passwords (Basic Auth).
+
+    Talks to the real REST API at {site_url}/wp-json/wp/v2.
+    """
+
+    def __init__(self, site_url: str, username: str, app_password: str):
+        self.site_url = (site_url or "").strip().rstrip("/")
+        self.username = (username or "").strip()
+        # WP shows application passwords in groups of 4 separated by spaces.
+        self.app_password = (app_password or "").strip()
+        if not self.site_url:
+            raise WordPressError("WordPress site URL is not configured", 400)
+
+    @classmethod
+    def from_site(cls, site: Dict) -> "WordPressClient":
+        return cls(site.get("site_url", ""), site.get("username", ""), site.get("app_password", ""))
+
+    @property
+    def api_url(self) -> str:
+        return WP_API_URL.rstrip("/") if WP_API_URL else f"{self.site_url}/wp-json/wp/v2"
+
+    def _headers(self) -> Dict[str, str]:
+        token = base64.b64encode(f"{self.username}:{self.app_password}".encode()).decode()
+        return {"Authorization": f"Basic {token}", "Content-Type": "application/json"}
+
+    async def _request(self, method: str, path: str, **kwargs) -> dict:
+        url = f"{self.api_url}/{path.lstrip('/')}"
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
+                resp = await client.request(method, url, headers=self._headers(), **kwargs)
+        except httpx.HTTPError as e:
+            raise WordPressError(f"Could not reach WordPress at {url}: {e}", 502)
+
+        if resp.status_code in (401, 403):
+            raise WordPressError(
+                "WordPress rejected the credentials. Check the username and Application Password.",
+                401,
+            )
+        if resp.status_code >= 400:
+            raise WordPressError(f"WordPress API error {resp.status_code}: {resp.text[:300]}", 502)
+        try:
+            return resp.json()
+        except ValueError:
+            raise WordPressError(
+                f"WordPress returned a non-JSON response from {url} - is the REST API enabled?", 502
+            )
+
+    async def test_connection(self) -> dict:
+        """Verify credentials against /wp-json/wp/v2/users/me and read site info."""
+        user = await self._request("GET", "users/me", params={"context": "edit"})
+        site: Dict = {}
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
+                resp = await client.get(f"{self.site_url}/wp-json/")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    site = {"name": data.get("name"), "description": data.get("description"), "url": data.get("url")}
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Could not read site info for %s: %s", self.site_url, e)
+        return {
+            "connected": True,
+            "site_url": self.site_url,
+            "user": {"id": user.get("id"), "name": user.get("name"), "slug": user.get("slug")},
+            "capabilities": {"publish_posts": bool((user.get("capabilities") or {}).get("publish_posts"))},
+            "site": site,
+        }
+
+    async def create_draft(self, title: str, content: str, status: str = "draft", **fields) -> dict:
+        """Create a post via POST /wp-json/wp/v2/posts. Defaults to a draft."""
+        if status not in ("draft", "publish", "pending", "private", "future"):
+            raise WordPressError(f"Unsupported post status: {status}", 400)
+        payload = {"title": title, "content": content, "status": status, **fields}
+        post = await self._request("POST", "posts", json=payload)
+        post_id = post.get("id")
+        return {
+            "wp_post_id": post_id,
+            "status": post.get("status", status),
+            "link": post.get("link", ""),
+            "edit_url": f"{self.site_url}/wp-admin/post.php?post={post_id}&action=edit" if post_id else "",
+            "title": (post.get("title") or {}).get("rendered", title),
+        }
+
+    async def list_posts(self, per_page: int = 10, status: str = "draft") -> List[dict]:
+        posts = await self._request(
+            "GET", "posts", params={"per_page": per_page, "status": status, "context": "edit"}
+        )
+        return posts if isinstance(posts, list) else []
+
+
+def get_client(site_id: Optional[str] = None) -> WordPressClient:
+    """Build a client for a stored site (or the env-configured default site)."""
+    site = get_site(site_id)
+    if not site:
+        raise WordPressError(
+            "No WordPress site connected. Add one via POST /api/wordpress/connect or set "
+            "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD.",
+            400,
+        )
+    return WordPressClient.from_site(site)
+
+
+async def create_draft(title: str, content: str, status: str = "draft", site_id: Optional[str] = None) -> dict:
+    """Module-level helper used by agents to publish a draft to WordPress."""
+    return await get_client(site_id).create_draft(title, content, status=status)
+
+
 # DEPRECATED: Use wordpress_oauth_service.py for real OAuth2 flow.
-# This module is kept only as a fallback for Basic Auth.
+# The class below is the legacy Supabase-backed per-website integration.
 
 
 class WordPressService:

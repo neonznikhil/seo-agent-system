@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
+import WordPressConnect from "@/components/WordPressConnect";
 
 type TabKey = "settings" | "sync" | "mapping" | "permissions" | "data" | "indexing" | "alerts" | "setup";
 
@@ -234,6 +235,8 @@ export default function ConnectorsPage() {
           </div>
         ))}
       </div>
+
+      <WordPressConnect />
 
       {/* CONFIG PANEL */}
       <div id="config-area">

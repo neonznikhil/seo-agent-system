@@ -1515,14 +1515,16 @@ Return JSON: {{"score": 0-100, "issues": ["issue1"], "passed": true/false}}"""
         }
 
     async def _export_to_wordpress(self, content: str) -> Dict:
-        from .wordpress_service import get_wordpress_service
-        ws = get_wordpress_service(self.website_id)
-        result = await ws.draft_post(
-            title=f"{self.primary_keyword or self.topic}",
-            content=content,
-            seo_keyword=self.primary_keyword or self.topic
-        )
-        return {'wp_id': result.get('id') if result else None, 'status': 'draft'}
+        from ..services.wordpress_service import WordPressError, create_draft
+
+        title = self.primary_keyword or self.topic
+        try:
+            result = await create_draft(title=title, content=content, status='draft')
+        except WordPressError as e:
+            logger.error("WordPress draft export failed: %s", e)
+            return {'wp_id': None, 'status': 'failed', 'error': str(e)}
+        return {'wp_id': result.get('wp_post_id'), 'status': result.get('status', 'draft'),
+                'edit_url': result.get('edit_url'), 'link': result.get('link')}
 
     def update_content_log(self, **kwargs):
         if not self.supabase: return

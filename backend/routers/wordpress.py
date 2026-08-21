@@ -1,12 +1,111 @@
 import logging
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
+from ..services import wordpress_sites
+from ..services.wordpress_service import WordPressClient, WordPressError, get_client
+
 logger = logging.getLogger("backend.routers.wordpress")
 
 router = APIRouter()
+
+
+class ConnectRequest(BaseModel):
+    site_url: str
+    username: str
+    app_password: str
+    name: Optional[str] = None
+
+
+class TestRequest(BaseModel):
+    site_url: Optional[str] = None
+    username: Optional[str] = None
+    app_password: Optional[str] = None
+    site_id: Optional[str] = None
+
+
+class PublishRequest(BaseModel):
+    title: str
+    content: str
+    status: str = "draft"
+    site_id: Optional[str] = None
+
+
+def _client_from_test_request(body: TestRequest) -> WordPressClient:
+    if body.site_url and body.username and body.app_password:
+        return WordPressClient(body.site_url, body.username, body.app_password)
+    return get_client(body.site_id)
+
+
+# ==================== Application Password endpoints (primary flow) ====================
+
+
+@router.post("/wordpress/test")
+async def wordpress_test(body: TestRequest):
+    """Test WordPress credentials against the real REST API."""
+    try:
+        client = _client_from_test_request(body)
+        return await client.test_connection()
+    except WordPressError as e:
+        raise HTTPException(e.status_code, str(e))
+
+
+@router.post("/wordpress/connect")
+async def wordpress_connect(body: ConnectRequest):
+    """Verify credentials, then store the site so agents can publish to it."""
+    try:
+        client = WordPressClient(body.site_url, body.username, body.app_password)
+        result = await client.test_connection()
+    except WordPressError as e:
+        raise HTTPException(e.status_code, str(e))
+
+    site = wordpress_sites.save_site(
+        site_url=client.site_url,
+        username=body.username,
+        app_password=body.app_password,
+        name=body.name or (result.get("site") or {}).get("name") or client.site_url,
+    )
+    site.pop("app_password", None)
+    return {"status": "connected", "site": site, "user": result.get("user"), "storage": site.get("source")}
+
+
+@router.get("/wordpress/sites")
+async def wordpress_list_sites():
+    """List connected WordPress sites (never returns credentials)."""
+    sites = wordpress_sites.list_sites()
+    return {"count": len(sites), "sites": sites}
+
+
+@router.delete("/wordpress/sites/{site_id}")
+async def wordpress_delete_site(site_id: str):
+    if not wordpress_sites.delete_site(site_id):
+        raise HTTPException(404, "Site not found")
+    return {"status": "deleted", "site_id": site_id}
+
+
+@router.post("/wordpress/publish")
+async def wordpress_publish(body: PublishRequest):
+    """Create a post (draft by default) on the connected WordPress site."""
+    if not body.title or not body.content:
+        raise HTTPException(400, "title and content are required")
+    try:
+        client = get_client(body.site_id)
+        return await client.create_draft(body.title, body.content, status=body.status)
+    except WordPressError as e:
+        raise HTTPException(e.status_code, str(e))
+
+
+@router.get("/wordpress/posts")
+async def wordpress_recent_posts(site_id: Optional[str] = None, per_page: int = 10, status: str = "draft"):
+    """List recent posts from the connected site."""
+    try:
+        posts = await get_client(site_id).list_posts(per_page=per_page, status=status)
+    except WordPressError as e:
+        raise HTTPException(e.status_code, str(e))
+    return {"count": len(posts), "posts": posts}
 
 
 class OAuthAuthorizeResponse(BaseModel):

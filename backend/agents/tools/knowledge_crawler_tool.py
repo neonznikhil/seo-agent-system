@@ -20,7 +20,7 @@ class KnowledgeCrawlerInput(BaseModel):
 
 class KnowledgeCrawlerTool(BaseTool):
     name: str = "knowledge_crawler"
-    description = "Crawls entire website to extract business info, tone, keywords, themes, and writing patterns. Creates comprehensive knowledge base for AI."
+    description: str = "Crawls entire website to extract business info, tone, keywords, themes, and writing patterns. Creates comprehensive knowledge base for AI."
     args_schema: type[BaseModel] = KnowledgeCrawlerInput
     _website_id: Optional[str] = None
     
