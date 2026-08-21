@@ -25,7 +25,21 @@ from ..config import (
 
 logger = logging.getLogger("backend.services.wordpress_oauth_service")
 
-_fernet = Fernet(TOKEN_ENCRYPTION_KEY) if TOKEN_ENCRYPTION_KEY else None
+def _build_fernet() -> Optional[Fernet]:
+    if not TOKEN_ENCRYPTION_KEY:
+        return None
+    try:
+        return Fernet(TOKEN_ENCRYPTION_KEY)
+    except (ValueError, TypeError):
+        logger.warning(
+            "TOKEN_ENCRYPTION_KEY is not a valid Fernet key; WordPress OAuth token "
+            "encryption is disabled. Generate one with "
+            "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+        return None
+
+
+_fernet = _build_fernet()
 
 
 def _get_fernet() -> Fernet:
