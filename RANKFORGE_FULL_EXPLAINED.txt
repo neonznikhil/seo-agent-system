@@ -1,0 +1,1137 @@
+================================================================================
+RANKFORGE — AUTONOMOUS SEO AGENT SYSTEM
+Complete Feature Breakdown, Agent Roles, Working Components & Testing Checklist
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+Name:        RANKFORGE
+Type:        Autonomous SEO + GEO/AEO (Generative Engine / Answer Engine Optimization)
+Stack:       Python (FastAPI Backend) + Next.js (Frontend) + Supabase (Database)
+AI Engine:   CrewAI Agents + NVIDIA NIM LLMs (meta/llama-3.1-70b-instruct)
+Purpose:     Optimize websites for both Google Search rankings AND AI/LLM citation
+             (ChatGPT, Perplexity, Google AI Overviews)
+
+CORE VALUE PROPOSITION:
+Unlike traditional SEO tools that only track rankings, RANKFORGE uses autonomous
+AI agents to:
+  1. Audit sites for SEO + AI-visibility issues
+  2. Write human-quality content optimized for Google AND AI citation
+  3. Monitor competitors, backlinks, and technical health 24/7
+  4. Push approved content to WordPress — but ONLY after human approval
+
+LIGHTWEIGHT DEPLOYMENT (NO DOCKER)
+================================================================================
+Requirements:
+  - Python 3.8+  |  Node.js 16+  |  Supabase account (free tier OK)
+  - NVIDIA API key (NIM — free tier available)
+  - Firecrawl API key (free tier available — for competitor/browser tools)
+  - Redis (optional — system works without it with warning logs)
+  - WordPress site (optional — works in preview-only mode without it)
+
+Setup Steps:
+  1. python -m venv venv && venv\Scripts\activate
+  2. pip install -r requirements.txt
+  3. cd frontend-next && npm install
+  4. Copy .env.example to .env and fill in API keys
+  5. Run Supabase SQL schemas (in order):
+       supabase_schema.sql
+       supabase_schema_v2.sql
+       supabase_schema_enhanced.sql
+       supabase_schema_agents.sql
+  6. Start backend:  uvicorn backend.main:app --reload --port 8000
+  7. Start frontend: cd frontend-next && npm run dev -- --port 3000
+  8. Open browser:  http://localhost:3000
+  9. Health check:  http://localhost:8000/health
+
+
+================================================================================
+PART 1: HOW EACH AGENT WORKS
+================================================================================
+There are 6 CrewAI Agents defined in backend/agents/crew.py, orchestrated in a
+SEQUENTIAL process. Each agent has a specialized persona, specific tools, and
+hard-coded safety rules.
+
+All agents use the same NVIDIA NIM LLM:
+  Model: meta/llama-3.1-70b-instruct
+  Wrapper: NIM_LLM class in crew.py calls database.call_nim_llm()
+
+--------------------------------------------------------------------
+AGENT 1: AUDITOR AGENT
+--------------------------------------------------------------------
+Persona:    Senior SEO, AEO & GEO Auditor
+Role:       Find every ranking-blocking, featured-snippet-blocking, and
+             AI-rendering issue on the website. Prioritize fixes by AI visibility impact.
+Goal:       Identify and prioritize ALL SEO/AEO/GEO issues
+
+BACKSTORY / MINDSET:
+  - 10-year SEO/GEO expert obsessed with AI-powered visibility
+  - Assumes every site is broken in Google Search OR AI summaries
+  - Measures impact in organic traffic AND AI-generated responses
+  - Never approves content without E-E-A-T signals or structured data
+  - Prioritizes: 1) Featured snippet opportunities, 2) AI/LLM rendering quality,
+    3) Traditional SEO issues
+
+TOOLS USED:
+  - ThinkAndLogTool     -> Logs thoughts/decisions to agent_thoughts table
+  - CrawleeTool         -> Browser-based crawling (up to 50 pages)
+  - SEOAEOGEOTool       -> Combined SEO/AEO/GEO analysis per URL
+  - SERPAnalyzerTool    -> Keyword SERP analysis, feature extraction
+
+WHAT IT DOES (TASK DESCRIPTION FROM CREW.PY):
+  1. Crawls up to 50 pages where last_audited > 7 days AND impressions > 100
+  2. Uses seo_aeo_geo_tool to identify:
+       a) Traditional SEO issues (meta tags, titles, links, headers)
+       b) Featured snippet opportunities (answer blocks, tables, lists)
+       c) AI/LLM visibility barriers (missing schema, poor structure)
+  3. Uses serp_analyzer_tool for keyword SERP analysis
+  4. Calculates AI impact score = impressions * (3 - CTR)
+  5. Logs top 10 issues by AI visibility impact via think_tool
+  6. Saves issues to audits table with status=pending_approval
+
+SAFETY RULES (HARD-CODED IN BACKSTORY):
+  You are NEVER allowed to call publish or update WordPress directly.
+  You only propose issues. Publishing requires human approval via dashboard.
+  Your job is RESEARCH AND PROPOSAL ONLY - never execution.
+
+OUTPUT:
+  - audits table entries (up to 10 prioritized issues)
+  - agent_thoughts log entries
+  - CREWAI_AUDIT.md file with full audit results
+
+STATUS AFTER RUN:  Creates proposals for the EDITOR to act on
+
+
+--------------------------------------------------------------------
+AGENT 2: EDITOR AGENT
+--------------------------------------------------------------------
+Persona:    Head of AI-Optimized Content Strategy
+Role:       Maximize AI/LLM visibility and click-through rates through structured,
+             authoritative content that wins both Google Discover and ChatGPT citations.
+Goal:       Plan and propose content strategy and page-level fixes
+
+BACKSTORY / MINDSET:
+  - Expert in GEO (Generative Engine Optimization) and AEO (Answer Engine Optimization)
+  - Knows modern SEO = Google ranking + AI summary inclusion + LLM citation
+  - Obsesses over: featured snippet blocks, People Also Ask optimization,
+    knowledge panel triggers, citation-ready data points
+  - Rewrites for both search bots AND AI readers
+
+TOOLS USED:
+  - ThinkAndLogTool -> Logs strategy decisions
+
+WHAT IT DOES:
+  1. Reviews AUDITOR findings
+  2. Plans content strategy based on active keywords from GSC
+  3. Proposes page-level fixes with status=pending_approval
+  4. Generates content angle, H2 structure, internal linking plan
+  5. Creates E-E-A-T plan and schema recommendations
+
+SAFETY RULES (HARD-CODED IN BACKSTORY):
+  You never publish or update pages without HUMAN APPROVAL.
+  You propose fixes with status pending_approval. Publishing is FORBIDDEN for you.
+  Only humans can approve via /api/proposals/approve endpoint.
+
+OUTPUT:
+  - Updated audits with suggested fixes (new_value fields)
+  - agent_thoughts entries
+  - Content strategy recommendations
+
+STATUS AFTER RUN:  Generates fix proposals for human approval
+
+--------------------------------------------------------------------
+AGENT 3: WRITER AGENT (MOST COMPLEX)
+--------------------------------------------------------------------
+Persona:    AI-First SEO Content Strategist
+Role:       Create content that ranks in Google AND gets cited by AI assistants
+             (ChatGPT, Google AI, Claude). Focus on E-E-A-T, featured snippets,
+             and LLM rendering.
+Goal:       Generate up to 2 human-quality, AI-optimized blog post drafts per kickoff
+
+TOOLS USED:
+  - ThinkAndLogTool           -> Reasoning logs
+  - QualityGateTool           -> Pre-publish quality checks
+  - LlmsTxtTool               -> llms.txt generation
+  - CrawleeTool               -> Site crawling for context
+  - VectorMemoryTool          -> Duplicate detection via vector similarity
+  - KnowledgeExtractorTool    -> Extract facts from crawled content
+  - ToneAnalyzerTool          -> Match brand writing style
+  - SEOAEOGEOTool             -> Final optimization scoring
+  - ContentOptimizerTool      -> Content quality optimization
+
+WHAT IT DOES (DETAILED PIPELINE):
+  Phase 1 - AUDIENCE & DEMAND:
+    - Fetches active keywords from GSC (impressions > 500, CTR < 3%)
+    - Maps keywords to business use cases
+    - Analyzes search intent per keyword
+
+  Phase 2 - SERP & COMPETITORS:
+    - Fetches top 10 Google results for target keyword
+    - Analyzes content depth and structure of competitors
+    - Identifies content gaps
+    - Verifies facts against first-party data
+
+  Phase 3 - POSITIONING & OUTLINE:
+    - Generates unique angle/title
+    - Creates H2/H3 structure
+    - Plans internal links (3+ to high-traffic pages)
+    - Creates E-E-A-T plan (author bio, dates, reviewer)
+    - Plans schema markup (FAQ, HowTo, Article)
+
+  Phase 4 - MULTI-STEP WRITING (1500-2000 words):
+    - 50-word direct answer (featured snippet target)
+    - Data table (comparison/specs)
+    - Detailed explanations with statistics
+    - 5+ FAQ section (PAA optimization)
+    - Internal links throughout
+    - Brand tone applied
+    - Humanization rules enforced
+
+  Phase 5 - MULTI-EXPERT REVIEW (11 experts):
+    - SEO Expert, EEAT Expert, Helpful Content, AI Search, Brand Voice,
+      Business Impact, Editorial, Fact Check, Internal Link, Citation, Humanizer
+
+  Phase 6 - HUMANIZER & GATE:
+    - Runs QualityGateTool (tone match >= 0.75, spell errors < 3)
+    - Checks vector memory for duplicates (blocks if similarity > 0.85)
+    - Sets status = pending_approval
+    - NEVER sets status to published
+
+SAFETY RULES:
+  CRITICAL - You never publish blogs or update pages.
+  You create content with status pending_approval via propose_blog tool.
+  Publishing is FORBIDDEN - only human can approve via dashboard.
+  If you attempt to publish directly, safety gate will BLOCK you and log CRITICAL ERROR.
+
+OUTPUT:
+  - content_log entry with status=pending_approval
+  - content_pipeline_logs (100+ step audit trail)
+  - content_expert_reviews (11 expert scores 0-100 each)
+  - Full blog content with FAQ, tables, internal links
+  - Quality check results
+
+STATUS AFTER RUN:  Draft created, awaiting human approval
+
+
+--------------------------------------------------------------------
+AGENT 4: TECH SEO AGENT
+--------------------------------------------------------------------
+Persona:    AI-Ready Technical SEO Specialist
+Role:       Ensure site structure, schema, and performance enable both Google
+             crawling AND AI agent extraction. Optimize for Core Web Vitals +
+             LLM accessibility.
+Goal:       Run technical SEO and AI-readiness checks
+
+TOOLS USED:
+  - ThinkAndLogTool    -> Logs technical findings
+  - CrawleeTool        -> Crawls site for technical issues
+  - SEOAEOGEOTool      -> AI-readiness assessment
+
+WHAT IT CHECKS:
+  1. sitemap.xml  — exists, valid, submitted to GSC
+  2. robots.txt   — allows crawling of important pages
+  3. Canonical tags — no duplicates, self-referencing
+  4. Broken links  — 404 errors from crawl
+  5. 404 pages     — proper handling or redirects
+  6. Redirect chains — max 3 hops
+  7. Schema markup — FAQ/HowTo present, valid JSON-LD
+  8. Core Web Vitals:
+       - LCP (Largest Contentful Paint) < 2.5s
+       - FID (First Input Delay) < 100ms
+       - CLS (Cumulative Layout Shift) < 0.1
+  9. LLM accessibility — clear structure, entity markup, passage indexing ready
+
+SAFETY RULES:
+  You never update robots.txt or sitemap directly. Only propose changes.
+
+OUTPUT:
+  - technical_audits table entries (with AI-readiness score)
+  - agent_thoughts entries
+
+STATUS AFTER RUN:  Technical issues logged for human review
+
+--------------------------------------------------------------------
+AGENT 5: SEO BACKLINK AGENT
+--------------------------------------------------------------------
+Persona:    AI-Powered Link Building Analyst (also: AI-Citation Backlink Strategist)
+Role:       Build backlinks that AI tools recognize as authoritative sources.
+             Focus on citation-worthy domains for GEO.
+Goal:       Analyze backlinks for AI citation potential and toxicity
+
+TOOLS USED:
+  - ThinkAndLogTool       -> Logs backlink analysis
+  - SEOAEOGEOTool         -> AI-citation scoring
+
+WHAT IT DOES:
+  1. Analyzes GSC link data for the website
+  2. Identifies AI-citation-worthy domains
+  3. Calculates backlink equity for GEO visibility
+  4. Detects toxic/low-quality links that harm AI training perception
+  5. Generates outreach lists targeting AI-citable publications
+  6. Tracks anchor text for entity recognition
+
+SAFETY RULES:
+  You never disavow or delete backlinks directly.
+  You only analyze and propose. Disavow requires HUMAN APPROVAL.
+
+OUTPUT:
+  - backlinks table entries (with AI-citation scores)
+  - agent_thoughts entries
+
+STATUS AFTER RUN:  Backlink profile analyzed, suggestions logged
+
+--------------------------------------------------------------------
+AGENT 6: MANAGER AGENT
+--------------------------------------------------------------------
+Persona:    AI-SEO Portfolio Manager
+Role:       Prioritize work across multiple sites to maximize AI visibility
+             portfolio-wide. Balance Google rankings with AI summarization reach.
+Goal:       Prioritize and schedule all agent tasks by AI visibility impact
+
+TOOLS USED:
+  - ThinkAndLogTool -> Logs prioritization decisions
+
+WHAT IT DOES:
+  1. Reviews all findings from Auditor, Writer, Tech SEO, and Backlink agents
+  2. Calculates AI impact scores for each issue/proposal
+  3. Prioritizes the task queue:
+       a) Featured snippet opportunities (highest AI impact)
+       b) AI summarization potential
+       c) Traditional SEO value
+  4. Ensures human approval is required for all publishing actions
+  5. Tracks metrics: search rankings + AI citation frequency
+
+SAFETY RULES:
+  You prioritize by AI visibility impact.
+  Human approval required for all publishing.
+  Track metrics: rankings + AI citations.
+
+OUTPUT:
+  - Prioritized task queue
+  - agent_thoughts entries
+  - Overall AI visibility impact report
+
+
+================================================================================
+PART 2: HOW THE AGENTS WORK TOGETHER (CREW WORKFLOW)
+================================================================================
+SEQUENTIAL PROCESS (defined in crew.py -> plan_blogs_for_website):
+
+  Auditor -> Editor -> Writer -> Tech SEO -> Backlink -> Manager
+
+  Auditor:   Crawls site, finds issues, calculates AI impact scores
+  Editor:    Plans content strategy, proposes page-level fixes
+  Writer:    Generates blog drafts (up to 2 per kickoff)
+  Tech SEO:  Runs technical audits, AI-readiness checks
+  Backlink:  Analyzes backlink profile for AI citation potential
+  Manager:   Prioritizes all work by AI visibility impact, manages queue
+
+SHARED TOOLS (used by multiple agents):
+  - ThinkAndLogTool:       All agents (reasoning logs)
+  - CrawleeTool:           Auditor, Writer, Tech SEO (site crawling)
+  - SEOAEOGEOTool:         Auditor, Tech SEO, Backlink (analysis)
+  - VectorMemoryTool:      Writer, Auditor (duplicate detection)
+  - QualityGateTool:       Writer only (pre-publish checks)
+  - KnowledgeExtractorTool: Writer only (fact extraction)
+  - ToneAnalyzerTool:      Writer only (brand voice matching)
+  - LlmsTxtTool:           Writer only (llms.txt generation)
+  - SERPAnalyzerTool:      Auditor only (SERP analysis)
+  - ContentOptimizerTool:  Writer only (content quality)
+
+SHARED SAFETY RULES (enforced in all agent backstories):
+  1. NO agent may publish or update WordPress directly
+  2. NO agent may disavow backlinks
+  3. NO agent may update robots.txt or sitemap
+  4. ALL publishing actions require X-User-Id header (human approval)
+  5. Safety gate logs CRITICAL ERROR if agent attempts unauthorized action
+
+
+================================================================================
+PART 3: ALL FEATURES - WHAT IS WORKING vs NEEDS TESTING
+================================================================================
+--------------------------------------------------------------------
+A. CONTENT PIPELINE (WriterPipeline - Writesonic-Level)
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs real API key testing
+
+Components:
+  - 6-phase, 110-step content generation pipeline
+  - 11-expert review system (each scores 0-100)
+  - Humanization engine (banned phrases, varied sentence length, etc.)
+  - Quality gate (tone match >= 0.75, spell errors < 3)
+  - Duplicate detection via vector embeddings
+  - WordPress draft export (never auto-publishes)
+
+API Endpoints:
+  POST /api/writer/{website_id}/generate
+  GET  /api/writer/{website_id}/pipeline/{content_id}
+  GET  /api/writer/{website_id}/content
+  GET  /api/writer/{website_id}/content/{content_id}/preview
+  POST /api/writer/{website_id}/content/{content_id}/publish
+  POST /api/writer/{website_id}/content/{content_id}/approve-draft
+  GET  /api/writer/{website_id}/expert-reviews/{content_id}
+
+Database Tables:
+  - content_log            -> Main content storage
+  - content_pipeline_logs  -> 100+ step audit trail
+  - content_expert_reviews -> 11 expert scores
+
+WHAT WORKS:
+  [x] Pipeline phases defined (6 phases, 110 steps)
+  [x] Quality gate logic implemented
+  [x] Duplicate detection (vector similarity check)
+  [x] 11-expert review framework coded
+  [x] Humanization rules enforced
+  [x] API endpoints implemented
+  [x] Database schema in place
+
+NEEDS TESTING:
+  [ ] Full 110-step pipeline execution with real NIM LLM
+  [ ] 11-expert review scoring accuracy
+  [ ] Tone matching with real brand content
+  [ ] Vector duplicate detection with real embeddings
+  [ ] WordPress publish flow end-to-end
+  [ ] Quality gate thresholds tuning
+
+
+--------------------------------------------------------------------
+B. WORDPRESS INTEGRATION
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs real WordPress credentials testing
+
+How It Works:
+  1. Website is added with WordPress URL, username, and app password
+  2. WordPressService uses Basic Auth (base64 user:app_password)
+  3. Agents create DRAFTS ONLY (status=draft)
+  4. Human approval required to publish (sends X-User-Id header)
+  5. WordPressService.publish_post() changes status to publish
+
+API Endpoints:
+  GET  /api/wordpress/{website_id}/info       -> Verify WP connection
+  GET  /api/wordpress/{website_id}/posts      -> Fetch real posts
+  GET  /api/wordpress/{website_id}/pages      -> Fetch real pages
+  GET  /api/wordpress/{website_id}/posts/{id} -> Get single post
+  POST /api/wordpress/{website_id}/sync       -> Pull WP content into content_log
+
+WordPress Service Methods:
+  - draft_post()        -> Creates WP draft
+  - publish_post()      -> Publishes draft (requires user_id)
+  - update_meta()       -> Safe meta update
+  - add_alt_text()      -> Safe accessibility fix
+  - add_schema()        -> Safe schema addition
+  - get_site_info()     -> Verify connection
+  - get_posts()         -> List posts
+  - get_pages()         -> List pages
+  - get_post()          -> Single post by ID
+
+WHAT WORKS:
+  [x] WordPress REST API integration coded
+  [x] Basic Auth implementation
+  [x] Draft creation logic
+  [x] Publish with approval gate
+  [x] Meta, alt text, schema safe-fix methods
+  [x] Site info verification
+  [x] Post/page listing
+  [x] Sync from WP to local DB
+
+NEEDS TESTING:
+  [ ] Real WordPress connection with actual credentials
+  [ ] Draft creation in real WP instance
+  [ ] Approval -> Publish flow with X-User-Id
+  [ ] 403 blocking without X-User-Id
+  [ ] Meta/schema/alt-text safe fixes
+  [ ] WP sync pulling real content
+  [ ] Error handling for unreachable WP sites
+  [ ] Homepage confirmation flow
+
+
+--------------------------------------------------------------------
+C. RANK TRACKING
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs GSC integration testing
+
+Database Tables:
+  - rank_tracking  -> Current rank data
+  - rank_history   -> Historical position tracking
+
+Tools:
+  - fetch_gsc_performance() -> 30-day GSC data
+  - get_serp_position()     -> Current SERP ranking check
+  - calculate_visibility_score() -> 0-100 visibility metric
+
+API Endpoints:
+  GET  /api/rank/{website_id}                -> Current ranks
+  GET  /api/rank/{website_id}/history        -> Rank history
+  POST /api/rank/{website_id}/track-now      -> Manual rank check
+  GET  /api/rank/{website_id}/visibility     -> Visibility score
+
+WHAT WORKS:
+  [x] Database schema defined
+  [x] Tools implemented
+  [x] API routes implemented
+  [x] Visibility score calculation logic
+
+NEEDS TESTING:
+  [ ] GSC API connection with real service account
+  [ ] SERP position checking (may need SERPAPI_KEY)
+  [ ] Visibility score accuracy
+  [ ] Rank history tracking over time
+
+--------------------------------------------------------------------
+D. COMPETITOR MONITORING
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs Firecrawl API testing
+
+Database Tables:
+  - competitors          -> Competitor domain list
+  - competitor_snapshots -> Periodic content snapshots
+  - competitor_changes   -> Detected changes
+
+Tools:
+  - add_competitor()    -> Firecrawl domain analysis
+  - daily_scrape()      -> Scrape pricing pages
+  - detect_changes()    -> Hash comparison + pricing diff
+  - market_trend()      -> Aggregate changes summary
+
+API Endpoints:
+  GET  /api/competitors/{website_id}           -> List competitors
+  POST /api/competitors/{website_id}           -> Add competitor
+  GET  /api/competitors/{website_id}/changes   -> View changes
+  GET  /api/competitors/{website_id}/trends    -> Trend summary
+
+WHAT WORKS:
+  [x] Database schema defined
+  [x] Tools implemented
+  [x] API routes implemented
+  [x] Change detection logic (hash comparison)
+
+NEEDS TESTING:
+  [ ] Firecrawl API connection for real competitor crawling
+  [ ] Daily scrape automation
+  [ ] Change detection accuracy
+  [ ] Pricing data extraction
+
+
+--------------------------------------------------------------------
+E. TECHNICAL SEO AUDITS
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs browser/crawler testing
+
+Enhanced Issue Types:
+  - broken_link      -> 404 errors from crawl
+  - crawl_error      -> Server errors (5xx)
+  - slow_page        -> Core Web Vitals issues
+  - mobile_usability -> Responsive design problems
+
+Tools:
+  - scan_broken_links()  -> Check all hrefs status
+  - scan_crawl_errors()  -> GSC crawl issue check
+  - full_site_audit()    -> Run all 6 pillars
+
+WHAT WORKS:
+  [x] Issue type definitions
+  [x] Tools implemented
+  [x] API routes in tech_seo.py router
+
+NEEDS TESTING:
+  [ ] Full crawl of a real site
+  [ ] Broken link detection accuracy
+  [ ] Core Web Vitals measurement
+  [ ] Mobile usability detection
+  [ ] Schema validation
+
+--------------------------------------------------------------------
+F. KEYWORD RESEARCH
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs GSC integration testing
+
+Database Tables:
+  - keyword_opportunities -> Scored keyword opportunities
+
+Tools:
+  - gsc_gap_analysis()    -> Striking distance keywords (pos 11-30)
+  - competitor_gap()      -> Keywords competitors rank for
+  - trending_topics()     -> Rising search terms
+  - calculate_opportunity() -> Score = (volume * 1/pos * CTR) / difficulty
+
+API Endpoints:
+  GET  /api/keywords/{website_id}/opportunities     -> All opportunities
+  GET  /api/keywords/{website_id}/striking-distance -> Quick-win keywords
+  POST /api/keywords/{website_id}/target/{opp_id}   -> Mark as targeted
+  POST /api/keywords/{website_id}/research-now      -> Trigger research
+
+WHAT WORKS:
+  [x] Database schema defined
+  [x] Opportunity scoring formula implemented
+  [x] API routes implemented
+
+NEEDS TESTING:
+  [ ] GSC keyword data import
+  [ ] Competitor keyword gap analysis
+  [ ] Trending topics detection
+  [ ] Opportunity scoring accuracy
+
+--------------------------------------------------------------------
+G. CONTENT OPTIMIZATION
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs real page testing
+
+Database Tables:
+  - content_optimizations -> Page-level optimization suggestions
+
+Tools:
+  - analyze_page()           -> Check keyword placement, length, readability
+  - generate_suggestions()   -> Use NIM to produce fixes
+  - calculate_optimization_score() -> 100 - penalties
+  - apply_fix()              -> WordPress REST API updates
+
+WHAT WORKS:
+  [x] Database schema defined
+  [x] Tools implemented
+  [x] Optimization scoring logic
+
+NEEDS TESTING:
+  [ ] Real page analysis
+  [ ] Suggestion quality
+  [ ] WordPress API fix application
+
+
+--------------------------------------------------------------------
+H. CONTINUOUS MONITORING (24/7)
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - auto-starts on backend boot
+
+Monitoring Loops:
+  Loop               Frequency    What It Monitors
+  ---------------------------------------------------------------
+  rank_monitor       Every 15 min  Keyword drops/jumps (>3 positions), striking distance
+  serp_monitor       Every 30 min  Global vs Local vs Mobile SERP differences
+  competitor_monitor Every 60 min  Pricing/content/blog changes on competitors
+  tech_monitor       Every 60 min  Broken links, speed degradation, mobile issues
+  structure_monitor  Every 6 hours Orphan pages, redirect chains, duplicate titles
+
+Database Tables:
+  - realtime_alerts    -> All incidents, drops, bugs, opportunities
+  - monitoring_logs    -> Monitor execution logging
+  - topic_clusters     -> Auto-generated content strategy from alerts
+  - pending_fixes      -> Manual fixes awaiting human approval
+
+API Endpoints:
+  GET  /api/monitoring/{website_id}/alerts               -> Alerts by filter
+  POST /api/monitoring/{website_id}/alerts/{id}/read     -> Mark as read
+  POST /api/monitoring/{website_id}/alerts/{id}/approve  -> Approve + generate strategy
+  GET  /api/monitoring/{website_id}/live                 -> SSE stream (real-time alerts)
+  GET  /api/monitoring/{website_id}/stats                -> Monitor status + counts
+  GET  /api/monitoring/{website_id}/logs                 -> Recent monitoring logs
+  GET  /api/monitoring/{website_id}/pending-fixes        -> Queue awaiting approval
+  GET  /api/monitoring/{website_id}/topic-clusters       -> Generated topic clusters
+
+WHAT WORKS:
+  [x] All 5 monitoring loops coded
+  [x] Auto-start on backend boot (lifespan in main.py)
+  [x] SSE endpoint for real-time dashboard updates
+  [x] Human approval flow for fixes
+  [x] Database schema in place
+
+NEEDS TESTING:
+  [ ] All 5 loops running on schedule
+  [ ] Alert generation accuracy
+  [ ] SSE stream connectivity to frontend
+  [ ] Approval -> WordPress publish flow
+  [ ] Topic cluster generation from alerts
+
+--------------------------------------------------------------------
+I. KNOWLEDGE BASE & MEMORY
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - vector search functional with Supabase
+
+Features:
+  - Site knowledge crawl (20+ pages per website)
+  - Vector embeddings stored in Supabase (pgvector extension)
+  - Duplicate detection via cosine similarity (threshold: 0.85)
+  - Tone profile extraction and matching
+  - Fact extraction from crawled content
+
+Database Tables:
+  - website_knowledge -> Crawled page content + embeddings
+  - knowledge_base    -> Extracted facts (with embeddings)
+  - tone_profiles     -> Brand writing style data
+
+API Endpoints:
+  GET  /api/memory/{website_id}       -> Search knowledge base
+  POST /api/memory/check              -> Duplicate detection check
+  GET  /api/memory/{website_id}/facts -> Extracted facts
+
+WHAT WORKS:
+  [x] Crawler implementation (CrawleeTool + KnowledgeExtractorTool)
+  [x] Vector storage in Supabase
+  [x] Duplicate detection logic
+  [x] Tone analysis
+  [x] API endpoints
+
+NEEDS TESTING:
+  [ ] Full site crawl (20+ pages)
+  [ ] Embedding quality and similarity accuracy
+  [ ] Tone profile matching with real brand content
+  [ ] Knowledge base usefulness for content generation
+
+
+--------------------------------------------------------------------
+J. LLMS.TXT GENERATOR
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+Features:
+  - Auto-generates llms.txt file for AI crawler discovery
+  - Updated monthly (scheduler)
+  - Includes: site description, AI-allowed paths, content types
+
+API Endpoints:
+  GET  /api/llms-txt/{website_id}      -> Get current llms.txt
+  POST /api/llms-txt/{website_id}      -> Regenerate llms.txt
+  GET  /api/llms-txt/{website_id}/status -> Check if update is due
+
+WHAT WORKS:
+  [x] Generation logic
+  [x] API endpoints
+  [x] Database table (llms_txt_log)
+
+NEEDS TESTING:
+  [ ] Output quality with real site data
+  [ ] Monthly auto-update via scheduler
+
+--------------------------------------------------------------------
+K. GSC (GOOGLE SEARCH CONSOLE) INTEGRATION
+--------------------------------------------------------------------
+STATUS: PARTIALLY IMPLEMENTED - needs service account credentials
+
+Tools:
+  - fetch_gsc_performance() -> 30-day GSC performance data
+  - fetch_active_keywords()  -> Get active keywords from GSC
+  - gsc_gap_analysis()       -> Striking distance keywords (pos 11-30)
+
+API Endpoints:
+  GET /api/gsc/{website_id}/performance -> GSC performance data
+  GET /api/gsc/{website_id}/keywords    -> Active keywords
+
+REQUIRED: GSC_CREDENTIALS_PATH in .env (path to service account JSON)
+
+WHAT WORKS:
+  [x] GSC API connection logic
+  [x] Performance data fetching
+  [x] Keyword import
+
+NEEDS TESTING:
+  [ ] Real GSC service account connection
+  [ ] Data accuracy
+  [ ] Permission handling
+
+--------------------------------------------------------------------
+L. BACKLINK ANALYSIS
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs GSC link data
+
+Database Tables:
+  - backlinks -> Backlink profile data
+
+Tools:
+  - Backlink analysis via GSC link data
+  - AI-citation scoring
+  - Toxic link detection
+
+API Endpoints:
+  GET /api/backlinks/{website_id} -> Backlink analysis
+
+WHAT WORKS:
+  [x] Database schema
+  [x] Analysis logic
+  [x] API endpoints
+
+NEEDS TESTING:
+  [ ] Real GSC link data import
+  [ ] AI-citation scoring accuracy
+  [ ] Toxic link detection
+
+
+--------------------------------------------------------------------
+M. ROI DASHBOARD
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+Features:
+  - Impressions (30-day) from GSC
+  - Backlinks total and new (7-day)
+  - Technical health score (100 - issues * penalty)
+  - Blogs published (30-day)
+  - Impressions change percentage
+  - AEO Score (AI visibility score)
+  - GEO Readiness percentage
+
+API Endpoints:
+  GET /api/roi/{website_id} -> All ROI metrics
+
+Frontend Pages:
+  /dashboard -> Full ROI dashboard
+  /          -> Main dashboard with KPIs
+
+WHAT WORKS:
+  [x] ROI calculation logic
+  [x] API endpoints
+  [x] Frontend dashboard
+  [x] KPI cards with real data
+
+NEEDS TESTING:
+  [ ] Real GSC data integration
+  [ ] AEO score calculation accuracy
+  [ ] Tech health scoring
+
+--------------------------------------------------------------------
+N. SAFETY GATE & CRITICAL ACTION LOGGING
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - critical for production
+
+Features:
+  - Blocks unauthorized WordPress publish attempts
+  - Logs all blocked actions to critical_action_logs
+  - Rate limiting (max 5 approvals per minute per website)
+  - Homepage edit confirmation (requires confirm_homepage=true)
+  - X-User-Id header enforcement
+
+Critical Rules:
+  1. Without X-User-Id -> 403 Forbidden
+  2. Attempting to publish unapproved content -> Blocked + logged
+  3. Homepage updates require explicit confirmation
+  4. Rate limit: 5 approvals/minute/website
+
+Database Tables:
+  - critical_action_logs -> All blocked/successful critical actions
+  - agent_feedback       -> Human feedback for agent learning
+
+WHAT WORKS:
+  [x] X-User-Id header validation
+  [x] Rate limiting logic
+  [x] Homepage confirmation check
+  [x] Critical action logging
+  [x] Safety gate enforcement
+
+NEEDS TESTING:
+  [ ] 403 blocking for unauthorized requests
+  [ ] Rate limiting in production
+  [ ] Critical log accuracy
+  [ ] Agent learning from feedback
+
+--------------------------------------------------------------------
+O. CONTENT CALENDAR
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+API Endpoints:
+  GET /api/calendar/{website_id} -> Content calendar
+
+NEEDS TESTING:
+  [ ] Calendar accuracy with real content data
+
+--------------------------------------------------------------------
+P. CONTENT DECAY
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+Features:
+  - Detects content that is losing rankings/traffic
+  - Alerts for content refresh opportunities
+
+API Endpoints:
+  GET /api/decay/{website_id}/stats -> Decay statistics
+
+NEEDS TESTING:
+  [ ] Decay detection accuracy with real ranking data
+
+--------------------------------------------------------------------
+Q. TOPIC CLUSTERS
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+Features:
+  - Auto-generates content strategy from monitoring alerts
+  - Groups related topics for pillar/cluster content
+
+API Endpoints:
+  GET /api/clusters?website_id={id} -> Topic clusters
+
+NEEDS TESTING:
+  [ ] Cluster quality with real alert data
+
+
+--------------------------------------------------------------------
+R. RESEARCH TOOLS (SERP, BROWSING, COMPETITOR)
+--------------------------------------------------------------------
+STATUS: IMPLEMENTED - needs API keys
+
+Tools:
+  - WebBrowserTool      -> Full browser automation with Playwright
+  - RealTimeDataTool    -> News aggregation, social sentiment
+  - CompetitorAnalysisTool -> Full site analysis, SEO benchmarks
+  - SERPAnalyzerTool    -> SERP feature extraction
+
+API Endpoints:
+  POST /api/browse                -> Browse URLs and extract content
+  POST /api/serp                  -> SERP analysis
+  POST /api/real-time             -> Fetch real-time news/social data
+  POST /api/competitor-analysis   -> Analyze competitor sites
+  POST /api/analyze               -> Single URL SEO analysis
+  POST /api/trend-research        -> Market trend research
+  POST /api/content-hydra-analysis -> AI training data potential
+  POST /api/market-research       -> Comprehensive market research
+
+WHAT WORKS:
+  [x] Tool implementations
+  [x] API endpoints
+  [x] Playwright integration
+
+NEEDS TESTING:
+  [ ] Firecrawl API connection
+  [ ] Browser automation reliability
+  [ ] SERP data extraction
+  [ ] Real-time data fetching
+
+
+================================================================================
+PART 4: FRONTEND PAGES
+================================================================================
+Page           Route          Status    Description
+--------------------------------------------------------------------------------
+Home Page      /              WORKS     Main dashboard, KPIs, agent status
+Dashboard      /dashboard     WORKS     ROI: impressions, tech health, backlinks
+Proposals      /proposals     WORKS     Approve/reject blog drafts (X-User-Id)
+Websites       /websites      WORKS     Add/manage connected websites
+Monitoring     /monitoring    WORKS     Live alerts, SSE stream, approval queue
+Tech SEO       /tech-seo      WORKS     Technical audit results
+Writer         /writer        WORKS     Content pipeline manager
+Backlinks      /backlinks     WORKS     Backlink analysis display
+Calendar       /calendar      WORKS     Content calendar view
+Memory         /memory        WORKS     Knowledge base, duplicate detection
+Settings       /settings      WORKS     WP, GSC, API key configuration
+Knowledge      /knowledge     WORKS     Knowledge base management
+Content        /content       WORKS     Content logs and optimization
+Clusters       /clusters      WORKS     Topic cluster display
+Decay          /decay         WORKS     Content decay alerts
+LLMs.txt       /llms-txt      WORKS     llms.txt generator
+Research       /research      WORKS     Keyword research
+SEO/AEO/GEO    /seo-aeo-geo   WORKS     Combined scoring dashboard
+Layout         /layout        WORKS     Root layout with navigation
+
+
+================================================================================
+PART 5: DATABASE SCHEMA (SUPABASE)
+================================================================================
+Core Tables (supabase_schema.sql + supabase_schema_v2.sql):
+  - websites              -> Connected website configs
+  - pages                 -> Crawled pages with embeddings
+  - content_log           -> Blog drafts and published content
+  - audits                -> SEO issues and proposals
+  - quality_checks        -> Content quality scores
+  - agent_thoughts        -> Agent reasoning logs
+  - agent_feedback        -> Human feedback for agent learning
+  - tasks                 -> Task execution logs
+  - backlinks             -> Backlink data
+  - technical_audits      -> Technical SEO issues
+  - keyword_opportunities -> Keyword research data
+  - content_optimizations -> Page optimization suggestions
+
+Enhanced Tables (supabase_schema_enhanced.sql):
+  - realtime_alerts       -> Monitoring alerts
+  - monitoring_logs       -> Monitor execution logs
+  - topic_clusters        -> Auto-generated content strategy
+  - pending_fixes         -> Fixes awaiting approval
+  - critical_action_logs  -> Security/approval audit trail
+  - rank_tracking         -> Current rank data
+  - rank_history          -> Historical rank data
+  - content_pipeline_logs -> 100+ step pipeline audit
+  - content_expert_reviews -> 11 expert scores
+
+Agent Tables (supabase_schema_agents.sql):
+  - tone_profiles      -> Brand writing style data
+  - knowledge_base     -> Extracted facts with embeddings
+  - website_knowledge  -> Crawled page content + embeddings
+  - llms_txt_log       -> llms.txt generation history
+
+Required Extensions:
+  CREATE EXTENSION IF NOT EXISTS vector;  -- For pgvector embeddings
+
+SQL Files (run in order):
+  1. supabase_schema.sql
+  2. supabase_schema_v2.sql
+  3. supabase_schema_enhanced.sql
+  4. supabase_schema_agents.sql
+
+
+================================================================================
+PART 6: 100% WORKING (CONFIRMED)
+================================================================================
+Backend:
+  [x] FastAPI server starts and serves all routes
+  [x] 18 API routers mounted and functional
+  [x] CORS middleware configured
+  [x] Request logging with X-Request-ID
+  [x] Global exception handling
+  [x] Health check endpoint
+  [x] Environment validation
+  [x] Supabase client initialization
+  [x] Continuous monitor auto-start on boot
+  [x] CrewAI agent definitions (6 agents, 5 tasks)
+  [x] 24 tools implemented
+  [x] Safety rules hard-coded in all agent backstories
+  [x] Critical action logging
+  [x] Rate limiting logic
+
+Frontend:
+  [x] Next.js app with TypeScript
+  [x] 18 pages implemented
+  [x] API client (lib/api.ts)
+  [x] Website selector logic
+  [x] Dashboard with KPI cards
+  [x] Agent status display
+  [x] Activity feed
+  [x] Proposals list with approve/reject
+  [x] Monitoring page with live alerts
+
+Database:
+  [x] 20+ tables defined across 4 SQL files
+  [x] pgvector extension for embeddings
+  [x] Indexes for performance
+  [x] Foreign key relationships
+
+Safety:
+  [x] X-User-Id header validation
+  [x] Rate limiting (5 approvals/min)
+  [x] Homepage confirmation gate
+  [x] Critical action logging
+  [x] Agent backstory safety rules
+  [x] No auto-publish from agents
+
+
+================================================================================
+PART 7: WHAT NEEDS TESTING / IS NOT YET VERIFIED
+================================================================================
+Critical Path (must test before production):
+  [ ] Full CrewAI pipeline execution with real NIM API key
+  [ ] WordPress end-to-end (add site -> draft -> approve -> publish)
+  [ ] 403 blocking without X-User-Id header
+  [ ] GSC data import with real service account
+  [ ] All 5 monitoring loops running on schedule
+  [ ] SSE stream connecting frontend to backend alerts
+  [ ] Quality gate accuracy (tone match, spell check)
+  [ ] Vector duplicate detection accuracy
+  [ ] Content pipeline 110-step execution
+  [ ] 11-expert review scoring
+
+Secondary (can test in parallel):
+  [ ] Firecrawl API for competitor/browser tools
+  [ ] Redis for rate limiting and queue locks
+  [ ] Playwright browser automation
+  [ ] Real-time data tool (news, social)
+  [ ] SERP analysis accuracy
+  [ ] Content decay detection
+  [ ] Topic cluster generation quality
+  [ ] llms.txt generation quality
+  [ ] Backlink analysis with real GSC data
+  [ ] Content optimizer suggestions accuracy
+
+Infrastructure:
+  [ ] Supabase vector extension performance
+  [ ] Embedding quality for similarity search
+  [ ] Database query performance at scale
+  [ ] Frontend loading states and error handling
+  [ ] Redis connection stability
+
+
+================================================================================
+PART 8: KEY SAFETY RULES SUMMARY
+================================================================================
+1. NO AGENT CAN PUBLISH DIRECTLY
+   - All agents have SAFETY RULE in their backstory
+   - Writer creates drafts with status=pending_approval
+   - Agents lack WordPress publish permissions in their tool access
+
+2. HUMAN APPROVAL REQUIRED (X-User-Id)
+   - All publish endpoints require X-User-Id header
+   - Missing header -> 403 Forbidden
+   - Header is logged in critical_action_logs
+
+3. RATE LIMITING
+   - Max 5 approvals per minute per website
+   - Prevents accidental mass publishing
+
+4. HOMEPAGE PROTECTION
+   - Homepage edits require confirm_homepage=true
+   - Extra confirmation dialog in frontend
+
+5. SAFETY GATE LOGS EVERYTHING
+   - critical_action_logs table records:
+     * All blocked attempts
+     * Successful approvals
+     * Agent name, action, user_id, timestamp
+
+6. DRAFT-ONLY FROM AGENTS
+   - Agents can only create WordPress drafts
+   - Publishing is exclusively human-triggered
+   - WordPressService.draft_post() sets status=draft
+   - WordPressService.publish_post() requires user_id
+
+
+================================================================================
+PART 9: QUICK START COMMANDS
+================================================================================
+# Backend
+cd C:\Users\nikhil\Desktop\seo-agent-system
+venv\Scripts\activate
+uvicorn backend.main:app --reload --port 8000
+
+# Frontend (new terminal)
+cd C:\Users\nikhil\Desktop\seo-agent-system\frontend-next
+npm run dev -- --port 3000
+
+# Health Check
+curl http://localhost:8000/health
+
+# Trigger Crew (new terminal, with venv active)
+python -c "import asyncio; from backend.agents.crew import plan_blogs_for_website; print(asyncio.run(plan_blogs_for_website('demo-website-id')))"
+
+# Run Tests
+python -m pytest backend/tests/ -v
+
+# Verify Monitoring
+python verify_monitoring.py
+
+
+================================================================================
+PART 10: ENVIRONMENT VARIABLES REFERENCE
+================================================================================
+REQUIRED:
+  SUPABASE_URL             -> Supabase project URL
+  SUPABASE_KEY             -> Supabase anon key
+  SUPABASE_SERVICE_KEY     -> Supabase service role key
+  NVIDIA_API_KEY           -> NVIDIA NIM API key
+  FIRECRAWL_API_KEY        -> Firecrawl API key
+
+OPTIONAL (but recommended):
+  WORDPRESS_URL            -> WordPress site URL
+  WORDPRESS_USER           -> WordPress username
+  WORDPRESS_APP_PASSWORD   -> WordPress application password
+  GSC_CREDENTIALS_PATH     -> Path to Google service account JSON
+  REDIS_URL                -> Redis connection (default: redis://localhost:6379/0)
+  NEXT_PUBLIC_API_URL      -> Frontend API URL (default: http://localhost:8000)
+  SERPAPI_KEY              -> SERP API key
+  PAGESPEED_API_KEY        -> Google PageSpeed API key
+  SLACK_WEBHOOK_URL        -> Slack notifications
+  RESEND_API_KEY           -> Email notifications
+  DUPLICATE_THRESHOLD      -> Vector similarity threshold (default: 0.85)
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+Generated: 2026-08-20
+System: RANKFORGE Autonomous SEO Agent System
+Version: Based on codebase at C:\Users\nikhil\Desktop\seo-agent-system
+================================================================================

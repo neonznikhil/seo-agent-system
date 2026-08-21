@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RANKFORGE — Connectors</title>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#F6F4EF;--bg2:#EDEBE6;--bg3:#E4E1DA;--border:#111111;--line:#D1CCC4;--ink:#111111;--muted:#6B6B6B;--accent:#FF4D12;--green:#22C55E;--amber:#F59E0B;--red:#EF4444;
+  --sidebar-bg:#F6F4EF;--topbar-bg:#F6F4EF;--panel-bg:#EDEBE6;--panel-inner:#F6F4EF;--table-head:#E4E1DA;--badge-dark-bg:#111111;--badge-dark-fg:#F6F4EF;--input-bg:#F6F4EF;--chat-bg:#F6F4EF;--chat-user-bg:#111111;--chat-user-fg:#F6F4EF;--scrollbar:#111111;--scrollbar-tr:#EDEBE6;
+}
+[data-theme="dark"] {
+  --bg:#0E0E0E;--bg2:#161616;--bg3:#1E1E1E;--border:#2A2A2A;--line:#252525;--ink:#F0EEE9;--muted:#888888;--accent:#FF5A1F;--green:#22C55E;--amber:#F59E0B;--red:#EF4444;
+  --sidebar-bg:#0E0E0E;--topbar-bg:#0E0E0E;--panel-bg:#161616;--panel-inner:#0E0E0E;--table-head:#1A1A1A;--badge-dark-bg:#F0EEE9;--badge-dark-fg:#0E0E0E;--input-bg:#161616;--chat-bg:#0E0E0E;--chat-user-bg:#FF5A1F;--chat-user-fg:#FFFFFF;--scrollbar:#2A2A2A;--scrollbar-tr:#161616;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Mono',monospace;min-height:100vh;overflow:hidden;transition:background .2s,color .2s;}
+::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:var(--scrollbar-tr);}::-webkit-scrollbar-thumb{background:var(--scrollbar);}
+.app{display:flex;height:100vh;}
+
+/* SIDEBAR */
+.sidebar{width:204px;min-width:204px;height:100vh;background:var(--sidebar-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;flex-shrink:0;transition:background .2s,border-color .2s;}
+.sidebar-logo{padding:15px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;}
+.logo-mark{width:30px;height:30px;border:1px solid var(--border);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;color:var(--ink);}
+.logo-sq{width:7px;height:7px;background:var(--accent);flex-shrink:0;}
+.logo-text{font-family:'DotGothic16',sans-serif;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);}
+.sidebar-section-label{padding:12px 16px 3px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+.sidebar-nav{flex:1;padding:4px 0;overflow-y:auto;}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;text-decoration:none;color:var(--ink);border:1px solid transparent;transition:background .12s,border-color .12s,color .12s;cursor:pointer;width:100%;background:none;}
+.nav-item:hover{background:var(--bg2);border-color:var(--line);}
+.nav-item.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.nav-item.active .nav-sq{background:#fff;}
+.nav-sq{width:6px;height:6px;background:var(--line);flex-shrink:0;}
+.nav-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:8px;padding:1px 5px;letter-spacing:.03em;}
+.nav-item.active .nav-badge{background:rgba(255,255,255,.3);}
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);}
+.sys-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.sys-indicators{display:flex;gap:4px;}
+.sq-ind{width:7px;height:7px;background:var(--accent);}
+.sq-ind.off{background:var(--line);}
+.theme-toggle{width:36px;height:20px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;position:relative;flex-shrink:0;display:flex;align-items:center;transition:background .2s;}
+.theme-toggle-knob{width:14px;height:14px;background:var(--ink);position:absolute;left:2px;transition:left .18s,background .2s;}
+[data-theme="dark"] .theme-toggle-knob{left:18px;background:var(--accent);}
+.theme-toggle-icon{font-size:8px;position:absolute;right:3px;line-height:1;}
+[data-theme="dark"] .theme-toggle-icon{left:3px;right:auto;}
+.sys-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.sidebar-ticker{margin-top:8px;overflow:hidden;}
+.ticker-inner{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;animation:ticker-anim 20s linear infinite;font-size:8px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.tick-sq{width:4px;height:4px;background:var(--accent);flex-shrink:0;}
+@keyframes ticker-anim{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;height:100vh;overflow:hidden;}
+.topbar{height:46px;min-height:46px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--topbar-bg);z-index:50;flex-shrink:0;transition:background .2s,border-color .2s;}
+.topbar-left{display:flex;align-items:center;gap:10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.breadcrumb-sq{width:4px;height:4px;background:var(--muted);}
+.topbar-title{color:var(--ink);font-weight:600;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.site-select{padding:5px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;background:var(--bg2);border:1px solid var(--border);cursor:pointer;color:var(--ink);transition:background .2s;}
+.live-pill{display:flex;align-items:center;gap:5px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.live-dot{width:6px;height:6px;background:var(--green);animation:pulse-sq 1.4s ease-in-out infinite;}
+@keyframes pulse-sq{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+/* PAGE */
+.page-wrap{flex:1;overflow:hidden;position:relative;}
+.page-container{position:absolute;inset:0;overflow-y:auto;padding:24px 24px 100px;}
+.page-heading{font-family:'DotGothic16',sans-serif;font-size:clamp(30px,3.5vw,52px);text-transform:uppercase;line-height:1.05;letter-spacing:-.01em;margin-bottom:4px;color:var(--ink);}
+.page-sub{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:22px;display:flex;align-items:center;gap:8px;}
+.sub-sq{width:5px;height:5px;background:var(--accent);flex-shrink:0;}
+
+/* PANELS */
+.panel{border:1px solid var(--border);background:var(--panel-bg);margin-bottom:16px;transition:background .2s,border-color .2s;}
+.panel-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.panel-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+.panel-action{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);background:var(--panel-inner);border:1px solid var(--accent);padding:3px 8px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
+.panel-action:hover{background:var(--accent);color:#fff;}
+.panel-body{padding:14px;}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;}
+.badge-green{background:rgba(34,197,94,.1);color:var(--green);border:1px solid var(--green);}
+.badge-amber{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid var(--amber);}
+.badge-red{background:rgba(239,68,68,.1);color:var(--red);border:1px solid var(--red);}
+.badge-ink{background:var(--badge-dark-bg);color:var(--badge-dark-fg);border:1px solid var(--badge-dark-bg);}
+.badge-accent{background:var(--accent);color:#fff;border:1px solid var(--accent);}
+.badge-muted{background:var(--bg3);color:var(--muted);border:1px solid var(--line);}
+
+/* BUTTONS */
+.btn{padding:6px 12px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;font-family:'IBM Plex Mono',monospace;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--ink);transition:background .15s,color .15s;}
+.btn:hover{background:var(--bg2);}
+.btn-primary{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+.btn-primary:hover{opacity:.85;}
+.btn-accent{background:var(--accent);color:#fff;border-color:var(--accent);}
+.btn-accent:hover{opacity:.9;}
+.btn-danger{background:transparent;color:var(--red);border-color:var(--red);}
+.btn-danger:hover{background:var(--red);color:#fff;}
+
+/* FIELDS */
+.field{width:100%;padding:8px 12px;font-size:11px;font-family:'IBM Plex Mono',monospace;background:var(--input-bg);border:1px solid var(--border);color:var(--ink);outline:none;transition:border-color .15s,background .2s;}
+.field:focus{border-color:var(--accent);}
+.field-group{margin-bottom:12px;}
+.field-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;}
+.field-hint{font-size:9px;color:var(--muted);margin-top:4px;}
+
+/* GRIDS */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+
+/* CONNECTOR CARDS */
+.connector-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.connector-card{border:1px solid var(--border);background:var(--panel-inner);padding:16px;cursor:pointer;transition:background .15s,border-color .15s;position:relative;}
+.connector-card:hover{background:var(--bg2);}
+.connector-card.connected{border-color:var(--green);}
+.connector-card.active-selected{border-color:var(--accent);background:var(--bg2);}
+.connector-icon{width:38px;height:38px;border:1px solid var(--border);background:var(--bg2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;font-size:16px;}
+.connector-name{font-size:12px;font-weight:600;color:var(--ink);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em;}
+.connector-desc{font-size:9px;color:var(--muted);line-height:1.5;margin-bottom:10px;}
+.connector-status{display:flex;align-items:center;justify-content:space-between;}
+.conn-badge-row{display:flex;align-items:center;gap:6px;}
+.connector-actions{display:flex;gap:6px;margin-top:10px;}
+.status-dot{width:6px;height:6px;flex-shrink:0;}
+.status-dot.green{background:var(--green);}
+.status-dot.amber{background:var(--amber);}
+.status-dot.muted{background:var(--line);}
+
+/* CONFIG PANEL */
+.config-section{display:none;}
+.config-section.active{display:block;}
+.config-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;}
+.config-tab{padding:8px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.config-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.config-tab:hover{color:var(--ink);}
+
+/* STEPS */
+.step-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+.step-row:last-child{border-bottom:none;}
+.step-num{width:22px;height:22px;border:1px solid var(--border);background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;font-weight:600;}
+.step-num.done{background:var(--green);border-color:var(--green);color:#fff;}
+.step-num.active-step{background:var(--accent);border-color:var(--accent);color:#fff;}
+.step-content{flex:1;}
+.step-title{font-size:11px;color:var(--ink);margin-bottom:3px;font-weight:600;}
+.step-desc{font-size:10px;color:var(--muted);line-height:1.5;}
+.step-action{margin-top:8px;}
+
+/* DATA TABLE */
+.data-table{width:100%;border-collapse:collapse;}
+.data-table th{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);border-right:1px solid var(--line);background:var(--table-head);}
+.data-table th:last-child{border-right:none;}
+.data-table td{font-size:11px;padding:9px 12px;color:var(--ink);border-bottom:1px solid var(--line);border-right:1px solid var(--line);transition:background .1s;}
+.data-table td:last-child{border-right:none;}
+.data-table tr:hover td{background:var(--bg3);}
+.data-table tr:last-child td{border-bottom:none;}
+
+/* LOG */
+.log-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line);font-size:10px;font-family:'IBM Plex Mono',monospace;}
+.log-row:last-child{border-bottom:none;}
+.log-time{color:var(--muted);width:80px;flex-shrink:0;}
+.log-level{width:50px;flex-shrink:0;}
+.log-msg{flex:1;color:var(--ink);}
+
+/* PROGRESS */
+.prog-row{margin-bottom:10px;}
+.prog-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:flex;justify-content:space-between;}
+.prog-track{height:3px;background:var(--line);}
+.prog-fill{height:3px;background:var(--accent);transition:width .4s;}
+.prog-fill.green{background:var(--green);}
+
+/* BTICKER */
+.bticker{border-top:1px solid var(--border);background:var(--ink);overflow:hidden;padding:7px 0;flex-shrink:0;margin-top:20px;transition:background .2s;}
+[data-theme="dark"] .bticker{background:#1A1A1A;}
+.bticker-inner{display:inline-flex;align-items:center;gap:14px;white-space:nowrap;animation:ticker-anim 30s linear infinite;font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--bg);}
+[data-theme="dark"] .bticker-inner{color:var(--muted);}
+.bt-sq{width:4px;height:4px;background:var(--accent);flex-shrink:0;}
+.bt-sep{color:var(--muted);}
+
+/* SCOPE PILLS */
+.scope-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+.scope-pill{font-size:9px;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border:1px solid var(--line);background:var(--bg2);color:var(--muted);}
+.scope-pill.active{border-color:var(--accent);color:var(--accent);background:rgba(255,77,18,.06);}
+
+/* STAT STRIP */
+.stat-strip{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--border);background:var(--panel-bg);margin-bottom:20px;}
+.stat-cell{padding:12px 14px;border-right:1px solid var(--border);}
+.stat-cell:last-child{border-right:none;}
+.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px;}
+.stat-val{font-family:'DotGothic16',sans-serif;font-size:20px;color:var(--ink);line-height:1;}
+.stat-sub{font-size:9px;margin-top:3px;color:var(--green);}
+.stat-sub.neg{color:var(--red);}
+.stat-sub.muted{color:var(--muted);}
+
+/* DIVIDER */
+.divider{height:1px;background:var(--line);margin:14px 0;}
+
+/* OAUTH BUTTON */
+.oauth-btn{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border);background:var(--panel-inner);cursor:pointer;width:100%;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink);text-transform:uppercase;letter-spacing:.05em;transition:background .15s,border-color .15s;margin-bottom:8px;}
+.oauth-btn:hover{background:var(--bg2);border-color:var(--accent);}
+.oauth-btn-icon{width:28px;height:28px;border:1px solid var(--line);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.oauth-btn-text{flex:1;text-align:left;}
+.oauth-btn-arrow{color:var(--muted);font-size:12px;}
+
+/* CHAT */
+.chat-panel{position:fixed;bottom:0;right:0;width:360px;background:var(--chat-bg);border-left:1px solid var(--border);border-top:1px solid var(--border);display:flex;flex-direction:column;z-index:200;transition:height .22s ease,background .2s,border-color .2s;box-shadow:-4px 0 20px rgba(0,0,0,.08);}
+.chat-panel.open{height:460px;}
+.chat-panel.closed{height:42px;}
+[data-theme="dark"] .chat-panel{box-shadow:-4px 0 20px rgba(0,0,0,.4);}
+.chat-topbar{height:42px;min-height:42px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;cursor:pointer;flex-shrink:0;user-select:none;}
+.chat-title{display:flex;align-items:center;gap:8px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink);}
+.chat-live{width:6px;height:6px;background:var(--green);animation:pulse-sq 2s infinite;}
+.chat-toggle{width:22px;height:22px;border:1px solid var(--border);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;color:var(--muted);line-height:1;}
+.chat-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+.msg{display:flex;gap:8px;align-items:flex-start;}
+.msg.user{flex-direction:row-reverse;}
+.msg-avatar{width:24px;height:24px;border:1px solid var(--border);background:var(--bg2);flex-shrink:0;font-size:9px;font-weight:700;letter-spacing:0;display:flex;align-items:center;justify-content:center;text-transform:uppercase;color:var(--ink);}
+.msg-avatar.ai{background:var(--ink);color:var(--bg);}
+.msg-bubble{max-width:calc(100% - 36px);font-size:11px;line-height:1.6;padding:8px 11px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);transition:background .2s;}
+.msg.user .msg-bubble{background:var(--chat-user-bg);color:var(--chat-user-fg);border-color:var(--chat-user-bg);}
+.msg-time{font-size:8px;color:var(--muted);margin-top:3px;text-transform:uppercase;}
+.chat-suggestions{display:flex;gap:5px;padding:7px 10px;flex-wrap:wrap;border-top:1px solid var(--line);flex-shrink:0;}
+.chip{font-size:9px;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border:1px solid var(--line);background:var(--bg2);cursor:pointer;font-family:'IBM Plex Mono',monospace;color:var(--muted);transition:border-color .1s,color .1s;}
+.chip:hover{border-color:var(--accent);color:var(--accent);}
+.chat-input-row{border-top:1px solid var(--border);display:flex;align-items:stretch;flex-shrink:0;}
+.chat-input{flex:1;padding:10px 12px;font-size:11px;font-family:'IBM Plex Mono',monospace;background:transparent;border:none;color:var(--ink);outline:none;resize:none;}
+.chat-send{padding:0 16px;background:var(--accent);color:#fff;border:none;border-left:1px solid var(--border);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;cursor:pointer;}
+.chat-send:hover{opacity:.88;}
+.typing-dots{display:flex;gap:4px;align-items:center;padding:4px 0;}
+.typing-dots span{width:5px;height:5px;background:var(--muted);animation:dot-blink 1.2s ease-in-out infinite;}
+.typing-dots span:nth-child(2){animation-delay:.2s;}
+.typing-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes dot-blink{0%,80%,100%{opacity:.2;}40%{opacity:1;}}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 18px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;z-index:500;opacity:0;transition:opacity .2s;pointer-events:none;}
+.toast.show{opacity:1;}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:none;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--bg);border:1px solid var(--border);width:420px;max-width:90vw;max-height:80vh;overflow-y:auto;flex-direction:column;}
+.modal-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);}
+.modal-close{width:24px;height:24px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--muted);flex-shrink:0;}
+.modal-body{padding:16px;}
+.modal-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+
+/* CHECK ROWS */
+.check-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--ink);}
+.check-row:last-child{border-bottom:none;}
+.ci{width:16px;flex-shrink:0;font-size:11px;}
+.ci.pass{color:var(--green);}
+.ci.fail{color:var(--red);}
+.ci.warn{color:var(--amber);}
+.ci.pending{color:var(--muted);}
+.ck-label{flex:1;}
+.ck-val{font-size:10px;color:var(--muted);}
+
+/* NOTICE */
+.notice{padding:10px 12px;border:1px solid var(--line);background:var(--bg2);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.notice-sq{width:5px;height:5px;background:var(--amber);flex-shrink:0;}
+.notice.info .notice-sq{background:var(--accent);}
+.notice.ok .notice-sq{background:var(--green);}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">*</div>
+    <div class="logo-sq"></div>
+    <span class="logo-text">RankForge</span>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="sidebar-section-label">Core</div>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Dashboard</button>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Websites</button>
+    <div class="sidebar-section-label">SEO</div>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Content</button>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Calendar</button>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Backlinks</button>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Tech SEO</button>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Monitoring</button>
+    <div class="sidebar-section-label">AI</div>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>Memory</button>
+    <button class="nav-item" onclick="window.location='#'"><span class="nav-sq"></span>LLMs.txt</button>
+    <div class="sidebar-section-label">Settings</div>
+    <button class="nav-item active" onclick="window.location='#'"><span class="nav-sq"></span>Connectors<span class="nav-badge">2</span></button>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sys-row">
+      <div class="sys-indicators"><span class="sq-ind"></span><span class="sq-ind"></span><span class="sq-ind off"></span></div>
+      <div class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><div class="theme-toggle-knob"></div><span class="theme-toggle-icon" id="theme-icon">☀</span></div>
+    </div>
+    <div class="sys-label">2 Connectors Active</div>
+    <div class="sidebar-ticker"><span class="ticker-inner"><span class="tick-sq"></span>WORDPRESS SYNCED &nbsp;/&nbsp;<span class="tick-sq"></span>GSC LIVE &nbsp;/&nbsp;<span class="tick-sq"></span>DATA FRESH &nbsp;&nbsp;&nbsp;<span class="tick-sq"></span>WORDPRESS SYNCED &nbsp;/&nbsp;<span class="tick-sq"></span>GSC LIVE &nbsp;/&nbsp;<span class="tick-sq"></span>DATA FRESH</span></div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span>RankForge</span>
+      <span class="breadcrumb-sq"></span>
+      <span>Settings</span>
+      <span class="breadcrumb-sq"></span>
+      <span class="topbar-title">Connectors</span>
+    </div>
+    <div class="topbar-right">
+      <div class="live-pill"><span class="live-dot"></span><span>Live</span></div>
+      <select class="site-select">
+        <option>acme-corp.com</option><option>techblog.io</option><option>shopify-store.com</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+  <div class="page-container">
+
+    <div class="page-heading">Connectors</div>
+    <div class="page-sub"><span class="sub-sq"></span>Integrate external platforms · Push content · Pull data · acme-corp.com</div>
+
+    <!-- STAT STRIP -->
+    <div class="stat-strip">
+      <div class="stat-cell">
+        <div class="stat-label">Active Connectors</div>
+        <div class="stat-val">2</div>
+        <div class="stat-sub">WordPress + GSC</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Posts Published</div>
+        <div class="stat-val">147</div>
+        <div class="stat-sub">↑ 12 this week</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">GSC Impressions</div>
+        <div class="stat-val">84.2K</div>
+        <div class="stat-sub">↑ 9.4% vs last mo</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Last Sync</div>
+        <div class="stat-val" style="font-size:14px;padding-top:3px;">4m ago</div>
+        <div class="stat-sub muted">Auto every 15m</div>
+      </div>
+    </div>
+
+    <!-- CONNECTOR CARDS -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;">Available Integrations</div>
+    <div class="connector-grid">
+
+      <!-- WordPress -->
+      <div class="connector-card connected active-selected" id="card-wp" onclick="selectConnector('wp')">
+        <div class="connector-icon">🔷</div>
+        <div class="connector-name">WordPress</div>
+        <div class="connector-desc">Auto-publish AI content, manage posts, update metadata, and sync sitemap via REST API or WP plugin.</div>
+        <div class="connector-status">
+          <div class="conn-badge-row"><span class="status-dot green"></span><span class="badge badge-green">Connected</span></div>
+          <span style="font-size:9px;color:var(--muted);">v6.4.2</span>
+        </div>
+        <div class="connector-actions">
+          <button class="btn btn-accent" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();openSection('wp','settings')">Configure</button>
+          <button class="btn" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();testConn('wp')">Test</button>
+        </div>
+      </div>
+
+      <!-- Google Search Console -->
+      <div class="connector-card connected" id="card-gsc" onclick="selectConnector('gsc')">
+        <div class="connector-icon">🔴</div>
+        <div class="connector-name">Google Search Console</div>
+        <div class="connector-desc">Pull live impressions, clicks, CTR, and position data. Index URL requests. Coverage issue alerts.</div>
+        <div class="connector-status">
+          <div class="conn-badge-row"><span class="status-dot green"></span><span class="badge badge-green">Connected</span></div>
+          <span style="font-size:9px;color:var(--muted);">OAuth 2.0</span>
+        </div>
+        <div class="connector-actions">
+          <button class="btn btn-accent" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();openSection('gsc','settings')">Configure</button>
+          <button class="btn" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();testConn('gsc')">Test</button>
+        </div>
+      </div>
+
+      <!-- Google Analytics -->
+      <div class="connector-card" id="card-ga" onclick="selectConnector('ga')">
+        <div class="connector-icon">📊</div>
+        <div class="connector-name">Google Analytics 4</div>
+        <div class="connector-desc">Import traffic data, conversion events, and user behaviour signals into RankForge dashboards.</div>
+        <div class="connector-status">
+          <div class="conn-badge-row"><span class="status-dot muted"></span><span class="badge badge-muted">Not Connected</span></div>
+        </div>
+        <div class="connector-actions">
+          <button class="btn btn-primary" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();openSection('ga','setup')">Connect</button>
+        </div>
+      </div>
+
+      <!-- Ahrefs -->
+      <div class="connector-card" id="card-ahrefs" onclick="selectConnector('ahrefs')">
+        <div class="connector-icon">🔗</div>
+        <div class="connector-name">Ahrefs</div>
+        <div class="connector-desc">Pull domain rating, backlink data, keyword difficulty, and competitor gap analysis via API key.</div>
+        <div class="connector-status">
+          <div class="conn-badge-row"><span class="status-dot muted"></span><span class="badge badge-muted">Not Connected</span></div>
+        </div>
+        <div class="connector-actions">
+          <button class="btn btn-primary" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();openSection('ahrefs','setup')">Connect</button>
+        </div>
+      </div>
+
+      <!-- Semrush -->
+      <div class="connector-card" id="card-semrush" onclick="selectConnector('semrush')">
+        <div class="connector-icon">🟠</div>
+        <div class="connector-name">Semrush</div>
+        <div class="connector-desc">Keyword research, position tracking, and site audit data streamed directly into agent memory.</div>
+        <div class="connector-status">
+          <div class="conn-badge-row"><span class="status-dot muted"></span><span class="badge badge-muted">Not Connected</span></div>
+        </div>
+        <div class="connector-actions">
+          <button class="btn btn-primary" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();openSection('semrush','setup')">Connect</button>
+        </div>
+      </div>
+
+      <!-- Slack -->
+      <div class="connector-card" id="card-slack" onclick="selectConnector('slack')">
+        <div class="connector-icon">💬</div>
+        <div class="connector-name">Slack</div>
+        <div class="connector-desc">Receive agent alerts, weekly SEO reports, and ranking change notifications in your Slack workspace.</div>
+        <div class="connector-status">
+          <div class="conn-badge-row"><span class="status-dot muted"></span><span class="badge badge-muted">Not Connected</span></div>
+        </div>
+        <div class="connector-actions">
+          <button class="btn btn-primary" style="font-size:9px;padding:4px 10px;" onclick="event.stopPropagation();openSection('slack','setup')">Connect</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- DYNAMIC CONFIG PANEL -->
+    <div id="config-area">
+
+      <!-- ==================== WORDPRESS ==================== -->
+      <div class="config-section active" id="section-wp">
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-label">🔷 WordPress — Configuration</span>
+            <div style="display:flex;gap:6px;">
+              <span class="badge badge-green">Connected</span>
+              <button class="btn btn-danger" style="font-size:9px;padding:3px 9px;" onclick="disconnectConn('wp')">Disconnect</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="config-tabs">
+              <div class="config-tab active" onclick="switchTab('wp','settings',this)">Settings</div>
+              <div class="config-tab" onclick="switchTab('wp','sync',this)">Sync Log</div>
+              <div class="config-tab" onclick="switchTab('wp','mapping',this)">Field Mapping</div>
+              <div class="config-tab" onclick="switchTab('wp','permissions',this)">Permissions</div>
+            </div>
+
+            <!-- SETTINGS TAB -->
+            <div class="wp-tab-content" id="wp-settings">
+              <div class="grid-2">
+                <div>
+                  <div class="field-group">
+                    <div class="field-label">WordPress Site URL</div>
+                    <input class="field" type="text" value="https://acme-corp.com" />
+                    <div class="field-hint">Your WordPress root domain — no trailing slash</div>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">REST API Endpoint <span class="badge badge-green" style="font-size:8px;">Verified</span></div>
+                    <input class="field" type="text" value="https://acme-corp.com/wp-json/wp/v2" readonly style="opacity:.7;" />
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Application Password <span style="color:var(--muted);font-size:9px;">● ● ● ● ● ● ● ●</span></div>
+                    <input class="field" type="password" value="aBcD eFgH iJkL mNoP" />
+                    <div class="field-hint">Generate in WP Admin → Users → Application Passwords</div>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Auth Username</div>
+                    <input class="field" type="text" value="rankforge_agent" />
+                  </div>
+                </div>
+                <div>
+                  <div class="field-group">
+                    <div class="field-label">Default Post Status</div>
+                    <select class="field">
+                      <option>Draft</option>
+                      <option selected>Publish</option>
+                      <option>Pending Review</option>
+                      <option>Schedule</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Default Author</div>
+                    <select class="field">
+                      <option>rankforge_agent</option>
+                      <option>admin</option>
+                      <option>editor</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Default Category</div>
+                    <input class="field" type="text" value="SEO, AI Content" />
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Sync Interval</div>
+                    <select class="field">
+                      <option>5 minutes</option>
+                      <option selected>15 minutes</option>
+                      <option>30 minutes</option>
+                      <option>Hourly</option>
+                      <option>Manual only</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="notice info"><span class="notice-sq"></span>Yoast SEO plugin detected. RankForge will auto-populate meta_title, meta_description, and focus_keyphrase via Yoast REST fields.</div>
+
+              <div style="margin-bottom:14px;">
+                <div class="field-label" style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Plugin Integrations</div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Yoast SEO — meta fields auto-mapped</div><span class="badge badge-green">Active</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">RankMath — schema injection enabled</div><span class="badge badge-green">Active</span></div>
+                <div class="check-row"><div class="ci warn">!</div><div class="ck-label">WP Rocket — cache clear on publish</div><span class="badge badge-amber">Config needed</span></div>
+                <div class="check-row"><div class="ci pending">○</div><div class="ck-label">Elementor — custom layout support</div><span class="badge badge-muted">Not detected</span></div>
+              </div>
+
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-accent" onclick="showToast('WordPress settings saved')">Save Changes</button>
+                <button class="btn" onclick="testConn('wp')">Test Connection</button>
+                <button class="btn" onclick="syncNow('wp')">Sync Now</button>
+              </div>
+            </div>
+
+            <!-- SYNC LOG TAB -->
+            <div class="wp-tab-content" id="wp-sync" style="display:none;">
+              <div style="border:1px solid var(--border);overflow:hidden;margin-bottom:14px;">
+                <div style="padding:8px 12px;background:var(--table-head);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                  <span class="panel-label">Sync Events — Last 24h</span>
+                  <span style="font-size:9px;color:var(--muted);">Auto-refreshing</span>
+                </div>
+                <div class="log-row"><span class="log-time">14:32:07</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">POST published — "AI SEO Strategies 2026" (ID: 4821)</span></div>
+                <div class="log-row"><span class="log-time">14:30:01</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">Yoast meta updated — focus keyphrase set to "ai seo 2026"</span></div>
+                <div class="log-row"><span class="log-time">13:15:44</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">Schema markup injected — FAQ + Article schema on ID 4818</span></div>
+                <div class="log-row"><span class="log-time">12:47:22</span><span class="log-level"><span class="badge badge-amber" style="font-size:8px;">WARN</span></span><span class="log-msg">Cache clear skipped — WP Rocket API key not configured</span></div>
+                <div class="log-row"><span class="log-time">11:02:58</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">Sitemap pinged — Google received 47 new URLs</span></div>
+                <div class="log-row"><span class="log-time">10:18:33</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">POST published — "Backlink Building Guide 2026" (ID: 4817)</span></div>
+                <div class="log-row"><span class="log-time">09:44:10</span><span class="log-level"><span class="badge badge-red" style="font-size:8px;">ERR</span></span><span class="log-msg">REST 401 — Auth token refreshed, retried successfully</span></div>
+                <div class="log-row"><span class="log-time">08:30:00</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">Scheduled sync completed — 3 drafts updated</span></div>
+              </div>
+              <div class="prog-row"><div class="prog-label"><span>Publish Success Rate</span><span>96.2%</span></div><div class="prog-track"><div class="prog-fill green" style="width:96%"></div></div></div>
+              <div class="prog-row"><div class="prog-label"><span>Sync Uptime (30d)</span><span>99.7%</span></div><div class="prog-track"><div class="prog-fill green" style="width:99.7%"></div></div></div>
+              <div class="prog-row"><div class="prog-label"><span>Avg Publish Latency</span><span>1.2s</span></div><div class="prog-track"><div class="prog-fill" style="width:24%"></div></div></div>
+            </div>
+
+            <!-- FIELD MAPPING TAB -->
+            <div class="wp-tab-content" id="wp-mapping" style="display:none;">
+              <div class="notice"><span class="notice-sq"></span>Map RankForge content fields to your WordPress post fields and Yoast/RankMath meta.</div>
+              <table class="data-table" style="margin-bottom:14px;">
+                <thead><tr><th>RankForge Field</th><th>WP / Plugin Field</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td>title</td><td>post_title</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>body_html</td><td>post_content</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>excerpt</td><td>post_excerpt</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>seo_title</td><td>yoast_wpseo_title</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>meta_description</td><td>yoast_wpseo_metadesc</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>focus_keyphrase</td><td>yoast_wpseo_focuskw</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>schema_json</td><td>rank_math_rich_snippet</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                  <tr><td>featured_image_url</td><td>_thumbnail_id</td><td><span class="badge badge-amber">Auto-upload</span></td></tr>
+                  <tr><td>canonical_url</td><td>yoast_wpseo_canonical</td><td><span class="badge badge-green">Mapped</span></td></tr>
+                </tbody>
+              </table>
+              <button class="btn btn-accent" onclick="showToast('Field mapping saved')">Save Mapping</button>
+            </div>
+
+            <!-- PERMISSIONS TAB -->
+            <div class="wp-tab-content" id="wp-permissions" style="display:none;">
+              <div style="margin-bottom:14px;">
+                <div class="field-label" style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;">Agent Permissions</div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Create new posts</div><span class="badge badge-green">Allowed</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Edit existing posts</div><span class="badge badge-green">Allowed</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Publish / schedule posts</div><span class="badge badge-green">Allowed</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Upload media / images</div><span class="badge badge-green">Allowed</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Update Yoast / RankMath meta</div><span class="badge badge-green">Allowed</span></div>
+                <div class="check-row"><div class="ci fail">✗</div><div class="ck-label">Delete posts permanently</div><span class="badge badge-red">Blocked</span></div>
+                <div class="check-row"><div class="ci fail">✗</div><div class="ck-label">Modify user accounts</div><span class="badge badge-red">Blocked</span></div>
+                <div class="check-row"><div class="ci fail">✗</div><div class="ck-label">Access billing / admin settings</div><span class="badge badge-red">Blocked</span></div>
+              </div>
+              <button class="btn btn-accent" onclick="showToast('Permissions saved')">Save Permissions</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== GSC ==================== -->
+      <div class="config-section" id="section-gsc">
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-label">🔴 Google Search Console — Configuration</span>
+            <div style="display:flex;gap:6px;">
+              <span class="badge badge-green">Connected</span>
+              <button class="btn btn-danger" style="font-size:9px;padding:3px 9px;" onclick="disconnectConn('gsc')">Disconnect</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="config-tabs">
+              <div class="config-tab active" onclick="switchTab('gsc','settings',this)">Settings</div>
+              <div class="config-tab" onclick="switchTab('gsc','data',this)">Live Data</div>
+              <div class="config-tab" onclick="switchTab('gsc','indexing',this)">Indexing</div>
+              <div class="config-tab" onclick="switchTab('gsc','alerts',this)">Alerts</div>
+            </div>
+
+            <!-- GSC SETTINGS TAB -->
+            <div class="gsc-tab-content" id="gsc-settings">
+              <div class="grid-2">
+                <div>
+                  <div class="notice ok" style="margin-bottom:14px;"><span class="notice-sq"></span>OAuth 2.0 active · Scopes verified · Token auto-refreshes</div>
+                  <div class="field-group">
+                    <div class="field-label">Connected Google Account</div>
+                    <input class="field" type="text" value="seo@acme-corp.com" readonly style="opacity:.7;" />
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Verified Property</div>
+                    <select class="field">
+                      <option selected>sc-domain:acme-corp.com</option>
+                      <option>https://acme-corp.com/</option>
+                    </select>
+                    <div class="field-hint">Domain property recommended for full data coverage</div>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Data Fetch Range</div>
+                    <select class="field">
+                      <option>Last 7 days</option>
+                      <option selected>Last 28 days</option>
+                      <option>Last 90 days</option>
+                      <option>Last 16 months</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <div class="field-group">
+                    <div class="field-label">Dimensions to Pull</div>
+                    <div class="scope-list">
+                      <span class="scope-pill active">query</span>
+                      <span class="scope-pill active">page</span>
+                      <span class="scope-pill active">country</span>
+                      <span class="scope-pill active">device</span>
+                      <span class="scope-pill active">date</span>
+                      <span class="scope-pill">search type</span>
+                    </div>
+                    <div class="field-hint" style="margin-top:8px;">Click to toggle dimensions</div>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Sync Frequency</div>
+                    <select class="field">
+                      <option>Every 15 minutes</option>
+                      <option selected>Every hour</option>
+                      <option>Every 6 hours</option>
+                      <option>Daily</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <div class="field-label">Impression Threshold Alert</div>
+                    <input class="field" type="number" value="1000" />
+                    <div class="field-hint">Alert when page drops below this monthly threshold</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-bottom:14px;">
+                <div class="field-label" style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">OAuth Scopes Granted</div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">webmasters.readonly — read search analytics</div><span class="badge badge-green">Active</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">webmasters — submit sitemaps, URL inspection</div><span class="badge badge-green">Active</span></div>
+                <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">indexing — Google Indexing API (URL notify)</div><span class="badge badge-green">Active</span></div>
+              </div>
+
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-accent" onclick="showToast('GSC settings saved')">Save Changes</button>
+                <button class="btn" onclick="testConn('gsc')">Re-auth</button>
+                <button class="btn" onclick="syncNow('gsc')">Fetch Now</button>
+              </div>
+            </div>
+
+            <!-- GSC LIVE DATA TAB -->
+            <div class="gsc-tab-content" id="gsc-data" style="display:none;">
+              <div class="stat-strip" style="margin-bottom:14px;">
+                <div class="stat-cell"><div class="stat-label">Impressions (28d)</div><div class="stat-val">84.2K</div><div class="stat-sub">↑ 9.4%</div></div>
+                <div class="stat-cell"><div class="stat-label">Clicks (28d)</div><div class="stat-val">3,961</div><div class="stat-sub">↑ 7.1%</div></div>
+                <div class="stat-cell"><div class="stat-label">Avg CTR</div><div class="stat-val">4.7%</div><div class="stat-sub neg">↓ 0.3%</div></div>
+                <div class="stat-cell"><div class="stat-label">Avg Position</div><div class="stat-val">14.2</div><div class="stat-sub">↑ 2.1</div></div>
+              </div>
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Top Queries — Last 28 Days</div>
+              <table class="data-table" style="margin-bottom:14px;">
+                <thead><tr><th>Query</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Avg Pos</th></tr></thead>
+                <tbody>
+                  <tr><td>autonomous seo tools</td><td>12,400</td><td>840</td><td>6.8%</td><td>3.1</td></tr>
+                  <tr><td>ai content writing tool</td><td>9,810</td><td>512</td><td>5.2%</td><td>7.4</td></tr>
+                  <tr><td>seo ai agent 2026</td><td>7,230</td><td>298</td><td>4.1%</td><td>11.2</td></tr>
+                  <tr><td>backlink building software</td><td>5,890</td><td>201</td><td>3.4%</td><td>14.8</td></tr>
+                  <tr><td>llm seo optimisation</td><td>4,110</td><td>310</td><td>7.5%</td><td>8.3</td></tr>
+                  <tr><td>technical seo audit tool</td><td>3,720</td><td>185</td><td>5.0%</td><td>12.1</td></tr>
+                </tbody>
+              </table>
+              <div class="prog-row"><div class="prog-label"><span>Coverage: Valid Pages</span><span>94.2%  (402 / 427)</span></div><div class="prog-track"><div class="prog-fill green" style="width:94%"></div></div></div>
+              <div class="prog-row"><div class="prog-label"><span>Coverage: Errors</span><span>2.3%  (10 pages)</span></div><div class="prog-track"><div class="prog-fill" style="width:2.3%"></div></div></div>
+            </div>
+
+            <!-- GSC INDEXING TAB -->
+            <div class="gsc-tab-content" id="gsc-indexing" style="display:none;">
+              <div class="notice info" style="margin-bottom:14px;"><span class="notice-sq"></span>Google Indexing API enabled. RankForge auto-submits new URLs within 60s of publish.</div>
+              <div class="field-group">
+                <div class="field-label">Manual URL Submission</div>
+                <div style="display:flex;gap:8px;">
+                  <input class="field" type="text" placeholder="https://acme-corp.com/blog/new-post" style="flex:1;" />
+                  <button class="btn btn-accent" onclick="showToast('URL submitted to Google Index')">Submit</button>
+                </div>
+                <div class="field-hint">Force-index any URL instantly via Indexing API</div>
+              </div>
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Recent Indexing Requests</div>
+              <div class="log-row"><span class="log-time">14:32</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">/blog/ai-seo-strategies-2026 — Indexed</span></div>
+              <div class="log-row"><span class="log-time">13:10</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">/blog/backlink-building-guide — Indexed</span></div>
+              <div class="log-row"><span class="log-time">11:45</span><span class="log-level"><span class="badge badge-amber" style="font-size:8px;">PEND</span></span><span class="log-msg">/blog/llm-seo-2026 — Crawl queued</span></div>
+              <div class="log-row"><span class="log-time">10:20</span><span class="log-level"><span class="badge badge-green" style="font-size:8px;">OK</span></span><span class="log-msg">/blog/schema-markup-guide — Indexed</span></div>
+            </div>
+
+            <!-- GSC ALERTS TAB -->
+            <div class="gsc-tab-content" id="gsc-alerts" style="display:none;">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;">Alert Rules</div>
+              <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Rank drop &gt; 5 positions on any top-20 keyword</div><button class="btn" style="font-size:8px;padding:2px 8px;">Edit</button></div>
+              <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">CTR drops below 3% on pages with 5K+ impressions</div><button class="btn" style="font-size:8px;padding:2px 8px;">Edit</button></div>
+              <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">New coverage errors detected</div><button class="btn" style="font-size:8px;padding:2px 8px;">Edit</button></div>
+              <div class="check-row"><div class="ci pass">✓</div><div class="ck-label">Weekly GSC performance digest — every Monday 9am</div><button class="btn" style="font-size:8px;padding:2px 8px;">Edit</button></div>
+              <div class="check-row"><div class="ci pending">○</div><div class="ck-label">Manual action detected in GSC</div><button class="btn" style="font-size:8px;padding:2px 8px;">Enable</button></div>
+              <div style="margin-top:14px;display:flex;gap:8px;">
+                <button class="btn btn-accent" onclick="showToast('Alert rules saved')">Save Alerts</button>
+                <button class="btn">Add Rule</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== GA SETUP ==================== -->
+      <div class="config-section" id="section-ga">
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-label">📊 Google Analytics 4 — Setup</span>
+            <span class="badge badge-muted">Not Connected</span>
+          </div>
+          <div class="panel-body">
+            <div class="notice"><span class="notice-sq"></span>Connect GA4 to import session data, conversion events, and user behaviour signals into RankForge dashboards.</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;">Setup Steps</div>
+            <div class="step-row">
+              <div class="step-num active-step">1</div>
+              <div class="step-content">
+                <div class="step-title">Authorise with Google</div>
+                <div class="step-desc">Sign in with a Google account that has GA4 Viewer access or higher for your property.</div>
+                <div class="step-action">
+                  <button class="oauth-btn" onclick="showToast('Opening Google OAuth...')">
+                    <div class="oauth-btn-icon">G</div>
+                    <div class="oauth-btn-text">Continue with Google</div>
+                    <div class="oauth-btn-arrow">→</div>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="step-row">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-title">Select GA4 Property</div>
+                <div class="step-desc">Choose the GA4 property that corresponds to acme-corp.com.</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-title">Map Events to SEO Actions</div>
+                <div class="step-desc">RankForge will auto-map page_view, scroll, and outbound_click events to content performance metrics.</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <div class="step-title">Enable Dashboard Widgets</div>
+                <div class="step-desc">GA4 data appears in the Dashboard and Content panels once sync completes.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== AHREFS / SEMRUSH / SLACK SETUP (generic) ==================== -->
+      <div class="config-section" id="section-ahrefs">
+        <div class="panel">
+          <div class="panel-head"><span class="panel-label">🔗 Ahrefs — Setup</span><span class="badge badge-muted">Not Connected</span></div>
+          <div class="panel-body">
+            <div class="field-group"><div class="field-label">Ahrefs API Key</div><input class="field" type="password" placeholder="ahf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" /></div>
+            <div class="field-group"><div class="field-label">Target Domain</div><input class="field" type="text" value="acme-corp.com" /></div>
+            <div class="field-group"><div class="field-label">Data Pull Scope</div>
+              <div class="scope-list">
+                <span class="scope-pill active">domain rating</span>
+                <span class="scope-pill active">backlinks</span>
+                <span class="scope-pill active">referring domains</span>
+                <span class="scope-pill active">keyword difficulty</span>
+                <span class="scope-pill">organic keywords</span>
+                <span class="scope-pill">traffic value</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px;">
+              <button class="btn btn-accent" onclick="showToast('Connecting to Ahrefs...')">Connect Ahrefs</button>
+              <button class="btn">Test API Key</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-section" id="section-semrush">
+        <div class="panel">
+          <div class="panel-head"><span class="panel-label">🟠 Semrush — Setup</span><span class="badge badge-muted">Not Connected</span></div>
+          <div class="panel-body">
+            <div class="field-group"><div class="field-label">Semrush API Key</div><input class="field" type="password" placeholder="semrush_api_xxxxxxxxxxxxxxxx" /></div>
+            <div class="field-group"><div class="field-label">Project Domain</div><input class="field" type="text" value="acme-corp.com" /></div>
+            <div style="display:flex;gap:8px;margin-top:14px;">
+              <button class="btn btn-accent" onclick="showToast('Connecting to Semrush...')">Connect Semrush</button>
+              <button class="btn">Test API Key</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-section" id="section-slack">
+        <div class="panel">
+          <div class="panel-head"><span class="panel-label">💬 Slack — Setup</span><span class="badge badge-muted">Not Connected</span></div>
+          <div class="panel-body">
+            <div class="notice"><span class="notice-sq"></span>Connect Slack to receive AI agent alerts, weekly SEO digests, and rank change notifications.</div>
+            <button class="oauth-btn" onclick="showToast('Opening Slack OAuth...')">
+              <div class="oauth-btn-icon">S</div>
+              <div class="oauth-btn-text">Add to Slack Workspace</div>
+              <div class="oauth-btn-arrow">→</div>
+            </button>
+            <div class="field-group" style="margin-top:12px;"><div class="field-label">Or use Webhook URL</div><input class="field" type="text" placeholder="https://hooks.slack.com/services/..." /></div>
+            <div class="field-group"><div class="field-label">Default Channel</div><input class="field" type="text" placeholder="#seo-alerts" /></div>
+            <div style="display:flex;gap:8px;margin-top:14px;">
+              <button class="btn btn-accent" onclick="showToast('Slack webhook saved')">Save Webhook</button>
+              <button class="btn">Test Notification</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BTICKER -->
+    <div class="bticker">
+      <span class="bticker-inner">
+        <span class="bt-sq"></span>WORDPRESS SYNCED <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>GSC LIVE <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>147 POSTS PUBLISHED <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>84.2K IMPRESSIONS PULLED <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>INDEXING API ACTIVE <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>OAUTH TOKENS VALID &nbsp;&nbsp;&nbsp;&nbsp;
+        <span class="bt-sq"></span>WORDPRESS SYNCED <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>GSC LIVE <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>147 POSTS PUBLISHED <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>84.2K IMPRESSIONS PULLED <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>INDEXING API ACTIVE <span class="bt-sep">/</span>
+        <span class="bt-sq"></span>OAUTH TOKENS VALID
+      </span>
+    </div>
+
+  </div>
+  </div>
+</div>
+
+</div><!-- /app -->
+
+<!-- CHAT PANEL -->
+<div class="chat-panel open" id="chat-panel">
+  <div class="chat-topbar" onclick="toggleChat()">
+    <div class="chat-title"><span class="chat-live"></span>RankForge AI — Command</div>
+    <div class="chat-toggle" id="chat-toggle">−</div>
+  </div>
+  <div class="chat-messages" id="chat-messages">
+    <div class="msg">
+      <div class="msg-avatar ai">RF</div>
+      <div>
+        <div class="msg-bubble">Connectors page loaded. WordPress is live — 147 posts published. GSC pulling 84.2K impressions. What do you want to configure or test?</div>
+        <div class="msg-time">Now</div>
+      </div>
+    </div>
+  </div>
+  <div class="chat-suggestions">
+    <button class="chip" onclick="sendSuggestion('Test WordPress connection')">Test WP</button>
+    <button class="chip" onclick="sendSuggestion('Pull latest GSC data')">Fetch GSC</button>
+    <button class="chip" onclick="sendSuggestion('Submit sitemap to Google')">Submit Sitemap</button>
+    <button class="chip" onclick="sendSuggestion('Show indexing errors')">Index Errors</button>
+  </div>
+  <div class="chat-input-row">
+    <textarea class="chat-input" id="chat-input" placeholder="Ask about connectors..." rows="1" onkeydown="handleKey(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
+    <button class="chat-send" onclick="sendChat()">Send ↑</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- DISCONNECT MODAL -->
+<div class="modal-overlay" id="disconnect-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Disconnect Connector</div>
+      <div class="modal-close" onclick="closeModal()">×</div>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:11px;color:var(--ink);line-height:1.6;margin-bottom:12px;">Are you sure you want to disconnect <strong id="modal-conn-name"></strong>? All scheduled syncs will stop immediately. Your published content and historical data will be preserved.</p>
+      <div class="notice"><span class="notice-sq"></span>You can reconnect at any time from this page.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDisconnect()">Disconnect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Theme
+function toggleTheme(){const h=document.documentElement,d=h.getAttribute('data-theme')==='dark';h.setAttribute('data-theme',d?'light':'dark');document.getElementById('theme-icon').textContent=d?'☀':'☽';localStorage.setItem('rf-theme',d?'light':'dark');}
+(function(){const s=localStorage.getItem('rf-theme');if(s==='dark'){document.documentElement.setAttribute('data-theme','dark');const i=document.getElementById('theme-icon');if(i)i.textContent='☽';}})();
+
+// Connector card selection
+function selectConnector(id){
+  document.querySelectorAll('.connector-card').forEach(c=>c.classList.remove('active-selected'));
+  document.getElementById('card-'+id).classList.add('active-selected');
+  // Show relevant config
+  document.querySelectorAll('.config-section').forEach(s=>s.classList.remove('active'));
+  const sec=document.getElementById('section-'+id);
+  if(sec){sec.classList.add('active');sec.scrollIntoView({behavior:'smooth',block:'start'});}
+}
+
+function openSection(id,tab){
+  selectConnector(id);
+  if(tab){
+    setTimeout(()=>{
+      const tabs=document.querySelectorAll('#section-'+id+' .config-tab');
+      tabs.forEach((t,i)=>{
+        const name=t.textContent.toLowerCase();
+        if(name===tab.toLowerCase()){t.click();}
+      });
+    },50);
+  }
+}
+
+// Tab switching
+function switchTab(connector,tab,el){
+  const section=document.getElementById('section-'+connector);
+  section.querySelectorAll('.config-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const prefix=connector+'-';
+  section.querySelectorAll('[id^="'+prefix+'"]').forEach(c=>c.style.display='none');
+  const target=document.getElementById(connector+'-'+tab);
+  if(target)target.style.display='block';
+}
+
+// Toast
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// Test connection
+function testConn(id){
+  const names={wp:'WordPress',gsc:'Google Search Console',ga:'Google Analytics'};
+  showToast('Testing '+names[id]+' connection...');
+  setTimeout(()=>showToast('✓ '+names[id]+' — connection OK'),1200);
+}
+
+// Sync now
+function syncNow(id){
+  const names={wp:'WordPress',gsc:'GSC'};
+  showToast('Syncing '+names[id]+'...');
+  setTimeout(()=>showToast('✓ '+names[id]+' sync complete'),1800);
+}
+
+// Disconnect modal
+let pendingDisconnect=null;
+function disconnectConn(id){
+  const names={wp:'WordPress',gsc:'Google Search Console'};
+  pendingDisconnect=id;
+  document.getElementById('modal-conn-name').textContent=names[id];
+  document.getElementById('disconnect-modal').classList.add('open');
+}
+function closeModal(){document.getElementById('disconnect-modal').classList.remove('open');pendingDisconnect=null;}
+function confirmDisconnect(){
+  if(pendingDisconnect){
+    const card=document.getElementById('card-'+pendingDisconnect);
+    if(card){card.classList.remove('connected');card.querySelector('.badge-green').className='badge badge-muted';card.querySelector('.badge-green,.badge-muted').textContent='Not Connected';card.querySelector('.status-dot').className='status-dot muted';}
+    showToast('Connector disconnected');
+  }
+  closeModal();
+}
+document.getElementById('disconnect-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+// Scope pill toggle
+document.querySelectorAll('.scope-pill').forEach(p=>p.addEventListener('click',()=>p.classList.toggle('active')));
+
+// Chat
+let chatOpen=true;
+function toggleChat(){chatOpen=!chatOpen;document.getElementById('chat-panel').className='chat-panel '+(chatOpen?'open':'closed');document.getElementById('chat-toggle').textContent=chatOpen?'−':'+';}
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
+function sendSuggestion(t){document.getElementById('chat-input').value=t;sendChat();}
+function sendChat(){
+  const inp=document.getElementById('chat-input'),text=inp.value.trim();
+  if(!text)return;inp.value='';inp.style.height='auto';
+  appendMsg(text,'user');showTyping();
+  setTimeout(()=>{removeTyping();appendMsg(getReply(text),'ai');},700+Math.random()*500);
+}
+function getReply(msg){
+  const m=msg.toLowerCase();
+  if(m.includes('wordpress')||m.includes('wp'))return'WordPress connection verified ✓\n\nacme-corp.com/wp-json/wp/v2 responding in 210ms\nAuth: Application Password valid\nYoast: REST fields accessible\nLast sync: 4 minutes ago\n\n147 posts published, 3 drafts pending.';
+  if(m.includes('gsc')||m.includes('search console'))return'GSC data fetched for acme-corp.com:\n\nImpressions (28d): 84,200 ↑9.4%\nClicks: 3,961 ↑7.1%\nAvg CTR: 4.7%\nAvg Position: 14.2\n\nTop mover: "llm seo optimisation" — ↑8 positions.';
+  if(m.includes('sitemap'))return'Submitting sitemap to Google...\n\nhttps://acme-corp.com/sitemap.xml\n\nIndexing API response: 200 OK\nURLs submitted: 427\nGoogle acknowledgement received.\n\nExpect crawl within 1–24 hours.';
+  if(m.includes('index'))return'Coverage report for acme-corp.com:\n\n✓ Valid: 402 pages\n✗ Error: 10 pages\n  - 4 x redirect chain (3+ hops)\n  - 6 x soft 404 detected\n⚠ Excluded: 15 pages\n  - Noindex tag present\n\nAuto-fix agent queued for redirect chains.';
+  return'Got it — running on acme-corp.com connectors...\n\nAll integrations are healthy. WordPress sync every 15m, GSC pulling hourly. No auth errors in the last 48h.';
+}
+function appendMsg(text,role){
+  const msgs=document.getElementById('chat-messages'),wrap=document.createElement('div');
+  wrap.className='msg '+role;
+  const av=document.createElement('div');av.className='msg-avatar'+(role==='ai'?' ai':'');av.textContent=role==='ai'?'RF':'U';
+  const inner=document.createElement('div'),bubble=document.createElement('div');
+  bubble.className='msg-bubble';bubble.style.whiteSpace='pre-wrap';bubble.textContent=text;
+  const time=document.createElement('div');time.className='msg-time';time.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  inner.appendChild(bubble);inner.appendChild(time);wrap.appendChild(av);wrap.appendChild(inner);
+  msgs.appendChild(wrap);msgs.scrollTop=msgs.scrollHeight;
+}
+let typingEl=null;
+function showTyping(){
+  const msgs=document.getElementById('chat-messages'),d=document.createElement('div');
+  d.className='msg';d.id='typing-ind';
+  const av=document.createElement('div');av.className='msg-avatar ai';av.textContent='RF';
+  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML='<div class="typing-dots"><span></span><span></span><span></span></div>';
+  d.appendChild(av);d.appendChild(b);msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;typingEl=d;
+}
+function removeTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
+</script>
+</body>
+</html>
