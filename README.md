@@ -10,6 +10,65 @@
 6. Start backend: `uvicorn backend.main:app --reload`
 7. Start frontend: `cd frontend-next && npm install && npm run dev`
 
+## WordPress Integration (Application Passwords)
+
+The WordPress integration talks to the real WordPress REST API (`/wp-json/wp/v2`) using
+Application Passwords over HTTP Basic Auth. No plugin and no WordPress premium plan required.
+
+### 1. Create an Application Password
+
+`WP Admin > Users > Your User > Application Passwords > New > Copy`
+
+Copy the generated password (spaces are fine, they are part of the password).
+
+### 2. Connect a site
+
+Either set the defaults in `.env`:
+
+```bash
+WORDPRESS_URL=https://yoursite.com
+WORDPRESS_USERNAME=your-wp-user
+WORDPRESS_APP_PASSWORD=xxxx xxxx xxxx xxxx xxxx xxxx
+```
+
+...or connect from the UI: open http://localhost:3000/connectors (or `/websites`),
+enter the site URL, username and Application Password, click **Test Connection**, then **Connect Site**.
+Connected sites are stored in Supabase when configured, otherwise in a local JSON file
+(`.data/wordpress_sites.json`, override with `WP_SITES_FILE`).
+
+### 3. Publish
+
+On http://localhost:3000/writer use **Publish to WordPress (Draft)**, or call the API directly:
+
+```bash
+curl -X POST http://localhost:8000/api/wordpress/test \
+  -H 'Content-Type: application/json' \
+  -d '{"site_url":"https://yoursite.com","username":"user","app_password":"xxxx xxxx"}'
+
+curl -X POST http://localhost:8000/api/wordpress/publish \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Hello","content":"<p>Draft body</p>","status":"draft"}'
+```
+
+Endpoints: `POST /api/wordpress/test`, `POST /api/wordpress/connect`,
+`GET /api/wordpress/sites`, `DELETE /api/wordpress/sites/{id}`, `POST /api/wordpress/publish`,
+`GET /api/wordpress/posts`. OAuth (WordPress.com) remains available under
+`/api/wordpress/oauth/*` when the OAuth env vars are set.
+
+## Docker Deployment
+
+```bash
+cp .env.example .env   # fill in what you have; missing keys degrade gracefully
+docker compose up --build
+# backend  -> http://localhost:8000/docs
+# frontend -> http://localhost:3000
+```
+
+`render.yaml` deploys the backend (free plan, health check `/health`) and `vercel.json`
+builds the Next.js frontend from `frontend-next/`. Set `NEXT_PUBLIC_API_URL` on Vercel to the
+backend URL and `FRONTEND_URL` on Render to the Vercel URL (`*.vercel.app` origins are already
+allowed by CORS).
+
 ## Lightweight Deployment (No Docker)
 
 This system is designed to run lightweight without Docker or heavy infrastructure. All you need is:

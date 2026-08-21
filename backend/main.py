@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS
+from .config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, ALLOWED_CORS_ORIGIN_REGEX
 from .database import get_supabase, NIM_API_KEY
 from .routers import websites, proposals, memory, llms_txt, gsc, tech_seo, backlinks, calendar, roi, seo_aeo_geo
 from .routers.monitoring import router as monitoring_router
@@ -83,6 +83,7 @@ async def request_logging_middleware(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_CORS_ORIGINS,
+    allow_origin_regex=ALLOWED_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],

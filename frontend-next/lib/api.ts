@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const API_ROOT = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const API_BASE = API_ROOT.endsWith("/api") ? API_ROOT : `${API_ROOT}/api`;
+
+export { API_BASE };
 const API_TIMEOUT = 30000;
 
 function getXUserId(): string {
@@ -63,47 +66,39 @@ async function fetchWithTimeout(path: string, options: RequestInit = {}, retry: 
   }
 }
 
-export async function get(path: string, headers: Record<string, string> = {}) {
-  const res = await fetchWithTimeout(path, { method: "GET", headers });
+async function parseOrThrow(res: Response) {
   if (!res.ok) {
-    if (res.status === 403) {
-      const error = new Error("Forbidden - check permissions or login");
-      (error as any).status = 403;
-      throw error;
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = typeof body?.detail === "string" ? body.detail : JSON.stringify(body?.detail ?? body);
+    } catch {
+      detail = res.statusText;
     }
-    const error = new Error(`API ${res.status}: ${res.statusText}`);
+    if (res.status === 403 && !detail) detail = "Forbidden - check permissions or login";
+    const error = new Error(detail || `API ${res.status}: ${res.statusText}`);
     (error as any).status = res.status;
     throw error;
   }
   return await res.json();
+}
+
+export async function get(path: string, headers: Record<string, string> = {}) {
+  const res = await fetchWithTimeout(path, { method: "GET", headers });
+  return await parseOrThrow(res);
+}
+
+export async function del(path: string, headers: Record<string, string> = {}) {
+  const res = await fetchWithTimeout(path, { method: "DELETE", headers });
+  return await parseOrThrow(res);
 }
 
 export async function put(path: string, body: any, headers: Record<string, string> = {}) {
   const res = await fetchWithTimeout(path, { method: "PUT", headers, body: JSON.stringify(body) });
-  if (!res.ok) {
-    if (res.status === 403) {
-      const error = new Error("Forbidden - check permissions or login");
-      (error as any).status = 403;
-      throw error;
-    }
-    const error = new Error(`API ${res.status}: ${res.statusText}`);
-    (error as any).status = res.status;
-    throw error;
-  }
-  return await res.json();
+  return await parseOrThrow(res);
 }
 
 export async function post(path: string, body: any, headers: Record<string, string> = {}) {
   const res = await fetchWithTimeout(path, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!res.ok) {
-    if (res.status === 403) {
-      const error = new Error("Forbidden - check permissions or login");
-      (error as any).status = 403;
-      throw error;
-    }
-    const error = new Error(`API ${res.status}: ${res.statusText}`);
-    (error as any).status = res.status;
-    throw error;
-  }
-  return await res.json();
+  return await parseOrThrow(res);
 }

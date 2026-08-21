@@ -16,7 +16,7 @@ class CompetitorAnalysisInput(BaseModel):
 
 class CompetitorAnalysisTool(BaseTool):
     name: str = "competitor_analysis"
-    description = "Analyze competitor websites for SEO insights, content gaps, backlink opportunities, and optimization strategies. Uses browser automation to render dynamic content and extract real-time data."
+    description: str = "Analyze competitor websites for SEO insights, content gaps, backlink opportunities, and optimization strategies. Uses browser automation to render dynamic content and extract real-time data."
     args_schema: type[BaseModel] = CompetitorAnalysisInput
     _website_id: Optional[str] = None
 

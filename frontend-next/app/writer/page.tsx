@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { get, post, createSSE } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
+import { publishToWordPress } from "@/lib/wordpress";
 
 interface ContentItem {
   id: string;
@@ -44,6 +45,11 @@ export default function WriterPage() {
   const [currentPhase, setCurrentPhase] = useState<string | null>(null);
   const [totalSteps, setTotalSteps] = useState(0);
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+  const [wpTitle, setWpTitle] = useState("");
+  const [wpContent, setWpContent] = useState("");
+  const [wpBusy, setWpBusy] = useState(false);
+  const [wpResult, setWpResult] = useState<{ edit_url: string; wp_post_id: number } | null>(null);
+  const [wpError, setWpError] = useState<string | null>(null);
 
   useEffect(() => {
     setUserId(localStorage.getItem("userId") || "");
@@ -103,6 +109,34 @@ export default function WriterPage() {
       }
     });
     return () => source.close();
+  };
+
+  const handlePublishToWordPress = async () => {
+    if (!wpTitle.trim() || !wpContent.trim()) return;
+    setWpBusy(true);
+    setWpError(null);
+    setWpResult(null);
+    try {
+      const result = await publishToWordPress({ title: wpTitle.trim(), content: wpContent, status: "draft" });
+      setWpResult({ edit_url: result.edit_url, wp_post_id: result.wp_post_id });
+    } catch (e: any) {
+      setWpError(e.message || "Failed to publish to WordPress");
+    } finally {
+      setWpBusy(false);
+    }
+  };
+
+  const loadIntoWordPressForm = async (item: ContentItem) => {
+    setWpError(null);
+    setWpResult(null);
+    setWpTitle(item.title);
+    try {
+      const websiteId = getCurrentWebsiteId();
+      const detail = await get(`/writer/${websiteId}/content/${item.id}`);
+      setWpContent(detail?.content || "");
+    } catch (e: any) {
+      setWpError(`Loaded title only - could not fetch content body: ${e.message}`);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -219,6 +253,40 @@ export default function WriterPage() {
         </div>
       )}
 
+      <div className="bg-stone border border-ink p-4 space-y-3">
+        <div className="text-xs text-muted uppercase tracking-wider mono-font">Publish to WordPress</div>
+        <input
+          type="text"
+          value={wpTitle}
+          onChange={(e) => setWpTitle(e.target.value)}
+          placeholder="Post title"
+          className="field w-full"
+        />
+        <textarea
+          value={wpContent}
+          onChange={(e) => setWpContent(e.target.value)}
+          placeholder="Post content (HTML allowed)"
+          rows={6}
+          className="field w-full"
+        />
+        <button
+          onClick={handlePublishToWordPress}
+          disabled={wpBusy || !wpTitle.trim() || !wpContent.trim()}
+          className="btn btn-accent"
+        >
+          {wpBusy ? "Publishing..." : "Publish to WordPress (Draft)"}
+        </button>
+        {wpResult && (
+          <div className="text-[11px] mono-font">
+            Draft #{wpResult.wp_post_id} created —{" "}
+            <a href={wpResult.edit_url} target="_blank" rel="noreferrer" className="underline">
+              open in WordPress
+            </a>
+          </div>
+        )}
+        {wpError && <div className="text-[11px] mono-font text-red-500">{wpError}</div>}
+      </div>
+
       <div className="bg-stone border border-ink p-4">
         <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Recent Content</div>
         <div className="space-y-2">
@@ -242,6 +310,9 @@ export default function WriterPage() {
                       </span>
                     </div>
                   </div>
+                  <button className="btn" onClick={() => loadIntoWordPressForm(item)}>
+                    Send to WordPress
+                  </button>
                 </div>
               </div>
             ))

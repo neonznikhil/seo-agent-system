@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { get, post, put } from "@/lib/api";
+import WordPressConnect from "@/components/WordPressConnect";
 
 interface Website {
   id: string;
@@ -121,6 +122,8 @@ export default function WebsitesPage() {
       <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">
         Websites
       </h1>
+
+      <WordPressConnect />
 
       {/* Add Website Form */}
       <div className="panel">
