@@ -183,7 +183,7 @@
     {
       "agent": "ResearchAgent",
       "passed": true,
-      "elapsed": 11.13,
+      "elapsed": 7.48,
       "tokens": 78,
       "output": "{'trends': ['car accident lawyer los angeles trends 2026', 'car accident lawyer los angeles best practices', 'car accide...",
       "checks": {
@@ -196,7 +196,7 @@
     {
       "agent": "KeywordAgent",
       "passed": true,
-      "elapsed": 4.97,
+      "elapsed": 4.73,
       "tokens": 85,
       "output": "{'primary_keyword': 'car accident lawyer los angeles', 'secondary_keywords': ['car accident lawyer los angeles guide', '...",
       "checks": {
@@ -208,7 +208,7 @@
     {
       "agent": "OutlineAgent",
       "passed": true,
-      "elapsed": 4.97,
+      "elapsed": 4.59,
       "tokens": 137,
       "output": "{'h1': 'car accident lawyer los angeles: Complete Guide', 'h2s': ['What is car accident lawyer los angeles?', 'How car a...",
       "checks": {
@@ -232,7 +232,7 @@
     {
       "agent": "SEOAgent",
       "passed": true,
-      "elapsed": 20.65,
+      "elapsed": 19.74,
       "tokens": 33,
       "output": "{'seo_title': 'Car Accident Lawyer Los Angeles - Complete Guide', 'meta_description': 'Learn everything about car accide...",
       "checks": {
@@ -245,7 +245,7 @@
     {
       "agent": "ElementorAgent",
       "passed": false,
-      "elapsed": 0.01,
+      "elapsed": 0.04,
       "tokens": 43,
       "output": "{'clean_html': '', 'violations': ['Forbidden pattern found: ```', 'Forbidden pattern found: \\\\*\\\\*[^*]+\\\\*\\\\*', 'Forbidd...",
       "checks": {
@@ -270,15 +270,18 @@
     },
     {
       "agent": "BacklinkAgent",
-      "passed": false,
-      "elapsed": 37.81,
-      "tokens": 0,
-      "error": "Field 'description' defined on a base class was overridden by a non-annotated attribute. All field definitions, including overrides, require a type annotation.\n\nFor further information visit https://errors.pydantic.dev/2.13/u/model-field-overridden"
+      "passed": true,
+      "elapsed": 11.39,
+      "tokens": 17,
+      "output": "{'saved': 0, 'anchor_distribution': {}, 'toxic_anchors': [], 'error': 'No keywords available - connect GSC to enable bac...",
+      "checks": {
+        "saved": 0
+      }
     },
     {
       "agent": "SupervisorAgent",
       "passed": false,
-      "elapsed": 15.5,
+      "elapsed": 13.76,
       "tokens": 222,
       "output": "{'keyword': 'truck accident lawyer houston', 'research': {'trends': ['truck accident lawyer houston trends 2026', 'truck...",
       "checks": {
@@ -293,7 +296,7 @@
     "seo_meta_present": false,
     "wp_draft_url_present": false,
     "backlinks_present": false,
-    "elapsed": 14.57,
+    "elapsed": 13.88,
     "output_path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/backend/test_output/final_blog.html",
     "data": "{'keyword': 'truck accident lawyer houston', 'research': {'trends': ['truck accident lawyer houston trends 2026', 'truck accident lawyer houston best practices', 'truck accident lawyer houston tools', 'truck accident lawyer houston cost', 'truck accident lawyer houston examples'], 'competitors': ['example.com', 'top10.com', 'guidehub.com', 'seoagency.io', 'reviewsite.net'], 'questions': ['What is truck accident lawyer houston?', 'How does truck accident lawyer houston work?', 'Why truck accident..."
   },
@@ -326,8 +329,9 @@
       "url": ""
     },
     "error_handling": {
-      "raised": false,
-      "output": "{'status': 'error', 'error': 'SUPABASE_URL and SUPABASE_KEY must be set'}"
+      "raised": true,
+      "error_type": "ValueError",
+      "error": "SUPABASE_URL and SUPABASE_KEY must be set"
     },
     "cost_tracking": {
       "nvidia_api_key_configured": false,
@@ -340,7 +344,7 @@
         "SEOAgent": 33,
         "ElementorAgent": 43,
         "WordPressPublisherAgent": 9,
-        "BacklinkAgent": 0,
+        "BacklinkAgent": 17,
         "SupervisorAgent": 222
       }
     }

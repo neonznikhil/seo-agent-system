@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 import json
