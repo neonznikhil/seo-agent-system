@@ -1,0 +1,353 @@
+{
+  "agent_discovery": {
+    "files": [
+      "agents/elementor_agent.py",
+      "agents/keyword_agent.py",
+      "agents/outline_agent.py",
+      "agents/refresh_agent.py",
+      "agents/research_agent.py",
+      "agents/seo_agent.py",
+      "agents/setup_agent.py",
+      "agents/strategy_agent.py",
+      "agents/supervisor_agent.py",
+      "agents/wordpress_publisher_agent.py",
+      "agents/writer_agent.py",
+      "services/brain_service.py",
+      "services/business_scorer_service.py",
+      "services/cluster_service.py",
+      "services/crawlee_service.py",
+      "services/decay_detector_service.py",
+      "services/decay_diagnosis_service.py",
+      "services/ga4_service.py",
+      "services/geo_visibility_service.py",
+      "services/gsc_miner_service.py",
+      "services/gsc_service.py",
+      "services/knowledge_service.py",
+      "services/real_data_service.py",
+      "services/wordpress_service.py"
+    ],
+    "classes": {
+      "agents/elementor_agent.py": [
+        "ElementorAgent"
+      ],
+      "agents/keyword_agent.py": [
+        "KeywordAgent"
+      ],
+      "agents/outline_agent.py": [
+        "OutlineAgent"
+      ],
+      "agents/refresh_agent.py": [
+        "RefreshAgent"
+      ],
+      "agents/research_agent.py": [
+        "ResearchAgent"
+      ],
+      "agents/seo_agent.py": [
+        "SEOAgent"
+      ],
+      "agents/setup_agent.py": [
+        "SetupAgent"
+      ],
+      "agents/strategy_agent.py": [
+        "StrategyAgent"
+      ],
+      "agents/supervisor_agent.py": [
+        "SupervisorAgent"
+      ],
+      "agents/wordpress_publisher_agent.py": [
+        "WordPressPublisherAgent"
+      ],
+      "agents/writer_agent.py": [
+        "WriterPipeline"
+      ],
+      "services/brain_service.py": [
+        "BrainService"
+      ],
+      "services/business_scorer_service.py": [
+        "BusinessScorerService"
+      ],
+      "services/cluster_service.py": [
+        "ClusterService"
+      ],
+      "services/crawlee_service.py": [
+        "CrawleeService"
+      ],
+      "services/decay_detector_service.py": [
+        "DecayDetectorService"
+      ],
+      "services/decay_diagnosis_service.py": [
+        "DecayDiagnosisService"
+      ],
+      "services/ga4_service.py": [
+        "GA4Service"
+      ],
+      "services/geo_visibility_service.py": [
+        "GeoVisibilityService"
+      ],
+      "services/gsc_miner_service.py": [
+        "GSCMinerService"
+      ],
+      "services/gsc_service.py": [
+        "GSCService"
+      ],
+      "services/knowledge_service.py": [
+        "KnowledgeSource",
+        "KnowledgeService"
+      ],
+      "services/real_data_service.py": [
+        "RealDataService"
+      ],
+      "services/wordpress_service.py": [
+        "WordPressService"
+      ]
+    },
+    "expected_check": {
+      "ResearchAgent": {
+        "found": true,
+        "file": "agents/research_agent.py"
+      },
+      "KeywordAgent": {
+        "found": true,
+        "file": "agents/keyword_agent.py"
+      },
+      "OutlineAgent": {
+        "found": true,
+        "file": "agents/outline_agent.py"
+      },
+      "WriterAgent": {
+        "found": true,
+        "file": "agents/writer_agent.py"
+      },
+      "SEOAgent": {
+        "found": true,
+        "file": "agents/seo_agent.py"
+      },
+      "ElementorAgent": {
+        "found": true,
+        "file": "agents/elementor_agent.py"
+      },
+      "WordPressPublisherAgent": {
+        "found": true,
+        "file": "agents/wordpress_publisher_agent.py"
+      },
+      "BacklinkAgent": {
+        "found": true,
+        "file": "agents/backlink_agent.py"
+      },
+      "SupervisorAgent": {
+        "found": true,
+        "file": "agents/supervisor_agent.py"
+      }
+    },
+    "entry_points": {
+      "ResearchAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "KeywordAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "OutlineAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "WriterAgent": {
+        "method": "WriterPipeline.generate",
+        "agent_present": true
+      },
+      "SEOAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "ElementorAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "WordPressPublisherAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "BacklinkAgent": {
+        "method": "run_backlink_agent",
+        "agent_present": true
+      },
+      "SupervisorAgent": {
+        "method": "run",
+        "agent_present": true
+      }
+    },
+    "all_expected_found": true
+  },
+  "unit_tests": [
+    {
+      "agent": "ResearchAgent",
+      "passed": false,
+      "elapsed": 0.2,
+      "tokens": 7,
+      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "checks": {
+        "trends": 0,
+        "competitors": 0,
+        "questions": 0,
+        "search_volume": 0
+      }
+    },
+    {
+      "agent": "KeywordAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 7,
+      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "checks": {
+        "primary_keyword": null,
+        "secondary_count": 0,
+        "difficulty_score": null
+      }
+    },
+    {
+      "agent": "OutlineAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 7,
+      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "checks": {
+        "h1": false,
+        "h2_count": 0,
+        "faq_count": 0
+      }
+    },
+    {
+      "agent": "WriterAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 7,
+      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "checks": {
+        "status": "error",
+        "word_count": 0,
+        "keyword_count": 0
+      }
+    },
+    {
+      "agent": "SEOAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 7,
+      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "checks": {
+        "seo_title_len": 0,
+        "meta_description_len": 0,
+        "slug": "",
+        "internal_links_count": 0
+      }
+    },
+    {
+      "agent": "ElementorAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 43,
+      "output": "{'clean_html': '', 'violations': ['Forbidden pattern found: ```', 'Forbidden pattern found: \\\\*\\\\*[^*]+\\\\*\\\\*', 'Forbidd...",
+      "checks": {
+        "violations": [
+          "Forbidden pattern found: ```",
+          "Forbidden pattern found: \\*\\*[^*]+\\*\\*",
+          "Forbidden pattern found: \\[wp:",
+          "Forbidden pattern found: <!-- wp:",
+          "Forbidden pattern found: \\[/"
+        ]
+      }
+    },
+    {
+      "agent": "WordPressPublisherAgent",
+      "passed": false,
+      "elapsed": 0.72,
+      "tokens": 7,
+      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "checks": {
+        "status": "error"
+      }
+    },
+    {
+      "agent": "BacklinkAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 0,
+      "error": "No module named 'crewai'"
+    },
+    {
+      "agent": "SupervisorAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 32,
+      "output": "{'keyword': 'truck accident lawyer houston', 'research': None, 'keywords': None, 'outline': None, 'blog_html': None, 'se...",
+      "checks": {
+        "status": "failed",
+        "blog_html_present": false,
+        "seo_meta_present": false
+      }
+    }
+  ],
+  "integration_test": {
+    "blog_html_present": false,
+    "seo_meta_present": false,
+    "wp_draft_url_present": false,
+    "backlinks_present": false,
+    "elapsed": 0.0,
+    "output_path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/backend/test_output/final_blog.html",
+    "data": "{'keyword': 'truck accident lawyer houston', 'research': None, 'keywords': None, 'outline': None, 'blog_html': None, 'seo_meta': None, 'elementor_html': None, 'wp_draft_url': None, 'backlinks': None, 'status': 'failed', 'errors': [\"No module named 'supabase'\"], 'total_time': 0.0, 'tokens_used': {}}"
+  },
+  "system_tests": {
+    "supabase": {
+      "connected": false,
+      "error": "No module named 'supabase'"
+    },
+    "frontend": {
+      "dashboard": {
+        "exists": true,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/dashboard/page.tsx"
+      },
+      "generate": {
+        "exists": false,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/generate/page.tsx"
+      },
+      "backlinks": {
+        "exists": true,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/backlinks/page.tsx"
+      },
+      "settings": {
+        "exists": true,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/settings/page.tsx"
+      }
+    },
+    "oauth": {
+      "configured": false,
+      "contains_authorize": false,
+      "url": ""
+    },
+    "error_handling": {
+      "raised": true,
+      "error_type": "RuntimeError",
+      "error": "asyncio.run() cannot be called from a running event loop"
+    },
+    "cost_tracking": {
+      "nvidia_api_key_configured": false,
+      "supabase_configured": false,
+      "per_agent_tokens": {
+        "ResearchAgent": 7,
+        "KeywordAgent": 7,
+        "OutlineAgent": 7,
+        "WriterAgent": 7,
+        "SEOAgent": 7,
+        "ElementorAgent": 43,
+        "WordPressPublisherAgent": 7,
+        "BacklinkAgent": 0,
+        "SupervisorAgent": 32
+      }
+    }
+  },
+  "e2e_ui_test": {
+    "page_path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/test-e2e/page.tsx",
+    "page_created": true
+  }
+}

@@ -1,20 +1,11 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import json
 import asyncio
 from datetime import datetime
 
-app = FastAPI(title="RankForge AI Web Browsing API", version="2.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+router = APIRouter(prefix="/api/browse", tags=["web-browsing"])
 
 class BrowseRequest(BaseModel):
     urls: List[str]
@@ -30,11 +21,11 @@ class RealTimeRequest(BaseModel):
     source: str = "google"
     count: int = 10
 
-@app.get("/health")
+@router.get("/health")
 async def health():
     return {"status": "ok", "features": ["web_browsing", "real_time_data", "competitor_analysis"]}
 
-@app.post("/api/browse")
+@router.post("/api/browse")
 async def browse_urls(request: BrowseRequest):
     from backend.agents.tools.web_browser_tool import WebBrowserTool
     tool = WebBrowserTool()
@@ -47,7 +38,7 @@ async def browse_urls(request: BrowseRequest):
     
     return {"results": results}
 
-@app.post("/api/serp")
+@router.post("/api/serp")
 async def serp_search(request: SERPRequest):
     from backend.agents.tools.serp_analyzer_tool import SERPAnalyzerTool
     tool = SERPAnalyzerTool()
@@ -55,7 +46,7 @@ async def serp_search(request: SERPRequest):
     result = tool._run(request.query, "serp-analysis")
     return json.loads(result)
 
-@app.post("/api/real-time")
+@router.post("/api/real-time")
 async def real_time_fetch(request: RealTimeRequest):
     from backend.agents.tools.real_time_data_tool import RealTimeDataTool
     tool = RealTimeDataTool()
@@ -63,7 +54,7 @@ async def real_time_fetch(request: RealTimeRequest):
     result = tool._run(request.query, request.source, request.count)
     return json.loads(result)
 
-@app.post("/api/competitor-analysis")
+@router.post("/api/competitor-analysis")
 async def competitor_analysis(urls: List[str]):
     from backend.agents.tools.competitor_analysis_tool import CompetitorAnalysisTool
     tool = CompetitorAnalysisTool()
@@ -71,7 +62,7 @@ async def competitor_analysis(urls: List[str]):
     result = tool._run(",".join(urls), "competitor-analysis")
     return json.loads(result)
 
-@app.post("/api/analyze")
+@router.post("/api/analyze")
 async def analyze_url(url: str):
     from backend.agents.tools.web_browser_tool import WebBrowserTool
     tool = WebBrowserTool()
@@ -86,7 +77,7 @@ async def analyze_url(url: str):
         "status": data.get("status", "success")
     }
 
-@app.post("/api/bulk-competitor-analysis")
+@router.post("/api/bulk-competitor-analysis")
 async def bulk_competitor_analysis(request: BrowseRequest):
     from backend.agents.tools.competitor_analysis_tool import CompetitorAnalysisTool
     tool = CompetitorAnalysisTool()
@@ -94,7 +85,7 @@ async def bulk_competitor_analysis(request: BrowseRequest):
     result = tool._run(",".join(request.urls), "bulk-analysis")
     return json.loads(result)
 
-@app.post("/api/trend-research")
+@router.post("/api/trend-research")
 async def trend_research(query: str, count: int = 5):
     from backend.agents.tools.real_time_data_tool import RealTimeDataTool
     tool = RealTimeDataTool()
@@ -109,7 +100,7 @@ async def trend_research(query: str, count: int = 5):
         "trend_score": 85
     }
 
-@app.post("/api/content-hydra-analysis")
+@router.post("/api/content-hydra-analysis")
 async def content_hydra_analysis(url: str):
     """Analyze content for AI training data inclusion (content-hydra strategy)"""
     from backend.agents.tools.web_browser_tool import WebBrowserTool
@@ -143,7 +134,7 @@ async def content_hydra_analysis(url: str):
         ]
     }
 
-@app.post("/api/market-research")
+@router.post("/api/market-research")
 async def market_research(query: str):
     """Comprehensive market research combining multiple data sources"""
     from backend.agents.tools.real_time_data_tool import RealTimeDataTool
@@ -170,3 +161,7 @@ async def market_research(query: str):
         },
         "recommendation": f"Focus on creating comprehensive, AI-citable content about {query}"
     }
+
+# For backwards compatibility / standalone usage
+app = FastAPI(title="RankForge AI Web Browsing API", version="2.0.0")
+app.include_router(router)

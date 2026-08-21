@@ -28,6 +28,7 @@ from .routers.brain import router as brain_router
 from .services.continuous_monitor import start_all_monitors
 from .agents.brain_autopilot_agent import run_daily_autopilot
 from .agents.backlink_autopilot_agent import run_backlink_daily_jobs
+from .api_web_browsing import router as web_browsing_router
 
 validate_env()
 
@@ -179,3 +180,4 @@ app.include_router(content_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
 app.include_router(brain_router, prefix="/api")
+app.include_router(web_browsing_router, prefix="/api")
