@@ -456,9 +456,8 @@ async def phase2_unit_tests():
     t0 = time.time()
     try:
         from backend.agents.backlink_agent import run_backlink_agent
-        loop = asyncio.get_running_loop()
         data = await run_agent_with_timeout(
-            loop.run_in_executor(None, run_backlink_agent, website_id),
+            asyncio.to_thread(run_backlink_agent, website_id),
             timeout=30,
         )
         elapsed = round(time.time() - t0, 2)
@@ -579,7 +578,7 @@ async def phase3_integration_test():
     return result
 
 
-def phase4_system_tests():
+async def phase4_system_tests():
     print_divider()
     print("PHASE 4 - SYSTEM TESTS")
     print_divider()
@@ -650,7 +649,7 @@ def phase4_system_tests():
     try:
         from backend.agents.writer_agent import WriterPipeline
         pipeline = WriterPipeline(website_id)
-        data = asyncio.run(asyncio.wait_for(pipeline.generate("", ""), timeout=10))
+        data = await asyncio.wait_for(pipeline.generate("", ""), timeout=10)
         result["error_handling"] = {
             "raised": False,
             "output": truncate(data),
@@ -845,7 +844,7 @@ async def main():
         REPORT["integration_test"] = {"error": str(e)}
 
     try:
-        phase4_system_tests()
+        await phase4_system_tests()
     except Exception as e:
         logger.error("Phase 4 failed: %s", e)
         REPORT["system_tests"] = {"error": str(e)}

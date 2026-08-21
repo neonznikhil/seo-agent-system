@@ -20,7 +20,7 @@ class RealTimeDataInput(BaseModel):
 
 class RealTimeDataTool(BaseTool):
     name: str = "real_time_data"
-    description = "Fetch real-time data from search engines, news, social media, and public APIs. For trending topics, latest statistics, breaking news, and current events."
+    description: str = "Fetch real-time data from search engines, news, social media, and public APIs. For trending topics, latest statistics, breaking news, and current events."
     args_schema: type[BaseModel] = RealTimeDataInput
     _website_id: Optional[str] = None
 

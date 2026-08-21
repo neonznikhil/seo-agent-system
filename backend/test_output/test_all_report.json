@@ -182,47 +182,47 @@
   "unit_tests": [
     {
       "agent": "ResearchAgent",
-      "passed": false,
-      "elapsed": 0.2,
-      "tokens": 7,
-      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "passed": true,
+      "elapsed": 11.13,
+      "tokens": 78,
+      "output": "{'trends': ['car accident lawyer los angeles trends 2026', 'car accident lawyer los angeles best practices', 'car accide...",
       "checks": {
-        "trends": 0,
-        "competitors": 0,
-        "questions": 0,
-        "search_volume": 0
+        "trends": 5,
+        "competitors": 5,
+        "questions": 5,
+        "search_volume": 12000
       }
     },
     {
       "agent": "KeywordAgent",
-      "passed": false,
-      "elapsed": 0.0,
-      "tokens": 7,
-      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "passed": true,
+      "elapsed": 4.97,
+      "tokens": 85,
+      "output": "{'primary_keyword': 'car accident lawyer los angeles', 'secondary_keywords': ['car accident lawyer los angeles guide', '...",
       "checks": {
-        "primary_keyword": null,
-        "secondary_count": 0,
-        "difficulty_score": null
+        "primary_keyword": "car accident lawyer los angeles",
+        "secondary_count": 6,
+        "difficulty_score": 55
       }
     },
     {
       "agent": "OutlineAgent",
-      "passed": false,
-      "elapsed": 0.0,
-      "tokens": 7,
-      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "passed": true,
+      "elapsed": 4.97,
+      "tokens": 137,
+      "output": "{'h1': 'car accident lawyer los angeles: Complete Guide', 'h2s': ['What is car accident lawyer los angeles?', 'How car a...",
       "checks": {
-        "h1": false,
-        "h2_count": 0,
-        "faq_count": 0
+        "h1": true,
+        "h2_count": 6,
+        "faq_count": 4
       }
     },
     {
       "agent": "WriterAgent",
       "passed": false,
       "elapsed": 0.0,
-      "tokens": 7,
-      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "tokens": 9,
+      "output": "{'status': 'error', 'error': 'SUPABASE_URL and SUPABASE_KEY must be set'}",
       "checks": {
         "status": "error",
         "word_count": 0,
@@ -231,21 +231,21 @@
     },
     {
       "agent": "SEOAgent",
-      "passed": false,
-      "elapsed": 0.0,
-      "tokens": 7,
-      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "passed": true,
+      "elapsed": 20.65,
+      "tokens": 33,
+      "output": "{'seo_title': 'Car Accident Lawyer Los Angeles - Complete Guide', 'meta_description': 'Learn everything about car accide...",
       "checks": {
-        "seo_title_len": 0,
-        "meta_description_len": 0,
-        "slug": "",
-        "internal_links_count": 0
+        "seo_title_len": 48,
+        "meta_description_len": 109,
+        "slug": "car-accident-lawyer-los-angeles",
+        "internal_links_count": 3
       }
     },
     {
       "agent": "ElementorAgent",
       "passed": false,
-      "elapsed": 0.0,
+      "elapsed": 0.01,
       "tokens": 43,
       "output": "{'clean_html': '', 'violations': ['Forbidden pattern found: ```', 'Forbidden pattern found: \\\\*\\\\*[^*]+\\\\*\\\\*', 'Forbidd...",
       "checks": {
@@ -261,9 +261,9 @@
     {
       "agent": "WordPressPublisherAgent",
       "passed": false,
-      "elapsed": 0.72,
-      "tokens": 7,
-      "output": "{'status': 'error', 'error': \"No module named 'supabase'\"}",
+      "elapsed": 0.01,
+      "tokens": 9,
+      "output": "{'status': 'error', 'error': \"'coroutine' object has no attribute 'get'\"}",
       "checks": {
         "status": "error"
       }
@@ -271,16 +271,16 @@
     {
       "agent": "BacklinkAgent",
       "passed": false,
-      "elapsed": 0.0,
+      "elapsed": 37.81,
       "tokens": 0,
-      "error": "No module named 'crewai'"
+      "error": "Field 'description' defined on a base class was overridden by a non-annotated attribute. All field definitions, including overrides, require a type annotation.\n\nFor further information visit https://errors.pydantic.dev/2.13/u/model-field-overridden"
     },
     {
       "agent": "SupervisorAgent",
       "passed": false,
-      "elapsed": 0.0,
-      "tokens": 32,
-      "output": "{'keyword': 'truck accident lawyer houston', 'research': None, 'keywords': None, 'outline': None, 'blog_html': None, 'se...",
+      "elapsed": 15.5,
+      "tokens": 222,
+      "output": "{'keyword': 'truck accident lawyer houston', 'research': {'trends': ['truck accident lawyer houston trends 2026', 'truck...",
       "checks": {
         "status": "failed",
         "blog_html_present": false,
@@ -293,14 +293,14 @@
     "seo_meta_present": false,
     "wp_draft_url_present": false,
     "backlinks_present": false,
-    "elapsed": 0.0,
+    "elapsed": 14.57,
     "output_path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/backend/test_output/final_blog.html",
-    "data": "{'keyword': 'truck accident lawyer houston', 'research': None, 'keywords': None, 'outline': None, 'blog_html': None, 'seo_meta': None, 'elementor_html': None, 'wp_draft_url': None, 'backlinks': None, 'status': 'failed', 'errors': [\"No module named 'supabase'\"], 'total_time': 0.0, 'tokens_used': {}}"
+    "data": "{'keyword': 'truck accident lawyer houston', 'research': {'trends': ['truck accident lawyer houston trends 2026', 'truck accident lawyer houston best practices', 'truck accident lawyer houston tools', 'truck accident lawyer houston cost', 'truck accident lawyer houston examples'], 'competitors': ['example.com', 'top10.com', 'guidehub.com', 'seoagency.io', 'reviewsite.net'], 'questions': ['What is truck accident lawyer houston?', 'How does truck accident lawyer houston work?', 'Why truck accident..."
   },
   "system_tests": {
     "supabase": {
       "connected": false,
-      "error": "No module named 'supabase'"
+      "error": "SUPABASE_URL and SUPABASE_KEY must be set"
     },
     "frontend": {
       "dashboard": {
@@ -326,23 +326,22 @@
       "url": ""
     },
     "error_handling": {
-      "raised": true,
-      "error_type": "RuntimeError",
-      "error": "asyncio.run() cannot be called from a running event loop"
+      "raised": false,
+      "output": "{'status': 'error', 'error': 'SUPABASE_URL and SUPABASE_KEY must be set'}"
     },
     "cost_tracking": {
       "nvidia_api_key_configured": false,
       "supabase_configured": false,
       "per_agent_tokens": {
-        "ResearchAgent": 7,
-        "KeywordAgent": 7,
-        "OutlineAgent": 7,
-        "WriterAgent": 7,
-        "SEOAgent": 7,
+        "ResearchAgent": 78,
+        "KeywordAgent": 85,
+        "OutlineAgent": 137,
+        "WriterAgent": 9,
+        "SEOAgent": 33,
         "ElementorAgent": 43,
-        "WordPressPublisherAgent": 7,
+        "WordPressPublisherAgent": 9,
         "BacklinkAgent": 0,
-        "SupervisorAgent": 32
+        "SupervisorAgent": 222
       }
     }
   },

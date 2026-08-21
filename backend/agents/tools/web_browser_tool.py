@@ -18,7 +18,7 @@ class WebBrowserInput(BaseModel):
 
 class WebBrowserTool(BaseTool):
     name: str = "web_browser"
-    description = "Browse websites and extract real-time data. Can render JavaScript, extract links, images, tables, and structured content. For SEO research, competitor analysis, and data collection."
+    description: str = "Browse websites and extract real-time data. Can render JavaScript, extract links, images, tables, and structured content. For SEO research, competitor analysis, and data collection."
     args_schema: type[BaseModel] = WebBrowserInput
     _website_id: Optional[str] = None
     _agent_name: str = "web_browser"

@@ -19,6 +19,7 @@ requests>=2.31.0
 # Data / DB
 redis>=5.0.0
 supabase[vector]>=2.0.0
+psycopg2-binary>=2.9.0
 
 # Google APIs
 google-api-python-client>=2.100.0

@@ -37,6 +37,10 @@ def validate_env() -> None:
     if not os.getenv("SUPABASE_KEY"):
         missing.append("SUPABASE_KEY")
     if missing:
+        for m in missing:
+            print(f"⚠️ {m} not configured")
+        if "SUPABASE_URL" in missing or "SUPABASE_KEY" in missing:
+            print("⚠️ Supabase not connected - go to /setup")
         warnings.warn(f"Missing env vars: {', '.join(missing)}")
     if not os.getenv("GSC_CREDENTIALS_PATH"):
         warnings.warn("GSC_CREDENTIALS_PATH not set - GSC tools will return empty results instead of mock data")

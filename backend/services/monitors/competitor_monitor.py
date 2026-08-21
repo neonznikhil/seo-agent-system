@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from ..database import get_supabase
+from ...database import get_supabase
 
 
 class CompetitorMonitor:
