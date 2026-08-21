@@ -1,0 +1,8 @@
+{
+  "name": "Rankforge Fast",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "forwardPorts": [8000, 3000],
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {"version":"20"}
+  }
+}
