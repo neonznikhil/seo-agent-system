@@ -40,3 +40,5 @@ def validate_env() -> None:
         warnings.warn(f"Missing env vars: {', '.join(missing)}")
     if not os.getenv("GSC_CREDENTIALS_PATH"):
         warnings.warn("GSC_CREDENTIALS_PATH not set - GSC tools will return empty results instead of mock data")
+
+ENCRYPTION_SECRET = os.getenv("ENCRYPTION_SECRET", "")

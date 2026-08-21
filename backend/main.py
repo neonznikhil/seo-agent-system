@@ -17,6 +17,7 @@ from .routers.writer import router as writer_router
 from .routers.decay import router as decay_router
 from .routers.wordpress import router as wordpress_router
 from .routers.wordpress_oauth import router as wordpress_oauth_router
+from .routers.wordpress_connect import router as wordpress_connect_router
 from .routers.research import router as research_router
 from .routers.clusters import router as clusters_router
 from .routers.knowledge import router as knowledge_router
@@ -170,6 +171,7 @@ app.include_router(writer_router, prefix="/api")
 app.include_router(decay_router, prefix="/api")
 app.include_router(wordpress_router, prefix="/api")
 app.include_router(wordpress_oauth_router, prefix="/api")
+app.include_router(wordpress_connect_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
 app.include_router(clusters_router, prefix="/api")
 app.include_router(knowledge_router, prefix="/api")
