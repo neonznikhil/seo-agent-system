@@ -25,6 +25,7 @@ def fetch_active_keywords(website_id: str, limit: int = 20) -> List[Dict]:
         from googleapiclient.discovery import build
         from google.oauth2 import service_account
         import os
+        from datetime import datetime, timedelta
         from ...config import GSC_CREDENTIALS_PATH
         creds = service_account.Credentials.from_service_account_file(
             GSC_CREDENTIALS_PATH,
@@ -35,9 +36,11 @@ def fetch_active_keywords(website_id: str, limit: int = 20) -> List[Dict]:
         property_url = site.get("gsc_property") if site else None
         if not property_url:
             raise ValueError("GSC property not set")
+        end_date = datetime.utcnow().strftime("%Y-%m-%d")
+        start_date = (datetime.utcnow() - timedelta(days=365)).strftime("%Y-%m-%d")
         request = {
-            "startDate": "2025-01-01",
-            "endDate": "2025-12-31",
+            "startDate": start_date,
+            "endDate": end_date,
             "dimensions": ["query"],
             "rowLimit": limit,
         }

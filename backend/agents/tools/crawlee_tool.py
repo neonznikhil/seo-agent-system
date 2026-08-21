@@ -57,8 +57,7 @@ class CrawleeTool(BaseTool):
             from .crawlee_service import CrawleeService
             
             service = CrawleeService()
-            loop = asyncio.get_event_loop()
-            result = loop.run_until_complete(service.crawl_site_structure([url], max_requests=1))
+            result = asyncio.run(service.crawl_site_structure([url], max_requests=1))
             
             if result:
                 page = result[0]

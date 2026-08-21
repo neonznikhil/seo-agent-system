@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -190,7 +191,7 @@ async def oauth_callback(
         "grant_type": "authorization_code",
         "code": code,
         "client_id": website_id,
-        "client_secret": "",  # Should be stored per-website in production
+        "client_secret": os.getenv("WP_OAUTH_CLIENT_SECRET", ""),
         "redirect_uri": redirect_uri,
     }
 

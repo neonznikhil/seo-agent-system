@@ -1,12 +1,13 @@
 import subprocess
 import sys
 import os
+from pathlib import Path
 
-os.chdir(r"C:\Users\nikhil\Desktop\seo-agent-system")
+base_dir = Path(__file__).parent
 
 backend_proc = subprocess.Popen(
-    [r"C:\Users\nikhil\Desktop\seo-agent-system\venv\Scripts\python.exe", "-m", "uvicorn", 
-      "backend.main:app", "--port", "8000", "--host", "127.0.0.1"],
+    [sys.executable, "-m", "uvicorn", "backend.main:app", "--port", "8000", "--host", "127.0.0.1"],
+    cwd=base_dir,
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT
 )
@@ -14,9 +15,16 @@ backend_proc = subprocess.Popen(
 print("Backend started on http://127.0.0.1:8000")
 print("Backend PID:", backend_proc.pid)
 
-os.chdir(r"C:\Users\nikhil\Desktop\seo-agent-system\frontend-next")
+frontend_dir = base_dir / "frontend-next"
+
+# Try to find node executable
+node_cmd = "node"
+if sys.platform == "win32":
+    node_cmd = str(frontend_dir / "node_modules" / "next" / "dist" / "bin" / "next")
+
 frontend_proc = subprocess.Popen(
-    [r"C:\Program Files\nodejs\node.exe", r"node_modules\next\dist\bin\next", "dev", "--port", "3000"],
+    [node_cmd, "dev", "--port", "3000"],
+    cwd=frontend_dir,
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT
 )

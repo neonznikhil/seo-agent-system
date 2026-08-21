@@ -26,6 +26,8 @@ async def _run_job(website_id: str, job_type: str, job_func) -> Dict[str, Any]:
 
     try:
         result = await job_func(website_id)
+        if result is None:
+            result = {"error": "Job returned None"}
         try:
             supabase.table("brain_daily_jobs").insert(
                 {

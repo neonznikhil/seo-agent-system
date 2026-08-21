@@ -37,7 +37,7 @@ async def list_websites():
 
 @router.post("/websites")
 async def create_website(website: WebsiteIn, background_tasks: BackgroundTasks):
-    res = get_supabase().table("websites").insert(website.dict()).execute()
+    res = get_supabase().table("websites").insert(website.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create website")
@@ -55,7 +55,7 @@ async def get_website(website_id: str):
 
 @router.put("/websites/{website_id}")
 async def update_website(website_id: str, website: WebsiteUpdate):
-    updates = {k: v for k, v in website.dict().items() if v is not None}
+    updates = {k: v for k, v in website.model_dump().items() if v is not None}
     if not updates:
         return {"detail": "no changes"}
     res = get_supabase().table("websites").update(updates).eq("id", website_id).execute()

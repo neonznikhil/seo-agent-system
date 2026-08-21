@@ -47,7 +47,7 @@ async def list_knowledge(website_id: Optional[str] = None, q: Optional[str] = No
 
 @router.post("/knowledge")
 async def create_knowledge(body: KnowledgeIn):
-    res = get_supabase().table("knowledge_base").insert(body.dict()).execute()
+    res = get_supabase().table("knowledge_base").insert(body.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create knowledge")

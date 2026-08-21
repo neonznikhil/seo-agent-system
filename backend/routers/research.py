@@ -49,7 +49,7 @@ async def list_research(website_id: Optional[str] = None):
 
 @router.post("/research")
 async def create_research(body: ResearchIn):
-    res = get_supabase().table("research").insert(body.dict()).execute()
+    res = get_supabase().table("research").insert(body.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create research")
@@ -67,7 +67,7 @@ async def list_competitors(website_id: Optional[str] = None):
 
 @router.post("/research/competitors")
 async def create_competitor(body: CompetitorIn):
-    res = get_supabase().table("competitors").insert(body.dict()).execute()
+    res = get_supabase().table("competitors").insert(body.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create competitor")

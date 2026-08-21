@@ -14,6 +14,7 @@ from ..wordpress_oauth import (
     get_connection,
     disconnect,
     test_wp_connection,
+    decrypt,
     publish_post,
 )
 from ..config import FRONTEND_URL, WORDPRESS_URL
@@ -91,13 +92,13 @@ async def save_wp_connection(request: Request, body: SaveConnectionRequest):
 @router.get("/status", response_model=StatusResponse)
 async def get_status(request: Request):
     user_id = _get_user_id(request)
-    connection = await get_connection(user_id)
+    connection = get_connection(user_id)
     if not connection:
         return StatusResponse(connected=False)
     return StatusResponse(
         connected=True,
         site_url=connection.get("site_url"),
-        username=connection.get("username"),
+        username=connection.get("wp_username"),
         created_at=connection.get("created_at"),
     )
 
@@ -112,14 +113,18 @@ async def disconnect_wp(request: Request):
 @router.get("/test", response_model=TestResponse)
 async def test_connection(request: Request):
     user_id = _get_user_id(request)
-    connection = await get_connection(user_id)
+    connection = get_connection(user_id)
     if not connection:
         return TestResponse(ok=False, error="Not connected")
-    site_url = connection.get("site_url")
-    username = connection.get("username")
-    password = connection.get("app_password")
-    result = await test_wp_connection(site_url, username, password)
-    return TestResponse(ok=result.get("ok", False), user_info=result.get("user_info"), error=result.get("error"))
+    try:
+        site_url = connection.get("site_url")
+        username = connection.get("wp_username")
+        encrypted_password = connection.get("encrypted_password")
+        password = decrypt(encrypted_password)
+        user_info = test_wp_connection(site_url, username, password)
+        return TestResponse(ok=True, user_info=user_info)
+    except Exception as e:
+        return TestResponse(ok=False, error=str(e))
 
 
 @router.post("/publish")

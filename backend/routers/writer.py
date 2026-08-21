@@ -26,11 +26,13 @@ async def generate_content(
     request: Request = None
 ):
     from ..agents.writer_agent import generate_content
-    from ..middleware.human_gate import human_approval_required
     
     user_id = request.headers.get("X-User-Id") if request else None
     
-    result = await generate_content(website_id, body.topic, body.primary_keyword)
+    try:
+        result = await generate_content(website_id, body.topic, body.primary_keyword)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Content generation failed: {str(e)}")
     
     return result
 

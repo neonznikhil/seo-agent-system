@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import sys
-sys.path.insert(0, r"C:\Users\nikhil\Desktop\seo-agent-system")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from backend.agents.tools import (

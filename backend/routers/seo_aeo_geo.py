@@ -14,9 +14,7 @@ logger = logging.getLogger("backend.routers.seo_aeo_geo")
 router = APIRouter()
 
 
-seo_tool = SEOAEOGEOTool()
-serp_tool = SERPAnalyzerTool()
-content_tool = ContentOptimizerTool()
+
 
 
 class SEOTaskIn(BaseModel):
@@ -26,6 +24,7 @@ class SEOTaskIn(BaseModel):
 
 @router.get("/seo-analysis/{website_id}/{url:path}")
 async def seo_analysis(website_id: str, url: str):
+    seo_tool = SEOAEOGEOTool()
     seo_tool.set_website_id(website_id)
     result = seo_tool._run(url, website_id)
     return json.loads(result)
@@ -33,6 +32,7 @@ async def seo_analysis(website_id: str, url: str):
 
 @router.get("/serp-analysis/{website_id}")
 async def serp_analysis(website_id: str, query: str):
+    serp_tool = SERPAnalyzerTool()
     serp_tool.set_website_id(website_id)
     result = serp_tool._run(query, website_id)
     return json.loads(result)
@@ -40,6 +40,7 @@ async def serp_analysis(website_id: str, query: str):
 
 @router.post("/optimize-content/{website_id}")
 async def optimize_content(website_id: str, task: SEOTaskIn):
+    content_tool = ContentOptimizerTool()
     content_tool.set_website_id(website_id)
     result = content_tool._run(task.url, website_id, task.target_keywords or "")
     return json.loads(result)

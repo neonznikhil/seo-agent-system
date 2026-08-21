@@ -28,14 +28,13 @@ class SEOAEOGEOTool(BaseTool):
         if not self._website_id:
             return json.dumps({"error": "website_id not set", "real_api_called": "none"})
 
-        loop = asyncio.get_event_loop()
         page_content = ""
         crawl_source = "none"
 
         try:
             from ...services.crawlee_service import CrawleeService
             crawler = CrawleeService()
-            results = loop.run_until_complete(crawler.crawl_site_structure([url], max_requests=1))
+            results = asyncio.run(crawler.crawl_site_structure([url], max_requests=1))
             if results:
                 page = results[0]
                 page_content = f"Title: {page.get('title', '')}\n"
@@ -72,7 +71,7 @@ Rules:
 - Score must be a number 0-100
 - Return ONLY valid JSON, no markdown, no extra text"""
 
-            result = loop.run_until_complete(
+            result = asyncio.run(
                 call_nim_llm(prompt, "You are an SEO analyst. Output only valid JSON.", website_id=self._website_id)
             )
             llm_source = "nim"

@@ -6,7 +6,6 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
 import httpx
-import requests
 from cryptography.fernet import Fernet, InvalidToken
 from supabase import create_client
 
@@ -39,7 +38,8 @@ def decrypt(token: str) -> str:
 
 def generate_authorize_url(state: str, success_url: str) -> str:
     base = WORDPRESS_URL.rstrip("/") + "/wp-admin/authorize-application.php"
-    encoded_success = base64.urlsafe_b64encode(success_url.encode()).decode().rstrip("=")
+    from urllib.parse import quote
+    encoded_success = quote(success_url, safe="")
     return f"{base}?app_name=Rankforge&success_url={encoded_success}&state={state}"
 
 
@@ -75,12 +75,13 @@ def validate_and_consume_state(state: str, user_id: str) -> Optional[str]:
     return site_url
 
 
-def test_wp_connection(site_url: str, username: str, app_password: str) -> dict:
+async def test_wp_connection(site_url: str, username: str, app_password: str) -> dict:
     url = site_url.rstrip("/") + "/wp-json/wp/v2/users/me"
     credentials = base64.b64encode(f"{username}:{app_password}".encode()).decode()
     headers = {"Authorization": f"Basic {credentials}"}
 
-    resp = requests.get(url, headers=headers, timeout=10)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url, headers=headers)
 
     if resp.status_code != 200:
         raise RuntimeError(f"WordPress connection test failed: {resp.status_code} - {resp.text}")
@@ -88,8 +89,8 @@ def test_wp_connection(site_url: str, username: str, app_password: str) -> dict:
     return resp.json()
 
 
-def save_connection(user_id: str, site_url: str, username: str, app_password: str) -> dict:
-    wp_user_info = test_wp_connection(site_url, username, app_password)
+async def save_connection(user_id: str, site_url: str, username: str, app_password: str) -> dict:
+    wp_user_info = await test_wp_connection(site_url, username, app_password)
 
     encrypted_password = encrypt(app_password)
 
@@ -142,7 +143,7 @@ def disconnect(user_id: str) -> None:
     supabase.table("wordpress_connections").delete().eq("user_id", user_id).execute()
 
 
-def publish_post(user_id: str, title: str, content: str, status: str = "draft") -> dict:
+async def publish_post(user_id: str, title: str, content: str, status: str = "draft") -> dict:
     conn = get_decrypted_connection(user_id)
     if not conn:
         raise RuntimeError("WordPress not connected")
@@ -159,7 +160,8 @@ def publish_post(user_id: str, title: str, content: str, status: str = "draft") 
     }
     body = {"title": title, "content": content, "status": status}
 
-    resp = requests.post(url, json=body, headers=headers, timeout=30)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, json=body, headers=headers)
 
     if resp.status_code not in (200, 201):
         raise RuntimeError(f"WordPress publish failed: {resp.status_code} - {resp.text}")
