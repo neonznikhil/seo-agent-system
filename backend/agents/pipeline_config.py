@@ -3,6 +3,9 @@ Pipeline configuration for 10-phase, 100+ step content generation.
 EVERY article runs FULL pipeline - no shortcuts.
 """
 
+from typing import Dict, List, Any, Optional
+
+
 
 PIPELINE_PHASES = [
     {
@@ -153,6 +156,3 @@ def get_pipeline_progress(content_id: str, website_id: str) -> Dict:
         "total_steps": TOTAL_STEPS,
         "progress_percent": round((steps_completed / TOTAL_STEPS) * 100, 1) if TOTAL_STEPS > 0 else 0
     }
-
-
-from typing import Dict

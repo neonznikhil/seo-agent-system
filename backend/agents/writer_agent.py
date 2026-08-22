@@ -119,7 +119,7 @@ class WriterPipeline:
             final_scores=self.final_scores
         )
 
-        from .reporting_service import report_problem
+        from ..services.reporting_service import report_problem
         await report_problem(
             website_id=self.website_id,
             alert_type='content_gap',
@@ -284,7 +284,7 @@ class WriterPipeline:
             self._log_step(phase, 2, 'business_potential_scoring', 'blocked',
                            {'topic': self.topic}, {'score': score},
                            thought='Topic below business potential threshold')
-            from .reporting_service import report_problem
+            from ..services.reporting_service import report_problem
             await report_problem(
                 website_id=self.website_id,
                 alert_type='content_gap',

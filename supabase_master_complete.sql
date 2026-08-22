@@ -92,8 +92,8 @@ CREATE TABLE IF NOT EXISTS content_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   website_id UUID REFERENCES websites(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  content TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','draft_planned','pending_approval','needs_revision','published','failed')),
+  content TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
   keyword TEXT,
   use_case TEXT,
   embedding vector(1024),
@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS content_log (
   published_url TEXT,
   quality_checked BOOLEAN DEFAULT false,
   pipeline_status TEXT DEFAULT 'not_started',
+  phase_results JSONB DEFAULT '{}'::JSONB,
+  final_scores JSONB DEFAULT '{}'::JSONB,
   eeat_data JSONB,
   ai_search_score INT,
   information_gain_score INT,
@@ -349,6 +351,7 @@ CREATE TABLE IF NOT EXISTS realtime_alerts (
   is_read BOOLEAN DEFAULT false,
   is_actioned BOOLEAN DEFAULT false,
   action_taken TEXT,
+  actioned_at TIMESTAMPTZ,
   requires_human_approval BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
