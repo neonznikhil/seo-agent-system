@@ -1515,7 +1515,7 @@ Return JSON: {{"score": 0-100, "issues": ["issue1"], "passed": true/false}}"""
         }
 
     async def _export_to_wordpress(self, content: str) -> Dict:
-        from .wordpress_service import get_wordpress_service
+        from ..services.wordpress_service import get_wordpress_service
         ws = get_wordpress_service(self.website_id)
         result = await ws.draft_post(
             title=f"{self.primary_keyword or self.topic}",

@@ -1,6 +1,5 @@
 import logging
 from typing import Optional
-import asyncio
 
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -15,14 +14,14 @@ class VectorMemoryInput(BaseModel):
     topic: str = Field(description="Topic to check for duplication")
 
 
-def _check_duplicate(topic: str, website_id: str) -> dict:
-    query_emb = asyncio.run(get_embedding(topic, website_id=website_id))
+async def _check_duplicate(topic: str, website_id: str) -> dict:
+    query_emb = await get_embedding(topic, website_id=website_id)
     res = (
         get_supabase()
         .rpc("match_content", {
             "query_embedding": query_emb,
             "match_threshold": DUPLICATE_THRESHOLD,
-            "website_id": website_id,
+            "p_website_id": website_id,
         })
         .execute()
     )
@@ -33,14 +32,16 @@ def _check_duplicate(topic: str, website_id: str) -> dict:
     return {"is_duplicate": is_dup, "score": score, "matches": len(matches)}
 
 
-def is_duplicate(topic: str, website_id: Optional[str] = None) -> bool:
+async def is_duplicate(topic: str, website_id: Optional[str] = None) -> bool:
     if not website_id:
         return False
-    return _check_duplicate(topic, website_id)["is_duplicate"]
+    result = await _check_duplicate(topic, website_id)
+    return result["is_duplicate"]
 
 
-def duplicate_score(topic: str, website_id: str) -> float:
-    return _check_duplicate(topic, website_id)["score"]
+async def duplicate_score(topic: str, website_id: str) -> float:
+    result = await _check_duplicate(topic, website_id)
+    return result["score"]
 
 
 class VectorMemoryTool(BaseTool):
@@ -52,11 +53,11 @@ class VectorMemoryTool(BaseTool):
     def set_website_id(self, website_id: str) -> None:
         self._website_id = website_id
 
-    def _run(self, topic: str) -> str:
+    async def _run(self, topic: str) -> str:
         if not self._website_id:
             return "No website_id set"
         try:
-            result = _check_duplicate(topic, self._website_id)
+            result = await _check_duplicate(topic, self._website_id)
             return f"duplicate={result['is_duplicate']} score={result['score']:.3f}"
         except Exception as e:
             logger.error("Duplicate check failed: %s", e)

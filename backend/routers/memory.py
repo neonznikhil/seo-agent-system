@@ -28,5 +28,5 @@ async def get_memory(website_id: str):
 
 @router.post("/memory/check")
 async def check_memory(body: MemoryCheckIn):
-    is_dup = is_duplicate(body.topic, website_id=body.website_id)
+    is_dup = await is_duplicate(body.topic, website_id=body.website_id)
     return {"topic": body.topic, "is_duplicate": is_dup}

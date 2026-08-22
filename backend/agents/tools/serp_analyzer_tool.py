@@ -24,16 +24,14 @@ class SERPAnalyzerTool(BaseTool):
     def set_website_id(self, website_id: str) -> None:
         self._website_id = website_id
 
-    def _run(self, query: str, website_id: str = None) -> str:
+    async def _run(self, query: str, website_id: str = None) -> str:
         if not self._website_id:
             return json.dumps({"error": "website_id not set", "real_api_called": "none"})
-
-        loop = asyncio.get_event_loop()
 
         try:
             from ...services.crawlee_service import CrawleeService
             crawler = CrawleeService()
-            serp_data = loop.run_until_complete(crawler.extract_serp_landscape(query))
+            serp_data = await crawler.extract_serp_landscape(query)
         except Exception as e:
             logger.warning("Crawlee SERP extraction failed for '%s': %s", query, e)
             serp_data = {"error": str(e), "source": "crawlee_serp", "top_pages": []}

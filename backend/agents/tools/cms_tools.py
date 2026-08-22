@@ -10,9 +10,7 @@ from ...config import WORDPRESS_URL
 logger = logging.getLogger("backend.tools.cms")
 
 
-class CriticalActionBlockedError(Exception):
-    """Raised when an agent attempts a critical action without human approval."""
-    pass
+from ..rules import CriticalActionBlockedError
 
 
 def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: str) -> None:

@@ -22,7 +22,7 @@ cryptography
 apscheduler
 
 # Crawlee Python for real web crawling (replaces Firecrawl)
-crawlee[all]==0.4.8
+crawlee[all]
 beautifulsoup4
 playwright
 lxml

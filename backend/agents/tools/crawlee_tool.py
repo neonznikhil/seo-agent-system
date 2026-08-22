@@ -40,7 +40,7 @@ class CrawleeTool(BaseTool):
     def set_agent_name(self, agent_name: str) -> None:
         self._agent_name = agent_name
 
-    def _run(self, url: str) -> str:
+    async def _run(self, url: str) -> str:
         if not url:
             return "# Error: No URL provided"
         
@@ -53,12 +53,10 @@ class CrawleeTool(BaseTool):
             return f"# Error: Blocked internal URL for {url}"
         
         try:
-            import asyncio
             from ...services.crawlee_service import CrawleeService
             
             service = CrawleeService()
-            loop = asyncio.get_event_loop()
-            result = loop.run_until_complete(service.crawl_site_structure([url], max_requests=1))
+            result = await service.crawl_site_structure([url], max_requests=1)
             
             if result:
                 page = result[0]

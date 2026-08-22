@@ -3,7 +3,6 @@ import re
 from typing import Optional
 import math
 import json
-import asyncio
 
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -56,7 +55,7 @@ class QualityGateTool(BaseTool):
     def set_agent_name(self, agent_name: str) -> None:
         self._agent_name = agent_name
 
-    def _run(self, content_log_id: str) -> str:
+    async def _run(self, content_log_id: str) -> str:
         if not self._website_id:
             return "No website_id set"
         try:
@@ -83,7 +82,7 @@ class QualityGateTool(BaseTool):
 
             try:
                 spell_prompt = f"List all spelling and grammar errors in the following text. Return JSON array of strings or empty array []:\n\n{content[:4000]}"
-                spell_res = asyncio.run(call_nim_llm(spell_prompt, "You are a spelling checker. Output only JSON.", website_id=website_id))
+                spell_res = await call_nim_llm(spell_prompt, "You are a spelling checker. Output only JSON.", website_id=website_id)
                 _log_proof(website_id, self._agent_name, "quality_gate", "nim", "spell_check")
                 try:
                     spell_errors = json.loads(spell_res)
@@ -108,7 +107,7 @@ class QualityGateTool(BaseTool):
                 )
                 profile = profile_res.data[0] if profile_res.data else None
                 if profile and profile.get("sample_embeddings"):
-                    content_emb = asyncio.run(get_embedding(content[:2000], website_id=website_id))
+                    content_emb = await get_embedding(content[:2000], website_id=website_id)
                     _log_proof(website_id, self._agent_name, "quality_gate", "nim", "embed")
                     similarities = [
                         cosine_similarity(content_emb, emb)
@@ -139,7 +138,7 @@ class QualityGateTool(BaseTool):
                     f"Does the following blog contradict any known fact or make unsupported claims? "
                     f"Return JSON with keys: pass (bool), errors (list of strings).\n\n{content[:4000]}"
                 )
-                know_res = asyncio.run(call_nim_llm(know_prompt, "You are a factual consistency checker. Output only JSON.", website_id=website_id))
+                know_res = await call_nim_llm(know_prompt, "You are a factual consistency checker. Output only JSON.", website_id=website_id)
                 _log_proof(website_id, self._agent_name, "quality_gate", "nim", "knowledge_check")
                 try:
                     know_data = json.loads(know_res)

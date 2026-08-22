@@ -149,7 +149,8 @@ export default function MonitoringPage() {
   const setupSSE = () => {
     try {
       const websiteId = getCurrentWebsiteId();
-      const es = new EventSource(`/api/monitoring/${websiteId}/live`);
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+      const es = new EventSource(`${apiBase}/monitoring/${websiteId}/live`);
       eventSourceRef.current = es;
 
       es.onmessage = (event) => {
