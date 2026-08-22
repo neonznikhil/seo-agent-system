@@ -455,9 +455,7 @@ async def monitor_backlinks(website_id: str) -> Dict[str, Any]:
         anchor_found = False
         captured_anchor = item.get("anchor_text", "")
         try:
-            from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler
-
-            crawler = BSCrawler(max_requests_per_crawl=1, headless=True)
+            crawler = BSCrawler(max_requests_per_crawl=1)
 
             @crawler.router.default_handler
             async def handler(context):

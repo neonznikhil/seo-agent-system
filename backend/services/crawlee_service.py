@@ -86,7 +86,7 @@ class CrawleeService:
             return []
 
         results = []
-        crawler = BeautifulSoupCrawler(max_requests_per_crawl=max_requests, headless=True)
+        crawler = BeautifulSoupCrawler(max_requests_per_crawl=max_requests)
 
         @crawler.router.default_handler
         async def handler(context):
@@ -252,7 +252,7 @@ class CrawleeService:
         if not urls:
             return
 
-        crawler = BeautifulSoupCrawler(max_requests_per_crawl=5, headless=True)
+        crawler = BeautifulSoupCrawler(max_requests_per_crawl=5)
 
         @crawler.router.default_handler
         async def handler(context):

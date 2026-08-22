@@ -124,32 +124,32 @@ async def _run_all_jobs():
 
 
 async def _daily_search_job(website_id: str) -> Dict[str, Any]:
-    from .daily_search_service import daily_search_job
+    from ..services.daily_search_service import daily_search_job
     return await daily_search_job(website_id)
 
 
 async def _daily_cluster_build_job(website_id: str) -> Dict[str, Any]:
-    from .daily_search_service import daily_cluster_build_job
+    from ..services.daily_search_service import daily_cluster_build_job
     return await daily_cluster_build_job(website_id)
 
 
 async def _daily_geo_check_job(website_id: str) -> Dict[str, Any]:
-    from .daily_search_service import daily_geo_check_job
+    from ..services.daily_search_service import daily_geo_check_job
     return await daily_geo_check_job(website_id)
 
 
 async def _daily_refresh_check_job(website_id: str) -> Dict[str, Any]:
-    from .daily_search_service import daily_refresh_check_job
+    from ..services.daily_search_service import daily_refresh_check_job
     return await daily_refresh_check_job(website_id)
 
 
 async def _daily_new_page_suggestion_job(website_id: str) -> Dict[str, Any]:
-    from .daily_search_service import daily_new_page_suggestion_job
+    from ..services.daily_search_service import daily_new_page_suggestion_job
     return await daily_new_page_suggestion_job(website_id)
 
 
 async def _daily_backlink_check_job(website_id: str) -> Dict[str, Any]:
-    from .daily_search_service import daily_backlink_check_job
+    from ..services.daily_search_service import daily_backlink_check_job
     return await daily_backlink_check_job(website_id)
 
 

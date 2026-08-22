@@ -1317,6 +1317,11 @@ Return JSON: {{"h1": "...", "intro": "...", "h2s": [{{"h2": "...", "intent": "..
         except Exception:
             return [f"Q: What is {topic}? A: {topic} is a key topic.", f"Q: How does {topic} work? A: It works by implementing core principles.", f"Q: Why choose {topic}? A: It offers measurable benefits.", f"Q: What are best practices? A: Follow industry standards."]
 
+    async def _add_table_faq(self, topic: str = "") -> str:
+        topic = topic or self.topic
+        prompt = f"Write a clean Markdown comparison table for an article about {topic}. Include 3 columns (Feature, Standard, Best Practice) with 4-5 rows. Return ONLY the markdown table."
+        return await self._call_llm(prompt)
+
     async def _write_conclusion(self, topic: str, keyword: str) -> str:
         prompt = f"Write a 100-word conclusion for an article about {topic}. Include a call-to-action. Keyword: {keyword}. No banned phrases. Return ONLY the conclusion."
         return await self._call_llm(prompt)

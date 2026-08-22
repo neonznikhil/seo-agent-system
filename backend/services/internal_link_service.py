@@ -61,7 +61,7 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
 
     from crawlee.crawlers import BeautifulSoupCrawler
 
-    crawler = BeautifulSoupCrawler(max_requests_per_crawl=min(len(sitemap_urls), 100), headless=True)
+    crawler = BeautifulSoupCrawler(max_requests_per_crawl=min(len(sitemap_urls), 100))
     pages: List[Dict[str, Any]] = []
 
     @crawler.router.default_handler

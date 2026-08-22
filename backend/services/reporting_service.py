@@ -97,7 +97,7 @@ async def log_monitoring(
             "issues_found": issues_found,
             "execution_ms": execution_ms,
             "error_message": error_message,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow().isoformat()
         }).execute()
     except Exception as e:
         logger.error(f"Failed to log monitoring: {e}")

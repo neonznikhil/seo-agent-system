@@ -16,5 +16,8 @@ ALTER TABLE realtime_alerts ADD COLUMN IF NOT EXISTS actioned_at TIMESTAMPTZ;
 ALTER TABLE realtime_alerts DROP CONSTRAINT IF EXISTS realtime_alerts_alert_type_check;
 ALTER TABLE realtime_alerts DROP CONSTRAINT IF EXISTS realtime_alerts_severity_check;
 
-ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
-ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_real_api_called_check;
+ALTER TABLE backlink_monitor ADD COLUMN IF NOT EXISTS target_keyword TEXT;
+ALTER TABLE backlink_monitor ADD COLUMN IF NOT EXISTS target_page_url TEXT;
+ALTER TABLE brain_daily_jobs DROP CONSTRAINT IF EXISTS brain_daily_jobs_job_type_check;
+ALTER TABLE backlink_prospects DROP CONSTRAINT IF EXISTS backlink_prospects_strategy_check;
+ALTER TABLE backlink_prospects DROP CONSTRAINT IF EXISTS backlink_prospects_status_check;

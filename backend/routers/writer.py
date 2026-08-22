@@ -168,7 +168,7 @@ async def approve_draft(
     
     get_supabase().table("content_log").update({
         "approved_by": user_id,
-        "approved_at": datetime.utcnow(),
+        "approved_at": datetime.utcnow().isoformat(),
         "status": "draft"
     }).eq("id", content_id).execute()
     

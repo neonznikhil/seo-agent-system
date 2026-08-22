@@ -41,7 +41,7 @@ async def mark_read(website_id: str, alert_id: str, request: Request):
         "is_read": True,
         "is_actioned": True,
         "action_taken": f"marked_read_by_{user_id}",
-        "actioned_at": datetime.utcnow()
+        "actioned_at": datetime.utcnow().isoformat()
     }).eq("id", alert_id).eq("website_id", website_id).execute()
     
     return {"status": "success", "alert": result.data[0] if result.data else None}
@@ -184,14 +184,14 @@ async def approve_fix(website_id: str, fix_id: str, request: Request):
             fix_updates = {
                 "status": "approved",
                 "approved_by": user_id,
-                "applied_at": datetime.utcnow(),
+                "applied_at": datetime.utcnow().isoformat(),
                 "action_taken": "redirect_added" if wp_result else "manual_review"
             }
         else:
             fix_updates = {
                 "status": "approved",
                 "approved_by": user_id,
-                "applied_at": datetime.utcnow(),
+                "applied_at": datetime.utcnow().isoformat(),
                 "action_taken": "manual_review"
             }
         

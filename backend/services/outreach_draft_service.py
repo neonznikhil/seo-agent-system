@@ -63,7 +63,7 @@ async def create_outreach_draft(
         try:
             from crawlee.crawlers import BeautifulSoupCrawler
 
-            crawler = BeautifulSoupCrawler(max_requests_per_crawl=1, headless=True)
+            crawler = BeautifulSoupCrawler(max_requests_per_crawl=1)
             captured: Dict[str, Any] = {}
 
             @crawler.router.default_handler

@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from pathlib import Path
 
 from .config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS
 from .database import get_supabase
@@ -153,6 +154,21 @@ async def health():
         "checks": checks,
         "degraded_reasons": degraded_reasons if degraded_reasons else None
     }
+
+
+@app.get("/dashboard")
+async def dashboard():
+    return serve_rankforge()
+
+
+@app.get("/")
+async def root():
+    return serve_rankforge()
+
+
+def serve_rankforge():
+    html_path = Path(__file__).resolve().parent.parent / "rankforge.html"
+    return FileResponse(html_path)
 
 
 app.include_router(websites, prefix="/api")
