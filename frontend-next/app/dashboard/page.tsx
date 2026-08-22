@@ -41,10 +41,17 @@ interface AutonomyLog {
   run_at: string;
 }
 
+interface ApprovalStats {
+  pending: number;
+  published_today: number;
+  autonomous_jobs_last_run: string | null;
+}
+
 const JOB_LABELS: Record<string, string> = {
   daily_search: "Daily Search (9AM IST)",
-  daily_content_refresh: "Content Refresh (10AM IST)",
-  auto_publish_pages: "Auto-Publish Pages (10:30AM IST)",
+  daily_knowledge_sync: "Knowledge Sync (9:30AM IST)",
+  daily_content_refresh: "Refresh Analysis (10AM IST)",
+  auto_page_pipeline: "New Page Drafts (11AM IST)",
 };
 
 function timeAgo(iso?: string): string {
@@ -63,6 +70,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [autonomy, setAutonomy] = useState<AutonomyData | null>(null);
   const [logs, setLogs] = useState<AutonomyLog[]>([]);
+  const [approvalStats, setApprovalStats] = useState<ApprovalStats | null>(null);
   const [togglingAutomation, setTogglingAutomation] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,11 +88,12 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      const [roiRes, statsRes, autoRes, logsRes] = await Promise.allSettled([
+      const [roiRes, statsRes, autoRes, logsRes, apprRes] = await Promise.allSettled([
         get(`/api/roi/${wid}`),
         get(`/api/stats?website_id=${wid}`),
         get(`/api/autonomy?website_id=${wid}`),
         get(`/api/autonomy/logs?website_id=${wid}&limit=12`),
+        get(`/api/approvals/stats?website_id=${wid}`),
       ]);
 
       if (roiRes.status === "fulfilled" && roiRes.value) {
@@ -101,6 +110,9 @@ export default function DashboardPage() {
       }
       if (logsRes.status === "fulfilled" && Array.isArray(logsRes.value)) {
         setLogs(logsRes.value);
+      }
+      if (apprRes.status === "fulfilled" && apprRes.value) {
+        setApprovalStats(apprRes.value);
       }
     } catch (e: any) {
       setError(e.message || "Failed to load ROI and dashboard performance");
@@ -178,6 +190,42 @@ export default function DashboardPage() {
         <div className="panel-head">
           <span className="panel-label">Autonomous SEO Control</span>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Notification bell: pending approvals */}
+            <Link
+              href="/approvals"
+              title="Pending approvals"
+              style={{
+                position: "relative",
+                textDecoration: "none",
+                fontSize: "16px",
+                lineHeight: 1,
+                padding: "4px 8px",
+                border: (approvalStats?.pending ?? 0) > 0 ? "1px solid var(--accent)" : "1px solid var(--line)",
+                borderRadius: 3,
+                background: (approvalStats?.pending ?? 0) > 0 ? "rgba(255,77,18,0.10)" : "transparent",
+              }}
+            >
+              🔔
+              {(approvalStats?.pending ?? 0) > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -7,
+                    right: -7,
+                    background: "var(--accent)",
+                    color: "#fff",
+                    borderRadius: 8,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "1px 5px",
+                    minWidth: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  {approvalStats!.pending}
+                </span>
+              )}
+            </Link>
             <span className="mono-font" style={{ fontSize: "11px", color: "var(--muted)" }}>
               {autonomy?.automation?.automate_seo === "on" ? "AUTOMATION ON" : "AUTOMATION OFF"}
             </span>
@@ -200,6 +248,13 @@ export default function DashboardPage() {
                 : `Automate SEO: ${(autonomy?.automation?.automate_seo || "on").toUpperCase()}`}
             </button>
           </div>
+        </div>
+        <div className="panel-body" style={{ padding: "10px 14px 0 14px", fontSize: "11px", color: "var(--muted)" }}>
+          Auto-generate: <b style={{ color: "var(--green)" }}>ON</b> (creates drafts for approval) &nbsp;·&nbsp;
+          Auto-publish: <b style={{ color: "var(--red)" }}>OFF</b> (WordPress posts always require human approval) &nbsp;·&nbsp;
+          <Link href="/approvals" style={{ color: "var(--accent)" }}>
+            {approvalStats?.pending ?? 0} post(s) waiting for approval
+          </Link>
         </div>
         <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "14px", padding: "14px" }}>
           <div>
@@ -224,7 +279,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="panel-body" style={{ borderTop: "1px solid var(--line)", padding: "14px" }}>
-          {["daily_search", "daily_content_refresh", "auto_publish_pages"].map((jt) => {
+          {["daily_search", "daily_knowledge_sync", "daily_content_refresh", "auto_page_pipeline"].map((jt) => {
             const job = autonomy?.jobs?.[jt];
             const ok = job?.status === "completed";
             return (

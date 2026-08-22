@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 
 const coreNav = [
   { label: "Dashboard", href: "/" },
+  { label: "Approvals", href: "/approvals" },
   { label: "Generate", href: "/generate" },
   { label: "Content", href: "/content" },
 ];
