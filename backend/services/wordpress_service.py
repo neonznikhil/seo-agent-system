@@ -154,6 +154,46 @@ class WordPressService:
             logger.error(f"Error creating WordPress draft: {e}")
             return {"success": False, "wp_post_id": None, "edit_url": None, "message": str(e)}
 
+    async def update_post(self, website_id: str, wp_post_id: Any, content: str = None, title: str = None) -> dict:
+        """Update an existing WordPress post (used by daily content refresher)."""
+        base_url = self.get_base_url()
+        user, password = self._get_auth_tuple()
+
+        if not base_url or not user or not password or not wp_post_id:
+            return {"success": False, "message": "WordPress not configured or post id missing"}
+
+        payload = {}
+        if content is not None:
+            payload["content"] = content
+        if title is not None:
+            payload["title"] = title
+        if not payload:
+            return {"success": False, "message": "Nothing to update"}
+
+        headers = self._get_request_headers({"Content-Type": "application/json"})
+        try:
+            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, verify=False) as client:
+                response = await client.post(
+                    f"{base_url}/wp-json/wp/v2/posts/{wp_post_id}",
+                    auth=(user, password),
+                    headers=headers,
+                    json=payload,
+                )
+                if response.status_code == 401 and " " in password:
+                    response = await client.post(
+                        f"{base_url}/wp-json/wp/v2/posts/{wp_post_id}",
+                        auth=(user, password.replace(" ", "")),
+                        headers=headers,
+                        json=payload,
+                    )
+                if response.status_code in (200, 201):
+                    logger.info(f"Updated WordPress post {wp_post_id}")
+                    return {"success": True, "wp_post_id": wp_post_id}
+                return {"success": False, "message": f"HTTP {response.status_code}: {response.text[:120]}"}
+        except Exception as e:
+            logger.error(f"Error updating WordPress post {wp_post_id}: {e}")
+            return {"success": False, "message": str(e)}
+
     async def publish_post(self, website_id: str, wp_post_id: Any, user_id: str = "admin") -> dict:
         """Publish draft live to WordPress upon human approval."""
         base_url = self.get_base_url()

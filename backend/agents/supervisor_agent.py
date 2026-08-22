@@ -125,9 +125,27 @@ class SupervisorAgent:
         return await agent.run(seo_html)
 
     async def _run_wordpress(self, title: str, content_html: str, meta: Dict[str, Any]) -> Dict[str, Any]:
-        from .wordpress_publisher_agent import create_wordpress_publisher_agent
-        agent = create_wordpress_publisher_agent(self.website_id)
-        return await agent.run(title, content_html, meta=meta)
+        """HUMAN APPROVAL GATE - never publishes to WordPress directly.
+
+        Stages the generated post in blog_approvals with status='pending'.
+        Only /api/approvals/{id}/approve (human click) writes to WordPress.
+        """
+        from ..services.auto_publisher_service import _stage_for_approval
+
+        seo = meta.get("seo_meta") or {}
+        return await _stage_for_approval(
+            website_id=self.website_id,
+            title=title,
+            html_content=content_html,
+            seo_title=seo.get("seo_title", title),
+            meta_description=seo.get("meta_description", ""),
+            slug=seo.get("slug", ""),
+            keyword=meta.get("seo_keyword", ""),
+            seo_score=seo.get("seo_score", 0),
+            approval_type="new_post",
+            wordpress_action="create",
+            blog_id=meta.get("blog_id"),
+        )
 
     async def _run_backlinks(self, keyword: str) -> Dict[str, Any]:
         from .backlink_agent import run_backlink_agent

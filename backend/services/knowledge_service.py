@@ -89,11 +89,12 @@ class KnowledgeService:
         if not content:
             return {"error": "Could not extract content", "status": "failed"}
         
-        from ..database import call_nim_llm
-        embedding = await call_nim_llm(
-            prompt=f"Generate embedding vector for this content (return as comma-separated list of floats): {content[:1000]}",
-            website_id=website_id
-        )
+        from ..database import get_embedding, NIMEmbeddingError
+        try:
+            embedding = await get_embedding(content[:5000])
+        except NIMEmbeddingError as e:
+            logger.error(f"Real embedding unavailable for '{title}': {e}")
+            return {"error": "Embedding service unavailable - knowledge not stored", "status": "failed"}
         
         source = {
             "id": str(uuid.uuid4()),
@@ -102,7 +103,6 @@ class KnowledgeService:
             "title": title,
             "file_path": file_path,
             "content_extracted": content[:50000],
-            "embedding": content[:1000],
             "is_verified": True,
             "created_at": datetime.utcnow().isoformat()
         }
@@ -110,7 +110,57 @@ class KnowledgeService:
         supabase = self._get_supabase()
         supabase.table("knowledge_sources").insert(source).execute()
         
+        # Chunk content into knowledge_base facts with real embeddings so the
+        # grounding check + KnowledgeAgent can retrieve it.
+        await self._store_knowledge_facts(
+            supabase=supabase,
+            website_id=website_id,
+            source_id=source["id"],
+            title=title,
+            content=content,
+        )
+        
         return {"status": "success", "id": source["id"], "word_count": len(content.split())}
+
+    async def _store_knowledge_facts(self, supabase, website_id: str,
+                                     source_id: str, title: str, content: str) -> int:
+        """Split extracted content into paragraph-level facts with embeddings."""
+        from ..database import get_embedding
+
+        chunks: List[str] = []
+        current = ""
+        for para in content.split("\n"):
+            para = para.strip()
+            if not para:
+                continue
+            if len(current) + len(para) < 900:
+                current = (current + "\n" + para).strip()
+            else:
+                if current:
+                    chunks.append(current)
+                current = para
+        if current:
+            chunks.append(current)
+        chunks = chunks[:40]  # cap per upload
+
+        stored = 0
+        for chunk in chunks:
+            try:
+                emb = await get_embedding(chunk[:3000])
+                supabase.table("knowledge_base").insert({
+                    "id": str(uuid.uuid4()),
+                    "website_id": website_id,
+                    "source_id": source_id,
+                    "fact_type": "document",
+                    "content": f"[{title}] {chunk}",
+                    "embedding": emb,
+                    "source": title,
+                }).execute()
+                stored += 1
+            except Exception as e:
+                logger.warning(f"Fact chunk skipped (embedding failed): {e}")
+        logger.info(f"Stored {stored}/{len(chunks)} knowledge facts for '{title}'")
+        return stored
     
     async def add_url_content(self,
                               url: str,

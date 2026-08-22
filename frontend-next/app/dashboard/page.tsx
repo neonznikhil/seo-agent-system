@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { get } from "@/lib/api";
+import { get, put } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface RoiData {
@@ -23,9 +23,47 @@ interface RoiData {
   }>;
 }
 
+interface AutonomyData {
+  knowledge_base_docs: number;
+  brain_memories: number;
+  published_this_week: number;
+  refreshed_recently: number;
+  jobs: Record<string, { status: string; run_at: string; result?: any; error?: string }>;
+  automation: Record<string, string>;
+}
+
+interface AutonomyLog {
+  id: string;
+  job_type: string;
+  status: string;
+  result?: any;
+  error?: string;
+  run_at: string;
+}
+
+const JOB_LABELS: Record<string, string> = {
+  daily_search: "Daily Search (9AM IST)",
+  daily_content_refresh: "Content Refresh (10AM IST)",
+  auto_publish_pages: "Auto-Publish Pages (10:30AM IST)",
+};
+
+function timeAgo(iso?: string): string {
+  if (!iso) return "never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return `${Math.floor(hrs / 24)} days ago`;
+}
+
 export default function DashboardPage() {
   const [roiData, setRoiData] = useState<RoiData | null>(null);
   const [stats, setStats] = useState<any>(null);
+  const [autonomy, setAutonomy] = useState<AutonomyData | null>(null);
+  const [logs, setLogs] = useState<AutonomyLog[]>([]);
+  const [togglingAutomation, setTogglingAutomation] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
@@ -42,9 +80,11 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      const [roiRes, statsRes] = await Promise.allSettled([
+      const [roiRes, statsRes, autoRes, logsRes] = await Promise.allSettled([
         get(`/api/roi/${wid}`),
         get(`/api/stats?website_id=${wid}`),
+        get(`/api/autonomy?website_id=${wid}`),
+        get(`/api/autonomy/logs?website_id=${wid}&limit=12`),
       ]);
 
       if (roiRes.status === "fulfilled" && roiRes.value) {
@@ -56,12 +96,32 @@ export default function DashboardPage() {
       if (statsRes.status === "fulfilled" && statsRes.value) {
         setStats(statsRes.value);
       }
+      if (autoRes.status === "fulfilled" && autoRes.value) {
+        setAutonomy(autoRes.value);
+      }
+      if (logsRes.status === "fulfilled" && Array.isArray(logsRes.value)) {
+        setLogs(logsRes.value);
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load ROI and dashboard performance");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const toggleAutomate = useCallback(async () => {
+    if (!autonomy) return;
+    const current = autonomy.automation?.automate_seo === "on";
+    setTogglingAutomation(true);
+    try {
+      await put("/api/automation", { automate_seo: current ? "off" : "on" });
+      await loadDashboard();
+    } catch {
+      // silent - toggle state reloads on next refresh
+    } finally {
+      setTogglingAutomation(false);
+    }
+  }, [autonomy, loadDashboard]);
 
   useEffect(() => {
     loadDashboard();
@@ -111,6 +171,75 @@ export default function DashboardPage() {
             {error}
           </span>
         )}
+      </div>
+
+      {/* AUTONOMY CONTROL CENTER */}
+      <div className="panel" style={{ marginTop: "20px", borderColor: "var(--accent)" }}>
+        <div className="panel-head">
+          <span className="panel-label">Autonomous SEO Control</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span className="mono-font" style={{ fontSize: "11px", color: "var(--muted)" }}>
+              {autonomy?.automation?.automate_seo === "on" ? "AUTOMATION ON" : "AUTOMATION OFF"}
+            </span>
+            <button
+              onClick={toggleAutomate}
+              disabled={togglingAutomation || !websiteId}
+              style={{
+                cursor: "pointer",
+                padding: "6px 16px",
+                fontSize: "12px",
+                fontWeight: 700,
+                border: "1px solid var(--accent)",
+                background: autonomy?.automation?.automate_seo === "on" ? "var(--accent)" : "transparent",
+                color: autonomy?.automation?.automate_seo === "on" ? "#fff" : "var(--accent)",
+                borderRadius: "3px",
+              }}
+            >
+              {togglingAutomation
+                ? "..."
+                : `Automate SEO: ${(autonomy?.automation?.automate_seo || "on").toUpperCase()}`}
+            </button>
+          </div>
+        </div>
+        <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "14px", padding: "14px" }}>
+          <div>
+            <div className="kpi-label">Knowledge Base Docs</div>
+            <div className="kpi-val">{autonomy?.knowledge_base_docs ?? "-"}</div>
+            <div className="kpi-delta">Business facts + competitor intel</div>
+          </div>
+          <div>
+            <div className="kpi-label">Brain Memories</div>
+            <div className="kpi-val">{autonomy?.brain_memories ?? "-"}</div>
+            <div className="kpi-delta">What worked / what failed</div>
+          </div>
+          <div>
+            <div className="kpi-label">Published This Week</div>
+            <div className="kpi-val" style={{ color: "var(--green)" }}>{autonomy?.published_this_week ?? "-"}</div>
+            <div className="kpi-delta">Auto-created pages (gate-passed)</div>
+          </div>
+          <div>
+            <div className="kpi-label">Refreshed Recently</div>
+            <div className="kpi-val" style={{ color: "var(--green)" }}>{autonomy?.refreshed_recently ?? "-"}</div>
+            <div className="kpi-delta">Old blogs updated on WP</div>
+          </div>
+        </div>
+        <div className="panel-body" style={{ borderTop: "1px solid var(--line)", padding: "14px" }}>
+          {["daily_search", "daily_content_refresh", "auto_publish_pages"].map((jt) => {
+            const job = autonomy?.jobs?.[jt];
+            const ok = job?.status === "completed";
+            return (
+              <div key={jt} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", fontSize: "12px" }}>
+                <span>{JOB_LABELS[jt] || jt}</span>
+                <span className={`badge ${ok ? "badge-accent" : "badge-amber"}`}>
+                  {job ? `${job.status} · ${timeAgo(job.run_at)}` : "not run yet"}
+                </span>
+              </div>
+            );
+          })}
+          <Link href="/monitoring" style={{ fontSize: "11px", color: "var(--accent)" }}>
+            Full monitoring →
+          </Link>
+        </div>
       </div>
 
       {/* KPI METRICS */}
@@ -179,6 +308,48 @@ export default function DashboardPage() {
                   Explore Keywords
                 </Link>
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* LIVE AUTONOMY LOGS */}
+      <div className="panel" style={{ marginTop: "20px" }}>
+        <div className="panel-head">
+          <span className="panel-label">Live Autonomous Job Logs</span>
+          <button className="panel-action" onClick={loadDashboard}>
+            Refresh
+          </button>
+        </div>
+        <div className="panel-body" style={{ padding: "0" }}>
+          {logs.length > 0 ? (
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12px" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)", color: "var(--muted)", textTransform: "uppercase", fontSize: "10px" }}>
+                  <th style={{ padding: "10px 14px" }}>Time</th>
+                  <th style={{ padding: "10px 14px" }}>Job</th>
+                  <th style={{ padding: "10px 14px" }}>Status</th>
+                  <th style={{ padding: "10px 14px" }}>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id} style={{ borderBottom: "1px solid var(--line)" }}>
+                    <td style={{ padding: "8px 14px", whiteSpace: "nowrap", color: "var(--muted)" }}>{timeAgo(log.run_at)}</td>
+                    <td style={{ padding: "8px 14px", fontWeight: 600 }}>{JOB_LABELS[log.job_type] || log.job_type}</td>
+                    <td style={{ padding: "8px 14px" }}>
+                      <span className={`badge ${log.status === "completed" ? "badge-accent" : "badge-amber"}`}>{log.status}</span>
+                    </td>
+                    <td style={{ padding: "8px 14px", color: "var(--muted)", maxWidth: "380px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {log.error ? String(log.error) : JSON.stringify(log.result ?? {}).slice(0, 120)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+              No autonomous jobs have run yet. Jobs fire daily at 9AM / 10AM / 10:30AM IST, or immediately on boot if overdue.
             </div>
           )}
         </div>

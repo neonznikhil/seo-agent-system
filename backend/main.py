@@ -28,8 +28,9 @@ from .routers.content import router as content_router
 from .routers.settings import router as settings_router
 from .routers.connectors import router as connectors_router
 from .routers.brain import router as brain_router
-from .services.continuous_monitor import start_all_monitors
-from .agents.brain_autopilot_agent import run_daily_autopilot
+from .routers.autonomy import router as autonomy_router
+from .routers.approvals import router as approvals_router
+from .services.continuous_monitor import start_all_monitors  # noqa: F401 (kept for manual runs)
 from .agents.backlink_autopilot_agent import run_backlink_daily_jobs
 from .routers.setup import router as setup_router
 from .api_web_browsing import router as web_browsing_router
@@ -45,36 +46,19 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("RANKFORGE starting up...")
     
-    # Start scheduler
+    # Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
+    # 09:00 research | 10:00 refresh | 10:30 auto-publish | hourly monitors
+    # plus a boot catch-up for any stale daily job.
     try:
         from .agents.scheduler import setup_scheduler
         sched = setup_scheduler()
         if not sched.running:
             sched.start()
-        logger.info("[Scheduler] Started ✅")
+        logger.info("[Scheduler] Started ✅ (Asia/Kolkata)")
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
-    
-    # Start continuous monitors
-    try:
-        from .services.continuous_monitor import start_all_monitors
-        start_all_monitors()
-        logger.info("[Monitors] Started ✅")
-    except Exception as e:
-        logger.error(f"[Monitors] Failed to start: {e}")
-    
-    try:
-        from .agents.autonomous_loop import run_hourly_autonomous_loop
-        asyncio.create_task(run_hourly_autonomous_loop())
-        logger.info("[Startup] Autonomous agent loop started ✅")
-    except Exception as e:
-        logger.error(f"[Startup] Autonomous loop init failed (non-fatal): {e}")
 
-    try:
-        asyncio.create_task(run_daily_autopilot())
-        logger.info("[Startup] Brain autopilot loop started ✅")
-    except Exception as e:
-        logger.error(f"[Startup] Brain autopilot init failed (non-fatal): {e}")
+    # Backlink autopilot keeps its own independent daily cadence.
     try:
         asyncio.create_task(run_backlink_daily_jobs())
         logger.info("[Startup] Backlink autopilot loop started ✅")
@@ -85,6 +69,11 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("RANKFORGE shutting down...")
+    try:
+        from .agents.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="RankForge API", lifespan=lifespan)
@@ -452,6 +441,8 @@ app.include_router(brain_router, prefix="/api")
 app.include_router(setup_router, prefix="/api")
 app.include_router(web_browsing_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
+app.include_router(autonomy_router, prefix="")
+app.include_router(approvals_router, prefix="")
 
 # Also mount on root without prefix for direct fetch compatibility
 app.include_router(websites)
