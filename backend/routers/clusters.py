@@ -42,7 +42,7 @@ async def list_clusters(website_id: Optional[str] = None):
 
 @router.post("/clusters")
 async def create_cluster(body: ClusterIn):
-    res = get_supabase().table("clusters").insert(body.dict()).execute()
+    res = get_supabase().table("clusters").insert(body.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create cluster")
@@ -59,7 +59,7 @@ async def get_cluster(cluster_id: str):
 
 @router.put("/clusters/{cluster_id}")
 async def update_cluster(cluster_id: str, body: ClusterUpdate):
-    updates = {k: v for k, v in body.dict().items() if v is not None}
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         return {"detail": "no changes"}
     res = get_supabase().table("clusters").update(updates).eq("id", cluster_id).execute()

@@ -17,6 +17,7 @@ async def rank_monitor_loop():
     while True:
         start_time = time.time()
         iteration = 0
+        last_website_id = "unknown"
         
         try:
             from ..database import get_supabase
@@ -24,6 +25,7 @@ async def rank_monitor_loop():
             
             for website in websites:
                 website_id = website["id"]
+                last_website_id = website_id
                 iteration += 1
                 issues_found = 0
                 
@@ -123,7 +125,7 @@ async def rank_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id="multiple", monitor_type="rank_monitor", status="completed", checked_urls=iteration*20, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="rank_monitor", status="completed", checked_urls=iteration*20, issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Rank monitor loop crashed: {e}")
@@ -141,6 +143,7 @@ async def serp_monitor_loop():
     while True:
         start_time = time.time()
         iteration = 0
+        last_website_id = "unknown"
         
         try:
             from ..database import get_supabase
@@ -148,6 +151,7 @@ async def serp_monitor_loop():
             
             for website in websites:
                 website_id = website["id"]
+                last_website_id = website_id
                 iteration += 1
                 issues_found = 0
                 
@@ -194,7 +198,7 @@ async def serp_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id="multiple", monitor_type="serp_monitor", status="completed", checked_urls=iteration*10, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="serp_monitor", status="completed", checked_urls=iteration*10, issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"SERP monitor loop crashed: {e}")
@@ -212,7 +216,10 @@ async def competitor_monitor_loop():
     
     while True:
         start_time = time.time()
+        last_website_id = None
         iteration = 0
+        issues_found = 0
+        last_website_id = "unknown"
         
         try:
             from ..database import get_supabase
@@ -220,8 +227,10 @@ async def competitor_monitor_loop():
             
             for website in websites:
                 website_id = website["id"]
+                last_website_id = website_id
                 iteration += 1
                 issues_found = 0
+                competitors = []
                 
                 try:
                     monitor = CompetitorMonitor(website_id)
@@ -279,7 +288,7 @@ async def competitor_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id="multiple", monitor_type="competitor_monitor", status="completed", checked_urls=iteration * 5, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="competitor_monitor", status="completed", checked_urls=iteration*(len(competitors) if competitors else 1), issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Competitor monitor loop crashed: {e}")
@@ -297,7 +306,10 @@ async def tech_monitor_loop():
     
     while True:
         start_time = time.time()
+        last_website_id = None
         iteration = 0
+        issues_found = 0
+        last_website_id = "unknown"
         
         try:
             from ..database import get_supabase
@@ -305,6 +317,7 @@ async def tech_monitor_loop():
             
             for website in websites:
                 website_id = website["id"]
+                last_website_id = website_id
                 iteration += 1
                 issues_found = 0
                 
@@ -378,7 +391,7 @@ async def tech_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id="multiple", monitor_type="tech_monitor", status="completed", checked_urls=iteration*5, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="tech_monitor", status="completed", checked_urls=iteration*5, issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Tech monitor loop crashed: {e}")
@@ -395,7 +408,9 @@ async def geo_monitor_loop():
 
     while True:
         start_time = time.time()
+        last_website_id = None
         iteration = 0
+        issues_found = 0
 
         try:
             from ..database import get_supabase
@@ -462,7 +477,7 @@ async def geo_monitor_loop():
 
             execution_ms = int((time.time() - start_time) * 1000)
             await log_monitoring(
-                website_id="multiple",
+                website_id=last_website_id,
                 monitor_type="geo_monitor",
                 status="completed",
                 checked_urls=iteration * 10,
@@ -485,7 +500,10 @@ async def structure_monitor_loop():
     
     while True:
         start_time = time.time()
+        last_website_id = None
         iteration = 0
+        issues_found = 0
+        last_website_id = "unknown"
         
         try:
             from ..database import get_supabase
@@ -493,6 +511,7 @@ async def structure_monitor_loop():
             
             for website in websites:
                 website_id = website["id"]
+                last_website_id = website_id
                 iteration += 1
                 issues_found = 0
                 
@@ -525,7 +544,7 @@ async def structure_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id="multiple", monitor_type="structure_monitor", status="completed", checked_urls=iteration, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="structure_monitor", status="completed", checked_urls=iteration, issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Structure monitor loop crashed: {e}")

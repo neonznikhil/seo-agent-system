@@ -25,7 +25,7 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 REDIRECT_URI = os.getenv("REDIRECT_URI", f"{BACKEND_URL}/api/wordpress/oauth/callback")
-ALLOWED_CORS_ORIGINS = os.getenv("ALLOWED_CORS_ORIGINS", FRONTEND_URL).split(",")
+ALLOWED_CORS_ORIGINS = os.getenv("ALLOWED_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,*").split(",")
 
 
 def validate_env() -> None:
@@ -37,6 +37,12 @@ def validate_env() -> None:
     if not os.getenv("SUPABASE_KEY"):
         missing.append("SUPABASE_KEY")
     if missing:
+        for m in missing:
+            print(f"⚠️ {m} not configured")
+        if "SUPABASE_URL" in missing or "SUPABASE_KEY" in missing:
+            print("⚠️ Supabase not connected - check .env")
         warnings.warn(f"Missing env vars: {', '.join(missing)}")
     if not os.getenv("GSC_CREDENTIALS_PATH"):
         warnings.warn("GSC_CREDENTIALS_PATH not set - GSC tools will return empty results instead of mock data")
+
+ENCRYPTION_SECRET = os.getenv("ENCRYPTION_SECRET", "gAAAAABl8x4z7k1v5q6w8e9r0t1y2u3i4o5p6a7s8d9f0g1h2j3k4l5z6x7c8v9b0n1m=")

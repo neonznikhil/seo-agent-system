@@ -1,0 +1,16 @@
+{
+  "unique_key": "https://rankforge-demo.com",
+  "url": "https://rankforge-demo.com",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 6
+    }
+  },
+  "retry_count": 3,
+  "no_retry": false,
+  "loaded_url": null,
+  "handled_at": "2026-08-22 11:28:27.684304+00:00"
+}

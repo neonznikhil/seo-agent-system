@@ -47,7 +47,7 @@ async def list_content(website_id: Optional[str] = None, status: Optional[str] =
 
 @router.post("/content")
 async def create_content(body: ContentIn):
-    res = get_supabase().table("content_log").insert(body.dict()).execute()
+    res = get_supabase().table("content_log").insert(body.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create content")
@@ -64,7 +64,7 @@ async def get_content(content_id: str):
 
 @router.put("/content/{content_id}")
 async def update_content(content_id: str, body: ContentUpdate):
-    updates = {k: v for k, v in body.dict().items() if v is not None}
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         return {"detail": "no changes"}
     res = get_supabase().table("content_log").update(updates).eq("id", content_id).execute()

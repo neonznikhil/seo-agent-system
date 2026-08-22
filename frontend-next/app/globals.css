@@ -1,7 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
   --bg:#F6F4EF;--bg2:#EDEBE6;--bg3:#E4E1DA;--border:#111111;--line:#D1CCC4;--ink:#111111;--muted:#6B6B6B;--accent:#FF4D12;--green:#22C55E;--amber:#F59E0B;--red:#EF4444;

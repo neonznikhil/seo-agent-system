@@ -6,28 +6,33 @@ import { useState, useEffect } from "react";
 
 const coreNav = [
   { label: "Dashboard", href: "/" },
-  { label: "Writer", href: "/writer" },
-  { label: "Research", href: "/research" },
+  { label: "Generate", href: "/generate" },
+  { label: "Content", href: "/content" },
 ];
 
 const seoNav = [
-  { label: "Brain", href: "/brain" },
-  { label: "Clusters", href: "/clusters" },
-  { label: "Links", href: "/links" },
-  { label: "Decay", href: "/decay" },
-  { label: "Content", href: "/content" },
-  { label: "Knowledge", href: "/knowledge" },
-  { label: "Monitoring", href: "/monitoring", badge: 2 },
+  { label: "Backlinks", href: "/backlinks" },
+  { label: "Tech SEO", href: "/tech-seo" },
+  { label: "Monitoring", href: "/monitoring" },
+  { label: "Calendar", href: "/calendar" },
 ];
 
-const settingsNav = [
+const aiNav = [
+  { label: "Brain", href: "/brain" },
+  { label: "Knowledge", href: "/knowledge" },
+  { label: "LLMs.txt", href: "/llms-txt" },
+];
+
+const integrationsNav = [
+  { label: "WordPress", href: "/wordpress" },
+  { label: "Connectors", href: "/connectors" },
   { label: "Settings", href: "/settings" },
 ];
 
 interface NavItem {
   label: string;
   href: string;
-  badge?: number;
+  badge?: number | string;
 }
 
 export function Sidebar() {
@@ -81,8 +86,9 @@ export function Sidebar() {
       </div>
       <nav className="sidebar-nav">
         {renderNav(coreNav, "Core")}
-        {renderNav(seoNav, "SEO")}
-        {renderNav(settingsNav, "Settings")}
+        {renderNav(seoNav, "SEO Studio")}
+        {renderNav(aiNav, "AI Intelligence")}
+        {renderNav(integrationsNav, "Integrations")}
       </nav>
       <div className="sidebar-footer">
         <div className="sys-row">

@@ -1,0 +1,356 @@
+{
+  "agent_discovery": {
+    "files": [
+      "agents/elementor_agent.py",
+      "agents/keyword_agent.py",
+      "agents/outline_agent.py",
+      "agents/refresh_agent.py",
+      "agents/research_agent.py",
+      "agents/seo_agent.py",
+      "agents/setup_agent.py",
+      "agents/strategy_agent.py",
+      "agents/supervisor_agent.py",
+      "agents/wordpress_publisher_agent.py",
+      "agents/writer_agent.py",
+      "services/brain_service.py",
+      "services/business_scorer_service.py",
+      "services/cluster_service.py",
+      "services/crawlee_service.py",
+      "services/decay_detector_service.py",
+      "services/decay_diagnosis_service.py",
+      "services/ga4_service.py",
+      "services/geo_visibility_service.py",
+      "services/gsc_miner_service.py",
+      "services/gsc_service.py",
+      "services/knowledge_service.py",
+      "services/real_data_service.py",
+      "services/wordpress_service.py"
+    ],
+    "classes": {
+      "agents/elementor_agent.py": [
+        "ElementorAgent"
+      ],
+      "agents/keyword_agent.py": [
+        "KeywordAgent"
+      ],
+      "agents/outline_agent.py": [
+        "OutlineAgent"
+      ],
+      "agents/refresh_agent.py": [
+        "RefreshAgent"
+      ],
+      "agents/research_agent.py": [
+        "ResearchAgent"
+      ],
+      "agents/seo_agent.py": [
+        "SEOAgent"
+      ],
+      "agents/setup_agent.py": [
+        "SetupAgent"
+      ],
+      "agents/strategy_agent.py": [
+        "StrategyAgent"
+      ],
+      "agents/supervisor_agent.py": [
+        "SupervisorAgent"
+      ],
+      "agents/wordpress_publisher_agent.py": [
+        "WordPressPublisherAgent"
+      ],
+      "agents/writer_agent.py": [
+        "WriterPipeline"
+      ],
+      "services/brain_service.py": [
+        "BrainService"
+      ],
+      "services/business_scorer_service.py": [
+        "BusinessScorerService"
+      ],
+      "services/cluster_service.py": [
+        "ClusterService"
+      ],
+      "services/crawlee_service.py": [
+        "CrawleeService"
+      ],
+      "services/decay_detector_service.py": [
+        "DecayDetectorService"
+      ],
+      "services/decay_diagnosis_service.py": [
+        "DecayDiagnosisService"
+      ],
+      "services/ga4_service.py": [
+        "GA4Service"
+      ],
+      "services/geo_visibility_service.py": [
+        "GeoVisibilityService"
+      ],
+      "services/gsc_miner_service.py": [
+        "GSCMinerService"
+      ],
+      "services/gsc_service.py": [
+        "GSCService"
+      ],
+      "services/knowledge_service.py": [
+        "KnowledgeSource",
+        "KnowledgeService"
+      ],
+      "services/real_data_service.py": [
+        "RealDataService"
+      ],
+      "services/wordpress_service.py": [
+        "WordPressService"
+      ]
+    },
+    "expected_check": {
+      "ResearchAgent": {
+        "found": true,
+        "file": "agents/research_agent.py"
+      },
+      "KeywordAgent": {
+        "found": true,
+        "file": "agents/keyword_agent.py"
+      },
+      "OutlineAgent": {
+        "found": true,
+        "file": "agents/outline_agent.py"
+      },
+      "WriterAgent": {
+        "found": true,
+        "file": "agents/writer_agent.py"
+      },
+      "SEOAgent": {
+        "found": true,
+        "file": "agents/seo_agent.py"
+      },
+      "ElementorAgent": {
+        "found": true,
+        "file": "agents/elementor_agent.py"
+      },
+      "WordPressPublisherAgent": {
+        "found": true,
+        "file": "agents/wordpress_publisher_agent.py"
+      },
+      "BacklinkAgent": {
+        "found": true,
+        "file": "agents/backlink_agent.py"
+      },
+      "SupervisorAgent": {
+        "found": true,
+        "file": "agents/supervisor_agent.py"
+      }
+    },
+    "entry_points": {
+      "ResearchAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "KeywordAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "OutlineAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "WriterAgent": {
+        "method": "WriterPipeline.generate",
+        "agent_present": true
+      },
+      "SEOAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "ElementorAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "WordPressPublisherAgent": {
+        "method": "run",
+        "agent_present": true
+      },
+      "BacklinkAgent": {
+        "method": "run_backlink_agent",
+        "agent_present": true
+      },
+      "SupervisorAgent": {
+        "method": "run",
+        "agent_present": true
+      }
+    },
+    "all_expected_found": true
+  },
+  "unit_tests": [
+    {
+      "agent": "ResearchAgent",
+      "passed": true,
+      "elapsed": 7.48,
+      "tokens": 78,
+      "output": "{'trends': ['car accident lawyer los angeles trends 2026', 'car accident lawyer los angeles best practices', 'car accide...",
+      "checks": {
+        "trends": 5,
+        "competitors": 5,
+        "questions": 5,
+        "search_volume": 12000
+      }
+    },
+    {
+      "agent": "KeywordAgent",
+      "passed": true,
+      "elapsed": 4.73,
+      "tokens": 85,
+      "output": "{'primary_keyword': 'car accident lawyer los angeles', 'secondary_keywords': ['car accident lawyer los angeles guide', '...",
+      "checks": {
+        "primary_keyword": "car accident lawyer los angeles",
+        "secondary_count": 6,
+        "difficulty_score": 55
+      }
+    },
+    {
+      "agent": "OutlineAgent",
+      "passed": true,
+      "elapsed": 4.59,
+      "tokens": 137,
+      "output": "{'h1': 'car accident lawyer los angeles: Complete Guide', 'h2s': ['What is car accident lawyer los angeles?', 'How car a...",
+      "checks": {
+        "h1": true,
+        "h2_count": 6,
+        "faq_count": 4
+      }
+    },
+    {
+      "agent": "WriterAgent",
+      "passed": false,
+      "elapsed": 0.0,
+      "tokens": 9,
+      "output": "{'status': 'error', 'error': 'SUPABASE_URL and SUPABASE_KEY must be set'}",
+      "checks": {
+        "status": "error",
+        "word_count": 0,
+        "keyword_count": 0
+      }
+    },
+    {
+      "agent": "SEOAgent",
+      "passed": true,
+      "elapsed": 19.74,
+      "tokens": 33,
+      "output": "{'seo_title': 'Car Accident Lawyer Los Angeles - Complete Guide', 'meta_description': 'Learn everything about car accide...",
+      "checks": {
+        "seo_title_len": 48,
+        "meta_description_len": 109,
+        "slug": "car-accident-lawyer-los-angeles",
+        "internal_links_count": 3
+      }
+    },
+    {
+      "agent": "ElementorAgent",
+      "passed": false,
+      "elapsed": 0.04,
+      "tokens": 43,
+      "output": "{'clean_html': '', 'violations': ['Forbidden pattern found: ```', 'Forbidden pattern found: \\\\*\\\\*[^*]+\\\\*\\\\*', 'Forbidd...",
+      "checks": {
+        "violations": [
+          "Forbidden pattern found: ```",
+          "Forbidden pattern found: \\*\\*[^*]+\\*\\*",
+          "Forbidden pattern found: \\[wp:",
+          "Forbidden pattern found: <!-- wp:",
+          "Forbidden pattern found: \\[/"
+        ]
+      }
+    },
+    {
+      "agent": "WordPressPublisherAgent",
+      "passed": false,
+      "elapsed": 0.01,
+      "tokens": 9,
+      "output": "{'status': 'error', 'error': \"'coroutine' object has no attribute 'get'\"}",
+      "checks": {
+        "status": "error"
+      }
+    },
+    {
+      "agent": "BacklinkAgent",
+      "passed": true,
+      "elapsed": 11.39,
+      "tokens": 17,
+      "output": "{'saved': 0, 'anchor_distribution': {}, 'toxic_anchors': [], 'error': 'No keywords available - connect GSC to enable bac...",
+      "checks": {
+        "saved": 0
+      }
+    },
+    {
+      "agent": "SupervisorAgent",
+      "passed": false,
+      "elapsed": 13.76,
+      "tokens": 222,
+      "output": "{'keyword': 'truck accident lawyer houston', 'research': {'trends': ['truck accident lawyer houston trends 2026', 'truck...",
+      "checks": {
+        "status": "failed",
+        "blog_html_present": false,
+        "seo_meta_present": false
+      }
+    }
+  ],
+  "integration_test": {
+    "blog_html_present": false,
+    "seo_meta_present": false,
+    "wp_draft_url_present": false,
+    "backlinks_present": false,
+    "elapsed": 13.88,
+    "output_path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/backend/test_output/final_blog.html",
+    "data": "{'keyword': 'truck accident lawyer houston', 'research': {'trends': ['truck accident lawyer houston trends 2026', 'truck accident lawyer houston best practices', 'truck accident lawyer houston tools', 'truck accident lawyer houston cost', 'truck accident lawyer houston examples'], 'competitors': ['example.com', 'top10.com', 'guidehub.com', 'seoagency.io', 'reviewsite.net'], 'questions': ['What is truck accident lawyer houston?', 'How does truck accident lawyer houston work?', 'Why truck accident..."
+  },
+  "system_tests": {
+    "supabase": {
+      "connected": false,
+      "error": "SUPABASE_URL and SUPABASE_KEY must be set"
+    },
+    "frontend": {
+      "dashboard": {
+        "exists": true,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/dashboard/page.tsx"
+      },
+      "generate": {
+        "exists": false,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/generate/page.tsx"
+      },
+      "backlinks": {
+        "exists": true,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/backlinks/page.tsx"
+      },
+      "settings": {
+        "exists": true,
+        "path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/settings/page.tsx"
+      }
+    },
+    "oauth": {
+      "configured": false,
+      "contains_authorize": false,
+      "url": ""
+    },
+    "error_handling": {
+      "raised": true,
+      "error_type": "ValueError",
+      "error": "SUPABASE_URL and SUPABASE_KEY must be set"
+    },
+    "cost_tracking": {
+      "nvidia_api_key_configured": false,
+      "supabase_configured": false,
+      "per_agent_tokens": {
+        "ResearchAgent": 78,
+        "KeywordAgent": 85,
+        "OutlineAgent": 137,
+        "WriterAgent": 9,
+        "SEOAgent": 33,
+        "ElementorAgent": 43,
+        "WordPressPublisherAgent": 9,
+        "BacklinkAgent": 17,
+        "SupervisorAgent": 222
+      }
+    }
+  },
+  "e2e_ui_test": {
+    "page_path": "/home/nikhiladwaan/seo-agent-system/seo-agent-system/frontend-next/app/test-e2e/page.tsx",
+    "page_created": true
+  }
+}

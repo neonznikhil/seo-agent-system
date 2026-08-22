@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 fastapi
 uvicorn
 supabase
@@ -27,5 +28,52 @@ beautifulsoup4
 playwright
 lxml
 parsel
+=======
+# Core
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+supabase>=2.0.0
+pydantic>=2.0
+python-dotenv>=1.0
+
+# AI / Agents
+crewai>=0.5.0,<1.0.0
+langchain>=0.1.0
+tenacity>=8.2.0
+numpy>=1.24.0
+
+# HTTP / Async
+httpx>=0.24.0
+aiohttp>=3.8.0
+requests>=2.31.0
+
+# Data / DB
+redis>=5.0.0
+supabase[vector]>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Google APIs
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-httplib2>=0.2.0
+
+# Web Crawling / Parsing
+crawlee[all]>=0.5.0
+beautifulsoup4>=4.12.0
+playwright>=1.40.0
+lxml>=4.9.0
+parsel>=1.8.0
+
+# WordPress OAuth
+cryptography>=41.0.0
+
+# Frontend / API
+d3>=7.9.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+>>>>>>> 883044a6e71829fcb5140c828c20b1c8c80b1408
 
 # Note: Requires Python 3.10-3.13 for crewai compatibility
+# Run `playwright install` after installing dependencies

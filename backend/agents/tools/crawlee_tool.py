@@ -55,7 +55,6 @@ class CrawleeTool(BaseTool):
         try:
             from ...services.crawlee_service import CrawleeService
             
-            service = CrawleeService()
             result = await service.crawl_site_structure([url], max_requests=1)
             
             if result:

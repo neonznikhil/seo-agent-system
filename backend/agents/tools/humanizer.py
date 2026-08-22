@@ -33,7 +33,7 @@ BANNED_PHRASES = [
 
 BANNED_CHARACTERS = ['—', '–']
 
-AI_CONTRactions = [
+AI_CONTRACTIONS = [
     "it's", "it's", "it's", "it's", "it's", "it's"
 ]
 

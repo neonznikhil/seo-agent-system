@@ -1,10 +1,10 @@
 {
-  "sequence_counter": 1,
+  "sequence_counter": 4,
   "forefront_sequence_counter": 0,
   "forefront_requests": {},
   "regular_requests": {},
   "in_progress_requests": [],
   "handled_requests": [
-    "https://www.google.com/search?gl=in&hl=en&num=10&q=technical+seo+checklist"
+    "https://rankforge-demo.com"
   ]
 }

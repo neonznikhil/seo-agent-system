@@ -51,7 +51,7 @@ async def get_website_settings(website_id: str):
 
 @router.post("/settings")
 async def create_setting(body: SettingIn):
-    res = get_supabase().table("settings").insert(body.dict()).execute()
+    res = get_supabase().table("settings").insert(body.model_dump()).execute()
     row = res.data[0] if res.data else None
     if not row:
         raise HTTPException(status_code=400, detail="Failed to create setting")

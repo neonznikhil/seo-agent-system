@@ -2,10 +2,82 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 logger = logging.getLogger("backend.routers.brain")
 
 router = APIRouter()
+
+
+class BrainMemoryIn(BaseModel):
+    title: str
+    content: str
+    memory_type: Optional[str] = "preference"
+    website_id: Optional[str] = None
+    confidence: Optional[float] = 0.9
+
+
+@router.get("/brain")
+async def list_all_brain_memories(
+    website_id: Optional[str] = None,
+    query: str = "",
+    memory_type: Optional[str] = None,
+    limit: int = 50,
+):
+    from ..database import get_supabase
+    supabase = get_supabase()
+    q = supabase.table("brain_memory").select("*")
+    if website_id:
+        q = q.eq("website_id", website_id)
+    if memory_type:
+        q = q.eq("memory_type", memory_type)
+    if query:
+        q = q.ilike("title", f"%{query}%")
+    return q.order("created_at", desc=True).limit(limit).execute().data or []
+
+
+@router.post("/brain")
+async def create_brain_memory(body: BrainMemoryIn):
+    from ..database import get_supabase, get_embedding
+    supabase = get_supabase()
+    
+    # Resolve website_id if not given
+    wid = body.website_id
+    if not wid:
+        try:
+            sites = supabase.table("websites").select("id").limit(1).execute().data
+            if sites:
+                wid = sites[0]["id"]
+        except Exception:
+            pass
+
+    # Optional embedding
+    emb = None
+    try:
+        emb = await get_embedding(f"{body.title}: {body.content}")
+    except Exception:
+        pass
+
+    row = {
+        "title": body.title,
+        "content": body.content,
+        "memory_type": body.memory_type or "preference",
+        "confidence": body.confidence or 0.9,
+    }
+    if wid:
+        row["website_id"] = wid
+    if emb:
+        row["embedding"] = emb
+
+    res = supabase.table("brain_memory").insert(row).execute()
+    return res.data[0] if res.data else {"status": "created"}
+
+
+@router.delete("/brain/{memory_id}")
+async def delete_brain_memory(memory_id: str):
+    from ..database import get_supabase
+    get_supabase().table("brain_memory").delete().eq("id", memory_id).execute()
+    return {"status": "deleted", "id": memory_id}
 
 
 @router.get("/brain/{website_id}/backlink-memories")

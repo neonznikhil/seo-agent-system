@@ -102,7 +102,9 @@ export default function WriterPage() {
         // ignore parse errors
       }
     });
-    return () => source.close();
+    return () => {
+      if (source) source.close();
+    };
   };
 
   const getStatusColor = (status: string) => {

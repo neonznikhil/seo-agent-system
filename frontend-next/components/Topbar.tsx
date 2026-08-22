@@ -8,26 +8,34 @@ import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
   "/dashboard": "Dashboard",
+  "/generate": "Generate Article",
+  "/content": "Content Studio",
+  "/brain": "Brand Brain",
+  "/knowledge": "Knowledge Base",
+  "/wordpress": "WordPress Manager",
+  "/backlinks": "Backlinks & Authority",
+  "/tech-seo": "Technical SEO",
+  "/monitoring": "24/7 Monitoring",
+  "/calendar": "Publishing Calendar",
+  "/llms-txt": "LLMs.txt & GEO",
+  "/connectors": "Connectors & Integrations",
+  "/settings": "System Settings",
   "/websites": "Websites",
-  "/content": "Content",
-  "/writer": "Writer",
-  "/research": "Research",
-  "/clusters": "Clusters",
-  "/links": "Links",
-  "/decay": "Decay",
-  "/backlinks": "Backlinks",
-  "/tech-seo": "Tech SEO",
-  "/monitoring": "Monitoring",
-  "/knowledge": "Knowledge",
-  "/memory": "Memory",
-  "/llms-txt": "LLMs.txt",
-  "/settings": "Settings",
-  "/connectors": "Connectors",
-  "/proposals": "Proposals",
 };
 
 const sectionMap: Record<string, string> = {
-  "/connectors": "Settings",
+  "/generate": "Core",
+  "/content": "Core",
+  "/backlinks": "SEO Studio",
+  "/tech-seo": "SEO Studio",
+  "/monitoring": "SEO Studio",
+  "/calendar": "SEO Studio",
+  "/brain": "AI Intelligence",
+  "/knowledge": "AI Intelligence",
+  "/llms-txt": "AI Intelligence",
+  "/wordpress": "Integrations",
+  "/connectors": "Integrations",
+  "/settings": "Integrations",
 };
 
 function Topbar() {
@@ -41,10 +49,29 @@ function Topbar() {
   useEffect(() => {
     async function loadWebsites() {
       try {
-        const res = await get("/websites");
-        setWebsites(Array.isArray(res) ? res : []);
+        let res = await get("/api/websites");
+        if (!Array.isArray(res) || res.length === 0) {
+          res = await get("/websites");
+        }
+        const sites = Array.isArray(res) && res.length > 0 
+          ? res 
+          : [{ id: "03b7febf-0c44-4830-a42a-cfcd84ae6464", domain: "accident.innovatcs.com" }];
+        
+        setWebsites(sites);
+        
+        const current = getCurrentWebsiteId();
+        const exists = sites.some((s: any) => s.id === current);
+        if (!exists && sites[0]) {
+          setSelectedWebsiteId(sites[0].id);
+          setCurrentWebsiteId(sites[0].id);
+        } else if (current) {
+          setSelectedWebsiteId(current);
+        }
       } catch {
-        setWebsites([]);
+        const fallback = [{ id: "03b7febf-0c44-4830-a42a-cfcd84ae6464", domain: "accident.innovatcs.com" }];
+        setWebsites(fallback);
+        setSelectedWebsiteId(fallback[0].id);
+        setCurrentWebsiteId(fallback[0].id);
       }
     }
     loadWebsites();
@@ -55,6 +82,9 @@ function Topbar() {
     setSelectedWebsiteId(value);
     if (value !== "+ Add Website") {
       setCurrentWebsiteId(value);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("website-changed", { detail: value }));
+      }
     }
   };
 

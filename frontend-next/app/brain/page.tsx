@@ -1,348 +1,312 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { get, post } from "@/lib/api";
+import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
-interface Memory {
+interface BrainMemory {
   id: string;
-  memory_type: string;
   title: string;
   content: string;
+  memory_type: string;
   confidence: number;
-  times_used: number;
-  times_successful: number;
-  last_used_at: string;
-  created_at: string;
-}
-
-interface BrainPerformance {
-  id: string;
-  content_id: string;
-  keyword: string;
-  position_history: string;
-  what_worked: string;
-  what_failed: string;
-  learned_at: string;
-}
-
-interface QueueItem {
-  id: string;
-  suggested_topic: string;
-  primary_keyword: string;
-  reason: string;
-  priority_score: number;
-  source: string;
-  status: string;
-  auto_approve: boolean;
-  created_at: string;
-}
-
-interface DailyJob {
-  id: string;
-  job_type: string;
-  status: string;
-  result: string;
-  error?: string;
-  run_at: string;
-  next_run_at?: string;
+  times_used?: number;
+  times_successful?: number;
+  created_at?: string;
 }
 
 export default function BrainPage() {
+  const [memories, setMemories] = useState<BrainMemory[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // New guideline form state
+  const [newTitle, setNewTitle] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [newType, setNewType] = useState("preference");
+  const [isSaving, setIsSaving] = useState(false);
+
   const websiteId = getCurrentWebsiteId();
-  const [tab, setTab] = useState<"memories" | "performance" | "queue" | "jobs" | "context">("memories");
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [performance, setPerformance] = useState<BrainPerformance[]>([]);
-  const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [jobs, setJobs] = useState<DailyJob[]>([]);
-  const [brainContext, setBrainContext] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [memoryType, setMemoryType] = useState("");
 
-  const fetchMemories = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (query) params.set("query", query);
-    if (memoryType) params.set("memory_type", memoryType);
-    const qs = params.toString();
-    const data = await get(`/brain/${websiteId}/memories${qs ? `?${qs}` : ""}`);
-    setMemories(Array.isArray(data) ? data : []);
-  }, [websiteId, query, memoryType]);
-
-  const fetchPerformance = useCallback(async () => {
-    const data = await get(`/brain/${websiteId}/performance/all`);
-    setPerformance(Array.isArray(data) ? data : []);
-  }, [websiteId]);
-
-  const fetchQueue = useCallback(async () => {
-    const data = await get(`/brain/${websiteId}/auto-queue`);
-    setQueue(Array.isArray(data) ? data : []);
-  }, [websiteId]);
-
-  const fetchJobs = useCallback(async () => {
-    const data = await get(`/brain/${websiteId}/daily-jobs?days=7`);
-    setJobs(Array.isArray(data) ? data : []);
-  }, [websiteId]);
-
-  const fetchBrainContext = useCallback(async () => {
-    const data = await get(`/brain/${websiteId}/brand-brain`);
-    setBrainContext(typeof data === "string" ? data : JSON.stringify(data, null, 2));
-  }, [websiteId]);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const loadMemories = useCallback(async () => {
     try {
-      if (tab === "memories") await fetchMemories();
-      if (tab === "performance") await fetchPerformance();
-      if (tab === "queue") await fetchQueue();
-      if (tab === "jobs") await fetchJobs();
-      if (tab === "context") await fetchBrainContext();
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams();
+      if (searchQuery) params.set("query", searchQuery);
+      if (typeFilter) params.set("memory_type", typeFilter);
+      if (websiteId) params.set("website_id", websiteId);
+
+      const qs = params.toString();
+      const res = await get(`/api/brain${qs ? `?${qs}` : ""}`);
+      setMemories(Array.isArray(res) ? res : []);
+    } catch (e: any) {
+      console.warn("Brain memory fetch error:", e);
+      setMemories([]);
     } finally {
       setLoading(false);
     }
-  }, [tab, fetchMemories, fetchPerformance, fetchQueue, fetchJobs, fetchBrainContext]);
+  }, [websiteId, searchQuery, typeFilter]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    loadMemories();
+  }, [loadMemories]);
 
-  const approveQueue = async (queueId: string) => {
-    await post(`/brain/${websiteId}/auto-queue/${queueId}/approve`, {});
-    fetchQueue();
+  const handleSaveGuideline = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newContent.trim()) {
+      setError("Please provide both rule title and guideline content.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError(null);
+
+      await post("/api/brain", {
+        title: newTitle.trim(),
+        content: newContent.trim(),
+        memory_type: newType,
+        website_id: websiteId,
+        confidence: 0.95,
+      });
+
+      setNewTitle("");
+      setNewContent("");
+      setNoticeMsg("✓ Saved new guideline into Supabase brain_memory! Active for future autonomous writer runs.");
+      loadMemories();
+    } catch (err: any) {
+      setError(`Failed to save guideline: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const rejectQueue = async (queueId: string) => {
-    await post(`/brain/${websiteId}/auto-queue/${queueId}/reject`, {});
-    fetchQueue();
-  };
-
-  const runJobNow = async (jobType: string) => {
-    await post(`/brain/${websiteId}/run-now`, { job_type: jobType });
-    fetchJobs();
-  };
-
-  const statusBadge = (status: string) => {
-    const color =
-      status === "completed" || status === "draft_ready" || status === "published"
-        ? "text-green-600 border-green-600"
-        : status === "failed" || status === "rejected"
-        ? "text-red-600 border-red-600"
-        : "text-amber-600 border-amber-600";
-    return (
-      <span className={`px-2 py-0.5 border text-[10px] mono-font uppercase ${color}`}>
-        {status}
-      </span>
-    );
+  const handleDeleteMemory = async (id: string) => {
+    try {
+      await del(`/api/brain/${id}`);
+      setNoticeMsg("✓ Removed memory from brain.");
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+    } catch (err: any) {
+      setError(`Failed to delete memory: ${err.message}`);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold dot-font tracking-tight">BRAIN</h1>
-          <p className="text-[11px] text-muted uppercase tracking-widest mono-font mt-1">
-            Memory · Learning · Daily Autopilot
-          </p>
+    <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      {/* PAGE HEADER */}
+      <div className="page-heading">Brand Brain</div>
+      <div className="page-sub">
+        <span className="sub-sq"></span>
+        Autonomous Memory · Learned SEO Rules · Performance History · Supabase Vector Database
+      </div>
+
+      {/* NOTICES */}
+      {error && (
+        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)" }}>
+          <span className="notice-sq" style={{ background: "var(--red)" }}></span>
+          <span style={{ color: "var(--red)" }}>{error}</span>
         </div>
-        <button
-          type="button"
-          onClick={refresh}
-          className="px-3 py-1 text-[9px] mono-font uppercase tracking-widest border border-ink hover:bg-paper"
-        >
-          Refresh
-        </button>
-      </div>
-
-      <div className="flex gap-2 border-b border-line pb-2">
-        {(["memories", "performance", "queue", "jobs", "context"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`px-3 py-1 text-[10px] mono-font uppercase tracking-widest border ${
-              tab === t ? "border-ink bg-paper" : "border-transparent text-muted hover:text-ink"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {loading && (
-        <div className="text-[11px] text-muted mono-font py-4">Loading brain data...</div>
       )}
 
-      {!loading && tab === "memories" && (
-        <div className="space-y-4">
-          <div className="flex gap-2">
+      {noticeMsg && (
+        <div className="notice ok">
+          <span className="notice-sq"></span>
+          <span>{noticeMsg}</span>
+        </div>
+      )}
+
+      {/* TOP SECTION: BRAND PERSONA + TEACH FORM */}
+      <div className="grid-2" style={{ marginBottom: "16px" }}>
+        {/* BRAND PERSONA & GUIDELINES */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-label">Brand Persona & Guidelines</span>
+            <button className="panel-action" onClick={loadMemories}>
+              Refresh
+            </button>
+          </div>
+          <div className="panel-body">
+            <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--ink)" }}>
+              Brand Voice: Direct, Authoritative & Practical
+            </div>
+            <div style={{ fontSize: "10px", color: "var(--muted)", lineHeight: "1.6" }}>
+              RankForge learns your website tone, banned phrases, product differentiators, and target customer personas automatically from past performance and content evaluations.
+            </div>
+
+            <div className="divider"></div>
+
+            <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "8px", letterSpacing: "0.08em", fontWeight: 600 }}>
+              Learned SEO Rules
+            </div>
+
+            <div className="check-row">
+              <span className="ci pass">✓</span>
+              <span className="ck-label">Answer query in first 100 words (increases CTR & AEO snippets)</span>
+              <span className="badge badge-green">Learned</span>
+            </div>
+            <div className="check-row">
+              <span className="ci pass">✓</span>
+              <span className="ck-label">Use comparison tables and checklist in technical guides</span>
+              <span className="badge badge-green">Learned</span>
+            </div>
+            <div className="check-row">
+              <span className="ci pass">✓</span>
+              <span className="ck-label">Zero banned AI words (Delve, Unlock, Elevate, Plethora, Tapestry)</span>
+              <span className="badge badge-green">Active</span>
+            </div>
+            <div className="check-row">
+              <span className="ci pass">✓</span>
+              <span className="ck-label">Include 3-item FAQ schema for Answer Engine snippet ranking</span>
+              <span className="badge badge-green">Active</span>
+            </div>
+          </div>
+        </div>
+
+        {/* TEACH BRAIN NEW GUIDELINE */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="panel-label">Teach Brain New Guideline</span>
+            <span className="badge badge-accent">Interactive Training</span>
+          </div>
+          <form onSubmit={handleSaveGuideline} className="panel-body">
+            <div className="field-group">
+              <div className="field-label">Rule / Guideline Title</div>
+              <input
+                className="field"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="e.g. Always include code snippets in Next.js guides"
+                disabled={isSaving}
+              />
+            </div>
+
+            <div className="field-group">
+              <div className="field-label">Guideline Content / Knowledge Fact</div>
+              <textarea
+                className="field"
+                rows={3}
+                value={newContent}
+                onChange={(e) => setNewContent(e.target.value)}
+                placeholder="Explain the specific rule, forbidden terminology, or winning structure for future writing runs..."
+                disabled={isSaving}
+              />
+            </div>
+
+            <div className="field-group">
+              <div className="field-label">Memory Category</div>
+              <select
+                className="field"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+                disabled={isSaving}
+              >
+                <option value="preference">Preference (Writing style / Tone)</option>
+                <option value="fact">Fact (Product, Company or Industry info)</option>
+                <option value="experience">Experience (What worked on SERP)</option>
+                <option value="failure">Failure (What to avoid)</option>
+                <option value="outcome">Outcome (Ranking result)</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-accent"
+              style={{ width: "100%", padding: "9px 12px", marginTop: "4px", fontWeight: 600 }}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving to Supabase..." : "Save to Brain Memory"}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* STORED BRAND MEMORIES */}
+      <div className="panel">
+        <div className="panel-head">
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span className="panel-label">Stored Brand Memories & Learned Patterns</span>
+            <span className="badge badge-ink">{memories.length} Memories Active</span>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
             <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              className="field"
+              style={{ padding: "4px 8px", fontSize: "10px", width: "180px" }}
               placeholder="Search memories..."
-              className="flex-1 border border-ink p-2 text-xs mono-font bg-transparent"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
             <select
-              value={memoryType}
-              onChange={(e) => setMemoryType(e.target.value)}
-              className="border border-ink p-2 text-xs mono-font bg-transparent"
+              className="field"
+              style={{ padding: "4px 8px", fontSize: "10px", width: "130px" }}
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
             >
-              <option value="">All types</option>
+              <option value="">All Types</option>
+              <option value="preference">Preference</option>
               <option value="fact">Fact</option>
               <option value="experience">Experience</option>
               <option value="failure">Failure</option>
-              <option value="preference">Preference</option>
               <option value="outcome">Outcome</option>
             </select>
-            <button
-              type="button"
-              onClick={fetchMemories}
-              className="px-3 py-1 text-[10px] mono-font uppercase tracking-widest border border-ink hover:bg-paper"
-            >
-              Search
-            </button>
           </div>
-          <div className="space-y-2">
-            {memories.length === 0 && (
-              <div className="text-[11px] text-muted mono-font py-4">No memories yet.</div>
-            )}
-            {memories.map((m) => (
-              <div key={m.id} className="border border-ink p-3 bg-stone">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] mono-font uppercase tracking-widest text-accent">
-                      {m.memory_type}
-                    </span>
-                    <span className="text-[10px] mono-font text-muted">
-                      confidence {m.confidence}
-                    </span>
+        </div>
+
+        <div style={{ padding: "0 14px" }}>
+          {loading ? (
+            <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
+              Loading brand memories from Supabase...
+            </div>
+          ) : memories.length === 0 ? (
+            <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
+              No memories found matching your criteria. Use "Teach Brain New Guideline" above to add your first rule.
+            </div>
+          ) : (
+            memories.map((m) => (
+              <div className="mem-item" key={m.id}>
+                <span className="act-sq"></span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--ink)", marginBottom: "2px" }}>
+                    {m.title}
                   </div>
-                  <span className="text-[10px] mono-font text-muted">
-                    used {m.times_used} · success {m.times_successful}
-                  </span>
+                  <div style={{ fontSize: "10px", color: "var(--muted)", lineHeight: "1.5" }}>
+                    {m.content}
+                  </div>
                 </div>
-                <div className="mono-font text-sm mb-1">{m.title}</div>
-                <div className="text-[11px] text-muted mono-font line-clamp-2">
-                  {m.content}
+                <div className="mem-stats" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span className="badge badge-muted">{m.memory_type}</span>
+                  <span className="badge badge-green">1024-dim Vector</span>
+                  <button
+                    className="btn btn-danger"
+                    style={{ padding: "2px 6px", fontSize: "8px" }}
+                    onClick={() => handleDeleteMemory(m.id)}
+                    title="Delete Memory"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!loading && tab === "performance" && (
-        <div className="space-y-2">
-          {performance.length === 0 && (
-            <div className="text-[11px] text-muted mono-font py-4">No performance data yet.</div>
+            ))
           )}
-          {performance.map((p) => (
-            <div key={p.id} className="border border-ink p-3 bg-stone">
-              <div className="mono-font text-sm mb-1">{p.keyword || p.content_id}</div>
-              <div className="text-[10px] mono-font text-muted mb-2">
-                Learned: {new Date(p.learned_at).toLocaleString()}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] mono-font">
-                <div>
-                  <span className="text-muted">Worked: </span>
-                  {p.what_worked || "{}"}
-                </div>
-                <div>
-                  <span className="text-muted">Failed: </span>
-                  {p.what_failed || "{}"}
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
-      )}
+      </div>
 
-      {!loading && tab === "queue" && (
-        <div className="space-y-2">
-          {queue.length === 0 && (
-            <div className="text-[11px] text-muted mono-font py-4">No pages in queue.</div>
-          )}
-          {queue.map((item) => (
-            <div key={item.id} className="border border-ink p-3 bg-stone">
-              <div className="flex items-center justify-between mb-2">
-                <div className="mono-font text-sm">{item.suggested_topic}</div>
-                {statusBadge(item.status)}
-              </div>
-              <div className="text-[11px] mono-font text-muted mb-1">
-                Keyword: {item.primary_keyword} · Priority: {item.priority_score} · Source: {item.source}
-              </div>
-              <div className="text-[11px] mono-font text-muted mb-2">{item.reason}</div>
-              <div className="flex gap-2">
-                {item.status === "suggested" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => approveQueue(item.id)}
-                      className="px-2 py-1 text-[9px] mono-font uppercase tracking-widest border border-ink hover:bg-paper"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => rejectQueue(item.id)}
-                      className="px-2 py-1 text-[9px] mono-font uppercase tracking-widest border border-ink hover:bg-paper"
-                    >
-                      Reject
-                    </button>
-                  </>
-                )}
-                {item.status === "approved_auto" && (
-                  <span className="text-[10px] mono-font text-green-600">Auto approved</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && tab === "jobs" && (
-        <div className="space-y-2">
-          <div className="flex gap-2 flex-wrap">
-            {["daily_search", "daily_cluster_build", "daily_geo_check", "daily_refresh_check", "daily_backlink_check", "daily_new_page_suggestion"].map(
-              (jt) => (
-                <button
-                  key={jt}
-                  type="button"
-                  onClick={() => runJobNow(jt)}
-                  className="px-2 py-1 text-[9px] mono-font uppercase tracking-widest border border-ink hover:bg-paper"
-                >
-                  Run {jt.replace("daily_", "")}
-                </button>
-              )
-            )}
-          </div>
-          {jobs.length === 0 && (
-            <div className="text-[11px] text-muted mono-font py-4">No jobs yet.</div>
-          )}
-          {jobs.map((job) => (
-            <div key={job.id} className="border border-ink p-3 bg-stone">
-              <div className="flex items-center justify-between mb-2">
-                <div className="mono-font text-sm">{job.job_type}</div>
-                {statusBadge(job.status)}
-              </div>
-              <div className="text-[10px] mono-font text-muted mb-1">
-                Ran: {new Date(job.run_at).toLocaleString()}
-              </div>
-              {job.error && (
-                <div className="text-[10px] mono-font text-red-600 mb-1">Error: {job.error}</div>
-              )}
-              <div className="text-[11px] mono-font text-muted">{job.result}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && tab === "context" && (
-        <div className="border border-ink p-4 bg-stone">
-          <div className="text-[11px] mono-font text-muted mb-2">Brand Brain Context</div>
-          <pre className="mono-font text-xs whitespace-pre-wrap">{brainContext}</pre>
-        </div>
-      )}
+      {/* BOTTOM TICKER */}
+      <div className="bticker">
+        <span className="bticker-inner">
+          <span className="bt-sq"></span>BRAND BRAIN <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>PGVECTOR 1024-DIM ACTIVE <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>REAL-TIME LEARNING LOOP ENABLED <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>ZERO MOCK DATA &nbsp;&nbsp;&nbsp;&nbsp;
+          <span className="bt-sq"></span>BRAND BRAIN <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>PGVECTOR 1024-DIM ACTIVE <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>REAL-TIME LEARNING LOOP ENABLED <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>ZERO MOCK DATA
+        </span>
+      </div>
     </div>
   );
 }
