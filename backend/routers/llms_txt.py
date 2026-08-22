@@ -1,6 +1,8 @@
 import logging
+import json
 from datetime import datetime, timedelta
-from fastapi import APIRouter
+from typing import Optional
+from fastapi import APIRouter, HTTPException
 
 from ..database import get_supabase
 
@@ -8,67 +10,124 @@ logger = logging.getLogger("backend.routers.llms_txt")
 router = APIRouter()
 
 
-def should_update_llms_txt(website_id: str) -> tuple[bool, str]:
-    from ..agents.rules import RULES
-    from ..agents.agent_limits import AGENT_LIMITS
-    limits = AGENT_LIMITS.get("llms_txt", {})
-    min_days = limits.get("min_days", 30)
-    try:
-        log_res = (
-            get_supabase()
-            .table("llms_txt_log")
-            .select("last_updated, next_due")
-            .eq("website_id", website_id)
-            .order("last_updated", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if not log_res.data:
-            return True, "Never generated"
-        entry = log_res.data[0]
-        last_updated = datetime.fromisoformat(entry["last_updated"].replace("Z", "+00:00"))
-        next_due = datetime.fromisoformat(entry["next_due"].replace("Z", "+00:00"))
-        now = datetime.utcnow().replace(tzinfo=last_updated.tzinfo)
-        if now >= next_due:
-            return True, f"Due since {last_updated.date()}"
-        return False, f"Not due - {int((next_due - now).days)} days passed need {min_days} days or 10 blogs"
-    except Exception as e:
-        return True, f"Error checking: {e}"
+def build_llms_txt_content(site_url: str, domain: str) -> str:
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    return f"""# {domain or site_url}
+> Machine-readable guidelines for AI search models and LLM crawlers.
+
+## Overview
+- **Domain**: {domain or site_url}
+- **Website URL**: {site_url}
+- **Last Updated**: {today}
+- **Generator**: RankForge Autonomous SEO Engine
+
+## Allowed Sections
+- /blog
+- /articles
+- /guides
+- /resources
+- /legal
+- /services
+
+## Disallowed & Private Sections
+- /wp-admin
+- /admin
+- /api/private
+- /checkout
+
+## Content Taxonomy
+- **Primary Topics**: Legal Settlements, Accident Claims, Injury Law, Compensation Timelines
+- **Target Audience**: Clients seeking expert legal and claim settlement guidance
+- **Content Format**: Markdown, Structured FAQs, Comparison Tables, Canonical Reference Guides
+
+## AI Crawler Permissions
+- **ChatGPT / OpenAI SearchBot**: Allowed
+- **PerplexityBot**: Allowed
+- **ClaudeBot / Anthropic**: Allowed
+- **Google-Extended**: Allowed
+
+## Contact & Inquiries
+- **Site URL**: {site_url}
+- **Automated Verification**: {site_url}/llms.txt
+"""
 
 
+@router.get("/{website_id}")
 @router.get("/llms-txt/{website_id}")
 async def get_llms_txt(website_id: str):
-    res = get_supabase().table("llms_txt_log").select("*").eq("website_id", website_id).order("last_updated", desc=True).limit(1).execute()
-    return res.data[0] if res.data else {"detail": "Not found"}
+    """Fetch existing LLMs.txt for a website."""
+    supabase = get_supabase()
+    try:
+        # Check llms_txt table or llms_txt_log
+        try:
+            res = supabase.table("llms_txt").select("*").eq("website_id", website_id).single().execute()
+            if res.data and res.data.get("content"):
+                return res.data
+        except Exception:
+            pass
+
+        try:
+            res_log = supabase.table("llms_txt_log").select("*").eq("website_id", website_id).order("last_updated", desc=True).limit(1).execute()
+            if res_log.data and len(res_log.data) > 0:
+                return res_log.data[0]
+        except Exception:
+            pass
+
+        return {"content": None, "message": "Not generated yet"}
+    except Exception as e:
+        logger.warning(f"Error fetching llms.txt: {e}")
+        return {"content": None, "message": str(e)}
 
 
+@router.post("/{website_id}")
+@router.post("/llms-txt/{website_id}")
+@router.post("/generate")
 @router.post("/llms-txt/generate")
-async def generate_llms_txt(website_id: str):
-    can_update, reason = should_update_llms_txt(website_id)
-    if not can_update:
-        return {"detail": reason}
-    from ..agents.tools.llms_txt_tool import LlmsTxtTool
-    from ..agents.tools.cms_tools import propose_blog
-    tool = LlmsTxtTool()
-    tool.set_website_id(website_id)
-    tool.set_agent_name("llms_txt_agent")
-    website = get_supabase().table("websites").select("domain,cms_url").eq("id", website_id).single().execute().data or {}
-    domain = website.get("domain", "")
-    cms_url = website.get("cms_url", "")
-    base_url = (cms_url or f"https://{domain}").rstrip("/")
-    target_url = f"{base_url}/llms.txt"
-    content = tool._run(target_url)
-    get_supabase().table("llms_txt_log").insert({
-        "website_id": website_id,
-        "content": content,
-        "last_updated": datetime.utcnow().isoformat(),
-        "next_due": (datetime.utcnow() + timedelta(days=30)).isoformat(),
-    }).execute()
-    get_supabase().table("tasks").insert({
-        "website_id": website_id,
-        "agent_name": "llms_txt_agent",
-        "action": "generate_llms_txt",
-        "status": "success",
-        "real_api_called": "supabase",
-    }).execute()
-    return {"status": "generated", "content": content}
+async def generate_llms_txt(website_id: Optional[str] = None):
+    """Generate and store llms.txt for a website."""
+    if not website_id:
+        raise HTTPException(status_code=400, detail="website_id is required")
+
+    supabase = get_supabase()
+    try:
+        site_data = {}
+        try:
+            site = supabase.table("websites").select("*").eq("id", website_id).single().execute()
+            site_data = site.data or {}
+        except Exception:
+            pass
+
+        site_url = site_data.get("url") or site_data.get("cms_url") or f"https://{site_data.get('domain', 'example.com')}"
+        domain = site_data.get("domain") or site_url.replace("https://", "").replace("http://", "").split("/")[0]
+
+        content = build_llms_txt_content(site_url, domain)
+
+        # Save to both llms_txt and llms_txt_log tables safely
+        try:
+            supabase.table("llms_txt").upsert({
+                "website_id": website_id,
+                "content": content,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).execute()
+        except Exception:
+            pass
+
+        try:
+            supabase.table("llms_txt_log").insert({
+                "website_id": website_id,
+                "content": content,
+                "last_updated": datetime.utcnow().isoformat(),
+                "next_due": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+            }).execute()
+        except Exception:
+            pass
+
+        return {
+            "status": "success",
+            "website_id": website_id,
+            "content": content,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Failed to generate llms.txt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

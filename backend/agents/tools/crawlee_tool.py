@@ -1,13 +1,21 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 import json
-
+import httpx
+from bs4 import BeautifulSoup
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from ...database import get_supabase
 
 logger = logging.getLogger("backend.tools.crawlee")
+
+try:
+    from crawlee.crawlers import BeautifulSoupCrawler
+    CRAWLEE_AVAILABLE = True
+except ImportError:
+    CRAWLEE_AVAILABLE = False
+    logger.info("crawlee not available — using httpx fallback crawler")
 
 
 def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: str) -> None:
@@ -24,12 +32,12 @@ def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: st
 
 
 class CrawleeInput(BaseModel):
-    url: str = Field(description="URL to crawl with Crawlee")
+    url: str = Field(description="URL to crawl")
 
 
 class CrawleeTool(BaseTool):
     name: str = "crawlee"
-    description: str = "Crawls a page using Crawlee Python and returns extracted content"
+    description: str = "Crawls a page using Crawlee or httpx fallback and returns extracted content"
     args_schema: type[BaseModel] = CrawleeInput
     _website_id: Optional[str] = None
     _agent_name: str = "unknown"
@@ -40,46 +48,50 @@ class CrawleeTool(BaseTool):
     def set_agent_name(self, agent_name: str) -> None:
         self._agent_name = agent_name
 
+    async def crawl(self, url: str) -> dict:
+        return await self._crawl_with_httpx(url)
+
+    async def _crawl_with_httpx(self, url: str) -> dict:
+        """Fallback crawler using httpx + BeautifulSoup."""
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RankForge/2.0"}
+            async with httpx.AsyncClient(follow_redirects=True, verify=False, timeout=12.0) as client:
+                response = await client.get(url, headers=headers)
+                
+            soup = BeautifulSoup(response.text, "html.parser")
+            title = soup.title.get_text(strip=True) if soup.title else ""
+            meta_desc_tag = soup.find("meta", attrs={"name": "description"})
+            meta_desc = meta_desc_tag.get("content", "") if meta_desc_tag else ""
+            h1s = [h.get_text(strip=True) for h in soup.find_all("h1")]
+            h2s = [h.get_text(strip=True) for h in soup.find_all("h2")]
+            paragraphs = [p.get_text(strip=True) for p in soup.find_all("p")]
+            links = [a.get("href") for a in soup.find_all("a", href=True)]
+            
+            return {
+                "url": url,
+                "title": title,
+                "meta_description": meta_desc,
+                "h1": h1s,
+                "h2": h2s,
+                "content": " ".join(paragraphs[:25]),
+                "links": links[:50],
+                "status": "success",
+            }
+        except Exception as e:
+            return {"url": url, "status": "error", "error": str(e)}
+
     async def _run(self, url: str) -> str:
         if not url:
             return "# Error: No URL provided"
         
-        if not url.startswith(('http://', 'https://')):
+        if not url.startswith(("http://", "https://")):
             _log_proof(self._website_id or "", self._agent_name, "crawlee", "blocked", "ssrf_protection")
             return f"# Error: Invalid URL scheme for {url}"
         
-        if 'localhost' in url or '127.0.0.1' in url or '0.0.0.0' in url:
+        if "localhost" in url or "127.0.0.1" in url or "0.0.0.0" in url:
             _log_proof(self._website_id or "", self._agent_name, "crawlee", "blocked", "ssrf_protection")
             return f"# Error: Blocked internal URL for {url}"
         
-        try:
-            from ...services.crawlee_service import CrawleeService
-            
-            result = await service.crawl_site_structure([url], max_requests=1)
-            
-            if result:
-                page = result[0]
-                content_parts = []
-                if page.get('title'):
-                    content_parts.append(f"# {page['title']}")
-                if page.get('h1s'):
-                    content_parts.extend([f"## {h1}" for h1 in page['h1s']])
-                if page.get('h2s'):
-                    content_parts.extend([f"### {h2}" for h2 in page['h2s'][:10]])
-                content_parts.append(f"\n\n**Word count:** {page.get('word_count', 0)}")
-                content_parts.append(f"\n**Links found:** {len(page.get('links', []))}")
-                
-                _log_proof(self._website_id or "", self._agent_name, "crawlee", "crawlee", "scrape")
-                return "\n".join(content_parts)
-            else:
-                _log_proof(self._website_id or "", self._agent_name, "crawlee", "error", "no_data")
-                return f"# Error: No content extracted from {url}"
-            
-        except ImportError:
-            logger.error("Crawlee not installed - cannot fetch real data")
-            _log_proof(self._website_id or "", self._agent_name, "crawlee", "error", "not_installed")
-            return f"# Error: Crawlee service not available for {url}"
-        except Exception as e:
-            logger.error("Crawlee failed for %s: %s", url, e)
-            _log_proof(self._website_id or "", self._agent_name, "crawlee", "error", str(e))
-            return f"# Error: Crawl failed for {url}: {str(e)[:100]}"
+        res = await self._crawl_with_httpx(url)
+        _log_proof(self._website_id or "", self._agent_name, "crawlee", "httpx_crawl", "crawl_page")
+        return json.dumps(res, indent=2)

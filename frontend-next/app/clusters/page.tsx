@@ -1,140 +1,177 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { get } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface Cluster {
   id: string;
-  topic: string;
+  name?: string;
+  topic?: string;
+  cluster_topic?: string;
   keywords: string[];
-  search_volume: number;
-  difficulty: number;
-  intent: string;
-}
-
-interface ClusterGroup {
-  cluster_topic: string;
-  keywords: string[];
-  avg_volume: number;
-  avg_difficulty: number;
+  search_volume?: number;
+  avg_volume?: number;
+  difficulty?: number;
+  avg_difficulty?: number;
+  intent?: string;
 }
 
 export default function ClustersPage() {
   const [clusters, setClusters] = useState<Cluster[]>([]);
-  const [groupedClusters, setGroupedClusters] = useState<ClusterGroup[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  useEffect(() => {
-    async function fetchClusters() {
-      try {
-        setLoading(true);
-        const websiteId = getCurrentWebsiteId();
-        const data = await get(`/clusters?website_id=${websiteId}`);
-        const rawClusters = data || [];
-        setClusters(Array.isArray(rawClusters) ? rawClusters : []);
-        const groups: ClusterGroup[] = Array.isArray(rawClusters)
-          ? rawClusters.map((c: any) => ({
-              cluster_topic: c.name || c.cluster_topic || "Unnamed",
-              keywords: Array.isArray(c.keywords) ? c.keywords : [],
-              avg_volume: c.search_volume || c.avg_volume || 0,
-              avg_difficulty: c.difficulty || c.avg_difficulty || 0,
-            }))
-          : [];
-        setGroupedClusters(groups);
-        setError(null);
-      } catch (e) {
-        setError("Backend not running - run uvicorn main:app --reload in backend");
-        setClusters([]);
-        setGroupedClusters([]);
-      } finally {
-        setLoading(false);
-      }
+  const loadClusters = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
     }
 
-    fetchClusters();
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await get(`/api/clusters?website_id=${wid}`);
+      const list = Array.isArray(data) ? data : data?.clusters || [];
+      setClusters(list);
+    } catch (e: any) {
+      console.warn("Clusters fetch error:", e);
+      setError(e.message || "Failed to load keyword clusters");
+      setClusters([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const difficultyColor = (d: number) => {
-    if (d > 70) return "text-red-500";
-    if (d > 40) return "text-yellow-600";
-    return "text-green-600";
-  };
+  useEffect(() => {
+    loadClusters();
+    const handleChanged = () => loadClusters();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, [loadClusters]);
 
-  if (loading) {
+  if (loading && clusters.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          <span className="w-2 h-2 bg-accent" />
-          <span>Clusters</span>
-        </div>
-        <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">Keyword Clusters</h1>
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Cluster Map</div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="border border-line p-4 h-32 bg-line animate-pulse" />
-            ))}
-          </div>
-        </div>
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Generating semantic keyword clusters & topic graphs...
+        </p>
       </div>
     );
   }
 
-  if (error) {
+  if (!websiteId) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          <span className="w-2 h-2 bg-accent" />
-          <span>Clusters</span>
-        </div>
-        <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">Keyword Clusters</h1>
-        <div className="bg-stone border border-ink p-4 text-center">
-          <div className="text-[11px] mono-font">{error}</div>
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">Keyword Clusters</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to map keyword clusters and topic authority silos.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[11px] text-muted">
-        <span className="w-2 h-2 bg-accent" />
-        <span>Clusters</span>
-      </div>
-      <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">Keyword Clusters</h1>
-      <p className="text-[11px] text-muted uppercase tracking-widest mono-font">
-        {groupedClusters.length} clusters found
-      </p>
-
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Cluster Map</div>
-        {groupedClusters.length === 0 ? (
-          <div className="text-center py-12 text-muted mono-font text-sm">No keyword clusters available</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {groupedClusters.map((cluster, i) => (
-              <div key={i} className="border border-ink p-4">
-                <div className="text-sm font-bold dot-font mb-2">{cluster.cluster_topic}</div>
-                <div className="space-y-1 mb-3">
-                  {cluster.keywords.slice(0, 5).map((kw, j) => (
-                    <div key={j} className="text-[11px] mono-font text-muted truncate">· {kw}</div>
-                  ))}
-                  {cluster.keywords.length > 5 && (
-                    <div className="text-[10px] text-muted mono-font">+{cluster.keywords.length - 5} more</div>
-                  )}
-                </div>
-                <div className="flex justify-between text-[10px] mono-font">
-                  <span className="text-muted">VOL: {cluster.avg_volume.toLocaleString()}</span>
-                  <span className={difficultyColor(cluster.avg_difficulty)}>
-                    DIFF: {cluster.avg_difficulty}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+    <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      <div className="page-heading">Semantic Keyword Clusters</div>
+      <div className="page-sub">
+        <span className="sub-sq"></span>
+        Topical Authority Silos · Semantic Keyword Grouping · Cannibalization Prevention
+        {error && (
+          <span className="badge badge-amber" style={{ marginLeft: "12px" }}>
+            {error}
+          </span>
         )}
+      </div>
+
+      <div className="kpi-strip" style={{ marginBottom: "20px" }}>
+        <div className="kpi-cell">
+          <div className="kpi-label">Identified Clusters</div>
+          <div className="kpi-val">{clusters.length}</div>
+          <div className="kpi-delta">Content silos mapped</div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">Total Clustered Keywords</div>
+          <div className="kpi-val" style={{ color: "var(--accent)" }}>
+            {clusters.reduce((acc, c) => acc + (Array.isArray(c.keywords) ? c.keywords.length : 1), 0)}
+          </div>
+          <div className="kpi-delta">Target query coverage</div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <span className="panel-label">Topical Clusters Map</span>
+          <button className="panel-action" onClick={loadClusters}>
+            Refresh
+          </button>
+        </div>
+        <div className="panel-body">
+          {clusters.length === 0 ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+              No keyword clusters computed yet. The system runs clustering automatically as keywords and content are discovered.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+              {clusters.map((cluster, i) => {
+                const topic = cluster.name || cluster.topic || cluster.cluster_topic || `Cluster #${i + 1}`;
+                const keywords = Array.isArray(cluster.keywords) ? cluster.keywords : [];
+                return (
+                  <div
+                    key={cluster.id || i}
+                    style={{ padding: "16px", border: "1px solid var(--line)", background: "var(--surface)" }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span className="badge badge-accent">{cluster.intent || "Informational"}</span>
+                      <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                        {cluster.search_volume || cluster.avg_volume ? `${cluster.search_volume || cluster.avg_volume} vol` : ""}
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: "14px", marginBottom: "10px" }}>{topic}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {keywords.map((kw, kIdx) => (
+                        <span
+                          key={kIdx}
+                          style={{
+                            fontSize: "11px",
+                            padding: "2px 8px",
+                            background: "var(--line)",
+                            borderRadius: "3px",
+                            color: "var(--ink)",
+                          }}
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: "14px" }}>
+                      <Link
+                        href={`/writer`}
+                        className="btn btn-accent"
+                        style={{ display: "block", textAlign: "center", textDecoration: "none", fontSize: "11px", padding: "6px" }}
+                      >
+                        ⚡ Write Pillar Content
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

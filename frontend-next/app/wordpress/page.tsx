@@ -75,23 +75,26 @@ export default function WordPressPage() {
       setError(null);
       setNoticeMsg("Connecting to WordPress REST API...");
 
-      // Update website record in Supabase
-      await post("/api/websites", {
-        id: websiteId,
-        cms_url: wpUrl.trim(),
-        cms_user: wpUser.trim(),
-        app_password: wpPass.trim(),
-      });
+      const domain = wpUrl.trim().replace(/^https?:\/\//, "").split("/")[0];
 
-      // Save credentials via connect endpoint
-      try {
-        await post("/api/wordpress/save-connection", {
-          site_url: wpUrl.trim(),
+      // Update website record in Supabase
+      if (websiteId) {
+        await post(`/api/wordpress/${websiteId}/credentials`, {
+          url: wpUrl.trim(),
           username: wpUser.trim(),
-          app_password: wpPass.trim(),
-          state: "direct_connect",
+          password: wpPass.trim(),
         });
-      } catch {}
+      } else {
+        const newSite = await post("/api/websites", {
+          domain: domain,
+          cms_url: wpUrl.trim(),
+          cms_user: wpUser.trim(),
+          app_password: wpPass.trim(),
+        });
+        if (newSite?.id) {
+          setWebsiteId(newSite.id);
+        }
+      }
 
       setIsConnected(true);
       setConnectedUser(wpUser.trim());
@@ -105,16 +108,33 @@ export default function WordPressPage() {
   };
 
   const handleTestConnection = async () => {
+    if (!wpUrl.trim() || !wpUser.trim() || !wpPass.trim()) {
+      setError("Please fill in Site URL, Username, and Application Password to test.");
+      return;
+    }
+
     try {
       setActionLoading(true);
       setError(null);
       setNoticeMsg("Testing WordPress REST connection...");
 
-      const res = await get(`/api/wordpress/${websiteId}/info`);
-      setIsConnected(true);
-      setNoticeMsg(`✓ WordPress REST connection verified! Site title: ${res.site?.name || res.site?.url || wpUrl}`);
+      const res = await post(`/api/wordpress/${websiteId || "default"}/test`, {
+        url: wpUrl.trim(),
+        username: wpUser.trim(),
+        password: wpPass.trim(),
+      });
+
+      if (res && res.connected) {
+        setIsConnected(true);
+        setNoticeMsg(`✓ WordPress REST connection verified successfully!`);
+        fetchLivePosts();
+      } else {
+        setIsConnected(false);
+        setError(res?.message || "WordPress connection test failed. Check Application Password.");
+      }
     } catch (err: any) {
-      setError(`Connection test failed: ${err.message}. Verify application password.`);
+      setIsConnected(false);
+      setError(`Connection test failed: ${err.message}`);
     } finally {
       setActionLoading(false);
     }

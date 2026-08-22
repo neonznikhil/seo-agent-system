@@ -1,0 +1,16 @@
+{
+  "unique_key": "https://accident.innovatcs.com",
+  "url": "https://accident.innovatcs.com",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 6
+    }
+  },
+  "retry_count": 3,
+  "no_retry": false,
+  "loaded_url": "https://accident.innovatcs.com/",
+  "handled_at": "2026-08-22 16:29:19.119677+00:00"
+}

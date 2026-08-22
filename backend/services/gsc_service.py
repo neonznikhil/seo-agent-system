@@ -3,9 +3,6 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
 logger = logging.getLogger("backend.services.gsc_service")
 
 
@@ -25,13 +22,18 @@ class GSCService:
         if not self.credentials_path:
             raise ValueError("GSC credentials not configured - set GSC_CREDENTIALS_PATH")
         
-        creds = service_account.Credentials.from_service_account_file(
-            self.credentials_path,
-            scopes=['https://www.googleapis.com/auth/webmasters']
-        )
-        
-        self.service = build('webmasters', 'v3', credentials=creds)
-        return self.service
+        try:
+            from google.oauth2 import service_account
+            from googleapiclient.discovery import build
+            creds = service_account.Credentials.from_service_account_file(
+                self.credentials_path,
+                scopes=['https://www.googleapis.com/auth/webmasters']
+            )
+            self.service = build('webmasters', 'v3', credentials=creds)
+            return self.service
+        except Exception as e:
+            logger.error(f"GSC client init error: {e}")
+            raise ValueError(f"GSC client init failed: {e}")
     
     def is_connected(self) -> bool:
         """Check if GSC is configured."""

@@ -88,74 +88,66 @@ class HumanWriterAgent:
             "knowledge_facts": len(self.knowledge_base)
         }
     
-    def generate_blog(self, topic: str, primary_keyword: str, secondary_keywords: List[str] = None) -> Dict[str, Any]:
-        """Generate human-quality blog post"""
+    async def write_blog(self, title: str, outline: dict, keywords: list, tone: str = "authoritative and engaging") -> str:
+        from ..database import call_nim_llm
+        prompt = f"""
+        Write a complete 1500-2000 word blog post.
+        
+        Title: {title}
+        Keywords to include naturally: {', '.join(keywords)}
+        Tone: {tone}
+        Outline: {json.dumps(outline)}
+        
+        Requirements:
+        - Start with a 50-word featured snippet answer
+        - Use H2 and H3 headers from the outline
+        - Include a data comparison table
+        - Add 5 FAQ questions at the end
+        - Write naturally, not like AI
+        - Include statistics and specific examples
+        - Internal link placeholders: [LINK: relevant topic]
+        
+        Write the complete blog post now:
+        """
+        return await call_nim_llm(prompt, max_tokens=3000, website_id=self.website_id)
+    
+    async def generate_blog(self, topic: str, primary_keyword: str, secondary_keywords: List[str] = None) -> Dict[str, Any]:
+        """Generate human-quality blog post with real LLM content"""
+        from ..database import call_nim_llm
         
         if not secondary_keywords:
             secondary_keywords = []
         
-        tone_desc = self.tone_profile.get("tone_description", "professional")
-        example_phrases = self.tone_profile.get("example_phrases", [])[:3]
+        tone_desc = self.tone_profile.get("tone_description", "authoritative, engaging and SEO-optimized")
+        all_keywords = [primary_keyword] + secondary_keywords
         
-        system_prompt = f"""You are senior {self.company_name} SEO writer with 8 years experience writing for {self.company_name}. You write like a human who actually uses the product.
-
-BUSINESS: {self.company_name} - professional services firm
-KEYWORD: {primary_keyword}
-TONE: {tone_desc}
-EXAMPLE PHRASES: {', '.join(example_phrases)}
-
-Write 1200-1500 words. 
-
-HARD RULES - BREAK THESE = FAIL:
-1. NEVER use em dash —
-2. NEVER use banned phrases: {', '.join(self.banned_phrases[:8])}
-3. First paragraph must answer the search intent directly
-4. Primary keyword in: title + first 100 words + 1 H2
-5. Include 2 facts from knowledge base verbatim
-6. Vary sentence length - human burstiness
-7. Use contractions naturally: don't, can't, it's
-
-Structure: Problem > Our Approach > Solution > Evidence > Mistakes > Takeaways
-
-DO NOT write AI content. Write like a tired writer at 2am who knows this topic cold."""
-
+        outline = {
+            "title": topic,
+            "h2s": [
+                f"Introduction to {primary_keyword}",
+                f"Key Strategies for {primary_keyword}",
+                "Step-by-Step Implementation Framework",
+                "Comparison & Industry Benchmarks",
+                "Frequently Asked Questions"
+            ]
+        }
+        
         try:
-            prompt = f"""Write a blog about {topic} targeting keyword "{primary_keyword}". 
-
-{system_prompt}
-
-Include:
-- Direct answer in first paragraph
-- Real examples from our work
-- Statistics we can cite
-- FAQ section
-- Comparison table
-- Checklist at end
-
-Write now:"""
+            content = await self.write_blog(title=topic, outline=outline, keywords=all_keywords, tone=tone_desc)
+            humanized_content = self.humanize(content)
+            quality_report = self.check_quality(humanized_content, primary_keyword)
             
             return {
                 "status": "generated",
-                "prompt_used": system_prompt,
                 "topic": topic,
                 "primary_keyword": primary_keyword,
                 "secondary_keywords": secondary_keywords,
-                "word_target": 1200,
-                "structure": [
-                    f"H1: How to Master {primary_keyword} for Business Results",
-                    "Introduction: Direct problem statement",
-                    f"What is {primary_keyword}: Our take from experience",
-                    f"Why {primary_keyword} matters for professionals",
-                    "5-7 points with examples from our work",
-                    "Table: Before vs After",
-                    "Common mistakes we see",
-                    "How we approach this differently",
-                    "FAQ: 4 questions",
-                    "Key takeaways checklist"
-                ]
+                "content": humanized_content,
+                "quality_report": quality_report,
+                "word_count": len(humanized_content.split()),
             }
-            
         except Exception as e:
+            logger.error(f"HumanWriter blog generation error: {e}")
             return {"status": "error", "error": str(e)}
     
     def humanize(self, text: str) -> str:

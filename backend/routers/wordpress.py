@@ -27,20 +27,114 @@ class OAuthStatusResponse(BaseModel):
     connected: bool
     provider: str
     expires_at: Optional[str] = None
-    scope: Optional[str] = None
-    site_url: Optional[str] = None
+class WordPressCredentialsIn(BaseModel):
+    url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    wordpress_url: Optional[str] = None
+    wordpress_user: Optional[str] = None
+    wordpress_password: Optional[str] = None
+
+
+class CreateDraftIn(BaseModel):
+    title: str
+    content: str
+    keywords: Optional[list] = None
+
+
+@router.post("/{website_id}/test")
+@router.post("/wordpress/{website_id}/test")
+async def test_wordpress_connection(website_id: str, body: WordPressCredentialsIn):
+    """Test WordPress credentials directly with detailed diagnostics."""
+    from ..services.wordpress_service import WordPressService
+    from ..database import get_supabase
+    from datetime import datetime
+
+    url = (body.url or body.wordpress_url or "").strip()
+    username = (body.username or body.wordpress_user or "").strip()
+    password = (body.password or body.wordpress_password or "").strip()
+
+    if not url or not username or not password:
+        raise HTTPException(400, "URL, username, and application password are required")
+
+    ws = WordPressService(website_id)
+    diag = await ws.test_connection(url, username, password)
+    is_connected = diag.get("connected", False)
+
+    # If successfully connected and website exists, persist credentials
+    if is_connected and website_id and website_id != "default":
+        try:
+            supabase = get_supabase()
+            supabase.table("websites").update({
+                "cms_url": url,
+                "url": url,
+                "cms_user": username,
+                "app_password": password,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("id", website_id).execute()
+        except Exception:
+            pass
+
+    return {
+        "success": is_connected,
+        "connected": is_connected,
+        "url": url,
+        "status_code": diag.get("status_code"),
+        "error_type": diag.get("error_type"),
+        "message": diag.get("message", "Connection verified ✅" if is_connected else "Connection failed"),
+        "wp_user": username,
+    }
+
+
+@router.post("/wordpress/{website_id}/credentials")
+async def save_wordpress_credentials(website_id: str, body: WordPressCredentialsIn):
+    """Save WordPress URL, username, and application password into websites table."""
+    from ..database import get_supabase
+    from datetime import datetime
+
+    supabase = get_supabase()
+    url = (body.url or body.wordpress_url or "").strip()
+    username = (body.username or body.wordpress_user or "").strip()
+    password = (body.password or body.wordpress_password or "").strip()
+
+    update_data = {
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    if url:
+        update_data["cms_url"] = url
+        update_data["url"] = url
+    if username:
+        update_data["cms_user"] = username
+    if password:
+        update_data["app_password"] = password
+
+    try:
+        supabase.table("websites").update(update_data).eq("id", website_id).execute()
+    except Exception as e:
+        logger.error(f"Error updating website credentials: {e}")
+        raise HTTPException(500, f"Failed to save credentials: {str(e)}")
+
+    return {"status": "saved", "website_id": website_id}
+
+
+@router.post("/wordpress/{website_id}/draft")
+async def create_wordpress_draft(website_id: str, body: CreateDraftIn):
+    """Create a draft post on WordPress."""
+    from ..services.wordpress_service import WordPressService
+
+    ws = WordPressService(website_id)
+    result = await ws.create_draft(website_id, body.title, body.content, body.keywords or [])
+    return result
 
 
 @router.get("/wordpress/{website_id}/info")
 async def wordpress_info(website_id: str):
-    """Verify the WordPress connection and return site info (real data)."""
+    """Verify the WordPress connection and return site info."""
     from ..services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     info = await ws.get_site_info()
-    if info is None:
-        raise HTTPException(404, "WordPress not configured or unreachable for this website")
-    return {"status": "connected", "site": info}
+    return {"status": "connected" if info.get("status") == "live" else "configured", "site": info}
 
 
 @router.get("/wordpress/{website_id}/posts")

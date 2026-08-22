@@ -1,159 +1,150 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { get } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface CalendarDay {
   date: number;
   day: string;
+  fullDate?: string;
   status: "pending" | "active" | "complete";
-}
-
-function getStatusColor(status: CalendarDay["status"]) {
-  switch (status) {
-    case "complete":
-      return "#FF4D12";
-    case "active":
-      return "#000000";
-    default:
-      return "#d6d3d1";
-  }
+  blogs?: any[];
 }
 
 export default function CalendarPage() {
   const [week, setWeek] = useState<CalendarDay[]>([]);
-  const [statusCounts, setStatusCounts] = useState<{ active: number; pending: number; complete: number }>({
-    active: 0,
-    pending: 0,
-    complete: 0,
-  });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  const getStatusFromBlogs = (blogs: any[]): CalendarDay["status"] => {
-    if (!blogs || blogs.length === 0) return "pending";
-    const hasPublished = blogs.some((b: any) => b.status === "published");
-    const hasPendingApproval = blogs.some((b: any) => b.status === "pending_approval");
-    const hasNeedsRevision = blogs.some((b: any) => b.status === "needs_revision");
+  const fetchCalendarData = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
+    }
 
-    if (hasPublished) return "complete";
-    if (hasPendingApproval || hasNeedsRevision) return "active";
-    return "pending";
-  };
-
-  useEffect(() => {
-    async function fetchCalendarData() {
-      try {
-        setLoading(true);
-        const websiteId = getCurrentWebsiteId();
-        const data = await get(`/calendar/${websiteId}?days=7`);
-        if (data && data.days) {
-          const weekData: CalendarDay[] = data.days.map((day: any, index: number) => {
-            const dateObj = new Date(day.date);
-            return {
-              date: dateObj.getDate(),
-              day: dateObj.toLocaleString("en-US", { weekday: "short" }).toUpperCase().substring(0, 3),
-              status: getStatusFromBlogs(day.blogs || []),
-            };
-          });
-          setWeek(weekData);
-
-          const counts = {
-            active: weekData.filter((d) => d.status === "active").length,
-            pending: weekData.filter((d) => d.status === "pending").length,
-            complete: weekData.filter((d) => d.status === "complete").length,
-          };
-          setStatusCounts(counts);
-        } else {
-          const today = new Date();
-          const weekData: CalendarDay[] = Array.from({ length: 7 }, (_, i) => {
-            const d = new Date(today);
-            d.setDate(today.getDate() + i);
-            return {
-              date: d.getDate(),
-              day: d.toLocaleString("en-US", { weekday: "short" }).toUpperCase().substring(0, 3),
-              status: "pending" as CalendarDay["status"],
-            };
-          });
-          setWeek(weekData);
-        }
-        setError(null);
-      } catch (err) {
-        setError("Backend not running - run uvicorn main:app --reload in backend");
-        const today = new Date();
-        const weekData: CalendarDay[] = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(today);
-          d.setDate(today.getDate() + i);
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await get(`/api/calendar/${wid}?days=14`);
+      if (data && data.days && Array.isArray(data.days)) {
+        const weekData: CalendarDay[] = data.days.map((day: any) => {
+          const dateObj = new Date(day.date || day);
+          const blogs = day.blogs || [];
+          const hasPublished = blogs.some((b: any) => b.status === "published");
+          const hasDraft = blogs.some((b: any) => b.status === "draft" || b.status === "pending_approval");
+          
           return {
-            date: d.getDate(),
-            day: d.toLocaleString("en-US", { weekday: "short" }).toUpperCase().substring(0, 3),
-            status: "pending" as CalendarDay["status"],
+            date: dateObj.getDate(),
+            day: dateObj.toLocaleString("en-US", { weekday: "short" }).toUpperCase(),
+            fullDate: day.date,
+            status: hasPublished ? "complete" : hasDraft ? "active" : "pending",
+            blogs,
           };
         });
         setWeek(weekData);
-      } finally {
-        setLoading(false);
+      } else {
+        setWeek([]);
       }
+    } catch (err: any) {
+      console.warn("Calendar fetch error:", err);
+      setError(err.message || "Failed to load editorial calendar");
+      setWeek([]);
+    } finally {
+      setLoading(false);
     }
-
-    fetchCalendarData();
   }, []);
 
+  useEffect(() => {
+    fetchCalendarData();
+    const handleChanged = () => fetchCalendarData();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, [fetchCalendarData]);
+
+  if (loading && week.length === 0) {
+    return (
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Loading autonomous editorial calendar schedule...
+        </p>
+      </div>
+    );
+  }
+
+  if (!websiteId) {
+    return (
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">Editorial Content Calendar</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to view scheduled autonomous blog publication dates.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-3xl font-bold dot-font">CALENDAR</h1>
-        <div className="flex gap-4 text-xs mono-font">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-accent rounded-full" />
-            Active: {statusCounts.active}
+    <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      <div className="page-heading">Editorial Content Calendar</div>
+      <div className="page-sub">
+        <span className="sub-sq"></span>
+        Autonomous Publishing Schedule · Content Cadence · Scheduled Pipeline Runs
+        {error && (
+          <span className="badge badge-amber" style={{ marginLeft: "12px" }}>
+            {error}
           </span>
-          <span className="text-muted">/</span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-line rounded-full" />
-            Pending: {statusCounts.pending}
-          </span>
-          <span className="text-muted">/</span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2" style={{ backgroundColor: "#FF4D12", opacity: 0.5 }} />
-            Complete: {statusCounts.complete}
-          </span>
-        </div>
+        )}
       </div>
 
-      <div className="bg-stone border border-ink p-4">
-        <div className="grid grid-cols-7 gap-px border border-line divide-x divide-line">
-          {week.length > 0 ? week.map((day) => (
-            <div key={day.day} className="bg-stone">
-              <div className="text-[10px] text-muted mono-font text-center py-1">{day.day}</div>
-            </div>
-          )) : ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
-            <div key={day} className="bg-stone">
-              <div className="text-[10px] text-muted mono-font text-center py-1">{day}</div>
-            </div>
-          ))}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="panel-label">14-Day Publishing Pipeline Schedule</span>
+          <button className="panel-action" onClick={fetchCalendarData}>
+            Refresh
+          </button>
         </div>
-
-        <div className="grid grid-cols-7 gap-px border-x border-line divide-x divide-line">
-          {week.map((day, i) => (
-            <div
-              key={day.date}
-              className={`bg-stone ${i === 0 ? "border-l" : ""} flex flex-col items-center py-4`}
-            >
-              <span className="text-[10px] text-muted mono-font mb-2">{day.date}</span>
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getStatusColor(day.status) }} />
+        <div className="panel-body">
+          {week.length === 0 ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+              No scheduled events found for this website. Generate articles in Content Studio to populate the calendar.
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">QUICK ACTIONS</div>
-        <div className="grid grid-cols-3 gap-2">
-          <button className="px-3 py-2 border border-ink text-[11px] mono-font pill">Schedule Blog</button>
-          <button className="px-3 py-2 border border-ink text-[11px] mono-font pill">Generate Topic</button>
-          <button className="px-3 py-2 border border-ink text-[11px] mono-font pill">View Queue</button>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "10px" }}>
+              {week.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "14px 10px",
+                    border: "1px solid var(--line)",
+                    background: item.status === "complete" ? "rgba(34, 197, 94, 0.08)" : item.status === "active" ? "rgba(255, 77, 18, 0.08)" : "var(--surface)",
+                    borderTop: `3px solid ${item.status === "complete" ? "var(--green)" : item.status === "active" ? "var(--accent)" : "var(--line)"}`,
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>{item.day}</div>
+                  <div style={{ fontSize: "20px", fontWeight: "bold", margin: "6px 0" }}>{item.date}</div>
+                  <div>
+                    <span className={`badge ${item.status === "complete" ? "badge-green" : item.status === "active" ? "badge-accent" : ""}`}>
+                      {item.status === "complete" ? "Published" : item.status === "active" ? "Draft Ready" : "Scheduled"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { get } from "@/lib/api";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface DecayItem {
@@ -16,142 +17,165 @@ interface DecayItem {
 
 export default function DecayPage() {
   const [decayItems, setDecayItems] = useState<DecayItem[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  useEffect(() => {
-    async function fetchDecayData() {
-      try {
-        setLoading(true);
-        const websiteId = getCurrentWebsiteId();
-        const data = await get(`/decay/${websiteId}/list`);
-        const items = data?.decay_logs || data?.items || data || [];
-        setDecayItems(Array.isArray(items) ? items : []);
-        setError(null);
-      } catch (e) {
-        setError("Backend not running - run uvicorn main:app --reload in backend");
-        setDecayItems([]);
-      } finally {
-        setLoading(false);
-      }
+  const loadDecayData = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
     }
 
-    fetchDecayData();
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [listRes, statsRes] = await Promise.allSettled([
+        get(`/api/decay/${wid}/list`),
+        get(`/api/decay/${wid}/stats`),
+      ]);
+
+      if (listRes.status === "fulfilled" && listRes.value) {
+        const items = listRes.value.decay_logs || listRes.value.items || listRes.value || [];
+        setDecayItems(Array.isArray(items) ? items : []);
+      } else {
+        setDecayItems([]);
+      }
+
+      if (statsRes.status === "fulfilled" && statsRes.value) {
+        setStats(statsRes.value);
+      }
+    } catch (e: any) {
+      console.warn("Decay fetch error:", e);
+      setError(e.message || "Failed to load content decay metrics");
+      setDecayItems([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const totalDecaying = decayItems.filter((d) => d.status === "decaying" || d.change > 0).length;
-  const totalRecovered = decayItems.filter((d) => d.status === "recovered" || d.change < -5).length;
+  useEffect(() => {
+    loadDecayData();
+    const handleChanged = () => loadDecayData();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, [loadDecayData]);
 
-  if (loading) {
+  if (loading && decayItems.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          <span className="w-2 h-2 bg-accent" />
-          <span>Decay</span>
-        </div>
-        <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">Content Decay</h1>
-        <div className="grid grid-cols-2 gap-4">
-          {[...Array(2)].map((_, i) => (
-            <div key={i} className="bg-stone border border-ink p-4">
-              <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">Stats</div>
-              <div className="h-20 bg-line animate-pulse" />
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Analyzing historical ranking decay & traffic drops...
+        </p>
+      </div>
+    );
+  }
+
+  if (!websiteId) {
+    return (
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">Content Decay Monitoring</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to track ranking drops and trigger automated content refreshes.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
             </div>
-          ))}
-        </div>
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Decaying Pages</div>
-          <div className="space-y-2">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-10 border border-line bg-line animate-pulse" />
-            ))}
           </div>
         </div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          <span className="w-2 h-2 bg-accent" />
-          <span>Decay</span>
-        </div>
-        <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">Content Decay</h1>
-        <div className="bg-stone border border-ink p-4 text-center">
-          <div className="text-[11px] mono-font">{error}</div>
-        </div>
-      </div>
-    );
-  }
+  const decayingCount = decayItems.filter((d) => d.status === "decaying" || d.change > 0).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[11px] text-muted">
-        <span className="w-2 h-2 bg-accent" />
-        <span>Decay</span>
-      </div>
-      <h1 className="text-3xl md:text-5xl font-bold dot-font tracking-tight">Content Decay</h1>
-      <p className="text-[11px] text-muted uppercase tracking-widest mono-font">
-        Track content that has lost rankings over time
-      </p>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-[11px] text-muted uppercase tracking-wider mono-font mb-2">Decaying</div>
-          <div className="text-2xl font-bold dot-font text-red-500">{totalDecaying}</div>
-        </div>
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-[11px] text-muted uppercase tracking-wider mono-font mb-2">Recovered</div>
-          <div className="text-2xl font-bold dot-font text-green-600">{totalRecovered}</div>
-        </div>
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-[11px] text-muted uppercase tracking-wider mono-font mb-2">Total Pages</div>
-          <div className="text-2xl font-bold dot-font">{decayItems.length}</div>
-        </div>
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-[11px] text-muted uppercase tracking-wider mono-font mb-2">Avg Change</div>
-          <div className="text-2xl font-bold dot-font">
-            {decayItems.length > 0
-              ? (decayItems.reduce((a, b) => a + b.change, 0) / decayItems.length).toFixed(1)
-              : "0.0"}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Decaying Pages</div>
-        {decayItems.length === 0 ? (
-          <div className="text-center py-8 text-muted mono-font text-sm">No decay data available</div>
-        ) : (
-          <div className="space-y-2">
-            {decayItems.map((item, i) => (
-              <div key={i} className="flex justify-between items-center border-b border-line pb-2 last:border-b-0">
-                <div>
-                  <div className="mono-font text-sm">{item.url || `Page ${i + 1}`}</div>
-                  <div className="text-[10px] text-muted mono-font">kw: {item.keyword}</div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="text-[10px] text-muted mono-font">
-                      {item.old_rank} → {item.current_rank}
-                    </div>
-                    <div className={`text-[10px] mono-font ${item.change > 0 ? "text-red-500" : "text-green-600"}`}>
-                      {item.change > 0 ? `+${item.change}` : item.change}
-                    </div>
-                  </div>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 mono-font ${
-                      item.change > 0 ? "bg-red-500 text-paper" : "bg-green-500 text-paper"
-                    }`}
-                  >
-                    {item.change > 0 ? "DECAYING" : "RECOVERED"}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+    <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      <div className="page-heading">Content Decay Detection</div>
+      <div className="page-sub">
+        <span className="sub-sq"></span>
+        Automated Ranking Degradation Tracking · Refresh Agent Triggers · Loss Prevention
+        {error && (
+          <span className="badge badge-amber" style={{ marginLeft: "12px" }}>
+            {error}
+          </span>
         )}
+      </div>
+
+      <div className="kpi-strip" style={{ marginBottom: "20px" }}>
+        <div className="kpi-cell">
+          <div className="kpi-label">Decaying URLs</div>
+          <div className="kpi-val" style={{ color: decayingCount > 0 ? "var(--red)" : "var(--green)" }}>
+            {stats?.decaying_count ?? decayingCount}
+          </div>
+          <div className="kpi-delta">{decayingCount > 0 ? "Rankings dropped > 3 pos" : "All rankings stable"}</div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">Monitored URLs</div>
+          <div className="kpi-val">{stats?.total_monitored ?? decayItems.length}</div>
+          <div className="kpi-delta">Historical positions checked</div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <span className="panel-label">Decaying Articles & Pages</span>
+          <button className="panel-action" onClick={loadDecayData}>
+            Refresh
+          </button>
+        </div>
+        <div className="panel-body" style={{ padding: "0" }}>
+          {decayItems.length === 0 ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+              ✓ Zero decaying content found. All ranked pages are maintaining their positions.
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12px" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)", color: "var(--muted)", textTransform: "uppercase", fontSize: "10px" }}>
+                  <th style={{ padding: "10px 14px" }}>Page URL</th>
+                  <th style={{ padding: "10px 14px" }}>Target Keyword</th>
+                  <th style={{ padding: "10px 14px" }}>Old Rank</th>
+                  <th style={{ padding: "10px 14px" }}>Current Rank</th>
+                  <th style={{ padding: "10px 14px" }}>Drop</th>
+                  <th style={{ padding: "10px 14px" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {decayItems.map((item, i) => (
+                  <tr key={item.id || i} style={{ borderBottom: "1px solid var(--line)" }}>
+                    <td style={{ padding: "10px 14px", fontWeight: 600 }}>{item.url}</td>
+                    <td style={{ padding: "10px 14px" }}>{item.keyword}</td>
+                    <td style={{ padding: "10px 14px" }}>#{item.old_rank}</td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <span className="badge badge-red">#{item.current_rank}</span>
+                    </td>
+                    <td style={{ padding: "10px 14px", color: "var(--red)", fontWeight: 600 }}>
+                      ↓ {item.change > 0 ? `+${item.change}` : item.change}
+                    </td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <Link
+                        href={`/writer`}
+                        className="btn btn-accent"
+                        style={{ textDecoration: "none", fontSize: "10px", padding: "4px 8px" }}
+                      >
+                        ⚡ Refresh Post
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

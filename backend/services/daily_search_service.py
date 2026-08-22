@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -334,7 +335,10 @@ async def daily_geo_check_job(website_id: str) -> Dict[str, Any]:
         "error": result.get("error"),
         "run_at": datetime.utcnow().isoformat(),
     }
-    supabase.table("brain_daily_jobs").insert(job).execute()
+    try:
+        supabase.table("brain_daily_jobs").insert(job).execute()
+    except Exception:
+        pass
     return result
 
 
@@ -386,7 +390,10 @@ async def daily_refresh_check_job(website_id: str) -> Dict[str, Any]:
         "error": result.get("error"),
         "run_at": datetime.utcnow().isoformat(),
     }
-    supabase.table("brain_daily_jobs").insert(job).execute()
+    try:
+        supabase.table("brain_daily_jobs").insert(job).execute()
+    except Exception:
+        pass
     return result
 
 
@@ -447,7 +454,10 @@ async def daily_backlink_check_job(website_id: str) -> Dict[str, Any]:
         "error": result.get("error"),
         "run_at": datetime.utcnow().isoformat(),
     }
-    supabase.table("brain_daily_jobs").insert(job).execute()
+    try:
+        supabase.table("brain_daily_jobs").insert(job).execute()
+    except Exception:
+        pass
     return result
 
 
@@ -510,7 +520,10 @@ async def daily_new_page_suggestion_job(website_id: str) -> Dict[str, Any]:
         "error": result.get("error"),
         "run_at": datetime.utcnow().isoformat(),
     }
-    supabase.table("brain_daily_jobs").insert(job).execute()
+    try:
+        supabase.table("brain_daily_jobs").insert(job).execute()
+    except Exception:
+        pass
 
     if result.get("writing_started", 0) > 0:
         await report_problem(

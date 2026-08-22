@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface HealthData {
   status: string;
-  database?: string;
-  nim_llm?: string;
-  wordpress?: string;
   checks?: Record<string, string>;
+  degraded_reasons?: string[];
 }
 
 export default function SettingsPage() {
@@ -18,223 +17,280 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  // Settings form state
-  const [autoPublish, setAutoPublish] = useState<boolean>(false);
-  const [humanApproval, setHumanApproval] = useState<boolean>(true);
-  const [maxDailyPosts, setMaxDailyPosts] = useState<number>(3);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  // WordPress credentials state
+  const [wpUrl, setWpUrl] = useState("");
+  const [wpUser, setWpUser] = useState("");
+  const [wpPassword, setWpPassword] = useState("");
+  const [isTestingWp, setIsTestingWp] = useState(false);
+  const [isSavingWp, setIsSavingWp] = useState(false);
+  const [wpConnected, setWpConnected] = useState<boolean | null>(null);
 
-  const websiteId = getCurrentWebsiteId();
+  const loadSettingsAndDiagnostics = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
 
-  const loadDiagnostics = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      try {
-        const h = await get("/health");
-        setHealth(h);
-      } catch (e: any) {
-        setHealth({ status: "offline", checks: { api: "error" } });
+      const [healthRes, statsRes, siteRes] = await Promise.allSettled([
+        get("/health"),
+        wid ? get(`/api/stats?website_id=${wid}`) : Promise.resolve(null),
+        wid ? get(`/api/websites`) : Promise.resolve([]),
+      ]);
+
+      if (healthRes.status === "fulfilled" && healthRes.value) {
+        setHealth(healthRes.value);
       }
 
-      try {
-        const s = await get(`/api/stats?website_id=${websiteId}`);
-        setStats(s);
-      } catch {}
+      if (statsRes.status === "fulfilled" && statsRes.value) {
+        setStats(statsRes.value);
+      }
+
+      if (siteRes.status === "fulfilled" && Array.isArray(siteRes.value) && wid) {
+        const site = siteRes.value.find((s: any) => s.id === wid);
+        if (site) {
+          setWpUrl(site.cms_url || site.wordpress_url || "");
+          setWpUser(site.cms_user || site.wordpress_user || "");
+        }
+      }
     } catch (err: any) {
       console.warn("Diagnostics error:", err);
     } finally {
       setLoading(false);
     }
-  }, [websiteId]);
+  }, []);
 
   useEffect(() => {
-    loadDiagnostics();
-  }, [loadDiagnostics]);
+    loadSettingsAndDiagnostics();
+    const handleChanged = () => loadSettingsAndDiagnostics();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, [loadSettingsAndDiagnostics]);
 
-  const handleSavePreferences = (e: React.FormEvent) => {
+  const handleTestWordPress = async () => {
+    if (!wpUrl.trim() || !wpUser.trim() || !wpPassword.trim()) {
+      setError("Please fill in WordPress URL, Username, and Application Password to test.");
+      return;
+    }
+
+    try {
+      setIsTestingWp(true);
+      setError(null);
+      setNoticeMsg(null);
+
+      const payload = {
+        url: wpUrl.trim(),
+        username: wpUser.trim(),
+        password: wpPassword.trim(),
+      };
+
+      const res = await post(`/api/wordpress/${websiteId || "default"}/test`, payload);
+      if (res && res.connected) {
+        setWpConnected(true);
+        setNoticeMsg("✅ WordPress connection test successful! Ready to create drafts.");
+      } else {
+        setWpConnected(false);
+        setError(res?.message || "WordPress connection failed. Check credentials and Application Password.");
+      }
+    } catch (err: any) {
+      setWpConnected(false);
+      setError(`WordPress test failed: ${err.message}`);
+    } finally {
+      setIsTestingWp(false);
+    }
+  };
+
+  const handleSaveWordPress = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      setNoticeMsg("✓ Autonomous pipeline settings successfully saved!");
-    }, 400);
+    if (!websiteId) {
+      setError("Please select or add a website first.");
+      return;
+    }
+
+    try {
+      setIsSavingWp(true);
+      setError(null);
+
+      await post(`/api/wordpress/${websiteId}/credentials`, {
+        wordpress_url: wpUrl.trim(),
+        wordpress_user: wpUser.trim(),
+        wordpress_password: wpPassword.trim(),
+      });
+
+      setNoticeMsg("✓ WordPress credentials saved to database!");
+      loadSettingsAndDiagnostics();
+    } catch (err: any) {
+      setError(`Failed to save credentials: ${err.message}`);
+    } finally {
+      setIsSavingWp(false);
+    }
   };
 
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
-      {/* PAGE HEADER */}
-      <div className="page-heading">Settings & Diagnostics</div>
+      <div className="page-heading">Settings & Service Integrations</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
-        System Health · Service Connectors · Autonomous Guardrails · Zero Mock Data
+        WordPress Application Passwords · Live Health Diagnostics · Zero Mock Data
       </div>
 
-      {/* NOTICES */}
       {error && (
-        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)" }}>
+        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
           <span style={{ color: "var(--red)" }}>{error}</span>
         </div>
       )}
 
       {noticeMsg && (
-        <div className="notice ok">
+        <div className="notice ok" style={{ marginBottom: "16px" }}>
           <span className="notice-sq"></span>
           <span>{noticeMsg}</span>
         </div>
       )}
 
-      {/* DIAGNOSTICS & STATUS GRID */}
-      <div className="grid-2" style={{ marginBottom: "16px" }}>
-        {/* SERVICE HEALTH DIAGNOSTICS */}
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-label">System Health & Live Services</span>
-            <button className="panel-action" onClick={loadDiagnostics}>
-              Run Check
-            </button>
-          </div>
-          <div className="panel-body">
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">FastAPI Backend (Port 8000)</span>
-              <span className="badge badge-green">Connected</span>
+      <div className="dash-grid">
+        {/* WORDPRESS INTEGRATION FORM */}
+        <div>
+          <div className="panel">
+            <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="panel-label">WordPress Integration</span>
+              {wpConnected === true && <span className="badge badge-green">Connected ✅</span>}
+              {wpConnected === false && <span className="badge badge-red">Disconnected ✕</span>}
             </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Supabase PostgreSQL & PgVector</span>
-              <span className="badge badge-green">Live (evpgxcuvcpihpasptcjk)</span>
-            </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">NVIDIA NIM LLM Engine (Llama-3.1-70B)</span>
-              <span className="badge badge-green">API Key Configured</span>
-            </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">WordPress Target Site (accident.innovatcs.com)</span>
-              <span className={`badge ${stats?.wp_connected ? "badge-green" : "badge-accent"}`}>
-                {stats?.wp_connected ? "Connected" : "Configured"}
-              </span>
-            </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Next.js 14 App Router UI</span>
-              <span className="badge badge-green">Port 3000 Clean</span>
-            </div>
-          </div>
-        </div>
+            <div className="panel-body">
+              <form onSubmit={handleSaveWordPress} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
+                    WordPress Site URL
+                  </label>
+                  <input
+                    type="url"
+                    value={wpUrl}
+                    onChange={(e) => setWpUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="field"
+                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                    required
+                  />
+                </div>
 
-        {/* AUTONOMOUS GOVERNANCE & SETTINGS */}
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-label">Autonomous Writing Governance</span>
-            <span className="badge badge-ink">Policy Engine</span>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
+                    WordPress Username / Email
+                  </label>
+                  <input
+                    type="text"
+                    value={wpUser}
+                    onChange={(e) => setWpUser(e.target.value)}
+                    placeholder="admin"
+                    className="field"
+                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
+                    Application Password
+                  </label>
+                  <input
+                    type="password"
+                    value={wpPassword}
+                    onChange={(e) => setWpPassword(e.target.value)}
+                    placeholder="xxxx xxxx xxxx xxxx"
+                    className="field"
+                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={handleTestWordPress}
+                    disabled={isTestingWp}
+                    className="btn"
+                    style={{ padding: "8px 16px", fontSize: "11px" }}
+                  >
+                    {isTestingWp ? "Testing..." : "🔍 Test Connection"}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingWp || !websiteId}
+                    className="btn btn-accent"
+                    style={{ padding: "8px 16px", fontSize: "11px" }}
+                  >
+                    {isSavingWp ? "Saving..." : "💾 Save Credentials"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-          <form onSubmit={handleSavePreferences} className="panel-body">
-            <div className="field-group">
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>
-                <input
-                  type="checkbox"
-                  checked={humanApproval}
-                  onChange={(e) => setHumanApproval(e.target.checked)}
-                />
-                Require Human Review before WordPress Publish
-              </label>
-              <div className="field-hint" style={{ marginLeft: "24px" }}>
-                Articles enter "Pending Approval" queue instead of publishing directly.
+
+          {/* POSTS STATUS BREAKDOWN */}
+          <div className="panel" style={{ marginTop: "20px" }}>
+            <div className="panel-head">
+              <span className="panel-label">WordPress Posts Status Breakdown</span>
+            </div>
+            <div className="panel-body">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div style={{ padding: "12px", border: "1px solid var(--line)", background: "var(--surface)" }}>
+                  <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Draft Posts</div>
+                  <div style={{ fontSize: "20px", fontWeight: "bold", color: "var(--accent)", marginTop: "4px" }}>
+                    {stats?.pending_articles ?? 0}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>Awaiting human approval</div>
+                </div>
+                <div style={{ padding: "12px", border: "1px solid var(--line)", background: "var(--surface)" }}>
+                  <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Published Live</div>
+                  <div style={{ fontSize: "20px", fontWeight: "bold", color: "var(--green)", marginTop: "4px" }}>
+                    {Math.max(0, (stats?.total_articles ?? 0) - (stats?.pending_articles ?? 0))}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>Live on WordPress</div>
+                </div>
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="field-group">
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>
-                <input
-                  type="checkbox"
-                  checked={autoPublish}
-                  onChange={(e) => setAutoPublish(e.target.checked)}
-                />
-                Auto-Publish approved articles to WordPress
-              </label>
-              <div className="field-hint" style={{ marginLeft: "24px" }}>
-                Automatically call REST API with Yoast SEO metadata on approval.
+        {/* SYSTEM HEALTH DIAGNOSTICS */}
+        <div>
+          <div className="panel">
+            <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="panel-label">Backend Diagnostics</span>
+              <button className="panel-action" onClick={loadSettingsAndDiagnostics}>
+                Re-check
+              </button>
+            </div>
+            <div className="panel-body">
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", border: "1px solid var(--line)" }}>
+                  <span style={{ fontSize: "12px" }}>NVIDIA NIM (Llama-3.1-70B)</span>
+                  <span className={`badge ${health?.checks?.nim === "configured" ? "badge-green" : "badge-red"}`}>
+                    {health?.checks?.nim || "Checking"}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", border: "1px solid var(--line)" }}>
+                  <span style={{ fontSize: "12px" }}>Supabase Database</span>
+                  <span className={`badge ${health?.checks?.supabase === "ok" ? "badge-green" : "badge-red"}`}>
+                    {health?.checks?.supabase || "Checking"}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", border: "1px solid var(--line)" }}>
+                  <span style={{ fontSize: "12px" }}>Overall API Health</span>
+                  <span className={`badge ${health?.status === "ok" ? "badge-green" : "badge-amber"}`}>
+                    {health?.status || "Checking"}
+                  </span>
+                </div>
               </div>
             </div>
-
-            <div className="field-group">
-              <div className="field-label">Maximum Autonomous Daily Posts</div>
-              <select
-                className="field"
-                value={maxDailyPosts}
-                onChange={(e) => setMaxDailyPosts(Number(e.target.value))}
-              >
-                <option value={1}>1 post per day</option>
-                <option value={3}>3 posts per day (Recommended)</option>
-                <option value={5}>5 posts per day</option>
-                <option value={10}>10 posts per day (High volume)</option>
-              </select>
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-accent"
-              style={{ width: "100%", padding: "8px 12px", marginTop: "6px", fontWeight: 600 }}
-              disabled={isSaving}
-            >
-              {isSaving ? "Saving..." : "Save Governance Settings"}
-            </button>
-          </form>
+          </div>
         </div>
-      </div>
-
-      {/* CONNECTED WEBSITES REGISTRY */}
-      <div className="panel">
-        <div className="panel-head">
-          <span className="panel-label">Connected Websites Registry</span>
-          <span className="badge badge-green">1 Domain Active</span>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Domain</th>
-                <th>CMS URL</th>
-                <th>Auth Type</th>
-                <th>SEO Health</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style={{ fontWeight: 600, color: "var(--ink)" }}>accident.innovatcs.com</td>
-                <td>https://accident.innovatcs.com</td>
-                <td>WordPress REST API / App Password</td>
-                <td>
-                  <span className="badge badge-green">92/100</span>
-                </td>
-                <td>
-                  <span className="badge badge-green">Active</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* BOTTOM TICKER */}
-      <div className="bticker">
-        <span className="bticker-inner">
-          <span className="bt-sq"></span>SYSTEM SETTINGS <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>FASTAPI REST API PORT 8000 <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>NEXTJS FRONTEND PORT 3000 <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO MOCK DATA &nbsp;&nbsp;&nbsp;&nbsp;
-          <span className="bt-sq"></span>SYSTEM SETTINGS <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>FASTAPI REST API PORT 8000 <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>NEXTJS FRONTEND PORT 3000 <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO MOCK DATA
-        </span>
       </div>
     </div>
   );

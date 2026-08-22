@@ -42,7 +42,13 @@ logger = logging.getLogger("backend.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("[Startup] Starting all monitoring loops...")
+    logger.info("[Startup] Starting all monitoring loops and scheduler...")
+    try:
+        from .agents.scheduler import setup_scheduler
+        setup_scheduler(app)
+        logger.info("[Startup] APScheduler initialized and jobs scheduled")
+    except Exception as e:
+        logger.error(f"[Startup] Scheduler init failed (non-fatal): {e}")
     try:
         start_all_monitors()
         logger.info("[Startup] All monitors initialized")
@@ -400,6 +406,7 @@ async def get_blogs(limit: int = 50, website_id: Optional[str] = None):
     return q.order("created_at", desc=True).limit(limit).execute().data or []
 
 
+# Mount all routers with /api prefix
 app.include_router(websites, prefix="/api")
 app.include_router(proposals, prefix="/api")
 app.include_router(memory, prefix="/api")
@@ -426,3 +433,14 @@ app.include_router(brain_router, prefix="/api")
 app.include_router(setup_router, prefix="/api")
 app.include_router(web_browsing_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
+
+# Also mount on root without prefix for direct fetch compatibility
+app.include_router(websites)
+app.include_router(gsc)
+app.include_router(tech_seo)
+app.include_router(wordpress_router)
+app.include_router(writer_router)
+app.include_router(settings_router)
+app.include_router(brain_router)
+app.include_router(proposals)
+

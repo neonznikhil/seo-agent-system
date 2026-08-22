@@ -1203,41 +1203,54 @@ class WriterPipeline:
     async def _determine_unique_angle(self, topic: str, serp_results: Dict) -> str:
         return f"data_driven_approach_to_{topic.replace(' ', '_').lower()}"
 
-    async def _build_outline(self) -> Dict:
-        serp_data = self.phase_results.get('serp_competitor_intelligence', {})
-        gaps = serp_data.get('gaps', [])
-        questions = serp_data.get('questions', [])
+    async def _build_outline(self, title: Optional[str] = None, keywords: Optional[list] = None) -> Dict:
+        topic_title = title or self.topic or "Autonomous SEO Strategy"
+        kw_list = keywords or ([self.primary_keyword] if self.primary_keyword else [topic_title])
         
-        brain_memories = getattr(self, 'brain_context', {}) or {}
-        topic_memories = brain_memories.get('topic_memories', [])
-        memory_hints = ""
-        for m in topic_memories[:3]:
-            memory_hints += f"- {m.get('title', '')}: {m.get('content', '')[:200]}\n"
+        prompt = f"""
+        Create a detailed blog post outline for: "{topic_title}"
+        Target keywords: {', '.join(kw_list)}
         
-        prompt = f"""Build an article outline for '{self.topic}' with primary keyword '{self.primary_keyword or self.topic}'.
-SERP gaps: {gaps[:5]}
-People Also Ask: {questions[:5]}
-What worked before (from brain memory):
-{memory_hints if memory_hints else 'None yet.'}
-Requirements:
-- H1 with primary keyword
-- Intro that answers the query in first 100 words
-- 5-7 H2s (60% SERP consensus, 40% gap angles)
-- 1 comparison table section if memory says tables boost CTR
-- 1 FAQ section with 4 Q/A
-- Conclusion with CTA
-Return JSON: {{"h1": "...", "intro": "...", "h2s": [{{"h2": "...", "intent": "..."}}], "table": "...", "faq": 4, "cta": "..."}}"""
+        Return JSON with:
+        - h2_sections: list of main sections
+        - h3_subsections: dict of H3s under each H2
+        - faq_questions: 5 questions readers would ask
+        - meta_description: 160 char SEO meta
+        - featured_snippet_answer: 50 word direct answer
+        """
         try:
             raw = await self._call_llm(prompt)
-            return json.loads(raw)
+            cleaned = raw.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            data = json.loads(cleaned.strip())
+            return data
         except Exception:
             return {
-                'h1': f"{self.primary_keyword or self.topic}: Complete Guide",
-                'intro': 'Hook, answer, business data',
-                'h2s': [{'h2': q, 'intent': 'informational'} for q in questions[:5]],
-                'table': 'Comparison',
-                'faq': 4,
-                'cta': 'Take action today'
+                "h2_sections": [
+                    f"Understanding {kw_list[0]} Fundamentals",
+                    f"Core Benefits and Impact of {topic_title}",
+                    "Step-by-Step Implementation Framework",
+                    "Best Practices and Common Mistakes",
+                    "Frequently Asked Questions"
+                ],
+                "h3_subsections": {
+                    f"Understanding {kw_list[0]} Fundamentals": ["Key Principles", "Industry Standards"],
+                    "Step-by-Step Implementation Framework": ["Initial Setup", "Optimization Techniques"]
+                },
+                "faq_questions": [
+                    f"What is {kw_list[0]}?",
+                    f"Why is {topic_title} important?",
+                    "How quickly can results be achieved?",
+                    "What are the most common pitfalls?",
+                    "How to get started today?"
+                ],
+                "meta_description": f"Comprehensive guide to {topic_title} covering proven strategies, step-by-step implementation, and expert best practices.",
+                "featured_snippet_answer": f"{topic_title} provides a systematic approach to optimizing search visibility and user intent fulfillment through data-driven strategies."
             }
 
     def _generate_h2s(self) -> List[Dict]:
@@ -1412,8 +1425,24 @@ Return JSON: {{"score": 0-100, "issues": ["issue1"], "passed": true/false}}"""
             content = content.replace(phrase, '')
         return content
 
+    def _analyze_readability_stats(self, text: str) -> dict:
+        sentences = [s.strip() for s in text.split('.') if s.strip()]
+        words = text.split()
+        if not words:
+            return {"score": 70, "avg_sentence_length": 15, "long_word_percentage": 10, "recommendation": "Good"}
+        avg_sentence_length = len(words) / max(len(sentences), 1)
+        long_words = [w for w in words if len(w) > 6]
+        score = max(0, min(100, 100 - (avg_sentence_length * 2) - (len(long_words) / len(words) * 50)))
+        return {
+            "score": round(score),
+            "avg_sentence_length": round(avg_sentence_length),
+            "long_word_percentage": round(len(long_words) / len(words) * 100),
+            "recommendation": "Good" if score > 60 else "Simplify sentences"
+        }
+
     async def _analyze_readability(self, content: str) -> int:
-        return 72
+        stats = self._analyze_readability_stats(content)
+        return stats["score"]
 
     async def _vary_sentence_structure(self, content: str) -> str:
         return content

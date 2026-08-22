@@ -7,9 +7,6 @@ from typing import Optional
 import httpx
 from dotenv import dotenv_values
 from supabase import create_client, Client
-import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-
 logger = logging.getLogger("backend.auto_supabase")
 
 PROJECT_ROOT = Path("/home/nikhiladwaan/seo-agent-system/seo-agent-system")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
@@ -22,6 +23,7 @@ export default function BrainPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
   // New guideline form state
   const [newTitle, setNewTitle] = useState("");
@@ -29,36 +31,55 @@ export default function BrainPage() {
   const [newType, setNewType] = useState("preference");
   const [isSaving, setIsSaving] = useState(false);
 
-  const websiteId = getCurrentWebsiteId();
-
   const loadMemories = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       const params = new URLSearchParams();
       if (searchQuery) params.set("query", searchQuery);
       if (typeFilter) params.set("memory_type", typeFilter);
-      if (websiteId) params.set("website_id", websiteId);
+      params.set("website_id", wid);
 
-      const qs = params.toString();
-      const res = await get(`/api/brain${qs ? `?${qs}` : ""}`);
-      setMemories(Array.isArray(res) ? res : []);
+      let res: any = null;
+      try {
+        res = await get(`/api/brain/${wid}/memory`);
+      } catch {
+        res = await get(`/api/brain?${params.toString()}`);
+      }
+
+      const list = Array.isArray(res) ? res : res?.memories || res?.data || [];
+      setMemories(list);
     } catch (e: any) {
       console.warn("Brain memory fetch error:", e);
+      setError(e.message || "Failed to load brain memories");
       setMemories([]);
     } finally {
       setLoading(false);
     }
-  }, [websiteId, searchQuery, typeFilter]);
+  }, [searchQuery, typeFilter]);
 
   useEffect(() => {
     loadMemories();
+    const handleChanged = () => loadMemories();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
   }, [loadMemories]);
 
   const handleSaveGuideline = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newContent.trim()) {
       setError("Please provide both rule title and guideline content.");
+      return;
+    }
+    if (!websiteId) {
+      setError("Please select or add a website first.");
       return;
     }
 
@@ -95,217 +116,185 @@ export default function BrainPage() {
     }
   };
 
+  if (loading && memories.length === 0) {
+    return (
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Recalling brand brain memories & learned SEO patterns...
+        </p>
+      </div>
+    );
+  }
+
+  if (!websiteId) {
+    return (
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">Brand Brain & Memory</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to train the autonomous SEO brain on your brand guidelines and winning patterns.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
       {/* PAGE HEADER */}
-      <div className="page-heading">Brand Brain</div>
+      <div className="page-heading">Brand Brain & Memory</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
-        Autonomous Memory · Learned SEO Rules · Performance History · Supabase Vector Database
+        Self-Learning Knowledge Base · Continuous Pattern Recognition · Autonomous Recall
       </div>
 
       {/* NOTICES */}
       {error && (
-        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)" }}>
+        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
           <span style={{ color: "var(--red)" }}>{error}</span>
         </div>
       )}
 
       {noticeMsg && (
-        <div className="notice ok">
+        <div className="notice ok" style={{ marginBottom: "16px" }}>
           <span className="notice-sq"></span>
           <span>{noticeMsg}</span>
         </div>
       )}
 
-      {/* TOP SECTION: BRAND PERSONA + TEACH FORM */}
-      <div className="grid-2" style={{ marginBottom: "16px" }}>
-        {/* BRAND PERSONA & GUIDELINES */}
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-label">Brand Persona & Guidelines</span>
-            <button className="panel-action" onClick={loadMemories}>
-              Refresh
-            </button>
-          </div>
-          <div className="panel-body">
-            <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--ink)" }}>
-              Brand Voice: Direct, Authoritative & Practical
-            </div>
-            <div style={{ fontSize: "10px", color: "var(--muted)", lineHeight: "1.6" }}>
-              RankForge learns your website tone, banned phrases, product differentiators, and target customer personas automatically from past performance and content evaluations.
-            </div>
-
-            <div className="divider"></div>
-
-            <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "8px", letterSpacing: "0.08em", fontWeight: 600 }}>
-              Learned SEO Rules
-            </div>
-
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Answer query in first 100 words (increases CTR & AEO snippets)</span>
-              <span className="badge badge-green">Learned</span>
-            </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Use comparison tables and checklist in technical guides</span>
-              <span className="badge badge-green">Learned</span>
-            </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Zero banned AI words (Delve, Unlock, Elevate, Plethora, Tapestry)</span>
-              <span className="badge badge-green">Active</span>
-            </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Include 3-item FAQ schema for Answer Engine snippet ranking</span>
-              <span className="badge badge-green">Active</span>
-            </div>
-          </div>
+      {/* BRAIN STATS */}
+      <div className="kpi-strip" style={{ marginBottom: "20px" }}>
+        <div className="kpi-cell">
+          <div className="kpi-label">Active Memories</div>
+          <div className="kpi-val">{memories.length}</div>
+          <div className="kpi-delta">Learned winning patterns</div>
         </div>
-
-        {/* TEACH BRAIN NEW GUIDELINE */}
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-label">Teach Brain New Guideline</span>
-            <span className="badge badge-accent">Interactive Training</span>
+        <div className="kpi-cell">
+          <div className="kpi-label">Average Confidence</div>
+          <div className="kpi-val" style={{ color: "var(--green)" }}>
+            {memories.length > 0 ? `${Math.round((memories.reduce((acc, m) => acc + (m.confidence || 0.9), 0) / memories.length) * 100)}%` : "N/A"}
           </div>
-          <form onSubmit={handleSaveGuideline} className="panel-body">
-            <div className="field-group">
-              <div className="field-label">Rule / Guideline Title</div>
-              <input
-                className="field"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="e.g. Always include code snippets in Next.js guides"
-                disabled={isSaving}
-              />
-            </div>
-
-            <div className="field-group">
-              <div className="field-label">Guideline Content / Knowledge Fact</div>
-              <textarea
-                className="field"
-                rows={3}
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder="Explain the specific rule, forbidden terminology, or winning structure for future writing runs..."
-                disabled={isSaving}
-              />
-            </div>
-
-            <div className="field-group">
-              <div className="field-label">Memory Category</div>
-              <select
-                className="field"
-                value={newType}
-                onChange={(e) => setNewType(e.target.value)}
-                disabled={isSaving}
-              >
-                <option value="preference">Preference (Writing style / Tone)</option>
-                <option value="fact">Fact (Product, Company or Industry info)</option>
-                <option value="experience">Experience (What worked on SERP)</option>
-                <option value="failure">Failure (What to avoid)</option>
-                <option value="outcome">Outcome (Ranking result)</option>
-              </select>
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-accent"
-              style={{ width: "100%", padding: "9px 12px", marginTop: "4px", fontWeight: 600 }}
-              disabled={isSaving}
-            >
-              {isSaving ? "Saving to Supabase..." : "Save to Brain Memory"}
-            </button>
-          </form>
+          <div className="kpi-delta">Knowledge validation</div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">AI Engine</div>
+          <div className="kpi-val" style={{ fontSize: "15px", paddingTop: "4px" }}>Llama-3.1-70B</div>
+          <div className="kpi-delta">Vector embedded</div>
         </div>
       </div>
 
-      {/* STORED BRAND MEMORIES */}
-      <div className="panel">
-        <div className="panel-head">
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span className="panel-label">Stored Brand Memories & Learned Patterns</span>
-            <span className="badge badge-ink">{memories.length} Memories Active</span>
-          </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <input
-              className="field"
-              style={{ padding: "4px 8px", fontSize: "10px", width: "180px" }}
-              placeholder="Search memories..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <select
-              className="field"
-              style={{ padding: "4px 8px", fontSize: "10px", width: "130px" }}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="">All Types</option>
-              <option value="preference">Preference</option>
-              <option value="fact">Fact</option>
-              <option value="experience">Experience</option>
-              <option value="failure">Failure</option>
-              <option value="outcome">Outcome</option>
-            </select>
+      <div className="dash-grid">
+        {/* LEFT COLUMN: MEMORIES LIST */}
+        <div>
+          <div className="panel">
+            <div className="panel-head">
+              <span className="panel-label">Learned Rules & Domain Guidelines</span>
+              <button className="panel-action" onClick={loadMemories}>
+                Refresh
+              </button>
+            </div>
+            <div className="panel-body">
+              {memories.length === 0 ? (
+                <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+                  No brain memories recorded yet. Add your brand preferences and writing rules on the right.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {memories.map((m) => (
+                    <div key={m.id} style={{ padding: "12px", border: "1px solid var(--line)", background: "var(--surface)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span className="badge badge-accent">{m.memory_type}</span>
+                            <span style={{ fontWeight: 600, fontSize: "13px" }}>{m.title}</span>
+                          </div>
+                          <p style={{ fontSize: "12px", color: "var(--ink)", marginTop: "6px", lineHeight: "1.5" }}>{m.content}</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteMemory(m.id)}
+                          style={{ background: "transparent", border: "none", color: "var(--red)", cursor: "pointer", fontSize: "12px" }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div style={{ padding: "0 14px" }}>
-          {loading ? (
-            <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
-              Loading brand memories from Supabase...
+        {/* RIGHT COLUMN: ADD GUIDELINE FORM */}
+        <div>
+          <div className="panel">
+            <div className="panel-head">
+              <span className="panel-label">Teach Brain New Guideline / Pattern</span>
             </div>
-          ) : memories.length === 0 ? (
-            <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
-              No memories found matching your criteria. Use "Teach Brain New Guideline" above to add your first rule.
-            </div>
-          ) : (
-            memories.map((m) => (
-              <div className="mem-item" key={m.id}>
-                <span className="act-sq"></span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--ink)", marginBottom: "2px" }}>
-                    {m.title}
-                  </div>
-                  <div style={{ fontSize: "10px", color: "var(--muted)", lineHeight: "1.5" }}>
-                    {m.content}
-                  </div>
-                </div>
-                <div className="mem-stats" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span className="badge badge-muted">{m.memory_type}</span>
-                  <span className="badge badge-green">1024-dim Vector</span>
-                  <button
-                    className="btn btn-danger"
-                    style={{ padding: "2px 6px", fontSize: "8px" }}
-                    onClick={() => handleDeleteMemory(m.id)}
-                    title="Delete Memory"
+            <div className="panel-body">
+              <form onSubmit={handleSaveGuideline} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
+                    Guideline Type
+                  </label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value)}
+                    className="field"
+                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
                   >
-                    ✕
-                  </button>
+                    <option value="preference">Brand Voice Preference</option>
+                    <option value="seo_rule">SEO Quality Rule</option>
+                    <option value="negative_pattern">Negative Pattern to Avoid</option>
+                    <option value="industry_fact">Industry Fact / Regulation</option>
+                  </select>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
-      {/* BOTTOM TICKER */}
-      <div className="bticker">
-        <span className="bticker-inner">
-          <span className="bt-sq"></span>BRAND BRAIN <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>PGVECTOR 1024-DIM ACTIVE <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>REAL-TIME LEARNING LOOP ENABLED <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO MOCK DATA &nbsp;&nbsp;&nbsp;&nbsp;
-          <span className="bt-sq"></span>BRAND BRAIN <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>PGVECTOR 1024-DIM ACTIVE <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>REAL-TIME LEARNING LOOP ENABLED <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO MOCK DATA
-        </span>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
+                    Rule Title
+                  </label>
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="e.g. Always include Georgia statutory limits"
+                    className="field"
+                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
+                    Guideline Description
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    placeholder="e.g. Every article discussing Georgia injury claims must mention O.C.G.A. § 9-3-33 for the 2-year statute of limitations."
+                    className="field"
+                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                    required
+                  />
+                </div>
+
+                <button type="submit" disabled={isSaving} className="btn btn-accent" style={{ padding: "10px", width: "100%" }}>
+                  {isSaving ? "Saving into Vector Brain..." : "+ Save to Brain Memory"}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

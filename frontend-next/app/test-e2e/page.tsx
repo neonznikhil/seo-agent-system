@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { get, post } from "@/lib/api";
 
 export default function TestE2EPage() {
   const [keyword, setKeyword] = useState("");
@@ -18,15 +18,9 @@ export default function TestE2EPage() {
     setOutput(null);
     addLog("Starting pipeline for: " + keyword);
     try {
-      const websitesRes = await fetch("/api/websites");
-      const websites = await websitesRes.json();
+      const websites = await get("/api/websites");
       const websiteId = (Array.isArray(websites) && websites[0]?.id) || "default-website-id";
-      const res = await fetch(`/api/brain/${websiteId}/run-now`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job_type: "daily_search", keyword }),
-      });
-      const data = await res.json();
+      const data = await post(`/api/brain/${websiteId}/run-now`, { job_type: "daily_search", keyword });
       setOutput(data);
       addLog("Pipeline completed");
     } catch (e: any) {

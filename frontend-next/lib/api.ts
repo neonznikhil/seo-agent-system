@@ -19,11 +19,12 @@ export function buildUrl(path: string): string {
     return path;
   }
   let cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api").replace(/\/+$/, "");
   
-  // Normalize double /api/api
-  cleanPath = cleanPath.replace(/^\/api\/api\//, "/api/");
-  
-  return `${API_BASE}${cleanPath}`;
+  if (base.endsWith("/api") && cleanPath.startsWith("/api/")) {
+    cleanPath = cleanPath.substring(4);
+  }
+  return `${base}${cleanPath}`;
 }
 
 export function createSSE(path: string, onMessage: (event: MessageEvent) => void): EventSource | null {

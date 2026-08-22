@@ -2,60 +2,71 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 export default function LlmsTxtPage() {
-  const [content, setContent] = useState<string | null>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
 
-  const fetchLlmsTxtData = useCallback(async () => {
-    const wid = getCurrentWebsiteId();
-    setWebsiteId(wid);
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
+  const fetchLlmsTxt = useCallback(async (wid: string) => {
     if (!wid) {
       setLoading(false);
       return;
     }
-
     try {
       setLoading(true);
       setError(null);
-      const data = await get(`/api/llms-txt/${wid}`);
-      if (data && data.content) {
-        setContent(data.content);
-      } else {
-        setContent(null);
+      const res = await fetch(`${apiUrl}/llms-txt/${wid}`);
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
       }
+      const json = await res.json();
+      setData(json);
     } catch (err: any) {
-      console.warn("LLMs.txt fetch error:", err);
       setError(err.message || "Failed to load LLMs.txt");
-      setContent(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiUrl]);
 
   useEffect(() => {
-    fetchLlmsTxtData();
-    const handleChanged = () => fetchLlmsTxtData();
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (wid) {
+      fetchLlmsTxt(wid);
+    } else {
+      setLoading(false);
+    }
+
+    const handleChanged = () => {
+      const newWid = getCurrentWebsiteId();
+      setWebsiteId(newWid);
+      if (newWid) fetchLlmsTxt(newWid);
+    };
+
     window.addEventListener("website-changed", handleChanged);
     return () => window.removeEventListener("website-changed", handleChanged);
-  }, [fetchLlmsTxtData]);
+  }, [fetchLlmsTxt]);
 
   const handleGenerate = async () => {
     if (!websiteId) return;
     try {
       setGenerating(true);
       setError(null);
-      const res = await post(`/api/llms-txt/generate?website_id=${websiteId}`, {});
-      if (res && res.content) {
-        setContent(res.content);
-        setNoticeMsg("✓ Generated latest LLMs.txt for AI Search & AEO!");
+      const res = await fetch(`${apiUrl}/llms-txt/${websiteId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        throw new Error(`Generation failed with HTTP ${res.status}`);
       }
+      const json = await res.json();
+      setData(json);
     } catch (err: any) {
       setError(err.message || "Failed to generate LLMs.txt");
     } finally {
@@ -63,28 +74,17 @@ export default function LlmsTxtPage() {
     }
   };
 
-  if (loading && !content) {
-    return (
-      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
-        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
-        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
-          Loading LLMs.txt & AI Search Optimization manifest...
-        </p>
-      </div>
-    );
-  }
-
   if (!websiteId) {
     return (
       <div className="page-container active" style={{ padding: "30px" }}>
-        <div className="page-heading">LLMs.txt Manifest</div>
-        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+        <div className="page-heading">LLMs.txt Generator</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)", marginTop: "16px" }}>
           <span className="notice-sq"></span>
           <div>
-            <strong>No data yet — add a website first.</strong> Connect your website to compile LLMs.txt structured files for Perplexity, ChatGPT, and Gemini Search engines.
-            <div style={{ marginTop: "10px" }}>
-              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
-                + Add Website
+            <strong>No website selected.</strong> Please select or add a website in Settings first to generate machine-readable guidelines for AI search models (ChatGPT, Perplexity, Claude).
+            <div style={{ marginTop: "12px" }}>
+              <Link href="/settings" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "6px 12px" }}>
+                Go to Settings
               </Link>
             </div>
           </div>
@@ -93,54 +93,66 @@ export default function LlmsTxtPage() {
     );
   }
 
+  if (loading && !data) {
+    return (
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Loading LLMs.txt manifest...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
-      <div className="page-heading">LLMs.txt Manifest</div>
+      <div className="page-heading">LLMs.txt Generator</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
-        AEO & GEO Optimization · AI Search Crawler Protocols · Markdown Knowledge Spec
+        AI Crawler Protocols · Machine-Readable Site Architecture · Perplexity & ChatGPT Optimization
+      </div>
+
+      <div style={{ marginBottom: "16px" }}>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="btn btn-accent"
+          style={{ padding: "8px 18px", fontSize: "12px", cursor: "pointer" }}
+        >
+          {generating ? "Generating with AI..." : "⚡ Generate LLMs.txt"}
+        </button>
       </div>
 
       {error && (
         <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
-          <span style={{ color: "var(--red)" }}>{error}</span>
-        </div>
-      )}
-
-      {noticeMsg && (
-        <div className="notice ok" style={{ marginBottom: "16px" }}>
-          <span className="notice-sq"></span>
-          <span>{noticeMsg}</span>
+          <span style={{ color: "var(--red)" }}>Error: {error} — Make sure backend is running on port 8000</span>
         </div>
       )}
 
       <div className="panel">
-        <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span className="panel-label">Live /llms.txt File</span>
-          <button onClick={handleGenerate} disabled={generating} className="btn btn-accent" style={{ padding: "6px 14px", fontSize: "11px" }}>
-            {generating ? "Compiling..." : "⚡ Generate /llms.txt"}
-          </button>
+        <div className="panel-head">
+          <span className="panel-label">Manifest Content (/llms.txt)</span>
         </div>
         <div className="panel-body">
-          {content ? (
+          {data?.content ? (
             <pre
               style={{
                 background: "var(--surface)",
+                color: "var(--ink)",
                 padding: "16px",
                 border: "1px solid var(--line)",
                 fontSize: "12px",
-                lineHeight: "1.5",
-                maxHeight: "500px",
-                overflowY: "auto",
+                lineHeight: "1.6",
+                overflowX: "auto",
                 whiteSpace: "pre-wrap",
               }}
             >
-              {content}
+              {data.content}
             </pre>
           ) : (
             <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-              No LLMs.txt manifest generated yet for this site. Click "Generate /llms.txt" above to compile it.
+              No llms.txt generated yet. Click the button above to generate.
             </div>
           )}
         </div>
