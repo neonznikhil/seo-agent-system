@@ -12,6 +12,8 @@ interface BlogArticle {
   content?: string;
   status: string;
   created_at?: string;
+  wp_post_id?: number | string;
+  wp_draft_url?: string;
 }
 
 export default function ContentPage() {
@@ -21,47 +23,59 @@ export default function ContentPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const websiteId = getCurrentWebsiteId();
+  const [websiteId, setWebsiteId] = useState<string>("");
 
   const loadArticles = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch from /api/blogs or fallback to /writer
+      let data: any = null;
       try {
-        const res = await get(`/api/blogs?website_id=${websiteId}`);
-        if (Array.isArray(res)) {
-          setArticles(res);
-          return;
+        data = await get(`/api/writer/${wid}/content`);
+      } catch {
+        try {
+          data = await get(`/api/content?website_id=${wid}`);
+        } catch {
+          data = await get(`/api/blogs?website_id=${wid}`);
         }
-      } catch {}
+      }
 
-      const data = await get(`/api/content?website_id=${websiteId}`);
-      setArticles(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : data?.data || [];
+      setArticles(list);
+      if (list.length > 0 && !selectedArticle) {
+        setSelectedArticle(list[0]);
+      }
     } catch (e: any) {
       console.warn("Articles load error:", e);
+      setError(e.message || "Failed to load content log");
       setArticles([]);
     } finally {
       setLoading(false);
     }
-  }, [websiteId]);
+  }, [selectedArticle]);
 
   useEffect(() => {
     loadArticles();
+    const handleChanged = () => loadArticles();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
   }, [loadArticles]);
 
   const handlePublish = async (article: BlogArticle) => {
+    if (!websiteId) return;
     try {
       setIsPublishing(true);
       setError(null);
 
-      const res = await post("/api/wordpress/publish", {
-        title: article.title,
-        content: article.content || article.title,
-        status: "publish",
-      });
+      await post(`/api/writer/${websiteId}/content/${article.id}/publish`, {});
 
       setNoticeMsg(`✓ Successfully published "${article.title}" to WordPress!`);
       setArticles((prev) =>
@@ -77,181 +91,147 @@ export default function ContentPage() {
     }
   };
 
+  if (loading && articles.length === 0) {
+    return (
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Loading content studio and articles log...
+        </p>
+      </div>
+    );
+  }
+
+  if (!websiteId) {
+    return (
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">Content Studio</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to view autonomous articles, review drafts, and publish to WordPress.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
-      {/* PAGE HEADER */}
       <div className="page-heading">Content Studio</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
         Autonomous Articles · Review Queue · Direct WordPress Dispatch · Supabase Content Log
       </div>
 
-      {/* NOTICES */}
       {error && (
-        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)" }}>
+        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
           <span style={{ color: "var(--red)" }}>{error}</span>
         </div>
       )}
 
       {noticeMsg && (
-        <div className="notice ok">
+        <div className="notice ok" style={{ marginBottom: "16px" }}>
           <span className="notice-sq"></span>
           <span>{noticeMsg}</span>
         </div>
       )}
 
-      {/* TOP ACTION BAR */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <span className="badge badge-ink">{articles.length} Articles Total</span>
-          <span className="badge badge-green">
-            {articles.filter((a) => a.status === "published").length} Published
-          </span>
-          <span className="badge badge-accent">
-            {articles.filter((a) => a.status !== "published").length} Pending
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button className="btn" onClick={loadArticles}>
-            Refresh
-          </button>
-          <Link href="/generate" className="btn btn-accent" style={{ textDecoration: "none", fontWeight: 600 }}>
-            + Generate New Article
-          </Link>
-        </div>
-      </div>
-
-      {/* ARTICLES TABLE */}
-      <div className="panel" style={{ marginBottom: "16px" }}>
-        <div className="panel-head">
-          <span className="panel-label">Articles in Supabase Content Log</span>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Title / Topic</th>
-                <th>Target Keyword</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "var(--muted)" }}>
-                    Loading articles from Supabase...
-                  </td>
-                </tr>
-              ) : articles.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "32px", color: "var(--muted)" }}>
-                    No articles found in content log. Click "+ Generate New Article" above to create your first post!
-                  </td>
-                </tr>
+      <div className="dash-grid">
+        {/* LEFT COLUMN: ARTICLES LIST */}
+        <div>
+          <div className="panel">
+            <div className="panel-head">
+              <span className="panel-label">Articles Log ({articles.length})</span>
+              <button className="panel-action" onClick={loadArticles}>
+                Refresh
+              </button>
+            </div>
+            <div className="panel-body" style={{ maxHeight: "600px", overflowY: "auto" }}>
+              {articles.length === 0 ? (
+                <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+                  No content records found for this website.
+                  <div style={{ marginTop: "10px" }}>
+                    <Link href="/writer" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px" }}>
+                      ⚡ Write First Article
+                    </Link>
+                  </div>
+                </div>
               ) : (
-                articles.map((item) => (
-                  <tr key={item.id}>
-                    <td style={{ fontWeight: 600, color: "var(--ink)", maxWidth: "340px" }}>
-                      {item.title}
-                    </td>
-                    <td style={{ color: "var(--muted)" }}>{item.keyword || "—"}</td>
-                    <td>
-                      <span className={`badge ${item.status === "published" ? "badge-green" : "badge-accent"}`}>
-                        {item.status || "draft"}
+                articles.map((a) => (
+                  <div
+                    key={a.id}
+                    onClick={() => setSelectedArticle(a)}
+                    style={{
+                      padding: "12px 14px",
+                      borderBottom: "1px solid var(--line)",
+                      cursor: "pointer",
+                      background: selectedArticle?.id === a.id ? "rgba(255, 77, 18, 0.08)" : "transparent",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: "13px" }}>{a.title}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
+                      <span className={`badge ${a.status === "published" ? "badge-green" : "badge-accent"}`}>
+                        {a.status}
                       </span>
-                    </td>
-                    <td style={{ color: "var(--muted)" }}>
-                      {item.created_at ? new Date(item.created_at).toLocaleDateString() : "Recent"}
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        <button
-                          className="btn"
-                          style={{ padding: "3px 8px", fontSize: "9px" }}
-                          onClick={() => setSelectedArticle(item)}
-                        >
-                          Preview
-                        </button>
-                        {item.status !== "published" && (
-                          <button
-                            className="btn btn-accent"
-                            style={{ padding: "3px 8px", fontSize: "9px" }}
-                            onClick={() => handlePublish(item)}
-                            disabled={isPublishing}
-                          >
-                            Publish
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                      <span style={{ fontSize: "10px", color: "var(--muted)" }}>
+                        {a.created_at ? new Date(a.created_at).toLocaleDateString() : "Recent"}
+                      </span>
+                    </div>
+                  </div>
                 ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ARTICLE PREVIEW MODAL */}
-      {selectedArticle && (
-        <div className="modal-backdrop active">
-          <div className="modal-card" style={{ maxWidth: "750px" }}>
-            <div className="modal-head">
-              <span className="modal-title">📄 {selectedArticle.title}</span>
-              <button className="modal-close" onClick={() => setSelectedArticle(null)}>
-                ✕
-              </button>
-            </div>
-            <div className="modal-body">
-              <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
-                <span className="badge badge-ink">Keyword: {selectedArticle.keyword || "General"}</span>
-                <span className={`badge ${selectedArticle.status === "published" ? "badge-green" : "badge-accent"}`}>
-                  {selectedArticle.status}
-                </span>
-              </div>
-              <textarea
-                className="field"
-                rows={16}
-                value={selectedArticle.content || selectedArticle.title}
-                readOnly
-                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", lineHeight: "1.7" }}
-              />
-            </div>
-            <div className="modal-foot">
-              <button className="btn" onClick={() => setSelectedArticle(null)}>
-                Close
-              </button>
-              {selectedArticle.status !== "published" && (
-                <button
-                  className="btn btn-accent"
-                  onClick={() => handlePublish(selectedArticle)}
-                  disabled={isPublishing}
-                  style={{ fontWeight: 600 }}
-                >
-                  {isPublishing ? "Publishing to WordPress..." : "🔷 Publish to WordPress"}
-                </button>
               )}
             </div>
           </div>
         </div>
-      )}
 
-      {/* BOTTOM TICKER */}
-      <div className="bticker">
-        <span className="bticker-inner">
-          <span className="bt-sq"></span>CONTENT STUDIO <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>SUPABASE CONTENT LOG <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>WORDPRESS DISPATCH ACTIVE <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO MOCK DATA &nbsp;&nbsp;&nbsp;&nbsp;
-          <span className="bt-sq"></span>CONTENT STUDIO <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>SUPABASE CONTENT LOG <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>WORDPRESS DISPATCH ACTIVE <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO MOCK DATA
-        </span>
+        {/* RIGHT COLUMN: PREVIEW */}
+        <div>
+          {selectedArticle ? (
+            <div className="panel">
+              <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="panel-label">Article Review</span>
+                {selectedArticle.status !== "published" && (
+                  <button
+                    onClick={() => handlePublish(selectedArticle)}
+                    disabled={isPublishing}
+                    className="btn btn-accent"
+                    style={{ padding: "6px 14px", fontSize: "11px" }}
+                  >
+                    {isPublishing ? "Publishing..." : "🚀 Publish to WordPress"}
+                  </button>
+                )}
+              </div>
+              <div className="panel-body">
+                <h1 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "12px" }}>{selectedArticle.title}</h1>
+                <div
+                  style={{
+                    maxHeight: "500px",
+                    overflowY: "auto",
+                    padding: "16px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                    fontSize: "13px",
+                    lineHeight: "1.6",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {selectedArticle.content || "No article content available."}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="panel" style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+              Select an article to review its content and publish status.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

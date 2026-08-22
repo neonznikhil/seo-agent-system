@@ -1,171 +1,149 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { get } from "@/lib/api";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 export default function LlmsTxtPage() {
-  const [llmsData, setLlmsData] = useState<{ daysLeft: number; blogsReady: number; content: string } | null>(null);
+  const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [generating, setGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  useEffect(() => {
-    async function fetchLlmsTxtData() {
-      try {
-        setLoading(true);
-        const websiteId = getCurrentWebsiteId();
-        const data = await get(`/llms-txt/${websiteId}`);
-        if (data) {
-          // Calculate days left until next update
-          const nextDue = new Date(data.next_due);
-          const now = new Date();
-          const daysLeft = Math.max(0, Math.ceil((nextDue.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-          
-          // Calculate blogs ready from approved content in content_log
-          const blogsReady = data.blogs_ready ?? 0;
-          
-          setLlmsData({
-            daysLeft,
-            blogsReady,
-            content: data.content || `# LLMs.txt - RankForge SEO Agent System\n\n## Instructions for AI Crawlers\n\nThis is the LLMs.txt file for the RankForge autonomous SEO agent system.\n\n## Agents\n- writer_agent: Creates blog content\n- knowledge_agent: Gathers insights\n- backlink_agent: Builds links\n\n## Output Format\nAll blog content follows this structure:\n1. H1: Primary keyword\n2. H2: Related topics\n3. H3: Subtopics\n4. Conclusion with CTA\n\n## Resources\n- API: /api/blog/generate\n- Docs: /docs/seo-guidelines\n- Templates: /templates/blog`
-          });
-        } else {
-          setLlmsData(null);
-        }
-        setError(null);
-      } catch (err) {
-        setError("Backend not running - run uvicorn main:app --reload in backend");
-        setLlmsData(null);
-      } finally {
-        setLoading(false);
-      }
+  const fetchLlmsTxtData = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
     }
 
-    fetchLlmsTxtData();
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await get(`/api/llms-txt/${wid}`);
+      if (data && data.content) {
+        setContent(data.content);
+      } else {
+        setContent(null);
+      }
+    } catch (err: any) {
+      console.warn("LLMs.txt fetch error:", err);
+      setError(err.message || "Failed to load LLMs.txt");
+      setContent(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading) {
+  useEffect(() => {
+    fetchLlmsTxtData();
+    const handleChanged = () => fetchLlmsTxtData();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, [fetchLlmsTxtData]);
+
+  const handleGenerate = async () => {
+    if (!websiteId) return;
+    try {
+      setGenerating(true);
+      setError(null);
+      const res = await post(`/api/llms-txt/generate?website_id=${websiteId}`, {});
+      if (res && res.content) {
+        setContent(res.content);
+        setNoticeMsg("✓ Generated latest LLMs.txt for AI Search & AEO!");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to generate LLMs.txt");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  if (loading && !content) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold dot-font">LLMS.TXT</h1>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">NEXT BATCH IN</div>
-          <div className="flex items-center justify-center py-8">
-            <div className="w-4 h-4 border-2 border-ink border-t-transparent rounded-full animate-spin" />
-          </div>
-        </div>
-
-        <div className="bg-paper border border-ink p-4">
-          <div className="flex items-center justify-center h-96">
-            <div className="w-4 h-4 border-2 border-ink border-t-transparent rounded-full animate-spin" />
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className="flex items-center gap-2 px-4 py-2 bg-ink text-paper text-[11px] uppercase tracking-widest mono-font"
-            disabled
-          >
-            <span className="w-2 h-2 bg-accent" />
-            Approve
-          </button>
-          <button
-            className="px-4 py-2 border border-ink text-[11px] uppercase tracking-widest mono-font pill"
-            disabled
-          >
-            Preview
-          </button>
-        </div>
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Loading LLMs.txt & AI Search Optimization manifest...
+        </p>
       </div>
     );
   }
 
-  if (error) {
+  if (!websiteId) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold dot-font">LLMS.TXT</h1>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">NEXT BATCH IN</div>
-          <div className="text-[11px] text-ink mono-font text-center">
-            {error}
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">LLMs.txt Manifest</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to compile LLMs.txt structured files for Perplexity, ChatGPT, and Gemini Search engines.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
+            </div>
           </div>
-        </div>
-
-        <div className="bg-paper border border-ink p-4">
-          <div className="flex items-center justify-center h-96">
-            <div className="text-[11px] text-ink mono-font">Backend offline</div>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className="flex items-center gap-2 px-4 py-2 bg-ink text-paper text-[11px] uppercase tracking-widest mono-font"
-            disabled
-          >
-            <span className="w-2 h-2 bg-accent" />
-            Approve
-          </button>
-          <button
-            className="px-4 py-2 border border-ink text-[11px] uppercase tracking-widest mono-font pill"
-            disabled
-          >
-            Preview
-          </button>
         </div>
       </div>
     );
   }
-
-  if (!llmsData) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold dot-font">LLMS.TXT</h1>
-        </div>
-        <div className="bg-stone border border-ink p-4 text-center">
-          <div className="text-[11px] text-ink mono-font">No data available</div>
-        </div>
-      </div>
-    );
-  }
-
-  const { daysLeft, blogsReady, content } = llmsData;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-3xl font-bold dot-font">LLMS.TXT</h1>
+    <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      <div className="page-heading">LLMs.txt Manifest</div>
+      <div className="page-sub">
+        <span className="sub-sq"></span>
+        AEO & GEO Optimization · AI Search Crawler Protocols · Markdown Knowledge Spec
       </div>
 
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">NEXT BATCH IN</div>
-        <div className="text-2xl mono-font">
-          <span className="text-3xl font-bold dot-font">{daysLeft}</span>
-          <span className="text-muted mx-1">/</span>
-          <span className="text-muted">{blogsReady} blogs</span>
+      {error && (
+        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
+          <span className="notice-sq" style={{ background: "var(--red)" }}></span>
+          <span style={{ color: "var(--red)" }}>{error}</span>
         </div>
-      </div>
+      )}
 
-      <div className="bg-paper border border-ink p-4">
-        <pre className="text-[11px] mono-font whitespace-pre-wrap">
-          <code>{content}</code>
-        </pre>
-      </div>
+      {noticeMsg && (
+        <div className="notice ok" style={{ marginBottom: "16px" }}>
+          <span className="notice-sq"></span>
+          <span>{noticeMsg}</span>
+        </div>
+      )}
 
-      <div className="flex gap-2">
-        <button className="flex items-center gap-2 px-4 py-2 bg-ink text-paper text-[11px] uppercase tracking-widest mono-font">
-          <span className="w-2 h-2 bg-accent" />
-          Approve
-        </button>
-        <button className="px-4 py-2 border border-ink text-[11px] uppercase tracking-widest mono-font pill">
-          Preview
-        </button>
+      <div className="panel">
+        <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="panel-label">Live /llms.txt File</span>
+          <button onClick={handleGenerate} disabled={generating} className="btn btn-accent" style={{ padding: "6px 14px", fontSize: "11px" }}>
+            {generating ? "Compiling..." : "⚡ Generate /llms.txt"}
+          </button>
+        </div>
+        <div className="panel-body">
+          {content ? (
+            <pre
+              style={{
+                background: "var(--surface)",
+                padding: "16px",
+                border: "1px solid var(--line)",
+                fontSize: "12px",
+                lineHeight: "1.5",
+                maxHeight: "500px",
+                overflowY: "auto",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {content}
+            </pre>
+          ) : (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+              No LLMs.txt manifest generated yet for this site. Click "Generate /llms.txt" above to compile it.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

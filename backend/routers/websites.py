@@ -60,3 +60,9 @@ async def update_website(website_id: str, website: WebsiteUpdate):
         return {"detail": "no changes"}
     res = get_supabase().table("websites").update(updates).eq("id", website_id).execute()
     return res.data[0] if res.data else {"detail": "updated"}
+
+
+@router.delete("/websites/{website_id}")
+async def delete_website(website_id: str):
+    res = get_supabase().table("websites").delete().eq("id", website_id).execute()
+    return {"detail": "deleted", "rows_affected": len(res.data or [])}

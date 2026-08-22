@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { get } from "@/lib/api";
-import { StatusPieChart } from "@/components/StatusPieChart";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface Issue {
@@ -14,179 +14,154 @@ export default function TechSeoPage() {
   const [healthScore, setHealthScore] = useState<number | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [auditing, setAuditing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  useEffect(() => {
-    async function fetchTechSEOData() {
-      try {
-        setLoading(true);
-        const websiteId = getCurrentWebsiteId();
-        const techData = await get(`/tech-seo/${websiteId}`);
-        setHealthScore(techData.health_score);
-        setIssues(techData.issues || []);
-        setError(null);
-      } catch (err) {
-        setError("Backend not running - run uvicorn main:app --reload in backend");
-        setHealthScore(null);
-        setIssues([]);
-      } finally {
-        setLoading(false);
-      }
+  const fetchTechSEOData = useCallback(async () => {
+    const wid = getCurrentWebsiteId();
+    setWebsiteId(wid);
+    if (!wid) {
+      setLoading(false);
+      return;
     }
 
-    fetchTechSEOData();
+    try {
+      setLoading(true);
+      setError(null);
+      const techData = await get(`/api/tech-seo/${wid}`);
+      if (techData) {
+        setHealthScore(techData.health_score ?? (techData.score ? Math.round(techData.score) : null));
+        setIssues(techData.issues || techData.critical_issues || []);
+      }
+    } catch (err: any) {
+      console.warn("Tech SEO fetch error:", err);
+      setError(err.message || "Failed to load Technical SEO audit");
+      setHealthScore(null);
+      setIssues([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold dot-font">TECHNICAL SEO</h1>
-        </div>
+  useEffect(() => {
+    fetchTechSEOData();
+    const handleChanged = () => fetchTechSEOData();
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, [fetchTechSEOData]);
 
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Health Score</div>
-          <div className="flex items-center justify-center py-8">
-            <div className="w-4 h-4 border-2 border-ink border-t-transparent rounded-full animate-spin" />
-          </div>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Issues</div>
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <li key={i} className="flex items-center justify-center h-12 border border-[D1CCC4] border-dashed">
-                <span className="text-[10px] text-muted mono-font">Loading issue...</span>
-              </li>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">RECOMMENDATIONS</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="border border-line p-3">
-              <div className="text-[10px] text-muted mono-font mb-1">FIX</div>
-              <div className="mono-font text-sm">Loading...</div>
-            </div>
-            <div className="border border-line p-3">
-              <div className="text-[10px] text-muted mono-font mb-1">WATCH</div>
-              <div className="mono-font text-sm">Loading...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold dot-font">TECHNICAL SEO</h1>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Health Score</div>
-          <div className="text-[11px] text-ink mono-font text-center py-8">
-            {error}
-          </div>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Issues</div>
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <li key={i} className="flex items-center justify-center h-12 border border-[D1CCC4] border-dashed">
-                <span className="text-[10px] text-muted mono-font">Backend offline</span>
-              </li>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-stone border border-ink p-4">
-          <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">RECOMMENDATIONS</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="border border-line p-3">
-              <div className="text-[10px] text-muted mono-font mb-1">FIX</div>
-              <div className="mono-font text-sm">Error loading data</div>
-            </div>
-            <div className="border border-line p-3">
-              <div className="text-[10px] text-muted mono-font mb-1">WATCH</div>
-              <div className="mono-font text-sm">Error loading data</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (healthScore === null) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold dot-font">TECHNICAL SEO</h1>
-        </div>
-        <div className="bg-stone border border-ink p-4 text-center">
-          <div className="text-[11px] text-ink mono-font">No data available</div>
-        </div>
-      </div>
-    );
-  }
-
-  const getSeverityColor = (severity: Issue["severity"]): string => {
-    switch (severity) {
-      case "high": return "#FF4D12";
-      case "medium": return "#D1CCC4";
-      case "low": return "#6B6B6B";
-      default: return "#6B6B6B";
+  const runAuditNow = async () => {
+    if (!websiteId) return;
+    try {
+      setAuditing(true);
+      setError(null);
+      const res = await post(`/api/tech-seo/${websiteId}/run-audit`, {});
+      if (res) {
+        setHealthScore(res.health_score ?? (res.score ? Math.round(res.score) : null));
+        setIssues(res.issues || []);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to run audit");
+    } finally {
+      setAuditing(false);
     }
   };
 
+  if (loading && healthScore === null) {
+    return (
+      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
+        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
+        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
+          Scanning Core Web Vitals, Crawlability, and Schema...
+        </p>
+      </div>
+    );
+  }
+
+  if (!websiteId) {
+    return (
+      <div className="page-container active" style={{ padding: "30px" }}>
+        <div className="page-heading">Technical SEO Audit</div>
+        <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)" }}>
+          <span className="notice-sq"></span>
+          <div>
+            <strong>No data yet — add a website first.</strong> Connect your website to run autonomous technical audits and crawl health checks.
+            <div style={{ marginTop: "10px" }}>
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                + Add Website
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-3xl font-bold dot-font">TECHNICAL SEO</h1>
+    <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      <div className="page-heading">Technical SEO & Architecture</div>
+      <div className="page-sub">
+        <span className="sub-sq"></span>
+        Core Web Vitals · Crawl & Index Diagnostics · Schema Validation
+        {error && (
+          <span className="badge badge-amber" style={{ marginLeft: "12px" }}>
+            {error}
+          </span>
+        )}
       </div>
 
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Health Score</div>
-        <div className="flex items-center gap-6">
-          <div className="text-5xl font-bold dot-font">
-            {healthScore}
-            <span className="text-[10px] text-muted mono-font">/100</span>
+      <div className="kpi-strip" style={{ marginBottom: "20px" }}>
+        <div className="kpi-cell">
+          <div className="kpi-label">Health Score</div>
+          <div className="kpi-val" style={{ color: (healthScore ?? 0) >= 80 ? "var(--green)" : "var(--accent)" }}>
+            {healthScore !== null ? `${healthScore}/100` : "Pending"}
           </div>
-          <StatusPieChart data={[
-            { label: "Pass", value: healthScore, color: "#FF4D12" },
-            { label: "Fail", value: 100 - healthScore, color: "#111" },
-          ]} />
+          <div className="kpi-delta">{healthScore !== null ? "Live technical score" : "Audit not run"}</div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">Detected Issues</div>
+          <div className="kpi-val" style={{ color: issues.length > 0 ? "var(--red)" : "var(--green)" }}>
+            {issues.length}
+          </div>
+          <div className="kpi-delta">{issues.length > 0 ? "Action items" : "All checks passing"}</div>
         </div>
       </div>
 
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-4">Issues</div>
-        <ul className="space-y-2">
-          {issues.map((issue, i) => (
-            <li key={i} className="flex items-center gap-3 border-b border-line pb-2 last:border-b-0">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getSeverityColor(issue.severity) }} />
-              <span className="text-sm mono-font">{issue.message}</span>
-              <span className="text-[10px] text-muted mono-font uppercase">{issue.severity}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="bg-stone border border-ink p-4">
-        <div className="text-xs text-muted uppercase tracking-wider mono-font mb-3">RECOMMENDATIONS</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="border border-line p-3">
-            <div className="text-[10px] text-muted mono-font mb-1">FIX</div>
-            <div className="mono-font text-sm">{issues.filter((i) => i.severity === "high").length > 0 ? "Fix " + issues.filter((i) => i.severity === "high").length + " high-severity issues" : "No critical fixes needed"}</div>
-          </div>
-          <div className="border border-line p-3">
-            <div className="text-[10px] text-muted mono-font mb-1">WATCH</div>
-            <div className="mono-font text-sm">{issues.filter((i) => i.severity === "medium").length > 0 ? "Monitor " + issues.filter((i) => i.severity === "medium").length + " medium issues" : "No items to watch"}</div>
-          </div>
+      <div className="panel" style={{ marginBottom: "20px" }}>
+        <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="panel-label">Live Technical Audit Diagnostic</span>
+          <button onClick={runAuditNow} disabled={auditing} className="btn btn-accent" style={{ padding: "6px 14px", fontSize: "11px" }}>
+            {auditing ? "Scanning Site..." : "⚡ Run Live Technical Audit"}
+          </button>
+        </div>
+        <div className="panel-body">
+          {issues.length === 0 ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--green)", fontSize: "12px" }}>
+              ✓ Zero technical issues detected. Robots.txt, sitemap, meta tags, and Core Web Vitals are fully optimized.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {issues.map((issue, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "12px 16px",
+                    border: "1px solid var(--line)",
+                    borderLeft: `4px solid ${issue.severity === "high" ? "var(--red)" : issue.severity === "medium" ? "#f97316" : "var(--accent)"}`,
+                    background: "var(--surface)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span className={`badge ${issue.severity === "high" ? "badge-red" : "badge-accent"}`}>
+                      {issue.severity.toUpperCase()}
+                    </span>
+                    <span style={{ fontWeight: 600, fontSize: "13px" }}>{issue.message}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

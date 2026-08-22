@@ -18,10 +18,13 @@ export default function TestE2EPage() {
     setOutput(null);
     addLog("Starting pipeline for: " + keyword);
     try {
-      const res = await fetch("/api/brain/run", {
+      const websitesRes = await fetch("/api/websites");
+      const websites = await websitesRes.json();
+      const websiteId = (Array.isArray(websites) && websites[0]?.id) || "default-website-id";
+      const res = await fetch(`/api/brain/${websiteId}/run-now`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword }),
+        body: JSON.stringify({ job_type: "daily_search", keyword }),
       });
       const data = await res.json();
       setOutput(data);
