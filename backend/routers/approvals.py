@@ -2,6 +2,9 @@
 
 Everything else in the system stays fully autonomous. ONLY WordPress
 write operations go through this approval layer.
+
+Storage: Supabase (persistent) when the table exists, otherwise in-memory
+buffer (auto-created by /setup or at startup when service key is provided).
 """
 
 import logging
@@ -12,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..database import get_supabase
+from ..services import approval_store
 
 logger = logging.getLogger("backend.routers.approvals")
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])

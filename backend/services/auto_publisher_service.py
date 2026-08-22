@@ -43,8 +43,8 @@ async def _stage_for_approval(
     blog_id: str = None,
     gate_issues: list = None,
 ) -> Dict[str, Any]:
-    """Insert into blog_approvals as pending. Shared by publisher + refresher."""
-    from ..database import get_supabase
+    """Insert into blog_approvals as pending (Supabase or memory fallback)."""
+    from .approval_store import insert as approval_insert
 
     row = {
         "website_id": website_id,
@@ -66,8 +66,7 @@ async def _stage_for_approval(
     if wordpress_post_id is not None:
         row["wordpress_post_id"] = wordpress_post_id
 
-    res = get_supabase().table("blog_approvals").insert(row).execute()
-    saved = res.data[0] if res.data else {}
+    saved = approval_insert(row)
     logger.info(
         f"[ApprovalQueue] Blog ready for approval: {title} "
         f"(type={approval_type}, score={seo_score}) - waiting for human"
