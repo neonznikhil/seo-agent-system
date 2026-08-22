@@ -199,8 +199,8 @@ async def approve_blog(blog_id: str, user_id: str = Depends(_get_current_user)):
     blog = res.data
     if not blog:
         raise HTTPException(status_code=404, detail="Blog not found")
-    if blog.get("status") != "pending_approval":
-        raise HTTPException(status_code=400, detail=f"Blog status is {blog.get('status')}, not pending_approval")
+    if blog.get("status") not in ("pending_approval", "in_progress", "draft"):
+        raise HTTPException(status_code=400, detail=f"Blog status is {blog.get('status')}, cannot approve")
     
     website_id = blog["website_id"]
     wp_user = blog.get("cms_user") or ""
@@ -220,7 +220,6 @@ async def approve_blog(blog_id: str, user_id: str = Depends(_get_current_user)):
         _log_task(website_id, "writer", "approve_blog", "success", {"blog_id": blog_id}, wp_resp, "wordpress")
         return {"status": "published", "wp_response": wp_resp}
     except CriticalActionBlockedError as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         _log_task(website_id, "writer", "approve_blog", "failed", {"blog_id": blog_id}, {"error": str(e)}, "wordpress")

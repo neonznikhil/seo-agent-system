@@ -89,8 +89,19 @@ async def log_monitoring(
     from ..database import get_supabase
     
     try:
+        import uuid
+        valid_website_id = None
+        try:
+            uuid.UUID(str(website_id))
+            valid_website_id = str(website_id)
+        except Exception:
+            valid_website_id = None
+
+        if not valid_website_id:
+            return
+
         get_supabase().table("monitoring_logs").insert({
-            "website_id": website_id,
+            "website_id": valid_website_id,
             "monitor_type": monitor_type,
             "status": status,
             "checked_urls": checked_urls,

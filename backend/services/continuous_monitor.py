@@ -279,7 +279,7 @@ async def competitor_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id="multiple", monitor_type="competitor_monitor", status="completed", checked_urls=iteration*len(competitors), issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id="multiple", monitor_type="competitor_monitor", status="completed", checked_urls=iteration * 5, issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Competitor monitor loop crashed: {e}")

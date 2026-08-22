@@ -14,13 +14,11 @@ class GEOMonitor:
     def __init__(self, website_id: str):
         self.website_id = website_id
 
-    async def run(self):
-        """Run geo monitoring check. Returns status dict."""
-        logger.info("[GEOMonitor] Running geo check for %s (stub)", self.website_id)
-        return {
-            "status": "ok",
-            "website_id": self.website_id,
-            "issues": [],
-            "local_rankings": [],
-            "geo_signals": {},
-        }
+    async def get_local_keywords(self, limit: int = 10):
+        return []
+
+    async def get_geo_rank(self, keyword: str, city: str = None):
+        return None
+
+    async def get_gmb_signal(self, keyword: str):
+        return None

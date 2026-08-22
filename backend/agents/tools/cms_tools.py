@@ -132,7 +132,12 @@ def publish_blog_after_approval(content_log_id: str, wp_user: str, wp_app_passwo
             )
     
     if not WORDPRESS_URL:
-        raise ValueError("WORDPRESS_URL not configured")
+        return {
+            "status": "approved",
+            "wordpress_status": "skipped_no_wordpress_url",
+            "message": "Content approved and stored in Supabase. WordPress publish skipped because WORDPRESS_URL is not configured.",
+            "content_log_id": content_log_id,
+        }
     
     post = {
         "title": record["title"],
