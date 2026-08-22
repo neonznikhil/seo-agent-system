@@ -54,7 +54,7 @@ class CrawleeTool(BaseTool):
         
         try:
             import asyncio
-            from .crawlee_service import CrawleeService
+            from ...services.crawlee_service import CrawleeService
             
             service = CrawleeService()
             loop = asyncio.get_event_loop()

@@ -1,19 +1,16 @@
 import logging
 import os
-from typing import Optional
 
 from crewai import Agent, Task, Crew, Process
-from crewai.tools import BaseTool
+from langchain_openai import ChatOpenAI
 
-from .personas import AUDITOR_PERSONA, EDITOR_PERSONA, WRITER_PERSONA, TECH_SEO_PERSONA, BACKLINK_PERSONA, MANAGER_PERSONA, SEO_BACKLINK_PERSONA
-from .tools.shared_utils import is_homepage
+from .personas import AUDITOR_PERSONA, EDITOR_PERSONA, WRITER_PERSONA, TECH_SEO_PERSONA, MANAGER_PERSONA, SEO_BACKLINK_PERSONA
 from .tools.think_and_log_tool import ThinkAndLogTool
 from .tools.vector_memory_tool import VectorMemoryTool
 from .tools.knowledge_extractor_tool import KnowledgeExtractorTool
 from .tools.tone_analyzer_tool import ToneAnalyzerTool
 from .tools.llms_txt_tool import LlmsTxtTool
 from .tools.crawlee_tool import CrawleeTool
-from .tools.gsc_tools import fetch_active_keywords
 from .tools.quality_gate_tool import QualityGateTool
 from .tools.seo_aeo_geo_tool import SEOAEOGEOTool
 from .tools.serp_analyzer_tool import SERPAnalyzerTool
@@ -23,15 +20,42 @@ logger = logging.getLogger("backend.agents.crew")
 
 
 class NIM_LLM:
+    """LangChain-compatible NVIDIA NIM wrapper for CrewAI agents."""
+
     def __init__(self, model: str = "meta/llama-3.1-70b-instruct"):
+        from ..database import NIM_API_KEY
+
         self.model = model
+        self.llm = ChatOpenAI(
+            model=model,
+            api_key=NIM_API_KEY or "not-set",
+            base_url="https://integrate.api.nvidia.com/v1",
+            temperature=0.2,
+        )
 
     def call(self, prompt: str, system: str = "") -> str:
-        from ..database import call_nim_llm
-        return call_nim_llm(prompt, system)
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        messages = []
+        if system:
+            messages.append(SystemMessage(content=system))
+        messages.append(HumanMessage(content=prompt))
+        result = self.llm.invoke(messages)
+        return result.content if hasattr(result, "content") else str(result)
 
     def __call__(self, prompt: str, **kwargs) -> str:
         return self.call(prompt)
+
+
+def _build_nim_chat(model: str = "meta/llama-3.1-70b-instruct") -> ChatOpenAI:
+    from ..database import NIM_API_KEY
+
+    return ChatOpenAI(
+        model=model,
+        api_key=NIM_API_KEY or "not-set",
+        base_url="https://integrate.api.nvidia.com/v1",
+        temperature=0.2,
+    )
 
 
 def _set_website_id(tools: list, website_id: str, agent_name: str = "unknown"):
@@ -53,7 +77,7 @@ seo_aeo_geo_tool = SEOAEOGEOTool()
 serp_analyzer_tool = SERPAnalyzerTool()
 content_optimizer_tool = ContentOptimizerTool()
 
-nim_llm = NIM_LLM()
+nim_llm = _build_nim_chat()
 
 
 auditor_agent = Agent(

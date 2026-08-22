@@ -3,7 +3,7 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from google.oauth2 import credentials
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 logger = logging.getLogger("backend.services.gsc_service")
@@ -25,7 +25,7 @@ class GSCService:
         if not self.credentials_path:
             raise ValueError("GSC credentials not configured - set GSC_CREDENTIALS_PATH")
         
-        creds = credentials.Credentials.from_service_account_file(
+        creds = service_account.Credentials.from_service_account_file(
             self.credentials_path,
             scopes=['https://www.googleapis.com/auth/webmasters']
         )

@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from ..database import get_supabase
+from ...database import get_supabase
 
 
 class CompetitorMonitor:
@@ -113,7 +113,7 @@ class CompetitorMonitor:
     async def _scrape_page(self, url: str) -> str:
         """Scrape page content using Crawlee service."""
         try:
-            from .crawlee_service import CrawleeService
+            from ..crawlee_service import CrawleeService
             crawler = CrawleeService()
             result = await crawler.crawl_site_structure([url], max_requests=1)
             

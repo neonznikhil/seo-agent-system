@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS
-from .database import get_supabase, NIM_API_KEY
+from .database import get_supabase
 from .routers import websites, proposals, memory, llms_txt, gsc, tech_seo, backlinks, calendar, roi, seo_aeo_geo
 from .routers.monitoring import router as monitoring_router
 from .routers.writer import router as writer_router

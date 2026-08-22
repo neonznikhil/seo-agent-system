@@ -106,7 +106,6 @@ async def log_monitoring(
 async def generate_strategy_from_alert(alert: Dict[str, Any], website_id: str) -> Dict[str, Any]:
     """Auto-generate strategy and content based on alert."""
     from ..database import get_supabase
-    from ..agents.tools.keyword_tools import KeywordTools
     
     try:
         if alert["alert_type"] in ("rank_drop", "rank_opportunity", "keyword_opportunity"):
@@ -114,10 +113,7 @@ async def generate_strategy_from_alert(alert: Dict[str, Any], website_id: str) -
             if not kw:
                 return {"status": "no_keyword"}
             
-            keyword_tools = KeywordTools()
-            keyword_tools.set_website_id(website_id)
-            
-            from ..agent import NIM_LLM
+            from ..agents.crew import NIM_LLM
             llm = NIM_LLM()
             
             prompt = f"""You are SEO strategist. Generate topic clusters for keyword "{kw}" based on knowledge_base and gsc_keywords. Return JSON with pillar_topic, pillar_keyword, clusters (list of title/keyword/word_count)."""
