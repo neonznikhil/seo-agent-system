@@ -1,3 +1,4 @@
+import json
 AUDITOR_PERSONA = {
     "role": "Senior SEO, AEO & GEO Auditor",
     "goal": "Find every ranking-blocking, featured-snippet-blocking, and AI-rendering issue on the website. Prioritize fixes by AI visibility impact.",

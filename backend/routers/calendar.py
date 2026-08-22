@@ -1,91 +1,102 @@
-import logging
+import json
 from datetime import datetime, timedelta
-from typing import List, Optional
-
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
-
+from fastapi import APIRouter, HTTPException
 from ..database import get_supabase
 
-logger = logging.getLogger("backend.routers.calendar")
 router = APIRouter()
 
-
-class BlogItem(BaseModel):
-    id: str
-    title: str
-    status: str
-    agent_name: Optional[str] = None
-
-
-class DayData(BaseModel):
-    date: str  # YYYY-MM-DD format
-    blogs: List[BlogItem]
-
-
-class CalendarResponse(BaseModel):
-    days: List[DayData]
-
-
+@router.get("/{website_id}")
 @router.get("/calendar/{website_id}")
-async def get_content_calendar(
-    website_id: str,
-    days: int = Query(7, ge=1, le=30)
-):
-    """
-    Get content calendar for the last N days showing blogs scheduled/published each day.
-    Returns array of days with blog items for each day.
-    """
+async def get_calendar(website_id: str):
     try:
-        # Calculate date range
-        end_date = datetime.utcnow().date()
-        start_date = end_date - timedelta(days=days-1)
+        supabase = get_supabase()
         
-        # Get blogs from content_log within date range
-        blogs_res = (
-            get_supabase()
-            .table("content_log")
-            .select("id, title, status, agent_name, created_at")
-            .eq("website_id", website_id)
-            .gte("created_at", start_date.isoformat())
-            .lt("created_at", (end_date + timedelta(days=1)).isoformat())
-            .order("created_at", desc=True)
-            .execute()
-        )
-        blogs = blogs_res.data or []
+        # Get content calendar entries
+        try:
+            calendar_result = supabase.table("content_calendar")\
+                .select("*")\
+                .eq("website_id", website_id)\
+                .order("scheduled_date")\
+                .execute()
+            calendar_items = calendar_result.data or []
+        except Exception:
+            calendar_items = []
         
-        # Group blogs by date
-        days_map = {}
-        current_date = start_date
-        while current_date <= end_date:
-            date_str = current_date.isoformat()
-            days_map[date_str] = []
-            current_date += timedelta(days=1)
+        # Get pending content from content_log
+        try:
+            pending_result = supabase.table("content_log")\
+                .select("id, title, status, keywords, created_at")\
+                .eq("website_id", website_id)\
+                .order("created_at", desc=True)\
+                .limit(20)\
+                .execute()
+            pending_content = pending_result.data or []
+        except Exception:
+            pending_content = []
         
-        for blog in blogs:
-            # Extract date part from created_at
-            blog_date_str = blog["created_at"][:10]  # YYYY-MM-DD
-            if blog_date_str in days_map:
-                days_map[blog_date_str].append(BlogItem(
-                    id=blog["id"],
-                    title=blog["title"],
-                    status=blog["status"],
-                    agent_name=blog.get("agent_name")
-                ))
+        # Build calendar view
+        today = datetime.now()
+        calendar_view = []
+        days_view = []
         
-        # Convert to list format sorted by date
-        days_list = []
-        current_date = start_date
-        while current_date <= end_date:
-            date_str = current_date.isoformat()
-            days_list.append(DayData(
-                date=date_str,
-                blogs=days_map.get(date_str, [])
-            ))
-            current_date += timedelta(days=1)
+        for i in range(30):
+            date = today + timedelta(days=i)
+            date_str = date.strftime('%Y-%m-%d')
+            
+            day_items = [
+                item for item in calendar_items
+                if item.get('scheduled_date') == date_str
+            ]
+            day_blogs = [
+                item for item in pending_content
+                if (item.get('created_at') or '')[:10] == date_str
+            ]
+            
+            day_obj = {
+                "date": date_str,
+                "day": date.strftime('%A'),
+                "items": day_items,
+                "blogs": day_blogs or day_items
+            }
+            calendar_view.append(day_obj)
+            days_view.append(day_obj)
         
-        return CalendarResponse(days=days_list)
-        
+        return {
+            "calendar": calendar_view,
+            "days": days_view,
+            "pending_content": pending_content,
+            "total_scheduled": len(calendar_items),
+            "total_pending": len(pending_content)
+        }
     except Exception as e:
-        logger.error(f"Error getting calendar for website {website_id}: {e}")
+        return {
+            "calendar": [],
+            "days": [],
+            "pending_content": [],
+            "total_scheduled": 0,
+            "total_pending": 0,
+            "error": str(e)
+        }
+
+@router.post("/{website_id}/schedule")
+@router.post("/calendar/{website_id}/schedule")
+async def schedule_content(website_id: str, data: dict):
+    try:
+        supabase = get_supabase()
+        
+        entry = {
+            "website_id": website_id,
+            "title": data.get("title", ""),
+            "keywords": data.get("keywords", []),
+            "scheduled_date": data.get("scheduled_date"),
+            "status": "planned",
+            "priority": data.get("priority", 5),
+            "created_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table("content_calendar")\
+            .insert(entry).execute()
+        
+        return {"success": True, "item": result.data[0] if result.data else entry}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

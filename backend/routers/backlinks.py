@@ -12,6 +12,44 @@ logger = logging.getLogger("backend.routers.backlinks")
 router = APIRouter()
 
 
+def parse_links_from_html(html: str) -> list:
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
+    links = [a.get('href') for a in soup.find_all('a', href=True)]
+    return [l for l in links if l and l.startswith('http')]
+
+
+async def crawl_for_prospects(url: str) -> list:
+    try:
+        from playwright.async_api import async_playwright
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url, timeout=15000)
+            content = await page.content()
+            await browser.close()
+            return parse_links_from_html(content)
+    except ImportError:
+        # Fallback to httpx
+        import httpx
+        from bs4 import BeautifulSoup
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(url, headers={
+                    'User-Agent': 'Mozilla/5.0 RankForge/1.0'
+                })
+            soup = BeautifulSoup(r.text, 'html.parser')
+            links = [a.get('href') for a in soup.find_all('a', href=True)]
+            return [l for l in links if l and l.startswith('http')]
+        except Exception as e:
+            print(f"Crawl fallback failed: {e}")
+            return []
+    except Exception as e:
+        print(f"Crawl error: {e}")
+        return []
+
+
+
 @router.get("/backlinks/{website_id}")
 async def get_backlinks_dashboard(website_id: str):
     supabase = get_supabase()

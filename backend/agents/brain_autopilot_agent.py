@@ -1,10 +1,11 @@
-import asyncio
 import json
+import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Optional, Dict, Any, List
 
-logger = logging.getLogger("backend.agents.brain_autopilot")
+logger = logging.getLogger(__name__)
+
 
 
 async def _run_job(website_id: str, job_type: str, job_func) -> Dict[str, Any]:

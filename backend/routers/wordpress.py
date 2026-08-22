@@ -42,6 +42,138 @@ class CreateDraftIn(BaseModel):
     keywords: Optional[list] = None
 
 
+@router.post("/{website_id}/connect")
+@router.post("/wordpress/{website_id}/connect")
+async def connect_wordpress(website_id: str, data: dict):
+    import base64
+    import httpx
+    from ..database import get_supabase
+    
+    wp_url = data.get('wordpress_url', '').rstrip('/')
+    wp_user = data.get('wordpress_user', '')
+    wp_password = data.get('wordpress_password', '')
+    
+    if not all([wp_url, wp_user, wp_password]):
+        raise HTTPException(status_code=400, detail="All WordPress fields required")
+    
+    # Test connection
+    try:
+        credentials = base64.b64encode(
+            f"{wp_user}:{wp_password}".encode()
+        ).decode()
+        
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{wp_url}/wp-json/wp/v2/users/me",
+                headers={"Authorization": f"Basic {credentials}"}
+            )
+        
+        if response.status_code != 200:
+            return {
+                "success": False,
+                "message": f"WordPress rejected credentials (status {response.status_code}). Check username and app password."
+            }
+        
+        user_info = response.json()
+        
+        # Save to database
+        supabase = get_supabase()
+        supabase.table("websites").update({
+            "wordpress_url": wp_url,
+            "wordpress_user": wp_user,
+            "wordpress_password": wp_password
+        }).eq("id", website_id).execute()
+        
+        return {
+            "success": True,
+            "message": f"Connected as {user_info.get('name', wp_user)}",
+            "wp_user_name": user_info.get('name'),
+            "wp_url": wp_url
+        }
+        
+    except httpx.ConnectError:
+        return {
+            "success": False,
+            "message": f"Cannot reach {wp_url} — check if site is online"
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/{website_id}/create-draft")
+@router.post("/wordpress/{website_id}/create-draft")
+async def create_wp_draft(website_id: str, data: dict, request: Request):
+    import base64
+    import httpx
+    from ..database import get_supabase
+    
+    user_id = request.headers.get("X-User-Id")
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Human approval required")
+    
+    supabase = get_supabase()
+    website = supabase.table("websites")\
+        .select("*").eq("id", website_id).single().execute()
+    
+    if not website.data:
+        raise HTTPException(status_code=404, detail="Website not found")
+    
+    wp_url = website.data.get('wordpress_url') or website.data.get('cms_url')
+    wp_user = website.data.get('wordpress_user') or website.data.get('cms_user')
+    wp_pass = website.data.get('wordpress_password') or website.data.get('app_password')
+    
+    if not all([wp_url, wp_user, wp_pass]):
+        raise HTTPException(
+            status_code=400,
+            detail="WordPress not connected. Go to Settings → WordPress."
+        )
+    
+    credentials = base64.b64encode(f"{wp_user}:{wp_pass}".encode()).decode()
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{wp_url}/wp-json/wp/v2/posts",
+                headers={
+                    "Authorization": f"Basic {credentials}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "title": data.get("title", ""),
+                    "content": data.get("content", ""),
+                    "status": "draft",
+                    "meta": {"rankforge": True}
+                }
+            )
+        
+        if response.status_code in [200, 201]:
+            wp_post = response.json()
+            
+            # Update content_log with WP post ID
+            if data.get("content_id"):
+                supabase.table("content_log").update({
+                    "wp_post_id": wp_post.get("id"),
+                    "wp_draft_url": wp_post.get("link"),
+                    "status": "approved"
+                }).eq("id", data["content_id"]).execute()
+            
+            return {
+                "success": True,
+                "wp_post_id": wp_post.get("id"),
+                "draft_url": wp_post.get("link"),
+                "edit_url": f"{wp_url}/wp-admin/post.php?post={wp_post.get('id')}&action=edit"
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"WordPress error: {response.status_code}"
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.post("/{website_id}/test")
 @router.post("/wordpress/{website_id}/test")
 async def test_wordpress_connection(website_id: str, body: WordPressCredentialsIn):

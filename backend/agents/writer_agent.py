@@ -67,6 +67,20 @@ class WriterPipeline:
         self.step_log = []
         self.brain_context = None
 
+    async def check_duplicate_title(self, website_id: str, title: str) -> bool:
+        if not self.supabase:
+            from ..database import get_supabase
+            self.supabase = get_supabase()
+        try:
+            existing = self.supabase.table("content_log")\
+                .select("id")\
+                .eq("website_id", website_id)\
+                .ilike("title", f"%{title[:30]}%")\
+                .execute()
+            return len(existing.data or []) > 0
+        except Exception:
+            return False
+
     async def generate(self, topic: str, primary_keyword: str = None) -> Dict[str, Any]:
         """Main entry point - starts the 12-phase pipeline with brain recall/learn."""
         self.topic = topic
@@ -75,6 +89,11 @@ class WriterPipeline:
         if not self.supabase:
             from ..database import get_supabase
             self.supabase = get_supabase()
+
+        is_duplicate = await self.check_duplicate_title(self.website_id, topic)
+        if is_duplicate:
+            print(f"[Writer] Duplicate detected: {topic} — skipping")
+            return {"status": "skipped", "reason": "duplicate_title"}
 
         self.content_id = str(uuid.uuid4())
         self._log_pipeline_start()

@@ -1,3 +1,4 @@
+import json
 """
 Pipeline configuration for 10-phase, 100+ step content generation.
 EVERY article runs FULL pipeline - no shortcuts.

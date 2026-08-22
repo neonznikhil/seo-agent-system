@@ -1,3 +1,4 @@
+import json
 """
 Knowledge Service - Handles Grounded vs Deep Web modes.
 Verified knowledge sources take precedence in combined mode.

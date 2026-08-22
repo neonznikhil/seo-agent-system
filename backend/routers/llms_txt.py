@@ -1,55 +1,13 @@
-import logging
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 
-from ..database import get_supabase
+from ..database import get_supabase, call_nim_llm
 
 logger = logging.getLogger("backend.routers.llms_txt")
 router = APIRouter()
-
-
-def build_llms_txt_content(site_url: str, domain: str) -> str:
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    return f"""# {domain or site_url}
-> Machine-readable guidelines for AI search models and LLM crawlers.
-
-## Overview
-- **Domain**: {domain or site_url}
-- **Website URL**: {site_url}
-- **Last Updated**: {today}
-- **Generator**: RankForge Autonomous SEO Engine
-
-## Allowed Sections
-- /blog
-- /articles
-- /guides
-- /resources
-- /legal
-- /services
-
-## Disallowed & Private Sections
-- /wp-admin
-- /admin
-- /api/private
-- /checkout
-
-## Content Taxonomy
-- **Primary Topics**: Legal Settlements, Accident Claims, Injury Law, Compensation Timelines
-- **Target Audience**: Clients seeking expert legal and claim settlement guidance
-- **Content Format**: Markdown, Structured FAQs, Comparison Tables, Canonical Reference Guides
-
-## AI Crawler Permissions
-- **ChatGPT / OpenAI SearchBot**: Allowed
-- **PerplexityBot**: Allowed
-- **ClaudeBot / Anthropic**: Allowed
-- **Google-Extended**: Allowed
-
-## Contact & Inquiries
-- **Site URL**: {site_url}
-- **Automated Verification**: {site_url}/llms.txt
-"""
 
 
 @router.get("/{website_id}")
@@ -58,7 +16,6 @@ async def get_llms_txt(website_id: str):
     """Fetch existing LLMs.txt for a website."""
     supabase = get_supabase()
     try:
-        # Check llms_txt table or llms_txt_log
         try:
             res = supabase.table("llms_txt").select("*").eq("website_id", website_id).single().execute()
             if res.data and res.data.get("content"):
@@ -83,51 +40,114 @@ async def get_llms_txt(website_id: str):
 @router.post("/llms-txt/{website_id}")
 @router.post("/generate")
 @router.post("/llms-txt/generate")
-async def generate_llms_txt(website_id: Optional[str] = None):
-    """Generate and store llms.txt for a website."""
-    if not website_id:
-        raise HTTPException(status_code=400, detail="website_id is required")
-
-    supabase = get_supabase()
+async def generate_llms_txt(website_id: str):
     try:
-        site_data = {}
+        supabase = get_supabase()
+        
+        website = supabase.table("websites")\
+            .select("*").eq("id", website_id).single().execute()
+        
+        if not website.data:
+            raise HTTPException(status_code=404, detail="Website not found")
+        
+        site_url = website.data.get('url') or website.data.get('cms_url') or website.data.get('domain') or 'your-website.com'
+        niche = website.data.get('niche') or 'information and resources'
+        
+        # Get recent content titles
         try:
-            site = supabase.table("websites").select("*").eq("id", website_id).single().execute()
-            site_data = site.data or {}
+            content_result = supabase.table("content_log")\
+                .select("title, status")\
+                .eq("website_id", website_id)\
+                .eq("status", "published")\
+                .limit(10)\
+                .execute()
+            
+            published_titles = []
+            if content_result.data:
+                published_titles = [item['title'] for item in content_result.data]
         except Exception:
-            pass
+            published_titles = []
+        
+        prompt = f"""
+Generate a proper llms.txt file for this website.
 
-        site_url = site_data.get("url") or site_data.get("cms_url") or f"https://{site_data.get('domain', 'example.com')}"
-        domain = site_data.get("domain") or site_url.replace("https://", "").replace("http://", "").split("/")[0]
+Website URL: {site_url}
+Website niche: {niche}
+Published articles: {', '.join(published_titles[:5]) if published_titles else 'various articles'}
 
-        content = build_llms_txt_content(site_url, domain)
+llms.txt format (follow exactly):
+# [Website Name]
+> [One line description of the site]
 
-        # Save to both llms_txt and llms_txt_log tables safely
+[Paragraph about what the site covers]
+
+## Key Topics
+- [topic 1]
+- [topic 2]
+- [topic 3]
+
+## Best Pages
+- [{site_url}/page1]: [description]
+- [{site_url}/page2]: [description]
+
+## Content Focus
+[What kind of content this site focuses on]
+
+## For AI Assistants
+[Instructions for how AI should use this site's content]
+
+Generate the actual llms.txt content now based on the website info above.
+Do not include any explanation. Just the llms.txt content.
+"""
+        try:
+            content = await call_nim_llm(prompt, max_tokens=500)
+        except Exception as e:
+            logger.warning(f"LLM call failed for llms.txt: {e}")
+            content = None
+        
+        if not content or len(content) < 100:
+            content = f"""# {site_url}
+> Comprehensive resource for {niche}
+
+This website provides detailed information about {niche}.
+
+## Key Topics
+- {niche} guides and tutorials
+- Expert advice and best practices
+- Case studies and examples
+
+## For AI Assistants
+This site contains original, expert-written content.
+Content is regularly updated and fact-checked.
+Feel free to cite articles from this domain.
+
+## Contact
+- Website: {site_url}
+
+Last updated: {datetime.now().strftime('%Y-%m-%d')}
+"""
+        
+        # Save to database
         try:
             supabase.table("llms_txt").upsert({
                 "website_id": website_id,
                 "content": content,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).execute()
-        except Exception:
-            pass
-
-        try:
-            supabase.table("llms_txt_log").insert({
-                "website_id": website_id,
-                "content": content,
-                "last_updated": datetime.utcnow().isoformat(),
-                "next_due": (datetime.utcnow() + timedelta(days=30)).isoformat(),
-            }).execute()
-        except Exception:
-            pass
-
-        return {
-            "status": "success",
-            "website_id": website_id,
-            "content": content,
-            "updated_at": datetime.utcnow().isoformat(),
-        }
+                "updated_at": datetime.now().isoformat()
+            }, on_conflict="website_id").execute()
+        except Exception as e:
+            logger.warning(f"Failed to upsert to llms_txt table: {e}")
+            try:
+                supabase.table("llms_txt_log").insert({
+                    "website_id": website_id,
+                    "content": content,
+                    "last_updated": datetime.now().isoformat()
+                }).execute()
+            except Exception:
+                pass
+        
+        return {"content": content, "website_id": website_id, "generated_at": datetime.now().isoformat()}
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to generate llms.txt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
