@@ -115,24 +115,62 @@ export default function WriterPage() {
           // Auto-suggest title based on top keyword
           const topKeyword = (keywords[0]?.keyword || keywords[0] || "").toString();
           if (topKeyword) {
-            setSuggestedTitles([
-              `Complete Guide to ${topKeyword} in 2026`,
-              `How to ${topKeyword}: Step by Step`,
-              `${topKeyword}: Everything You Need to Know`,
-            ]);
-            setTitle(`Complete Guide to ${topKeyword} in 2026`);
+            // Clean keyword from any domain artifacts
+            let cleanKw = topKeyword
+              .replace(/https?:\/\/\S+/gi, "")
+              .replace(/\b(www|\.com|\.net|\.org|\.io|\.co|innovatcs)\b/gi, "")
+              .replace(/[^\w\s-]/g, "")
+              .trim();
+
+            if (!cleanKw) cleanKw = "Car Accident Compensation Claims";
+
+            // Capitalize appropriately
+            const formatTitleCase = (s: string) => {
+              const minor = new Set(["a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", "by", "in", "of", "with"]);
+              return s.split(/\s+/).map((w, idx) => {
+                const l = w.toLowerCase();
+                return (idx === 0 || !minor.has(l)) ? (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()) : l;
+              }).join(" ");
+            };
+
+            const cleanTitleCased = formatTitleCase(cleanKw);
+            const lower = cleanKw.toLowerCase();
+
+            let generated: string[] = [];
+            if (lower.startsWith("how to")) {
+              const action = formatTitleCase(cleanKw.substring(6).trim());
+              generated = [
+                `How to ${action}: Complete Step-by-Step Guide (2026)`,
+                `The Ultimate Guide: How to ${action}`,
+                `${action}: Everything You Need to Know`,
+                `7 Essential Steps: How to ${action}`,
+              ];
+            } else {
+              generated = [
+                `Complete Guide to ${cleanTitleCased} in 2026`,
+                `How to Handle ${cleanTitleCased}: Step-by-Step Guide`,
+                `${cleanTitleCased}: Everything You Need to Know`,
+                `7 Critical Facts About ${cleanTitleCased}`,
+                `Understanding ${cleanTitleCased}: Process, Timeline & Legal Rights`,
+              ];
+            }
+
+            setSuggestedTitles(generated);
+            setTitle(generated[0]);
           }
         } else {
           setSuggestedTitles([
-            "Enter your blog title above",
-            "Or let AI suggest one based on your site",
+            "Complete Guide to Personal Injury Claims in 2026",
+            "How to Maximize Your Accident Settlement: Step-by-Step",
+            "Car Accident Compensation: Everything You Need to Know",
           ]);
         }
       })
       .catch(() => {
         setSuggestedTitles([
-          "Enter your blog title above",
-          "Or let AI suggest one based on your site",
+          "Complete Guide to Personal Injury Claims in 2026",
+          "How to Maximize Your Accident Settlement: Step-by-Step",
+          "Car Accident Compensation: Everything You Need to Know",
         ]);
       })
       .finally(() => setLoadingKeywords(false));

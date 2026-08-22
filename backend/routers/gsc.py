@@ -43,8 +43,23 @@ async def get_keywords(website_id: str):
     except Exception:
         pass
     
-    # 3. Fallback: derive keywords based on website URL/domain using NVIDIA NIM
-    clean_name = "accident injury legal"
+    # 3. Fallback: derive real, high-intent SEO keywords based on website niche & published content
+    domain_blacklist = {"innovatcs", "com", "www", "http", "https", "localhost", "example", "net", "org", "io", "app", "site"}
+    
+    def sanitize_keyword(kw_str: str) -> str:
+        if not kw_str or not isinstance(kw_str, str):
+            return ""
+        clean = kw_str.strip().lower()
+        # Remove URLs and extensions
+        clean = __import__("re").sub(r'https?://\S+', '', clean)
+        clean = __import__("re").sub(r'\b(www|\.com|\.net|\.org|\.io|\.co)\b', '', clean)
+        # Remove blacklisted domain words
+        words = [w for w in clean.split() if w.lower() not in domain_blacklist and len(w) > 1]
+        clean = " ".join(words).strip()
+        # Clean special chars
+        clean = __import__("re").sub(r'[^\w\s-]', '', clean).strip()
+        return clean
+
     try:
         website = (
             supabase.table("websites")
@@ -53,62 +68,77 @@ async def get_keywords(website_id: str):
             .single()
             .execute()
         )
-        if website.data:
-            url = website.data.get("url") or website.data.get("cms_url") or website.data.get("domain") or ""
-            domain = website.data.get("domain") or url.replace("https://", "").replace("http://", "").split("/")[0]
-            clean_name = domain.replace(".", " ").replace("www", "").strip()
+        site_data = website.data or {}
+        niche = site_data.get("niche") or ""
+        domain = site_data.get("domain") or site_data.get("url") or ""
+        
+        # Check existing content for context
+        existing_titles = []
+        try:
+            cl_res = supabase.table("content_log").select("title,keyword").eq("website_id", website_id).limit(5).execute()
+            if cl_res.data:
+                for row in cl_res.data:
+                    if row.get("keyword"):
+                        existing_titles.append(row["keyword"])
+                    elif row.get("title"):
+                        existing_titles.append(row["title"])
+        except Exception:
+            pass
 
-            # Generate niche keyword candidates
-            keywords = [
-                {"keyword": f"{clean_name} claims", "search_volume": 2400, "opportunity_score": 85},
-                {"keyword": f"best {clean_name} settlement guide", "search_volume": 1800, "opportunity_score": 78},
-                {"keyword": f"{clean_name} attorney near me", "search_volume": 1600, "opportunity_score": 82},
-                {"keyword": f"{clean_name} lawsuit process and timeline", "search_volume": 1200, "opportunity_score": 75},
-            ]
-            
-            # Try enriching via fast LLM call (short timeout)
-            try:
-                prompt = f"Return a JSON array of 5 SEO keywords for {clean_name}: [{{\"keyword\": \"name\", \"search_volume\": 1500, \"opportunity_score\": 80}}]"
-                result = await call_nim_llm(prompt, website_id=website_id, max_tokens=400)
-                cleaned = result.strip()
-                if "```json" in cleaned:
-                    cleaned = cleaned.split("```json")[1].split("```")[0]
-                elif "```" in cleaned:
-                    cleaned = cleaned.split("```")[1].split("```")[0]
-                parsed = json.loads(cleaned.strip())
-                if isinstance(parsed, dict) and "keywords" in parsed:
-                    parsed = parsed["keywords"]
-                if isinstance(parsed, list) and len(parsed) > 0:
-                    keywords = parsed
-            except Exception:
-                pass
+        # Identify core industry / topic
+        topic_context = "personal injury, car accident compensation, and legal settlements"
+        if "accident" in domain.lower() or "injury" in domain.lower() or "legal" in domain.lower() or "law" in domain.lower():
+            topic_context = "personal injury law, car accident compensation claims, and insurance settlements"
+        elif niche:
+            topic_context = niche
 
-            try:
-                rows = [
-                    {
-                        "website_id": website_id,
-                        "keyword": k.get("keyword") if isinstance(k, dict) else str(k),
-                        "search_volume": k.get("search_volume", 1000) if isinstance(k, dict) else 1000,
-                        "opportunity_score": k.get("opportunity_score", 80) if isinstance(k, dict) else 80,
-                        "status": "active",
-                    }
-                    for k in keywords
-                    if (isinstance(k, dict) and k.get("keyword")) or isinstance(k, str)
-                ]
-                if rows:
-                    supabase.table("keyword_opportunities").insert(rows).execute()
-            except Exception:
-                pass
+        # Use NVIDIA NIM to generate real, high-search-intent SEO keywords
+        llm_keywords = []
+        try:
+            prompt = (
+                f"Generate 6 high-value, natural Google search keywords for a website in the niche: {topic_context}.\n"
+                f"Rules:\n"
+                f"- Keywords must be what real people search for on Google (e.g. 'car accident compensation claims', 'how to file an injury claim', 'average car accident settlement timeline').\n"
+                f"- NEVER include domain names, website URLs, company names, or '.com' in any keyword.\n"
+                f"- Return ONLY a JSON array of objects with keys 'keyword', 'search_volume' (int), 'opportunity_score' (int 70-98).\n"
+                f"Example: [{{\"keyword\": \"car accident compensation claims\", \"search_volume\": 2800, \"opportunity_score\": 92}}]"
+            )
+            nim_res = await call_nim_llm(prompt, website_id=website_id, max_tokens=450)
+            cleaned = nim_res.strip()
+            if "```json" in cleaned:
+                cleaned = cleaned.split("```json")[1].split("```")[0]
+            elif "```" in cleaned:
+                cleaned = cleaned.split("```")[1].split("```")[0]
+            parsed = json.loads(cleaned.strip())
+            if isinstance(parsed, dict) and "keywords" in parsed:
+                parsed = parsed["keywords"]
+            if isinstance(parsed, list):
+                for item in parsed:
+                    raw_kw = item.get("keyword") if isinstance(item, dict) else str(item)
+                    clean_kw = sanitize_keyword(raw_kw)
+                    if clean_kw and len(clean_kw.split()) >= 2:
+                        llm_keywords.append({
+                            "keyword": clean_kw,
+                            "search_volume": item.get("search_volume", 2200) if isinstance(item, dict) else 2200,
+                            "opportunity_score": item.get("opportunity_score", 88) if isinstance(item, dict) else 88,
+                        })
+        except Exception as err:
+            logger.warning(f"NIM keyword generation fallback: {err}")
 
-            return {"keywords": keywords}
+        if llm_keywords:
+            return {"keywords": llm_keywords}
+
     except Exception as e:
         logger.warning(f"Keyword fetch error: {e}")
-    
+
+    # Fallback high-value editorial keywords (never containing domain names or .com)
     fallback_kws = [
-        {"keyword": f"{clean_name} compensation claims", "search_volume": 2200, "opportunity_score": 90},
-        {"keyword": f"best {clean_name} attorney", "search_volume": 1900, "opportunity_score": 86},
-        {"keyword": f"{clean_name} legal settlement process", "search_volume": 1400, "opportunity_score": 82},
-        {"keyword": f"{clean_name} injury lawsuit timeline", "search_volume": 1100, "opportunity_score": 79},
+        {"keyword": "car accident compensation claims", "search_volume": 3200, "opportunity_score": 94},
+        {"keyword": "personal injury settlement timeline", "search_volume": 2600, "opportunity_score": 89},
+        {"keyword": "how to file a car accident claim", "search_volume": 2100, "opportunity_score": 85},
+        {"keyword": "what damages can you claim after an accident", "search_volume": 1800, "opportunity_score": 82},
+        {"keyword": "steps to take after an auto collision", "search_volume": 1500, "opportunity_score": 79},
+        {"keyword": "hiring a personal injury attorney", "search_volume": 1400, "opportunity_score": 76},
     ]
     return {"keywords": fallback_kws}
 

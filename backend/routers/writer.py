@@ -259,7 +259,6 @@ async def approve_draft_endpoint(
     update_payload = {
         "status": "draft",
         "approved_by": user_id,
-        "approved_at": datetime.utcnow().isoformat(),
     }
     if wp_post_id:
         update_payload["wp_post_id"] = wp_post_id
@@ -275,7 +274,7 @@ async def approve_draft_endpoint(
         "status": "draft",
         "wp_post_id": wp_post_id,
         "edit_url": wp_draft_url,
-        "message": "Draft created in WordPress ✅",
+        "message": "Draft created in WordPress ✅" if wp_post_id else "Article saved as local draft ✅",
     }
 
 
@@ -308,7 +307,6 @@ async def publish_content_endpoint(
         supabase.table("content_log").update({
             "status": "published",
             "approved_by": user_id,
-            "approved_at": datetime.utcnow().isoformat(),
         }).eq("id", content_id).execute()
     except Exception as e:
         logger.warning(f"Could not mark content as published: {e}")

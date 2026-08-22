@@ -61,7 +61,7 @@ async def get_top_keyword_opportunity(website_id: str) -> Optional[str]:
             return rows[0]["keyword"]
     except Exception:
         pass
-    return "high intent legal settlement guide"
+    return "car accident compensation claims"
 
 
 async def trigger_content_generation(website_id: str, keyword: str):
