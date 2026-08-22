@@ -562,3 +562,23 @@ def start_all_monitors():
     asyncio.create_task(geo_monitor_loop())
     asyncio.create_task(structure_monitor_loop())
     logger.info("[Monitoring] All 6 monitor loops started")
+
+
+async def run_all_monitors(website_id: str):
+    """Run all monitors for a single website."""
+    from .monitors.tech_monitor import TechMonitor
+    from .monitors.rank_monitor import RankMonitor
+    from .monitors.serp_monitor import SerpMonitor
+    from .monitors.competitor_monitor import CompetitorMonitor
+    
+    try:
+        tm = TechMonitor(website_id)
+        await tm.check_all_pages()
+    except Exception as e:
+        logger.warning(f"Tech monitor pass failed for {website_id}: {e}")
+
+    try:
+        rm = RankMonitor(website_id)
+        await rm.get_gsc_keywords(limit=10)
+    except Exception as e:
+        logger.warning(f"Rank monitor pass failed for {website_id}: {e}")

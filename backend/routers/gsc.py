@@ -12,7 +12,6 @@ logger = logging.getLogger("backend.routers.gsc")
 router = APIRouter()
 
 
-@router.get("/{website_id}/keywords")
 @router.get("/gsc/{website_id}/keywords")
 @router.get("/gsc/keywords/{website_id}")
 async def get_keywords(website_id: str):
@@ -114,7 +113,6 @@ async def get_keywords(website_id: str):
     return {"keywords": fallback_kws}
 
 
-@router.get("/{website_id}/performance")
 @router.get("/gsc/{website_id}/performance")
 @router.get("/gsc/roi/{website_id}")
 async def get_performance(website_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None):

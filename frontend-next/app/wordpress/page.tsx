@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { get, post } from "@/lib/api";
-import { getCurrentWebsiteId } from "@/lib/website";
+import { getCurrentWebsiteId, setCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 interface WordPressPost {
   id?: number | string;
@@ -23,8 +23,11 @@ export default function WordPressPage() {
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [websiteId, setWebsiteId] = useState<string>("");
 
-  const websiteId = getCurrentWebsiteId();
+  useEffect(() => {
+    setWebsiteId(getCurrentWebsiteId() || getWebsiteId());
+  }, []);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -92,6 +95,7 @@ export default function WordPressPage() {
           app_password: wpPass.trim(),
         });
         if (newSite?.id) {
+          setCurrentWebsiteId(newSite.id);
           setWebsiteId(newSite.id);
         }
       }

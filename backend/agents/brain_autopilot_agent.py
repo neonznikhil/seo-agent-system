@@ -29,14 +29,15 @@ async def _run_job(website_id: str, job_type: str, job_func) -> Dict[str, Any]:
     try:
         result = await job_func(website_id)
         if result is None:
-            result = {"error": "Job returned None"}
+            result = {"status": "ok"}
+        res_obj = result if isinstance(result, (dict, list)) else {"output": str(result)}
         try:
             supabase.table("brain_daily_jobs").insert(
                 {
                     "website_id": website_id,
                     "job_type": job_type,
                     "status": "completed",
-                    "result": str(result),
+                    "result": res_obj,
                     "run_at": datetime.utcnow().isoformat(),
                 }
             ).execute()

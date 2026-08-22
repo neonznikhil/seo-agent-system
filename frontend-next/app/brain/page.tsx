@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { get, post, del } from "@/lib/api";
-import { getCurrentWebsiteId } from "@/lib/website";
+import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 interface BrainMemory {
   id: string;
@@ -32,7 +32,7 @@ export default function BrainPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const loadMemories = useCallback(async () => {
-    const wid = getCurrentWebsiteId();
+    const wid = getCurrentWebsiteId() || getWebsiteId();
     setWebsiteId(wid);
     if (!wid) {
       setLoading(false);
@@ -251,10 +251,10 @@ export default function BrainPage() {
                     className="field"
                     style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
                   >
-                    <option value="preference">Brand Voice Preference</option>
-                    <option value="seo_rule">SEO Quality Rule</option>
-                    <option value="negative_pattern">Negative Pattern to Avoid</option>
-                    <option value="industry_fact">Industry Fact / Regulation</option>
+                    <option value="preference">Brand Voice & Style (Preference)</option>
+                    <option value="fact">SEO Quality Rule & Facts (Fact)</option>
+                    <option value="failure">Negative Pattern to Avoid (Failure)</option>
+                    <option value="experience">Learned Best Practice (Experience)</option>
                   </select>
                 </div>
 

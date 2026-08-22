@@ -42,30 +42,49 @@ logger = logging.getLogger("backend.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("[Startup] Starting all monitoring loops and scheduler...")
+    # Startup
+    logger.info("RANKFORGE starting up...")
+    
+    # Start scheduler
     try:
         from .agents.scheduler import setup_scheduler
-        setup_scheduler(app)
-        logger.info("[Startup] APScheduler initialized and jobs scheduled")
+        sched = setup_scheduler()
+        if not sched.running:
+            sched.start()
+        logger.info("[Scheduler] Started ✅")
     except Exception as e:
-        logger.error(f"[Startup] Scheduler init failed (non-fatal): {e}")
+        logger.error(f"[Scheduler] Failed to start: {e}")
+    
+    # Start continuous monitors
     try:
+        from .services.continuous_monitor import start_all_monitors
         start_all_monitors()
-        logger.info("[Startup] All monitors initialized")
+        logger.info("[Monitors] Started ✅")
     except Exception as e:
-        logger.error(f"[Startup] Monitor init failed (non-fatal): {e}")
+        logger.error(f"[Monitors] Failed to start: {e}")
+    
+    try:
+        from .agents.autonomous_loop import run_hourly_autonomous_loop
+        asyncio.create_task(run_hourly_autonomous_loop())
+        logger.info("[Startup] Autonomous agent loop started ✅")
+    except Exception as e:
+        logger.error(f"[Startup] Autonomous loop init failed (non-fatal): {e}")
+
     try:
         asyncio.create_task(run_daily_autopilot())
-        logger.info("[Startup] Brain autopilot loop started")
+        logger.info("[Startup] Brain autopilot loop started ✅")
     except Exception as e:
         logger.error(f"[Startup] Brain autopilot init failed (non-fatal): {e}")
     try:
         asyncio.create_task(run_backlink_daily_jobs())
-        logger.info("[Startup] Backlink autopilot loop started")
+        logger.info("[Startup] Backlink autopilot loop started ✅")
     except Exception as e:
         logger.error(f"[Startup] Backlink autopilot init failed (non-fatal): {e}")
+    
     yield
-    logger.info("[Shutdown] Shutting down")
+    
+    # Shutdown
+    logger.info("RANKFORGE shutting down...")
 
 
 app = FastAPI(title="RankForge API", lifespan=lifespan)
@@ -443,4 +462,7 @@ app.include_router(writer_router)
 app.include_router(settings_router)
 app.include_router(brain_router)
 app.include_router(proposals)
+app.include_router(content_router)
+app.include_router(llms_txt)
+
 

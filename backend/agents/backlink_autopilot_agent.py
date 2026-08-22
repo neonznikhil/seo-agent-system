@@ -30,8 +30,9 @@ async def run_backlink_daily_jobs() -> None:
                     await build_internal_link_graph(website_id)
                     job = {
                         "website_id": website_id,
-                        "job_type": "daily_internal_graph",
+                        "job_type": "daily_backlink_check",
                         "status": "completed",
+                        "result": {"task": "internal_graph"},
                         "run_at": datetime.utcnow().isoformat(),
                     }
                     supabase.table("brain_daily_jobs").insert(job).execute()
@@ -41,7 +42,7 @@ async def run_backlink_daily_jobs() -> None:
                         supabase.table("brain_daily_jobs").insert(
                             {
                                 "website_id": website_id,
-                                "job_type": "daily_internal_graph",
+                                "job_type": "daily_backlink_check",
                                 "status": "failed",
                                 "error": str(exc)[:500],
                                 "run_at": datetime.utcnow().isoformat(),
@@ -105,9 +106,10 @@ async def run_backlink_daily_jobs() -> None:
 
                     job = {
                         "website_id": website_id,
-                        "job_type": "daily_prospect",
+                        "job_type": "daily_backlink_check",
                         "status": "completed" if prospects_found else "failed",
                         "result": {
+                            "task": "prospects",
                             "keywords_processed": len(keywords[:5]),
                             "prospects_found": prospects_found,
                         },
@@ -123,6 +125,7 @@ async def run_backlink_daily_jobs() -> None:
                         "website_id": website_id,
                         "job_type": "daily_backlink_check",
                         "status": "completed",
+                        "result": {"task": "monitor"},
                         "run_at": datetime.utcnow().isoformat(),
                     }
                     supabase.table("brain_daily_jobs").insert(job).execute()

@@ -41,8 +41,10 @@ async def create_brain_memory(body: BrainMemoryIn):
     from ..database import get_supabase, get_embedding
     supabase = get_supabase()
     
-    # Resolve website_id if not given
+    # Resolve website_id if not given or placeholder
     wid = body.website_id
+    if wid in ("brain", "default", "default-website-id", "all", "", "null", "undefined"):
+        wid = None
     if not wid:
         try:
             sites = supabase.table("websites").select("id").limit(1).execute().data
@@ -58,10 +60,23 @@ async def create_brain_memory(body: BrainMemoryIn):
     except Exception:
         pass
 
+    # Normalize memory_type to match Postgres CHECK constraint ('fact','experience','failure','preference','entity','relationship','outcome')
+    valid_types = {'fact', 'experience', 'failure', 'preference', 'entity', 'relationship', 'outcome'}
+    mtype = (body.memory_type or "preference").lower().strip()
+    if mtype not in valid_types:
+        if any(x in mtype for x in ("fail", "neg", "avoid", "bad")):
+            mtype = "failure"
+        elif any(x in mtype for x in ("fact", "rule", "reg", "law")):
+            mtype = "fact"
+        elif "exp" in mtype:
+            mtype = "experience"
+        else:
+            mtype = "preference"
+
     row = {
         "title": body.title,
         "content": body.content,
-        "memory_type": body.memory_type or "preference",
+        "memory_type": mtype,
         "confidence": body.confidence or 0.9,
     }
     if wid:
@@ -97,6 +112,7 @@ async def get_backlink_memories(website_id: str):
     return memories
 
 
+@router.get("/brain/{website_id}/memory")
 @router.get("/brain/{website_id}/memories")
 async def get_memories(
     website_id: str,

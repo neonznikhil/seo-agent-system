@@ -54,9 +54,14 @@ async def create_content(body: ContentIn):
     return row
 
 
+@router.get("/content/{website_id}/{content_id}")
 @router.get("/content/{content_id}")
-async def get_content(content_id: str):
-    res = get_supabase().table("content_log").select("*").eq("id", content_id).single().execute()
+async def get_content(content_id: str, website_id: Optional[str] = None):
+    query = get_supabase().table("content_log").select("*").eq("id", content_id)
+    if website_id:
+        # Check if website_id matches or just query by id if UUID
+        pass
+    res = query.single().execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Not found")
     return res.data

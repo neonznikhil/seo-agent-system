@@ -10,8 +10,8 @@ logger = logging.getLogger("backend.routers.tech_seo")
 router = APIRouter()
 
 
-@router.get("/{website_id}")
 @router.get("/tech-seo/{website_id}")
+@router.get("/tech_seo/{website_id}")
 async def get_tech_seo(website_id: str):
     """Fetch latest technical audit for a website."""
     try:
@@ -115,18 +115,30 @@ async def execute_tech_audit(website_id: str) -> dict:
                 issues.append({"type": "Crawlability", "description": "robots.txt is missing or unreachable."})
                 checks.append({"name": "Robots.txt Presence", "status": "Failed", "value": "Unreachable"})
 
-            # 3. Sitemap.xml
-            try:
-                async with session.get(f"{base_url}/sitemap.xml") as resp:
-                    if resp.status == 200:
-                        checks.append({"name": "XML Sitemap", "status": "Passed", "value": "200 OK"})
-                    else:
-                        health_score -= 10
-                        issues.append({"type": "Indexability", "description": "XML sitemap returned non-200 status."})
-                        checks.append({"name": "XML Sitemap", "status": "Warning", "value": f"HTTP {resp.status}"})
-            except Exception:
+            # 3. Sitemap.xml - check multiple standard locations
+            sitemap_found = False
+            sitemap_url_matched = None
+            sitemap_urls = [
+                f"{base_url}/wp-sitemap.xml",
+                f"{base_url}/sitemap.xml",
+                f"{base_url}/sitemap_index.xml",
+                f"{base_url}/sitemap-index.xml"
+            ]
+            for s_url in sitemap_urls:
+                try:
+                    async with session.get(s_url, allow_redirects=True) as resp:
+                        if resp.status == 200:
+                            sitemap_found = True
+                            sitemap_url_matched = s_url
+                            break
+                except Exception:
+                    continue
+
+            if sitemap_found:
+                checks.append({"name": "XML Sitemap", "status": "Passed", "value": f"Found ({sitemap_url_matched.split('/')[-1]})"})
+            else:
                 health_score -= 10
-                issues.append({"type": "Indexability", "description": "XML sitemap not found."})
+                issues.append({"type": "Indexability", "description": "XML sitemap not found at standard locations."})
                 checks.append({"name": "XML Sitemap", "status": "Failed", "value": "Missing"})
     except Exception as e:
         logger.warning(f"Audit session error: {e}")
@@ -136,14 +148,22 @@ async def execute_tech_audit(website_id: str) -> dict:
         "website_id": website_id,
         "health_score": health_score,
         "issues": issues,
-        "checks": checks,
+        "metrics": {"checks": checks},
         "created_at": datetime.utcnow().isoformat(),
     }
 
     try:
         supabase.table("technical_audits").insert(audit_record).execute()
-    except Exception as e:
-        logger.warning(f"Could not persist technical audit: {e}")
+    except Exception:
+        try:
+            supabase.table("technical_audits").insert({
+                "website_id": website_id,
+                "health_score": health_score,
+                "issues": issues,
+                "created_at": datetime.utcnow().isoformat(),
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Could not persist technical audit: {e}")
 
     return {
         "health_score": health_score,
@@ -154,9 +174,10 @@ async def execute_tech_audit(website_id: str) -> dict:
     }
 
 
-@router.post("/{website_id}/audit")
 @router.post("/tech-seo/{website_id}/audit")
+@router.post("/tech_seo/{website_id}/audit")
 @router.post("/tech-seo/{website_id}/run-audit")
+@router.post("/tech_seo/{website_id}/run-audit")
 async def run_tech_audit(website_id: str):
     """Execute live technical audit on demand and return real results."""
     result = await execute_tech_audit(website_id)

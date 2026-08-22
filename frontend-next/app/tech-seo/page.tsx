@@ -2,51 +2,67 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { getCurrentWebsiteId } from "@/lib/website";
+import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 export default function TechSEOPage() {
   const [auditData, setAuditData] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState<boolean>(false);
   const [websiteId, setWebsiteId] = useState<string>("");
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-  const fetchAuditData = useCallback(async () => {
-    const wid = getCurrentWebsiteId();
+  useEffect(() => {
+    const wid = getCurrentWebsiteId() || getWebsiteId();
     setWebsiteId(wid);
 
-    if (!wid) {
-      setError("No website selected — please add a website in Settings first");
+    const handleChanged = (e: any) => {
+      const newWid = e?.detail || getCurrentWebsiteId() || getWebsiteId();
+      setWebsiteId(newWid);
+    };
+
+    window.addEventListener("website-changed", handleChanged);
+    return () => window.removeEventListener("website-changed", handleChanged);
+  }, []);
+
+  const fetchAuditData = useCallback(() => {
+    if (!websiteId) {
+      setLoading(false);
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch(`${apiUrl}/tech-seo/${wid}`, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+    fetch(`${apiUrl}/tech-seo/${websiteId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data || !data.last_run) {
+          // No audit exists — auto-run one
+          console.log("[TechSEO] No audit found, auto-running...");
+          setRunning(true);
+          fetch(`${apiUrl}/tech-seo/${websiteId}/audit`, {
+            method: "POST",
+          })
+            .then((r) => r.json())
+            .then((auditData) => setAuditData(auditData))
+            .catch(console.error)
+            .finally(() => setRunning(false));
+        } else {
+          setAuditData(data);
+        }
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [websiteId, apiUrl]);
 
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const data = await response.json();
-      setAuditData(data);
-    } catch (err: any) {
-      setError(`Failed to load audit data: ${err.message}. Make sure backend is running on port 8000.`);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiUrl]);
+  useEffect(() => {
+    fetchAuditData();
+  }, [fetchAuditData]);
 
   const runLiveAudit = async () => {
-    const wid = websiteId || getCurrentWebsiteId();
+    const wid = websiteId || getCurrentWebsiteId() || getWebsiteId();
     if (!wid) return;
 
     setRunning(true);
@@ -69,13 +85,6 @@ export default function TechSEOPage() {
       setRunning(false);
     }
   };
-
-  useEffect(() => {
-    fetchAuditData();
-    const handleChanged = () => fetchAuditData();
-    window.addEventListener("website-changed", handleChanged);
-    return () => window.removeEventListener("website-changed", handleChanged);
-  }, [fetchAuditData]);
 
   if (!websiteId && !loading) {
     return (

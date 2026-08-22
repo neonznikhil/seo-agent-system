@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { get, post } from "@/lib/api";
-import { getCurrentWebsiteId } from "@/lib/website";
+import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 interface BlogArticle {
   id: string;
@@ -20,13 +20,13 @@ export default function ContentPage() {
   const [articles, setArticles] = useState<BlogArticle[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<BlogArticle | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishing, setPublishing] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
 
   const loadArticles = useCallback(async () => {
-    const wid = getCurrentWebsiteId();
+    const wid = getCurrentWebsiteId() || getWebsiteId();
     setWebsiteId(wid);
     if (!wid) {
       setLoading(false);
@@ -62,6 +62,8 @@ export default function ContentPage() {
     }
   }, [selectedArticle]);
 
+  const fetchContent = loadArticles;
+
   useEffect(() => {
     loadArticles();
     const handleChanged = () => loadArticles();
@@ -69,25 +71,54 @@ export default function ContentPage() {
     return () => window.removeEventListener("website-changed", handleChanged);
   }, [loadArticles]);
 
-  const handlePublish = async (article: BlogArticle) => {
-    if (!websiteId) return;
+  const handlePublishToWordPress = async (contentId: string) => {
+    setPublishing(contentId);
     try {
-      setIsPublishing(true);
-      setError(null);
+      const activeWebsiteId = getWebsiteId() || websiteId;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-      await post(`/api/writer/${websiteId}/content/${article.id}/publish`, {});
-
-      setNoticeMsg(`✓ Successfully published "${article.title}" to WordPress!`);
-      setArticles((prev) =>
-        prev.map((a) => (a.id === article.id ? { ...a, status: "published" } : a))
+      // Step 1: Get the content
+      const contentRes = await fetch(
+        `${apiUrl}/content/${activeWebsiteId}/${contentId}`
       );
-      if (selectedArticle?.id === article.id) {
-        setSelectedArticle({ ...selectedArticle, status: "published" });
+      if (!contentRes.ok) throw new Error("Could not load content");
+      const content = await contentRes.json();
+
+      // Step 2: Create WordPress draft
+      const wpRes = await fetch(
+        `${apiUrl}/wordpress/${activeWebsiteId}/create-draft`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-Id": "human-approved",
+          },
+          body: JSON.stringify({
+            content_id: contentId,
+            title: content.title,
+            content: content.content || content.body,
+          }),
+        }
+      );
+
+      if (!wpRes.ok) {
+        const err = await wpRes.json();
+        throw new Error(err.detail || "WordPress push failed");
+      }
+
+      const wpData = await wpRes.json();
+
+      if (wpData.success) {
+        alert(`✅ Draft created in WordPress!\nEdit here: ${wpData.edit_url}`);
+        // Refresh content list
+        fetchContent();
+      } else {
+        alert(`❌ Failed: ${wpData.message}`);
       }
     } catch (err: any) {
-      setError(`WordPress publish error: ${err.message}`);
+      alert(`Error: ${err.message}\n\nMake sure:\n1. Backend is running on port 8000\n2. WordPress is connected in Settings`);
     } finally {
-      setIsPublishing(false);
+      setPublishing(null);
     }
   };
 
@@ -199,12 +230,12 @@ export default function ContentPage() {
                 <span className="panel-label">Article Review</span>
                 {selectedArticle.status !== "published" && (
                   <button
-                    onClick={() => handlePublish(selectedArticle)}
-                    disabled={isPublishing}
+                    onClick={() => handlePublishToWordPress(selectedArticle.id)}
+                    disabled={publishing === selectedArticle.id}
                     className="btn btn-accent"
                     style={{ padding: "6px 14px", fontSize: "11px" }}
                   >
-                    {isPublishing ? "Publishing..." : "🚀 Publish to WordPress"}
+                    {publishing === selectedArticle.id ? "Publishing..." : "🚀 Publish to WordPress"}
                   </button>
                 )}
               </div>

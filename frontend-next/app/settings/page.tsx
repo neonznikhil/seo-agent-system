@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { get, post } from "@/lib/api";
-import { getCurrentWebsiteId } from "@/lib/website";
+import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 interface HealthData {
   status: string;
@@ -22,9 +22,9 @@ export default function SettingsPage() {
   // WordPress credentials state
   const [wpUrl, setWpUrl] = useState("");
   const [wpUser, setWpUser] = useState("");
-  const [wpPassword, setWpPassword] = useState("");
-  const [isTestingWp, setIsTestingWp] = useState(false);
-  const [isSavingWp, setIsSavingWp] = useState(false);
+  const [wpPass, setWpPass] = useState("");
+  const [wpStatus, setWpStatus] = useState("");
+  const [wpConnecting, setWpConnecting] = useState(false);
   const [wpConnected, setWpConnected] = useState<boolean | null>(null);
 
   const loadSettingsAndDiagnostics = useCallback(async () => {
@@ -70,62 +70,41 @@ export default function SettingsPage() {
     return () => window.removeEventListener("website-changed", handleChanged);
   }, [loadSettingsAndDiagnostics]);
 
-  const handleTestWordPress = async () => {
-    if (!wpUrl.trim() || !wpUser.trim() || !wpPassword.trim()) {
-      setError("Please fill in WordPress URL, Username, and Application Password to test.");
+  const connectWordPress = async () => {
+    if (!wpUrl || !wpUser || !wpPass) {
+      alert("Fill all 3 WordPress fields first");
       return;
     }
-
+    setWpConnecting(true);
+    setWpStatus("");
     try {
-      setIsTestingWp(true);
-      setError(null);
-      setNoticeMsg(null);
-
-      const payload = {
-        url: wpUrl.trim(),
-        username: wpUser.trim(),
-        password: wpPassword.trim(),
-      };
-
-      const res = await post(`/api/wordpress/${websiteId || "default"}/test`, payload);
-      if (res && res.connected) {
+      const activeWid = getWebsiteId() || websiteId;
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/wordpress/${activeWid}/connect`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wordpress_url: wpUrl,
+            wordpress_user: wpUser,
+            wordpress_password: wpPass,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setWpStatus(`✅ ${data.message}`);
         setWpConnected(true);
-        setNoticeMsg("✅ WordPress connection test successful! Ready to create drafts.");
+        loadSettingsAndDiagnostics();
       } else {
+        setWpStatus(`❌ ${data.message}`);
         setWpConnected(false);
-        setError(res?.message || "WordPress connection failed. Check credentials and Application Password.");
       }
     } catch (err: any) {
+      setWpStatus(`❌ Error: ${err.message}`);
       setWpConnected(false);
-      setError(`WordPress test failed: ${err.message}`);
     } finally {
-      setIsTestingWp(false);
-    }
-  };
-
-  const handleSaveWordPress = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!websiteId) {
-      setError("Please select or add a website first.");
-      return;
-    }
-
-    try {
-      setIsSavingWp(true);
-      setError(null);
-
-      await post(`/api/wordpress/${websiteId}/credentials`, {
-        wordpress_url: wpUrl.trim(),
-        wordpress_user: wpUser.trim(),
-        wordpress_password: wpPassword.trim(),
-      });
-
-      setNoticeMsg("✓ WordPress credentials saved to database!");
-      loadSettingsAndDiagnostics();
-    } catch (err: any) {
-      setError(`Failed to save credentials: ${err.message}`);
-    } finally {
-      setIsSavingWp(false);
+      setWpConnecting(false);
     }
   };
 
@@ -154,79 +133,68 @@ export default function SettingsPage() {
       <div className="dash-grid">
         {/* WORDPRESS INTEGRATION FORM */}
         <div>
-          <div className="panel">
-            <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="panel-label">WordPress Integration</span>
-              {wpConnected === true && <span className="badge badge-green">Connected ✅</span>}
-              {wpConnected === false && <span className="badge badge-red">Disconnected ✕</span>}
-            </div>
-            <div className="panel-body">
-              <form onSubmit={handleSaveWordPress} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                    WordPress Site URL
-                  </label>
-                  <input
-                    type="url"
-                    value={wpUrl}
-                    onChange={(e) => setWpUrl(e.target.value)}
-                    placeholder="https://example.com"
-                    className="field"
-                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
-                    required
-                  />
-                </div>
+          <div style={{ border: "1px solid #333", padding: "1.5rem", marginTop: "1rem", background: "var(--panel)" }}>
+            <h3>WordPress Integration</h3>
+            <p style={{ color: "#888", fontSize: "0.85rem" }}>
+              Connect your WordPress site to auto-publish approved content
+            </p>
 
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                    WordPress Username / Email
-                  </label>
-                  <input
-                    type="text"
-                    value={wpUser}
-                    onChange={(e) => setWpUser(e.target.value)}
-                    placeholder="admin"
-                    className="field"
-                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
-                    required
-                  />
-                </div>
+            <div style={{ marginTop: "1rem" }}>
+              <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "#aaa", marginBottom: "4px" }}>
+                WordPress URL
+              </label>
+              <input
+                type="text"
+                placeholder="https://yoursite.com"
+                value={wpUrl}
+                onChange={(e) => setWpUrl(e.target.value)}
+                style={{ display: "block", width: "100%", padding: "8px", margin: "4px 0 12px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+              />
 
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                    Application Password
-                  </label>
-                  <input
-                    type="password"
-                    value={wpPassword}
-                    onChange={(e) => setWpPassword(e.target.value)}
-                    placeholder="xxxx xxxx xxxx xxxx"
-                    className="field"
-                    style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
-                    required
-                  />
-                </div>
+              <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "#aaa", marginBottom: "4px" }}>
+                WordPress Username
+              </label>
+              <input
+                type="text"
+                placeholder="your-username"
+                value={wpUser}
+                onChange={(e) => setWpUser(e.target.value)}
+                style={{ display: "block", width: "100%", padding: "8px", margin: "4px 0 12px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+              />
 
-                <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-                  <button
-                    type="button"
-                    onClick={handleTestWordPress}
-                    disabled={isTestingWp}
-                    className="btn"
-                    style={{ padding: "8px 16px", fontSize: "11px" }}
-                  >
-                    {isTestingWp ? "Testing..." : "🔍 Test Connection"}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSavingWp || !websiteId}
-                    className="btn btn-accent"
-                    style={{ padding: "8px 16px", fontSize: "11px" }}
-                  >
-                    {isSavingWp ? "Saving..." : "💾 Save Credentials"}
-                  </button>
-                </div>
-              </form>
+              <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "#aaa", marginBottom: "4px" }}>
+                Application Password
+              </label>
+              <input
+                type="password"
+                placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
+                value={wpPass}
+                onChange={(e) => setWpPass(e.target.value)}
+                style={{ display: "block", width: "100%", padding: "8px", margin: "4px 0 12px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+              />
+
+              <p style={{ color: "#888", fontSize: "0.75rem", marginBottom: "12px" }}>
+                Get App Password: WordPress → Users → Profile → scroll down → Application Passwords
+              </p>
+
+              <button
+                onClick={connectWordPress}
+                disabled={wpConnecting}
+                style={{
+                  padding: "10px 20px",
+                  background: "#f60",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                {wpConnecting ? "Testing Connection..." : "Connect WordPress"}
+              </button>
+
+              {wpStatus && (
+                <p style={{ marginTop: "12px", fontSize: "0.9rem" }}>{wpStatus}</p>
+              )}
             </div>
           </div>
 

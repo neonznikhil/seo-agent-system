@@ -1,164 +1,165 @@
-import json
-import logging
-import asyncio
-from typing import Optional, List, Dict, Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from ..database import get_supabase
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+import logging
+import json
+from datetime import datetime, date
 
-logger = logging.getLogger("backend.agents.scheduler")
-scheduler = AsyncIOScheduler()
+logger = logging.getLogger(__name__)
+scheduler = AsyncIOScheduler(timezone="UTC")
 
 
-async def get_all_websites() -> list:
+async def get_all_active_website_ids() -> list:
     try:
+        from ..database import get_supabase
         supabase = get_supabase()
-        return supabase.table("websites").select("*").execute().data or []
+        result = supabase.table("websites")\
+            .select("id, url")\
+            .execute()
+        return result.data or []
     except Exception as e:
-        logger.warning(f"Failed to fetch websites for scheduler: {e}")
+        logger.error(f"Could not get websites: {e}")
         return []
 
 
-async def run_keyword_research(website_id: str):
-    from ..routers.gsc import get_keywords
+async def auto_run_tech_audit(website_id: str):
     try:
-        await get_keywords(website_id)
+        logger.info(f"[AutoAudit] Running for {website_id}")
+        from .tech_seo_agent import TechSEOAgent
+        agent = TechSEOAgent()
+        result = await agent.run_audit(website_id)
+        logger.info(f"[AutoAudit] Done for {website_id}: score={result.get('health_score')}")
     except Exception as e:
-        logger.warning(f"Keyword research job failed for {website_id}: {e}")
+        logger.error(f"[AutoAudit] Failed for {website_id}: {e}")
 
 
-async def find_striking_distance_keywords(website_id: str):
-    logger.info(f"Checking striking distance keywords for {website_id}")
-
-
-async def get_best_keyword_for_content(website_id: str) -> Optional[str]:
+async def auto_run_content_generation(website_id: str):
     try:
+        from ..database import get_supabase, call_nim_llm
         supabase = get_supabase()
-        opps = supabase.table("keyword_opportunities").select("keyword").eq("website_id", website_id).order("opportunity_score", desc=True).limit(1).execute().data
-        if opps:
-            return opps[0]["keyword"]
-    except Exception:
-        pass
-    return "autonomous seo optimization"
-
-
-async def trigger_writer_agent(website_id: str, keyword: str):
-    from ..agents.human_writer import HumanWriterAgent
-    try:
-        hw = HumanWriterAgent(website_id)
-        hw.setup_profile()
-        await hw.generate_blog(topic=f"Ultimate Guide to {keyword}", primary_keyword=keyword)
-        logger.info(f"Daily content generated for {website_id} keyword: {keyword}")
+        
+        # Check if already generated content today
+        today = date.today().isoformat()
+        existing = supabase.table("content_log")\
+            .select("id")\
+            .eq("website_id", website_id)\
+            .gte("created_at", today)\
+            .execute()
+        
+        if existing.data and len(existing.data) >= 2:
+            logger.info(f"[AutoContent] Already generated {len(existing.data)} pieces today for {website_id}")
+            return
+        
+        # Get website info for keyword suggestion
+        website = supabase.table("websites")\
+            .select("*").eq("id", website_id).single().execute()
+        
+        if not website.data:
+            return
+        
+        site_url = website.data.get('url', '')
+        niche = website.data.get('niche', '')
+        
+        # Get best keyword opportunity
+        kw_result = supabase.table("keyword_opportunities")\
+            .select("*")\
+            .eq("website_id", website_id)\
+            .eq("status", "new")\
+            .order("opportunity_score", desc=True)\
+            .limit(1)\
+            .execute()
+        
+        if kw_result.data:
+            keyword = kw_result.data[0]['keyword']
+            title = f"Complete Guide to {keyword} in 2026"
+        else:
+            # Use NIM to suggest a topic
+            prompt = f"""
+            Website: {site_url}
+            Niche: {niche or 'general'}
+            
+            Suggest ONE blog post title that would rank well for this website.
+            Return ONLY the title, nothing else.
+            """
+            title = await call_nim_llm(prompt)
+            title = title.strip().strip('"')
+            keyword = title
+        
+        if not title or len(title) < 5:
+            return
+        
+        # Generate the blog
+        logger.info(f"[AutoContent] Generating: {title}")
+        from .writer_agent import WriterAgent
+        writer = WriterAgent()
+        await writer.generate_blog_post(
+            website_id=website_id,
+            title=title,
+            keywords=[keyword]
+        )
+        logger.info(f"[AutoContent] Done: {title}")
+        
     except Exception as e:
-        logger.warning(f"Daily writer agent failed for {website_id}: {e}")
+        logger.error(f"[AutoContent] Failed for {website_id}: {e}")
 
 
-async def run_tech_seo_agent_job(website_id: str):
-    from .tech_seo_agent import run_tech_seo_agent
-    try:
-        supabase = get_supabase()
-        site = supabase.table("websites").select("*").eq("id", website_id).single().execute().data
-        if site:
-            url = site.get("url") or site.get("cms_url") or f"https://{site.get('domain', '')}"
-            await run_tech_seo_agent(website_id, url)
-    except Exception as e:
-        logger.warning(f"Tech SEO agent failed for {website_id}: {e}")
-
-
-async def run_backlink_agent_job(website_id: str):
-    from .backlink_agent import run_backlink_agent
-    try:
-        await run_backlink_agent(website_id)
-    except Exception as e:
-        logger.warning(f"Backlink agent failed for {website_id}: {e}")
-
-
-async def check_rank_changes(website_id: str):
-    logger.info(f"[RankCheck] Monitoring rank movements for {website_id}")
-
-
-async def check_competitor_changes(website_id: str):
-    logger.info(f"[CompetitorCheck] Checking competitor shifts for {website_id}")
-
-
-# Every day at 6:00 AM — Keyword research
-@scheduler.scheduled_job("cron", hour=6, minute=0)
-async def daily_keyword_research():
-    websites = await get_all_websites()
+async def run_daily_jobs():
+    logger.info("[Scheduler] Running daily jobs...")
+    websites = await get_all_active_website_ids()
     for site in websites:
-        await run_keyword_research(site["id"])
-        await find_striking_distance_keywords(site["id"])
-    logger.info("[Scheduler] Daily keyword research done")
+        website_id = site['id']
+        await auto_run_tech_audit(website_id)
+        await auto_run_content_generation(website_id)
+    logger.info(f"[Scheduler] Daily jobs done for {len(websites)} websites")
 
 
-# Every day at 7:00 AM — Content generation
-@scheduler.scheduled_job("cron", hour=7, minute=0)
-async def daily_content_generation():
-    websites = await get_all_websites()
+async def run_hourly_jobs():
+    logger.info("[Scheduler] Running hourly monitoring...")
+    websites = await get_all_active_website_ids()
     for site in websites:
-        keyword = await get_best_keyword_for_content(site["id"])
-        if keyword:
-            await trigger_writer_agent(site["id"], keyword)
-    logger.info("[Scheduler] Daily content generation triggered")
-
-
-# Every day at 8:00 AM — Tech SEO audit
-@scheduler.scheduled_job("cron", hour=8, minute=0)
-async def daily_tech_audit():
-    websites = await get_all_websites()
-    for site in websites:
-        await run_tech_seo_agent_job(site["id"])
-    logger.info("[Scheduler] Daily tech audit done")
-
-
-# Every day at 9:00 AM — Backlink check
-@scheduler.scheduled_job("cron", hour=9, minute=0)
-async def daily_backlink_check():
-    websites = await get_all_websites()
-    for site in websites:
-        await run_backlink_agent_job(site["id"])
-    logger.info("[Scheduler] Daily backlink check done")
-
-
-# Every 15 minutes — Rank monitoring
-@scheduler.scheduled_job("interval", minutes=15)
-async def rank_check():
-    websites = await get_all_websites()
-    for site in websites:
-        await check_rank_changes(site["id"])
-
-
-# Every 60 minutes — Competitor monitoring
-@scheduler.scheduled_job("interval", minutes=60)
-async def competitor_check():
-    websites = await get_all_websites()
-    for site in websites:
-        await check_competitor_changes(site["id"])
-
-
-# Every 60 minutes — Hourly autonomous loop
-@scheduler.scheduled_job("interval", minutes=60)
-async def scheduled_autonomous_loop():
-    from .autonomous_loop import run_hourly_autonomous_loop
-    await run_hourly_autonomous_loop()
+        try:
+            from ..services.continuous_monitor import run_all_monitors
+            await run_all_monitors(site['id'])
+        except Exception as e:
+            logger.error(f"[Scheduler] Monitor failed for {site['id']}: {e}")
 
 
 def setup_scheduler(app=None):
-    try:
-        if not scheduler.running:
-            scheduler.start()
-            logger.info("[Scheduler] All jobs scheduled ✅")
-    except Exception as e:
-        logger.error(f"[Scheduler] Failed to start scheduler: {e}")
+    # Daily at 6 AM UTC — content generation + tech audit
+    scheduler.add_job(
+        run_daily_jobs,
+        CronTrigger(hour=6, minute=0, timezone="UTC"),
+        id="daily_jobs",
+        replace_existing=True,
+        name="Daily: content + audit"
+    )
+    
+    # Every 60 minutes — monitoring
+    scheduler.add_job(
+        run_hourly_jobs,
+        IntervalTrigger(minutes=60),
+        id="hourly_monitoring",
+        replace_existing=True,
+        name="Hourly monitoring"
+    )
+    
+    logger.info("[Scheduler] Jobs scheduled:")
+    logger.info("  - Daily 6AM UTC: tech audit + content generation")
+    logger.info("  - Every 60min: monitoring loops")
+    
+    return scheduler
 
 
 def start_scheduler():
     setup_scheduler()
+    if not scheduler.running:
+        scheduler.start()
 
 
 def stop_scheduler():
     try:
         if scheduler.running:
             scheduler.shutdown()
-            logger.info("[Scheduler] Stopped")
     except Exception:
         pass
+

@@ -1,3 +1,5 @@
+import logging
+from datetime import datetime
 import json
 AUDITOR_PERSONA = {
     "role": "Senior SEO, AEO & GEO Auditor",

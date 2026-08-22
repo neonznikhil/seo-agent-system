@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { get, post } from "@/lib/api";
-import { getCurrentWebsiteId } from "@/lib/website";
+import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 interface Proposal {
   id: string;
@@ -50,12 +50,31 @@ export default function ProposalsPage() {
     return () => window.removeEventListener("website-changed", handleChanged);
   }, [fetchProposals]);
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (proposalId: string) => {
     try {
-      await post(`/api/proposals/approve/${id}`, {});
-      setProposals((prev) => prev.map((p) => (p.id === id ? { ...p, status: "approved" } : p)));
-    } catch (e: any) {
-      alert("Approve failed: " + e.message);
+      const activeWebsiteId = getWebsiteId() || websiteId;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(
+        `${apiUrl}/proposals/${activeWebsiteId}/approve/${proposalId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-Id": "human-approved",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Approval failed");
+      }
+
+      const data = await res.json();
+      alert("✅ Approved successfully!");
+      fetchProposals();
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
     }
   };
 

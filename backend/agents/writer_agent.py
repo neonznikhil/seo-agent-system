@@ -1586,3 +1586,14 @@ async def generate_content(website_id: str, topic: str, primary_keyword: str = N
     """Main API entry point for content generation."""
     pipeline = WriterPipeline(website_id)
     return await pipeline.generate(topic, primary_keyword)
+
+
+class WriterAgent:
+    def __init__(self, website_id: Optional[str] = None):
+        self.website_id = website_id
+
+    async def generate_blog_post(self, website_id: str, title: str, keywords: List[str] = None) -> Dict:
+        primary_kw = keywords[0] if keywords else None
+        pipeline = WriterPipeline(website_id)
+        return await pipeline.generate(topic=title, primary_keyword=primary_kw)
+

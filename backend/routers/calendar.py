@@ -5,7 +5,6 @@ from ..database import get_supabase
 
 router = APIRouter()
 
-@router.get("/{website_id}")
 @router.get("/calendar/{website_id}")
 async def get_calendar(website_id: str):
     try:
@@ -78,7 +77,6 @@ async def get_calendar(website_id: str):
             "error": str(e)
         }
 
-@router.post("/{website_id}/schedule")
 @router.post("/calendar/{website_id}/schedule")
 async def schedule_content(website_id: str, data: dict):
     try:

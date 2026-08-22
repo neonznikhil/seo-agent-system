@@ -106,7 +106,7 @@ async def update_brain_memory(website_id: str, alerts: List[dict]):
                 "website_id": website_id,
                 "title": f"Incident pattern observed on {datetime.utcnow().strftime('%Y-%m-%d')}",
                 "content": f"Resolved {len(alerts)} alerts with automated guardrails.",
-                "memory_type": "operational_pattern",
+                "memory_type": "experience",
                 "confidence": 0.92,
                 "created_at": datetime.utcnow().isoformat(),
             }).execute()

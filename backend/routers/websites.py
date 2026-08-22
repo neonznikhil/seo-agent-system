@@ -43,7 +43,6 @@ def extract_domain(raw_url: Optional[str], default_domain: Optional[str] = None)
     return "example.com"
 
 
-@router.get("/")
 @router.get("/websites")
 async def list_websites():
     try:
@@ -119,9 +118,7 @@ async def get_website(website_id: str):
     return res.data
 
 
-@router.put("/{website_id}")
 @router.put("/websites/{website_id}")
-@router.patch("/{website_id}")
 @router.patch("/websites/{website_id}")
 async def update_website(website_id: str, website: WebsiteUpdate):
     supabase = get_supabase()
