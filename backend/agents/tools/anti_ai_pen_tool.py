@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 import json
@@ -16,7 +16,7 @@ class AntiAIPenInput(BaseModel):
 
 class AntiAIPenTool(BaseTool):
     name: str = "anti_ai_pen"
-    description = "Analyzes content for AI-sounding patterns and provides specific replacements. Removes overused AI phrases and makes content more human and professional."
+    description: str = "Analyzes content for AI-sounding patterns and provides specific replacements. Removes overused AI phrases and makes content more human and professional."
     args_schema: type[BaseModel] = AntiAIPenInput
     _website_id: Optional[str] = None
 
@@ -189,7 +189,7 @@ def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: st
 
 class ProfessionalTonePreserver(BaseTool):
     name: str = "tone_preserver"
-    description = "Ensures content maintains professional, expert tone while avoiding AI-sounding language patterns"
+    description: str = "Ensures content maintains professional, expert tone while avoiding AI-sounding language patterns"
     
     def __init__(self):
         super().__init__()

@@ -23,7 +23,7 @@ class ScanRequest(BaseModel):
 
 class CompetitorTools(BaseTool):
     name: str = "competitor_tools"
-    description = "Monitor competitor websites, detect pricing changes, track market moves"
+    description: str = "Monitor competitor websites, detect pricing changes, track market moves"
     args_schema: type[BaseModel] = ScanRequest
     _website_id: Optional[str] = None
 

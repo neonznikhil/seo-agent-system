@@ -29,7 +29,7 @@ class RankTrackingInput(BaseModel):
 
 class RankTools(BaseTool):
     name: str = "rank_tracking_tools"
-    description = "Fetch GSC performance data, check SERP positions, and calculate SEO visibility scores"
+    description: str = "Fetch GSC performance data, check SERP positions, and calculate SEO visibility scores"
     args_schema: type[BaseModel] = RankTrackingInput
     _website_id: Optional[str] = None
 
