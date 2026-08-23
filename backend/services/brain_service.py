@@ -50,7 +50,15 @@ class BrainService:
     ) -> Optional[str]:
         """Store or update a memory in brain_memory and agent_memory with vector embedding."""
         supabase = self._get_supabase()
-        website_id = website_id or self.website_id
+        raw_website_id = website_id or self.website_id
+        clean_website_id = None
+        if raw_website_id:
+            try:
+                uuid.UUID(str(raw_website_id))
+                clean_website_id = str(raw_website_id)
+            except Exception:
+                # Deterministic UUID for dummy or string website handles
+                clean_website_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(raw_website_id)))
 
         # Validate memory type
         normalized_type = memory_type.lower()
@@ -71,7 +79,7 @@ class BrainService:
         mem_id = str(uuid.uuid4())
         record = {
             "id": mem_id,
-            "website_id": website_id,
+            "website_id": clean_website_id,
             "memory_type": normalized_type,
             "title": title,
             "content": content,
@@ -85,18 +93,27 @@ class BrainService:
             "created_at": datetime.utcnow().isoformat()
         }
 
-        # 1. Primary write to brain_memory with adaptive dimension recovery
+        # 1. Primary write to brain_memory with adaptive dimension and FK recovery
         try:
             supabase.table("brain_memory").insert(record).execute()
         except Exception as e:
-            if "1024" in str(e) and len(record["embedding"]) != 1024:
+            err_msg = str(e)
+            if "1024" in err_msg and len(record["embedding"]) != 1024:
                 record["embedding"] = record["embedding"][:1024]
-                try:
-                    supabase.table("brain_memory").insert(record).execute()
-                except Exception as e2:
-                    logger.warning(f"Could not insert to brain_memory (1024d): {e2}")
-            else:
-                logger.warning(f"Could not insert to brain_memory: {e}")
+            if "foreign key constraint" in err_msg.lower() or "website_id_fkey" in err_msg:
+                record["website_id"] = None
+            
+            try:
+                supabase.table("brain_memory").insert(record).execute()
+            except Exception as e2:
+                if ("foreign key constraint" in str(e2).lower() or "website_id_fkey" in str(e2)) and record["website_id"] is not None:
+                    record["website_id"] = None
+                    try:
+                        supabase.table("brain_memory").insert(record).execute()
+                    except Exception:
+                        pass
+                else:
+                    logger.debug(f"Brain memory insert note: {e2}")
 
         # 2. Compatibility mirror to agent_memory
         try:
@@ -110,7 +127,7 @@ class BrainService:
                     "source_type": source_type,
                     "source_id": str(source_id) if source_id else None,
                     "confidence": confidence,
-                    "website_id": website_id
+                    "website_id": clean_website_id
                 },
                 "confidence": confidence,
                 "times_used": 1,

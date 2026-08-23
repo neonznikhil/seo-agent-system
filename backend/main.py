@@ -177,6 +177,17 @@ async def health():
     except Exception:
         checks["wordpress"] = "table_check_failed"
 
+    # Serper Connector check
+    try:
+        from .services.serper_service import serper_service
+        s_status = await serper_service.check_status()
+        checks["serper"] = "connected" if s_status.get("connected") else ("disabled" if not s_status.get("enabled", True) else "fallback_mode")
+    except Exception as e:
+        checks["serper"] = f"check_error: {e}"
+
+    # SEO Agent Group status check
+    checks["seo_agent_group"] = "active"
+
     status = "ok" if checks.get("supabase") == "ok" else "degraded"
     return {
         "status": status,

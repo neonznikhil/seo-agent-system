@@ -1,79 +1,43 @@
-<<<<<<< HEAD
-fastapi
-uvicorn
-supabase
-crewai>=0.5.0,<1.0.0
-langchain
-langchain-openai
-langchain-core
-tenacity
-redis
-requests
-python-dotenv
-google-api-python-client
-google-auth
-pydantic
-numpy
-pytest
-pytest-asyncio
-httpx
-aiohttp
-networkx
-cryptography
-apscheduler
-
-# Crawlee Python for real web crawling (replaces Firecrawl)
-crawlee[all]
-beautifulsoup4
-playwright
-lxml
-parsel
-=======
-# Core
+# Core Framework & Server
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
-supabase>=2.0.0
-pydantic>=2.0
-python-dotenv>=1.0
+python-multipart>=0.0.9
+pydantic>=2.0.0
+python-dotenv>=1.0.0
 
-# AI / Agents
+# Database & Vectors
+supabase>=2.0.0
+redis>=5.0.0
+psycopg2-binary>=2.9.0
+
+# AI & Scheduling
 crewai>=0.5.0,<1.0.0
 langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-core>=0.1.0
 tenacity>=8.2.0
+apscheduler>=3.10.0
 numpy>=1.24.0
+networkx>=3.0.0
 
-# HTTP / Async
+# HTTP & Async
 httpx>=0.24.0
 aiohttp>=3.8.0
 requests>=2.31.0
 
-# Data / DB
-redis>=5.0.0
-supabase[vector]>=2.0.0
-psycopg2-binary>=2.9.0
-
-# Google APIs
+# Google APIs & Auth
 google-api-python-client>=2.100.0
 google-auth>=2.23.0
 google-auth-httplib2>=0.2.0
+cryptography>=41.0.0
 
-# Web Crawling / Parsing
+# Web Crawling & Parsing
 crawlee[all]>=0.5.0
 beautifulsoup4>=4.12.0
 playwright>=1.40.0
 lxml>=4.9.0
 parsel>=1.8.0
 
-# WordPress OAuth
-cryptography>=41.0.0
-
-# Frontend / API
-d3>=7.9.0
-
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
->>>>>>> 883044a6e71829fcb5140c828c20b1c8c80b1408
-
-# Note: Requires Python 3.10-3.13 for crewai compatibility
-# Run `playwright install` after installing dependencies
