@@ -277,7 +277,13 @@ export default function WorkforcePage() {
 
       setChatMessages((prev) => [
         ...prev,
-        { sender: "agent", text: data.reply, timestamp: data.timestamp },
+        {
+          sender: "agent",
+          text: data.reply,
+          sources_used: data.sources_used || [],
+          citations: data.citations || [],
+          timestamp: data.timestamp
+        },
       ]);
     } catch (err) {
       setChatMessages((prev) => [
@@ -544,7 +550,19 @@ export default function WorkforcePage() {
                               : "bg-gray-900 text-gray-200 border border-gray-800 rounded-bl-none font-mono whitespace-pre-wrap"
                           }`}
                         >
-                          {m.text}
+                          <div>{m.text}</div>
+                          {m.sources_used && m.sources_used.length > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-gray-800 space-y-1">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase">Knowledge Sources Grounded:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {m.sources_used.map((s, sIdx) => (
+                                  <span key={sIdx} className="text-[9px] px-1.5 py-0.5 bg-gray-950 text-blue-400 rounded border border-gray-800">
+                                    [{s.citation_number}] {s.title} ({Math.round(s.similarity * 100)}%)
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))

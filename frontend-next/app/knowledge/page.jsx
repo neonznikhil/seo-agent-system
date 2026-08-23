@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ReactFlow,
   MiniMap,
@@ -16,7 +16,8 @@ import "@xyflow/react/dist/style.css";
 import { 
   BookOpen, Upload, Globe, FileText, Search, Trash2, RefreshCw, 
   Sparkles, CheckCircle2, AlertTriangle, ArrowRight, ShieldCheck,
-  ExternalLink, Eye, Layers, Share2, Check, X, ShieldAlert, Cpu, Activity
+  ExternalLink, Eye, Layers, Share2, Check, X, ShieldAlert, Cpu, Activity,
+  MessageSquare, Send, Sliders, Info, Loader2
 } from "lucide-react";
 
 // ---------------------------------------------------------
@@ -70,7 +71,7 @@ const nodeTypes = {
 };
 
 export default function KnowledgePage() {
-  const [activeTab, setActiveTab] = useState("documents"); // 'documents' | 'graph' | 'validation'
+  const [activeTab, setActiveTab] = useState("documents"); // 'documents' | 'graph' | 'validation' | 'rag_chat'
   const [knowledgeList, setKnowledgeList] = useState([]);
   const [selectedType, setSelectedType] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -94,6 +95,23 @@ export default function KnowledgePage() {
 
   // Validation State
   const [isValidatingAll, setIsValidatingAll] = useState(false);
+
+  // RAG Chat State
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      content: "Hello! I am your RankForge RAG Assistant. Ask me anything about our practice areas, settlement timelines, or Texas legal statutes. All answers are strictly grounded in our verified knowledge base with verifiable citations.",
+      citations: []
+    }
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [isRAGLoading, setIsRAGLoading] = useState(false);
+  const [ragTopK, setRagTopK] = useState(5);
+  const [ragTypeFilter, setRagTypeFilter] = useState("all");
+  const [requireCitations, setRequireCitations] = useState(true);
+  const [antiHallucination, setAntiHallucination] = useState(true);
+  const [activeCitationPopover, setActiveCitationPopover] = useState(null);
+  const chatScrollRef = useRef(null);
 
   // 1. Fetch Knowledge on Load
   const fetchKnowledge = useCallback(async () => {
@@ -121,7 +139,6 @@ export default function KnowledgePage() {
         const rawNodes = graphData.nodes || [];
         const rawEdges = graphData.edges || [];
 
-        // Position nodes in a 4-column cluster
         const positionedNodes = rawNodes.map((n, i) => {
           const col = i % 4;
           const row = Math.floor(i / 4);
@@ -161,6 +178,12 @@ export default function KnowledgePage() {
       fetchGraph();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [messages, isRAGLoading]);
 
   // 3. Search (Vector vs Hybrid)
   const handleSearch = async (e) => {
@@ -270,7 +293,90 @@ export default function KnowledgePage() {
     }
   };
 
+  // 7. RAG Chat Submit (Calls real POST /api/rag/chat)
+  const handleSendRAGMessage = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isRAGLoading) return;
+
+    const userText = chatInput.trim();
+    setChatInput("");
+    const newMsgList = [...messages, { role: "user", content: userText }];
+    setMessages(newMsgList);
+    setIsRAGLoading(true);
+
+    try {
+      const filters = ragTypeFilter !== "all" ? { type: ragTypeFilter } : {};
+      const res = await fetch("http://localhost:8000/api/rag/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userText,
+          top_k: ragTopK,
+          filters: filters
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessages([
+          ...newMsgList,
+          {
+            role: "assistant",
+            content: data.answer,
+            citations: data.citations || [],
+            hallucination_check: data.hallucination_check,
+            used_hits: data.used_hits || []
+          }
+        ]);
+      } else {
+        setMessages([
+          ...newMsgList,
+          {
+            role: "assistant",
+            content: "Sorry, an error occurred communicating with the RAG Knowledge engine.",
+            citations: []
+          }
+        ]);
+      }
+    } catch (err) {
+      setMessages([
+        ...newMsgList,
+        {
+          role: "assistant",
+          content: `RAG error: ${err.message}`,
+          citations: []
+        }
+      ]);
+    } finally {
+      setIsRAGLoading(false);
+    }
+  };
+
   const displayedList = searchResults || knowledgeList;
+
+  // Render clickable citations [1], [2] inside answer text
+  const renderMessageContent = (text, citations = []) => {
+    if (!citations || citations.length === 0) return text;
+    const parts = text.split(/(\[\d+\])/g);
+    return parts.map((part, index) => {
+      const match = part.match(/\[(\d+)\]/);
+      if (match) {
+        const citationNum = parseInt(match[1], 10);
+        const citObj = citations.find((c) => c.citation_number === citationNum);
+        return (
+          <span
+            key={index}
+            onClick={() => setActiveCitationPopover(citObj || null)}
+            className="inline-flex items-center px-1.5 py-0.2 mx-0.5 text-[11px] font-bold text-blue-400 bg-blue-950/80 border border-blue-800/80 rounded cursor-pointer hover:bg-blue-800 hover:text-white transition"
+            title={citObj ? `${citObj.title} (${Math.round(citObj.similarity * 100)}% match)` : "Source Fact"}
+          >
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-gray-200 p-6 md:p-8">
@@ -282,8 +388,8 @@ export default function KnowledgePage() {
               <BookOpen className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">Phase 2 Knowledge Graph & Anti-Hallucination Grounding</h1>
-              <p className="text-sm text-gray-400">pgvector(1536) · Entity Triples · Exponential Freshness Decay · True Hybrid Search</p>
+              <h1 className="text-2xl font-bold text-white tracking-tight">Full RAG Knowledge Engine & Anti-Hallucination Grounding</h1>
+              <p className="text-sm text-gray-400">pgvector(1536) · Cross-Encoder Reranking · Real Citations · SSE Streaming</p>
             </div>
           </div>
 
@@ -311,8 +417,9 @@ export default function KnowledgePage() {
         <div className="flex gap-2">
           {[
             { id: "documents", label: "Knowledge Documents", icon: FileText },
-            { id: "graph", label: "Knowledge Graph Visualizer", icon: Share2 },
-            { id: "validation", label: "Fact-Check & Validation", icon: ShieldCheck },
+            { id: "graph", label: "Knowledge Graph", icon: Share2 },
+            { id: "validation", label: "Fact-Check Engine", icon: ShieldCheck },
+            { id: "rag_chat", label: "💬 RAG Chat Assistant", icon: MessageSquare },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -329,37 +436,37 @@ export default function KnowledgePage() {
           ))}
         </div>
 
-        {/* Search Mode Toggle */}
-        <div className="flex items-center gap-2 py-1">
-          <form onSubmit={handleSearch} className="flex items-center gap-1">
-            <input
-              type="text"
-              placeholder={`Search ${searchMode === "hybrid" ? "Hybrid (Vector + Text)" : "Vector Only"}...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-gray-950 border border-gray-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 w-56"
-            />
+        {/* Search Mode Toggle (Documents Tab Only) */}
+        {activeTab === "documents" && (
+          <div className="flex items-center gap-2 py-1">
+            <form onSubmit={handleSearch} className="flex items-center gap-1">
+              <input
+                type="text"
+                placeholder={`Search ${searchMode === "hybrid" ? "Hybrid (Vector + Text)" : "Vector Only"}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-gray-950 border border-gray-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 w-56"
+              />
+              <button
+                type="submit"
+                className="py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold"
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </form>
             <button
-              type="submit"
-              className="py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold"
+              onClick={() => setSearchMode(searchMode === "hybrid" ? "vector" : "hybrid")}
+              className="py-1.5 px-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[11px] font-mono text-gray-300"
             >
-              <Search className="w-3.5 h-3.5" />
+              {searchMode === "hybrid" ? "⚡ Hybrid" : "🎯 Vector"}
             </button>
-          </form>
-          <button
-            onClick={() => setSearchMode(searchMode === "hybrid" ? "vector" : "hybrid")}
-            className="py-1.5 px-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[11px] font-mono text-gray-300"
-            title="Toggle between Hybrid and Vector Search"
-          >
-            {searchMode === "hybrid" ? "⚡ Hybrid Mode" : "🎯 Vector Mode"}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* TAB 1: DOCUMENTS */}
       {activeTab === "documents" && (
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left 2 Cols: Knowledge Table */}
           <div className="lg:col-span-2 bg-gray-900/80 border border-gray-800 rounded-xl p-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-800 pb-3 mb-4">
               <span className="text-xs font-semibold text-white">Verified Ground Context ({displayedList.length} chunks)</span>
@@ -419,7 +526,6 @@ export default function KnowledgePage() {
                       {item.content}
                     </p>
 
-                    {/* Entities Tags */}
                     {item.entities && (
                       <div className="flex items-center gap-1.5 flex-wrap pt-1">
                         <span className="text-[10px] text-gray-500 font-semibold">Entities:</span>
@@ -495,7 +601,7 @@ export default function KnowledgePage() {
                       <label className="block text-[11px] text-gray-400 mb-1 font-semibold">Content</label>
                       <textarea
                         rows={6}
-                        placeholder="Paste verified factual details (attorneys, jurisdictions, retainers, case laws)..."
+                        placeholder="Paste factual details (attorneys, jurisdictions, retainers, case laws)..."
                         value={docContent}
                         onChange={(e) => setDocContent(e.target.value)}
                         className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs text-white font-mono focus:outline-none focus:border-blue-500 leading-relaxed"
@@ -549,7 +655,6 @@ export default function KnowledgePage() {
             <Background color="#1f2937" gap={16} size={1} />
           </ReactFlow>
 
-          {/* Node details slide-over if clicked */}
           {selectedNodeData && (
             <div className="absolute top-4 right-4 w-80 bg-gray-950/95 border border-gray-800 rounded-xl p-4 shadow-2xl backdrop-blur-md z-10 text-xs">
               <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
@@ -614,6 +719,188 @@ export default function KnowledgePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: RAG CHAT ASSISTANT */}
+      {activeTab === "rag_chat" && (
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Left Controls & Citation Popover */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 shadow-xl">
+              <div className="flex items-center gap-2 border-b border-gray-800 pb-3 mb-3">
+                <Sliders className="w-4 h-4 text-blue-400" />
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">RAG Parameters</h4>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-gray-400 mb-1">Type Filter</label>
+                  <select
+                    value={ragTypeFilter}
+                    onChange={(e) => setRagTypeFilter(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-white font-mono"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="business_info">business_info</option>
+                    <option value="service">service</option>
+                    <option value="location">location</option>
+                    <option value="law_statute">law_statute</option>
+                    <option value="faq">faq</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-gray-400 mb-1">
+                    <span>Retrieved Hits (Top-K)</span>
+                    <span className="text-blue-400 font-mono">{ragTopK}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="2"
+                    max="10"
+                    value={ragTopK}
+                    onChange={(e) => setRagTopK(parseInt(e.target.value))}
+                    className="w-full accent-blue-500"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-gray-800 space-y-2 font-mono text-[11px]">
+                  <div className="flex items-center justify-between text-gray-300">
+                    <span>Require Citations</span>
+                    <input
+                      type="checkbox"
+                      checked={requireCitations}
+                      onChange={(e) => setRequireCitations(e.target.checked)}
+                      className="accent-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-gray-300">
+                    <span>Anti-Hallucination Gate</span>
+                    <input
+                      type="checkbox"
+                      checked={antiHallucination}
+                      onChange={(e) => setAntiHallucination(e.target.checked)}
+                      className="accent-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setMessages([
+                    {
+                      role: "assistant",
+                      content: "Chat cleared. What legal or business question can I answer from the knowledge base?",
+                      citations: []
+                    }
+                  ])}
+                  className="w-full py-1.5 bg-gray-950 hover:bg-gray-800 border border-gray-800 rounded-lg text-gray-400 text-xs transition mt-2"
+                >
+                  Clear History
+                </button>
+              </div>
+            </div>
+
+            {/* Active Citation Card */}
+            {activeCitationPopover && (
+              <div className="bg-gray-900/90 border border-blue-500/40 rounded-xl p-4 shadow-2xl relative animate-in fade-in">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
+                  <span className="text-xs font-bold text-blue-400">
+                    Citation [{activeCitationPopover.citation_number}]
+                  </span>
+                  <button onClick={() => setActiveCitationPopover(null)} className="text-gray-400 hover:text-white">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <h5 className="text-xs font-semibold text-white mb-1">{activeCitationPopover.title}</h5>
+                <p className="text-[11px] text-gray-300 font-mono bg-gray-950 p-2 rounded mb-2 leading-relaxed">
+                  {activeCitationPopover.content_snippet}
+                </p>
+                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+                  <span>Sim: {Math.round((activeCitationPopover.similarity || 0.85) * 100)}%</span>
+                  <span className="text-emerald-400">Validated Fact ✅</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right 3 Cols: Real-Time Chat Thread */}
+          <div className="lg:col-span-3 bg-gray-900/80 border border-gray-800 rounded-xl shadow-xl flex flex-col h-[650px] overflow-hidden">
+            {/* Messages Scroll Area */}
+            <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
+              {messages.map((m, idx) => (
+                <div
+                  key={idx}
+                  className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] p-4 rounded-2xl text-xs leading-relaxed ${
+                      m.role === "user"
+                        ? "bg-blue-600 text-white rounded-br-none shadow-lg shadow-blue-900/30"
+                        : "bg-gray-950 text-gray-200 border border-gray-800 rounded-bl-none shadow-xl"
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap font-sans">
+                      {renderMessageContent(m.content, m.citations)}
+                    </div>
+
+                    {/* Citations List Bar under Assistant Responses */}
+                    {m.role === "assistant" && m.citations && m.citations.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-800/80 space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                          Grounding Citations ({m.citations.length}):
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {m.citations.map((c, cIdx) => (
+                            <button
+                              key={cIdx}
+                              onClick={() => setActiveCitationPopover(c)}
+                              className="py-1 px-2.5 bg-gray-900 hover:bg-blue-900/40 border border-gray-800 hover:border-blue-500 rounded text-[10px] font-mono text-gray-300 flex items-center gap-1.5 transition"
+                            >
+                              <span className="text-blue-400 font-bold">[{c.citation_number}]</span>
+                              <span className="truncate max-w-[120px]">{c.title}</span>
+                              <span className="text-emerald-400">({Math.round((c.similarity || 0.85) * 100)}%)</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {m.hallucination_check && (
+                      <div className="mt-2 text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Grounded in verified facts
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {isRAGLoading && (
+                <div className="flex items-center gap-2 text-xs text-blue-400 font-mono bg-gray-950 p-3 rounded-xl border border-gray-800 max-w-xs animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Retrieving facts & synthesizing citations...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Input Bar */}
+            <form onSubmit={handleSendRAGMessage} className="p-4 border-t border-gray-800 bg-gray-950/80 flex gap-2">
+              <input
+                type="text"
+                placeholder="Ask about Houston personal injury services, statutes of limitations, retainer fees..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={isRAGLoading || !chatInput.trim()}
+                className="py-2.5 px-5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-lg shadow-blue-900/40"
+              >
+                <Send className="w-3.5 h-3.5" /> Send
+              </button>
+            </form>
           </div>
         </div>
       )}

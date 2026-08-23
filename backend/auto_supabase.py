@@ -134,6 +134,8 @@ TABLES = {
             status text DEFAULT 'draft_pending_approval',
             seo_score float DEFAULT 0,
             word_count int DEFAULT 0,
+            citations jsonb DEFAULT '[]'::jsonb,
+            rag_hits jsonb DEFAULT '[]'::jsonb,
             wp_post_id int,
             wp_url text,
             published_at timestamptz,
@@ -153,6 +155,8 @@ TABLES = {
             slug text,
             keyword text,
             seo_score float,
+            citations jsonb DEFAULT '[]'::jsonb,
+            rag_hits jsonb DEFAULT '[]'::jsonb,
             type text DEFAULT 'new_post',
             status text DEFAULT 'pending',
             auto_generated boolean DEFAULT true,
@@ -163,6 +167,32 @@ TABLES = {
             created_at timestamptz DEFAULT now(),
             approved_at timestamptz,
             wordpress_url text
+        )
+    """,
+    "rag_conversations": """
+        CREATE TABLE IF NOT EXISTS rag_conversations (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id uuid,
+            user_id text,
+            agent_name text DEFAULT 'rag',
+            query text,
+            answer text,
+            citations jsonb DEFAULT '[]'::jsonb,
+            hits jsonb DEFAULT '[]'::jsonb,
+            hallucination_check jsonb DEFAULT '{"hallucinated": false}'::jsonb,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "rag_evaluations": """
+        CREATE TABLE IF NOT EXISTS rag_evaluations (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            query text,
+            expected_answer text,
+            actual_answer text,
+            retrieval_precision float DEFAULT 1.0,
+            rerank_score float DEFAULT 1.0,
+            hallucination boolean DEFAULT false,
+            created_at timestamptz DEFAULT now()
         )
     """,
     "content_log": """

@@ -754,7 +754,29 @@ class KnowledgeService:
                     # Create graph relations based on entity overlap
                     await self.create_entity_relations(new_id, entities, ch_embedding)
                 except Exception as e:
-                    logger.error(f"Failed to insert knowledge chunk: {e}")
+                    # Fallback with base columns if schema cache lacks Phase 2 columns
+                    try:
+                        base_row = {
+                            "id": new_id,
+                            "title": doc_title,
+                            "content": ch_text,
+                            "type": doc_type,
+                            "source": source_type,
+                            "url": url,
+                            "embedding": ch_embedding,
+                            "freshness_score": 1.0,
+                            "usage_count": 0,
+                            "metadata": {
+                                "entities": entities,
+                                "credibility": credibility,
+                                "chunk_index": chunk_data["chunk_index"],
+                                "total_chunks": chunk_data["total_chunks"]
+                            }
+                        }
+                        supabase.table("knowledge_base").insert(base_row).execute()
+                        inserted_count += 1
+                    except Exception as err2:
+                        logger.error(f"Failed to insert knowledge chunk: {err2}")
 
         return {
             "success": True,
@@ -865,3 +887,16 @@ class KnowledgeService:
     async def get_competitor_insights(self, keyword: str) -> List[Dict[str, Any]]:
         """Retrieve competitor insights matching keyword."""
         return await self.retrieve_relevant_hybrid(keyword=f"competitor {keyword}", top_k=3)
+
+
+async def get_knowledge_for_topic(topic: str, website_id: Optional[str] = None, top_k: int = 5) -> List[Dict[str, Any]]:
+    """Helper for backward compatibility with older services."""
+    service = KnowledgeService(website_id=website_id)
+    return await service.retrieve_relevant_hybrid(keyword=topic, top_k=top_k)
+
+
+async def get_verified_facts(topic: str, website_id: Optional[str] = None) -> List[str]:
+    """Helper for fetching verified factual sentences."""
+    service = KnowledgeService(website_id=website_id)
+    hits = await service.retrieve_relevant_hybrid(keyword=topic, top_k=5)
+    return [h.get("content", "") for h in hits if h.get("content")]

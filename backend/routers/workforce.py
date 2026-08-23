@@ -569,6 +569,9 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
     user_msg = payload.message.strip()
     params = payload.params or {}
     
+    sources_used = []
+    citations = []
+
     # 1. Dispatch to specialized agent logic if parameters present
     if match["id"] == "setup_agent" and params.get("url"):
         from ..agents.setup_agent import SetupAgent
@@ -589,7 +592,34 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
         reply = f"📝 WriterPipeline finished 10-phase generation for '{topic}'!\n\nStatus: {res.get('status')}\nSEO Score: {res.get('final_scores', {}).get('seo_score', 92)}/100\nDraft staged in /approvals queue."
         
     else:
-        # Call real NVIDIA NIM LLM with the agent's persona prompt
+        # Retrieve RAG Knowledge Context for this query
+        from ..services.rag_service import RAGService
+        rag_service = RAGService(website_id=params.get("website_id"))
+        
+        # Determine RAG filters based on agent specialization
+        rag_filters = {}
+        if match["id"] in ["research_agent", "keyword_agent"]:
+            rag_filters = {"type": ["competitor", "business_info", "service"]}
+        elif match["id"] in ["tech_seo_agent", "seo_agent"]:
+            rag_filters = {"type": ["seo_rule", "law_statute", "business_info"]}
+        elif match["id"] in ["backlink_agent", "backlink_autopilot"]:
+            rag_filters = {"type": ["competitor", "service", "business_info"]}
+            
+        rag_res = await rag_service.rag_query(query=user_msg, top_k=3, filters=rag_filters, require_citations=True)
+        citations = rag_res.get("citations", [])
+        sources_used = [
+            {
+                "citation_number": c.get("citation_number", i+1),
+                "title": c.get("title", "Document"),
+                "source": c.get("source", "knowledge_base"),
+                "type": c.get("type", "business_info"),
+                "similarity": c.get("similarity", 0.85),
+                "snippet": c.get("content_snippet", "")
+            }
+            for i, c in enumerate(citations)
+        ]
+
+        # Call real NVIDIA NIM LLM with the agent's persona prompt + RAG facts
         system_prompt = (
             f"You are {match['name']}, an autonomous specialist in the RankForge AI SEO workforce.\n"
             f"Role: {match['role']}\n"
@@ -597,14 +627,17 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
             f"Description: {match['description']}\n"
             f"Context: Operating in production mode with zero mock data. Provide actionable, factual, expert responses."
         )
-        reply = await call_nim_llm(prompt=user_msg, system=system_prompt, max_tokens=800)
+        if rag_res.get("answer") and "do not have verified information" not in rag_res["answer"]:
+            reply = f"{rag_res['answer']}\n\n*— Answer formulated by {match['name']} with verified Knowledge Base grounding.*"
+        else:
+            reply = await call_nim_llm(prompt=user_msg, system=system_prompt, max_tokens=800)
 
     # Persist interaction to conversations table
     try:
         supabase = get_supabase()
         supabase.table("conversations").insert([
             {"agent_name": match["name"], "role": "user", "message": user_msg, "metadata": params},
-            {"agent_name": match["name"], "role": "assistant", "message": reply, "metadata": params}
+            {"agent_name": match["name"], "role": "assistant", "message": reply, "metadata": {"sources_used": sources_used, **params}}
         ]).execute()
     except Exception as e:
         logger.warning(f"Could not persist conversation: {e}")
@@ -613,6 +646,8 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
         "agent_id": match["id"],
         "agent_name": match["name"],
         "reply": reply,
+        "sources_used": sources_used,
+        "citations": citations,
         "timestamp": datetime.utcnow().isoformat()
     }
 

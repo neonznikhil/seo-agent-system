@@ -1619,6 +1619,57 @@ Return JSON: {{"score": 0-100, "issues": ["issue1"], "passed": true/false}}"""
             content=content,
             seo_keyword=self.primary_keyword or self.topic
         )
+
+        # Persist blog post with RAG citations and hits
+        try:
+            from ..database import get_supabase
+            sb = get_supabase()
+            blog_id = str(uuid.uuid4())
+            auto_publish = True
+            try:
+                auto_res = sb.table("autonomous_settings").select("auto_publish").limit(1).execute().data
+                if auto_res and auto_res[0].get("auto_publish") is not None:
+                    auto_publish = bool(auto_res[0]["auto_publish"])
+            except Exception:
+                pass
+
+            citations_data = [
+                {
+                    "hit_id": c.get("id"),
+                    "title": c.get("title"),
+                    "source": c.get("source"),
+                    "similarity": float(c.get("similarity", 0.85))
+                }
+                for c in getattr(self, "rag_hits", [])
+            ]
+
+            sb.table("blogs").insert({
+                "id": blog_id,
+                "title": self.topic,
+                "primary_keyword": self.primary_keyword or self.topic,
+                "content": content,
+                "html_content": content,
+                "seo_score": float(self.final_scores.get("seo_score", 90.0)),
+                "citations": citations_data,
+                "rag_hits": getattr(self, "rag_hits", []),
+                "wp_post_id": result.get("id") if result else None,
+                "status": "published" if auto_publish else "draft_pending_approval"
+            }).execute()
+
+            sb.table("blog_approvals").insert({
+                "id": str(uuid.uuid4()),
+                "blog_id": blog_id,
+                "title": self.topic,
+                "html_content": content,
+                "keyword": self.primary_keyword or self.topic,
+                "seo_score": float(self.final_scores.get("seo_score", 90.0)),
+                "citations": citations_data,
+                "rag_hits": getattr(self, "rag_hits", []),
+                "status": "pending"
+            }).execute()
+        except Exception as e:
+            logger.debug(f"Error persisting blog to Supabase: {e}")
+
         return {'wp_id': result.get('id') if result else None, 'status': 'draft'}
 
     def update_content_log(self, **kwargs):

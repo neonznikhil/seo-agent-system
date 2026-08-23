@@ -107,43 +107,19 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    payload = {
-        "model": NIM_LLM_MODEL,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
+    
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     
+    candidate_models = [
+        os.getenv("NIM_LLM_MODEL", "meta/llama-3.3-70b-instruct"),
+        "nvidia/llama-3.1-nemotron-70b-instruct",
+        "meta/llama-3.1-8b-instruct"
+    ]
+
     import asyncio
-    max_retries = 2
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
-                if resp.status_code == 429:
-                    wait_time = (attempt + 1) * 2
-                    logger.warning(f"NIM LLM rate limit 429 hit. Backing off for {wait_time}s (attempt {attempt+1}/{max_retries})")
-                    await asyncio.sleep(wait_time)
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-                # Accept ANY non-empty completion - short answers (slugs,
-                # titles, JSON arrays) are valid; only retry on empty.
-                if content and content.strip():
-                    return content.strip()
-                logger.warning(f"NIM LLM returned empty content (attempt {attempt+1}/{max_retries})")
-        except (httpx.TimeoutException, httpx.HTTPError) as e:
-            logger.warning(f"NIM LLM error on attempt {attempt+1}/{max_retries}: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(1)
-            else:
-                _log_task_fail(website_id, "call_nim_llm", str(e))
-        except Exception as e:
             _log_task_fail(website_id, "call_nim_llm", str(e))
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)

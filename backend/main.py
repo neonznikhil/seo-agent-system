@@ -36,6 +36,7 @@ from .routers.setup import router as setup_router
 from .api_web_browsing import router as web_browsing_router
 from .routers.chat import router as chat_router
 from .routers.workforce import router as workforce_router
+from .routers.rag import router as rag_router
 
 validate_env()
 
@@ -443,6 +444,7 @@ app.include_router(setup_router, prefix="/api")
 app.include_router(web_browsing_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(workforce_router, prefix="/api")
+app.include_router(rag_router, prefix="/api")
 app.include_router(autonomy_router, prefix="")
 app.include_router(approvals_router, prefix="")
 
@@ -459,5 +461,6 @@ app.include_router(content_router)
 app.include_router(llms_txt)
 app.include_router(workforce_router)
 app.include_router(connectors_router)
+app.include_router(rag_router)
 
 
