@@ -553,15 +553,20 @@ async def structure_monitor_loop():
         await asyncio.sleep(21600)  # 6 hours
 
 
+async def _staggered_start(coro, initial_delay: int):
+    await asyncio.sleep(initial_delay)
+    await coro()
+
+
 def start_all_monitors():
-    """Start all monitoring loops as background tasks."""
-    asyncio.create_task(rank_monitor_loop())
-    asyncio.create_task(serp_monitor_loop())
-    asyncio.create_task(competitor_monitor_loop())
-    asyncio.create_task(tech_monitor_loop())
-    asyncio.create_task(geo_monitor_loop())
-    asyncio.create_task(structure_monitor_loop())
-    logger.info("[Monitoring] All 6 monitor loops started")
+    """Start all monitoring loops as staggered background tasks."""
+    asyncio.create_task(_staggered_start(rank_monitor_loop, 20))
+    asyncio.create_task(_staggered_start(serp_monitor_loop, 40))
+    asyncio.create_task(_staggered_start(competitor_monitor_loop, 60))
+    asyncio.create_task(_staggered_start(tech_monitor_loop, 80))
+    asyncio.create_task(_staggered_start(geo_monitor_loop, 100))
+    asyncio.create_task(_staggered_start(structure_monitor_loop, 120))
+    logger.info("[Monitoring] All 6 monitor loops registered with staggered start")
 
 
 async def run_all_monitors(website_id: str):

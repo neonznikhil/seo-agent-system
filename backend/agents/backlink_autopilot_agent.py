@@ -13,6 +13,8 @@ logger = logging.getLogger("backend.agents.backlink_autopilot")
 
 
 async def run_backlink_daily_jobs() -> None:
+    # Allow server to complete boot and accept traffic before starting heavy daily tasks
+    await asyncio.sleep(60)
     while True:
         try:
             supabase = get_supabase()

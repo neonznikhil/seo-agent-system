@@ -380,11 +380,14 @@ def setup_scheduler() -> AsyncIOScheduler:
         max_instances=1
     )
 
-    # Start 6 continuous monitoring loops
+    # Start 6 continuous monitoring loops if event loop is running
     try:
+        loop = asyncio.get_running_loop()
         from ..services.continuous_monitor import start_all_monitors
         start_all_monitors()
         logger.info("[Scheduler] Continuous monitoring loops (6) started ✅")
+    except RuntimeError:
+        pass
     except Exception as e:
         logger.warning(f"Continuous monitors startup note: {e}")
 
