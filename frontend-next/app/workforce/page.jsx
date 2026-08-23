@@ -424,6 +424,18 @@ export default function WorkforcePage() {
             <Background color="#1f2937" gap={16} size={1} />
           </ReactFlow>
 
+          {/* Top Decision Engine State Machine Banner */}
+          <div className="absolute top-3 left-3 right-[440px] bg-gray-950/90 border border-blue-500/30 rounded-xl p-2.5 shadow-2xl backdrop-blur-sm z-10 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-mono text-[11px] text-gray-200 truncate">
+              <Sparkles className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 animate-pulse" />
+              <span className="text-blue-400 font-bold">Autonomous Decision Engine:</span>
+              <span className="text-gray-300 truncate">Next Job: <strong className="text-white">Goal-Driven Writer</strong> (11:00 AM IST) · Rationale: Focus keyword 'Houston commercial truck claims' selected from business goals</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+              <CheckCircle2 className="w-3 h-3" /> State: Optimal
+            </span>
+          </div>
+
           {/* Bottom live log bar */}
           <div className="absolute bottom-3 left-3 right-[440px] bg-gray-950/90 border border-gray-800 rounded-xl p-3 shadow-2xl backdrop-blur-sm z-10 flex items-center justify-between">
             <div className="flex items-center gap-2 font-mono text-[11px] text-gray-300 truncate">

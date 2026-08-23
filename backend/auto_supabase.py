@@ -86,6 +86,13 @@ TABLES = {
             chunk_index int DEFAULT 0,
             total_chunks int DEFAULT 1,
             freshness_score float DEFAULT 1.0,
+            credibility_score float DEFAULT 1.0,
+            source_type text DEFAULT 'file',
+            validated boolean DEFAULT false,
+            validation_score float DEFAULT 0.0,
+            entities jsonb DEFAULT '{"people":[],"orgs":[],"locations":[],"laws":[],"services":[],"keywords":[]}'::jsonb,
+            related_ids uuid[] DEFAULT '{}',
+            content_hash text,
             usage_count int DEFAULT 0,
             metadata jsonb DEFAULT '{}'::jsonb,
             last_used timestamptz DEFAULT now(),
@@ -95,9 +102,22 @@ TABLES = {
     "knowledge_relations": """
         CREATE TABLE IF NOT EXISTS knowledge_relations (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            from_id uuid,
+            to_id uuid,
             source_id uuid,
             target_id uuid,
-            relation_type text,
+            relation_type text DEFAULT 'mentions',
+            strength float DEFAULT 0.8,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "daily_costs": """
+        CREATE TABLE IF NOT EXISTS daily_costs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            date date DEFAULT CURRENT_DATE,
+            agent_name text,
+            tokens int DEFAULT 0,
+            cost_usd float DEFAULT 0.0,
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -328,6 +348,9 @@ TABLES = {
             auto_publish boolean DEFAULT true,
             auto_generate boolean DEFAULT true,
             auto_refresh boolean DEFAULT true,
+            goals jsonb DEFAULT '{"target_articles_per_week": 5, "target_traffic_growth": 15.0, "focus_keywords": ["Houston car accident lawyer", "Texas commercial truck claims"]}'::jsonb,
+            success_rate float DEFAULT 1.0,
+            daily_costs jsonb DEFAULT '{}'::jsonb,
             updated_at timestamptz DEFAULT now()
         )
     """,
@@ -378,19 +401,29 @@ RPCS = {
     "match_knowledge": """
         CREATE OR REPLACE FUNCTION match_knowledge (
             query_embedding vector(1536),
-            match_threshold float DEFAULT 0.70,
-            match_count int DEFAULT 5
+            match_threshold float DEFAULT 0.65,
+            match_count int DEFAULT 10
         ) RETURNS TABLE (
             id uuid,
             title text,
             content text,
             type text,
             source text,
+            credibility_score float,
+            freshness_score float,
+            validated boolean,
+            validation_score float,
+            entities jsonb,
             similarity float
         ) LANGUAGE plpgsql STABLE AS $$
         BEGIN
             RETURN QUERY
             SELECT kb.id, kb.title, kb.content, kb.type, kb.source,
+                   COALESCE(kb.credibility_score, 1.0)::float,
+                   COALESCE(kb.freshness_score, 1.0)::float,
+                   COALESCE(kb.validated, false)::boolean,
+                   COALESCE(kb.validation_score, 0.0)::float,
+                   COALESCE(kb.entities, '{}'::jsonb)::jsonb,
                    (1 - (kb.embedding <=> query_embedding))::float AS similarity
             FROM knowledge_base kb
             WHERE kb.embedding IS NOT NULL

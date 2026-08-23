@@ -100,7 +100,7 @@ class WriterPipeline:
         except Exception:
             pass
 
-        knowledge_chunks = await knowledge_service.query(self.primary_keyword, top_k=5)
+        knowledge_chunks = await knowledge_service.retrieve_relevant_hybrid(self.primary_keyword, top_k=5)
         if kb_count < 5 and not knowledge_chunks:
             raise Exception("Knowledge base empty upload business info in /knowledge first no hallucination")
 
