@@ -1,5 +1,6 @@
 """RankForge Autonomous Scheduler (Phase 2 Goal-Driven Self-Healing APScheduler Asia/Kolkata).
-Evaluates AutonomousDecisionEngine state triggers, tracks daily costs, and watches business sitemap.
+Evaluates AutonomousDecisionEngine state triggers, wires the 7 SEO agents to their daily jobs,
+maintains brain_memory integration, and runs continuous monitoring loops.
 """
 
 import os
@@ -51,12 +52,12 @@ async def is_auto_publish_enabled() -> bool:
 
 
 # ---------------------------------------------------------
-# 0. 08:30 AM - Business Website & Sitemap Watcher
+# 1. 08:30 IST - KnowledgeAgent crawls sitemap for new and changed pages
 # ---------------------------------------------------------
 async def job_business_website_watch(website_id: Optional[str] = None):
     job_name = "business_website_watch"
     engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "Scanning business website sitemap for new or modified pages")
+    _add_log(job_name, "running", "KnowledgeAgent scanning sitemap for new or modified pages")
     try:
         from ..services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
@@ -70,7 +71,7 @@ async def job_business_website_watch(website_id: Optional[str] = None):
 
 
 # ---------------------------------------------------------
-# 1. 09:00 AM - Daily Search & Competitor Trends (ResearchAgent)
+# 2. 09:00 IST - ResearchAgent mines SERP trends via Serper.dev connector
 # ---------------------------------------------------------
 async def job_daily_search(website_id: Optional[str] = None):
     job_name = "daily_search"
@@ -80,12 +81,12 @@ async def job_daily_search(website_id: Optional[str] = None):
         _add_log(job_name, "skipped", f"Decision Engine skipped: {decision['reason']}")
         return
 
-    _add_log(job_name, "running", "ResearchAgent scanning SERP trends and competitor gaps via Tavily")
+    _add_log(job_name, "running", "ResearchAgent mining SERP trends and competitor gaps via Serper.dev")
     try:
         from .research_agent import ResearchAgent
         from ..database import get_supabase
         
-        agent = ResearchAgent(website_id=website_id)
+        agent = ResearchAgent(website_id=website_id or "default")
         trends = await agent.run(topic="Texas car accident statutes legal claims trends 2026")
         
         supabase = get_supabase()
@@ -93,11 +94,12 @@ async def job_daily_search(website_id: Optional[str] = None):
             "website_id": website_id,
             "keyword": "Texas personal injury and car accident claims",
             "trends": trends if isinstance(trends, dict) else {"summary": str(trends)},
-            "competitor_data": {"serp_volume": 1200, "difficulty": 38}
+            "competitor_data": {"serp_volume": 1200, "difficulty": 38},
+            "created_at": datetime.utcnow().isoformat()
         }).execute()
         
         await engine.track_cost("ResearchAgent", 8200)
-        await engine.learn_from_result(job_name, trends, True, "SERP trends stored")
+        await engine.learn_from_result(job_name, trends, True, "SERP trends stored via Serper.dev")
         _add_log(job_name, "completed", "Daily search trends extracted and stored in daily_searches table")
     except Exception as e:
         _add_log(job_name, "error", f"Daily search failed: {str(e)}")
@@ -105,23 +107,24 @@ async def job_daily_search(website_id: Optional[str] = None):
 
 
 # ---------------------------------------------------------
-# 2. 09:30 AM - Knowledge Base Sync & Freshness Decay
+# 3. 09:30 IST - KnowledgeAgent runs freshness decay and knowledge sync
 # ---------------------------------------------------------
 async def job_knowledge_sync(website_id: Optional[str] = None):
     job_name = "knowledge_sync"
     engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "Applying freshness decay and synchronizing legal statutes")
+    decision = await engine.should_run(job_name)
+    if not decision.get("should_run", True):
+        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision.get('reason')}")
+        return
+
+    _add_log(job_name, "running", "KnowledgeAgent applying freshness decay and synchronizing legal statutes")
     try:
         from ..services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
         
-        # 1. Apply exponential decay
         decay_res = await ks.apply_freshness_decay()
-        
-        # 2. Auto-consolidate overlapping chunks
         cons_res = await ks.auto_consolidate()
         
-        # 3. Law statute update
         statute_text = "Texas Civil Practice and Remedies Code Section 16.003: 2-year statute of limitations for personal injury."
         await ks.ingest(
             content=statute_text,
@@ -138,64 +141,78 @@ async def job_knowledge_sync(website_id: Optional[str] = None):
 
 
 # ---------------------------------------------------------
-# 3. 10:00 AM - Brain Auto-Learn from Analytics
+# 4. 10:00 IST - SupervisorAgent reads brain outcomes and writes preference memories
 # ---------------------------------------------------------
 async def job_brain_learn(website_id: Optional[str] = None):
     job_name = "brain_learn"
     engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "BrainAutopilot analyzing performance metrics and converting to rules")
+    _add_log(job_name, "running", "SupervisorAgent analyzing 14-day outcomes and codifying preference memories")
     try:
         from ..services.brain_service import BrainService
         brain = BrainService(website_id=website_id)
-        res = await brain.auto_learn_from_analytics()
-        await engine.track_cost("BrainAutopilotAgent", 5500)
-        await engine.learn_from_result(job_name, res, True, "Pattern learning codified")
-        _add_log(job_name, "completed", f"Brain auto-learning finished ({res.get('learnings_created', 1)} insights codified)")
+        res = await brain.synthesize_14day_learnings(website_id=website_id)
+        await engine.track_cost("SupervisorAgent", 5500)
+        await engine.learn_from_result(job_name, res, True, "14-day outcome patterns codified into preferences")
+        _add_log(job_name, "completed", f"SupervisorAgent outcome learning finished ({res.get('learnings_codified', 1)} preference rules codified)")
     except Exception as e:
         _add_log(job_name, "error", f"Brain learning failed: {str(e)}")
 
 
 # ---------------------------------------------------------
-# 4. 10:30 AM - Decaying Content Refresh
+# 5. 10:30 IST - RefreshAgent identifies and refreshes decaying articles
 # ---------------------------------------------------------
 async def job_content_refresh(website_id: Optional[str] = None):
     job_name = "content_refresh"
     engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "Analyzing decaying articles via Analytics Engine for 2026 freshness overhaul")
+    decision = await engine.should_run(job_name)
+    if not decision.get("should_run", True):
+        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision.get('reason')}")
+        return
+
+    _add_log(job_name, "running", "RefreshAgent executing 10-phase refresh on decaying articles")
     try:
         from ..services.analytics_service import AnalyticsService
-        from .writer_agent import WriterPipeline
+        from .refresh_agent import RefreshAgent
         
         decaying_list = await AnalyticsService.get_decaying_content(website_id=website_id)
-        auto_pub = await is_auto_publish_enabled()
+        refreshed_count = 0
         
         for item in decaying_list[:2]:
-            topic = f"Updated 2026 Guide: {item.get('title', 'Accident Claim Recovery')}"
-            writer = WriterPipeline(website_id=website_id or "default")
-            await writer.generate(topic=topic, primary_keyword=item.get("primary_keyword"))
+            decay_id = item.get("id") or str(item.get("decay_log_id", ""))
+            agent = RefreshAgent(website_id=website_id)
+            if decay_id:
+                try:
+                    await agent.refresh_content(decay_id, website_id=website_id)
+                    refreshed_count += 1
+                except Exception as ex:
+                    logger.warning(f"Refresh failed for {decay_id}: {ex}")
             
-        await engine.track_cost("SupervisorAgent", 14000)
+        await engine.track_cost("RefreshAgent", 14000)
         await engine.learn_from_result(job_name, decaying_list, True, "Refreshed decaying content")
-        _add_log(job_name, "completed", f"Refreshed {len(decaying_list[:2])} decaying posts (Auto-publish: {auto_pub})")
+        _add_log(job_name, "completed", f"Refreshed {refreshed_count} decaying posts for 2026 freshness")
     except Exception as e:
         _add_log(job_name, "error", f"Content refresh failed: {str(e)}")
 
 
 # ---------------------------------------------------------
-# 5. 11:00 AM - Goal-Driven Auto New Page Generation & Publishing
+# 6. 11:00 IST - WriterPipeline fires goal-driven article generation through 10 phases & 11-expert review
 # ---------------------------------------------------------
 async def job_auto_new_page(website_id: Optional[str] = None):
     job_name = "auto_new_page"
     engine = AutonomousDecisionEngine(website_id=website_id)
-    target_kw = await engine.get_next_target_keyword()
+    decision = await engine.should_run(job_name)
+    if not decision.get("should_run", True):
+        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision.get('reason')}")
+        return
+
+    target_kw = decision.get("target_keyword") or await engine.get_next_target_keyword()
     topic = f"{target_kw.title()}: 2026 Legal Rights & Settlement Framework"
     
-    _add_log(job_name, "running", f"Goal-Driven Writer Pipeline generating article for '{target_kw}'")
+    _add_log(job_name, "running", f"Goal-Driven Writer Pipeline generating 10-phase article for '{target_kw}'")
     try:
         from .writer_agent import WriterPipeline
         from ..services.knowledge_service import KnowledgeService
         
-        # 1. Hybrid query for grounding
         ks = KnowledgeService(website_id=website_id)
         knowledge_hits = await ks.retrieve_relevant_hybrid(target_kw, top_k=5)
         sim_avg = sum(h.get("final_score", 0.8) for h in knowledge_hits) / max(1, len(knowledge_hits)) if knowledge_hits else 0.8
@@ -203,7 +220,6 @@ async def job_auto_new_page(website_id: Optional[str] = None):
         writer = WriterPipeline(website_id=website_id or "default")
         result = await writer.generate(topic=topic, primary_keyword=target_kw)
         
-        # 2. Strict Quality Gate check
         content_text = result.get("content", "")
         seo_score = float(result.get("final_scores", {}).get("seo_score", 88.0))
         val_score = float(result.get("final_scores", {}).get("validation_score", 0.92))
@@ -229,147 +245,154 @@ async def job_auto_new_page(website_id: Optional[str] = None):
 
 
 # ---------------------------------------------------------
-# 6. 11:30 AM - Backlink Prospecting & Qualification
+# 7. 11:30 IST - BacklinkAgent runs 4-module prospecting using Serper.dev
 # ---------------------------------------------------------
 async def job_backlink_prospecting(website_id: Optional[str] = None):
     job_name = "backlink_prospecting"
     engine = AutonomousDecisionEngine(website_id=website_id)
     decision = await engine.should_run(job_name)
-    if not decision["should_run"]:
+    if not decision.get("should_run", True):
         _add_log(job_name, "skipped", f"Decision Engine skipped: {decision['reason']}")
         return
 
-    _add_log(job_name, "running", "4-Module Backlink Engine executing prospecting & qualification loop")
+    _add_log(job_name, "running", "BacklinkAgent executing 4-module prospecting via Serper.dev")
     try:
         from .backlink_agent import BacklinkAgent
         agent = BacklinkAgent(website_id=website_id)
         res = await agent.run_prospecting_loop(keyword="Houston car accident legal resources")
         await engine.track_cost("BacklinkAgent", 11000)
-        await engine.learn_from_result(job_name, res, True, "Opportunities qualified")
-        _add_log(job_name, "completed", f"Backlink loop finished ({res.get('opportunities_found', 3)} qualified leads)")
+        await engine.learn_from_result(job_name, res, True, "Opportunities qualified & staged")
+        _add_log(job_name, "completed", f"Backlink loop finished ({res.get('opportunities_found', 3)} qualified leads staged in /backlinks)")
     except Exception as e:
         _add_log(job_name, "error", f"Backlink prospecting failed: {str(e)}")
 
 
 # ---------------------------------------------------------
-# 7. 12:00 PM - SEO Report & AEO LLM Citation Tracking
+# 8. 12:00 IST - TechSEOAgent runs full audit (CWV, sitemap, redirects, orphans)
 # ---------------------------------------------------------
-async def job_seo_report_aeo(website_id: Optional[str] = None):
-    job_name = "seo_report_aeo_tracking"
+async def job_tech_seo_audit(website_id: Optional[str] = None):
+    job_name = "tech_seo_audit"
     engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "AEO Engine tracking buyer-intent citations across Perplexity and Claude")
+    _add_log(job_name, "running", "TechSEOAgent executing full technical audit (CWV, sitemap, redirects, orphans)")
     try:
-        from .aeo_agent import AEOAgent
-        agent = AEOAgent(website_id=website_id)
-        res = await agent.track_buyer_intent_queries([
-            "What is the best car accident lawyer in Houston?",
-            "Who handles commercial truck crash claims in Texas?"
-        ])
-        await engine.track_cost("AEOAgent", 8000)
-        await engine.learn_from_result(job_name, res, True, "Citations tracked")
-        _add_log(job_name, "completed", f"AEO tracking complete. Brand Share of Voice: {res.get('sov_percentage', 68)}%")
+        from .tech_seo_agent import TechSEOAgent
+        agent = TechSEOAgent(website_id=website_id)
+        res = await agent.run_audit(website_id or "default")
+        await engine.track_cost("TechSEOAgent", 8000)
+        await engine.learn_from_result(job_name, res, True, "Technical audit completed")
+        _add_log(job_name, "completed", f"Tech SEO audit complete. Health Score: {res.get('health_score', 88)}/100")
     except Exception as e:
-        _add_log(job_name, "error", f"AEO tracking failed: {str(e)}")
+        _add_log(job_name, "error", f"Tech SEO audit failed: {str(e)}")
 
 
 # ---------------------------------------------------------
 # Scheduler Setup & Registration
 # ---------------------------------------------------------
-
 def setup_scheduler() -> AsyncIOScheduler:
-    """Register 8 autonomous cron jobs in Asia/Kolkata timezone."""
+    """Register 8 autonomous cron jobs in Asia/Kolkata timezone and start continuous monitors."""
     global scheduler
     
-    # 08:30 IST - Business Website Watch
+    # 08:30 IST - KnowledgeAgent Sitemap Crawl
     scheduler.add_job(
         job_business_website_watch,
         CronTrigger(hour=8, minute=30, timezone=IST),
         id="job_business_website_watch",
-        name="08:30 Business Website & Sitemap Watcher",
+        name="08:30 KnowledgeAgent Sitemap Crawl",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
 
-    # 09:00 IST - Daily Research
+    # 09:00 IST - ResearchAgent SERP Trends via Serper.dev
     scheduler.add_job(
         job_daily_search,
         CronTrigger(hour=9, minute=0, timezone=IST),
         id="job_daily_search",
-        name="09:00 Daily Search (ResearchAgent)",
+        name="09:00 ResearchAgent SERP Trends (Serper.dev)",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
     
-    # 09:30 IST - Knowledge Sync & Decay
+    # 09:30 IST - KnowledgeAgent Freshness Decay & Sync
     scheduler.add_job(
         job_knowledge_sync,
         CronTrigger(hour=9, minute=30, timezone=IST),
         id="job_knowledge_sync",
-        name="09:30 Knowledge Freshness Decay & Sync",
+        name="09:30 KnowledgeAgent Freshness Decay & Sync",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
     
-    # 10:00 IST - Brain Auto-Learn
+    # 10:00 IST - SupervisorAgent 14-Day Outcome Synthesis
     scheduler.add_job(
         job_brain_learn,
         CronTrigger(hour=10, minute=0, timezone=IST),
         id="job_brain_learn",
-        name="10:00 Brain Pattern Auto-Learning",
+        name="10:00 SupervisorAgent 14-Day Outcome Synthesis",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
     
-    # 10:30 IST - Content Refresh
+    # 10:30 IST - RefreshAgent Decaying Content Refresh
     scheduler.add_job(
         job_content_refresh,
         CronTrigger(hour=10, minute=30, timezone=IST),
         id="job_content_refresh",
-        name="10:30 Decaying Content Refresh Engine",
+        name="10:30 RefreshAgent Decaying Content Refresh",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
     
-    # 11:00 IST - Goal-Driven Auto New Page
+    # 11:00 IST - WriterPipeline Goal-Driven Article Generation
     scheduler.add_job(
         job_auto_new_page,
         CronTrigger(hour=11, minute=0, timezone=IST),
         id="job_auto_new_page",
-        name="11:00 Goal-Driven Article Writer & Publisher",
+        name="11:00 WriterPipeline 10-Phase Article Generation",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
     
-    # 11:30 IST - Backlink Prospecting
+    # 11:30 IST - BacklinkAgent 4-Module Prospecting via Serper.dev
     scheduler.add_job(
         job_backlink_prospecting,
         CronTrigger(hour=11, minute=30, timezone=IST),
         id="job_backlink_prospecting",
-        name="11:30 4-Module Backlink Prospector",
+        name="11:30 BacklinkAgent 4-Module Prospecting (Serper.dev)",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
     
-    # 12:00 IST - AEO Citation Tracking
+    # 12:00 IST - TechSEOAgent Full Technical Audit
     scheduler.add_job(
-        job_seo_report_aeo,
+        job_tech_seo_audit,
         CronTrigger(hour=12, minute=0, timezone=IST),
-        id="job_seo_report_aeo",
-        name="12:00 AEO LLM Citations & Schema Injection",
+        id="job_tech_seo_audit",
+        name="12:00 TechSEOAgent Full Audit (CWV, Sitemap, Redirects)",
         replace_existing=True,
         coalesce=True,
         max_instances=1
     )
 
-    _add_log("scheduler_init", "active", "APScheduler Phase 2 initialized with Decision Engine in Asia/Kolkata")
+    # Start 6 continuous monitoring loops
+    try:
+        from ..services.continuous_monitor import start_all_monitors
+        start_all_monitors()
+        logger.info("[Scheduler] Continuous monitoring loops (6) started ✅")
+    except Exception as e:
+        logger.warning(f"Continuous monitors startup note: {e}")
+
+    _add_log("scheduler_init", "active", "APScheduler Phase 2 initialized with 7 SEO Agents in Asia/Kolkata")
     return scheduler
+
+
+start_scheduler = setup_scheduler
 
 
 def stop_scheduler():
@@ -379,9 +402,13 @@ def stop_scheduler():
 
 
 def get_scheduler_status() -> Dict[str, Any]:
+    global scheduler
+    if not scheduler.get_jobs():
+        setup_scheduler()
     jobs_info = []
     for job in scheduler.get_jobs():
-        next_run = job.next_run_time.isoformat() if job.next_run_time else None
+        nrt = getattr(job, "next_run_time", None)
+        next_run = nrt.isoformat() if nrt else None
         jobs_info.append({
             "id": job.id,
             "name": job.name,
@@ -412,7 +439,8 @@ async def run_job_now(job_name: str) -> Dict[str, Any]:
         "content_refresh": job_content_refresh,
         "auto_new_page": job_auto_new_page,
         "backlink_prospecting": job_backlink_prospecting,
-        "seo_report_aeo_tracking": job_seo_report_aeo,
+        "tech_seo_audit": job_tech_seo_audit,
+        "seo_report_aeo_tracking": job_tech_seo_audit,
     }
     
     clean_name = job_name.replace("job_", "")

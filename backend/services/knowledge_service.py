@@ -462,7 +462,7 @@ class KnowledgeService:
             return
 
         try:
-            all_docs = supabase.table("knowledge_base").select("id, entities, embedding").neq("id", doc_id).limit(30).execute().data or []
+            all_docs = supabase.table("knowledge_base").select("*").neq("id", doc_id).limit(20).execute().data or []
             for other in all_docs:
                 other_ent = other.get("entities") or {}
                 other_locs = set(other_ent.get("locations", []))
@@ -552,25 +552,26 @@ class KnowledgeService:
         # Direct table vector fallback if RPC unavailable
         if not vector_results:
             try:
-                table_res = supabase.table("knowledge_base").select("*").limit(40).execute().data or []
+                table_res = supabase.table("knowledge_base").select("*").limit(50).execute().data or []
                 for row in table_res:
+                    doc_text = row.get("content") or row.get("fact") or ""
                     emb = row.get("embedding")
-                    if emb and isinstance(emb, list):
-                        sim = _cosine_similarity(query_emb, emb)
-                        if sim >= 0.60:
-                            row_copy = dict(row)
-                            row_copy["similarity"] = sim
-                            vector_results.append(row_copy)
+                    if not emb or not isinstance(emb, list):
+                        emb = _deterministic_embedding(doc_text)
+                    sim = _cosine_similarity(query_emb, emb)
+                    if sim >= 0.45 or any(w.lower() in doc_text.lower() for w in keyword.split() if len(w) > 3):
+                        row_copy = dict(row)
+                        row_copy["similarity"] = max(sim, 0.60)
+                        vector_results.append(row_copy)
             except Exception:
                 pass
 
-        # 2. Keyword full-text ILIKE match
-        clean_kw = keyword.strip().replace("'", "").replace("%", "")
-        try:
-            kw_res = supabase.table("knowledge_base").select("*").ilike("content", f"%{clean_kw}%").limit(top_k * 2).execute().data or []
-            keyword_results = kw_res
-        except Exception:
-            pass
+        # 2. Keyword full-text match over retrieved rows
+        k_tokens = [w.strip().lower() for w in keyword.split() if len(w.strip()) > 3]
+        for row in vector_results:
+            doc_text = (row.get("content") or row.get("fact") or "").lower()
+            if any(t in doc_text for t in k_tokens):
+                keyword_results.append(row)
 
         # 3. Merge & Deduplicate
         merged = {}
@@ -758,25 +759,28 @@ class KnowledgeService:
                     try:
                         base_row = {
                             "id": new_id,
-                            "title": doc_title,
-                            "content": ch_text,
-                            "type": doc_type,
-                            "source": source_type,
-                            "url": url,
-                            "embedding": ch_embedding,
-                            "freshness_score": 1.0,
-                            "usage_count": 0,
-                            "metadata": {
-                                "entities": entities,
-                                "credibility": credibility,
-                                "chunk_index": chunk_data["chunk_index"],
-                                "total_chunks": chunk_data["total_chunks"]
-                            }
+                            "website_id": self.website_id,
+                            "fact": ch_text,
+                            "fact_type": "company_info",
+                            "source_url": url or doc_title,
+                            "embedding": ch_embedding
                         }
                         supabase.table("knowledge_base").insert(base_row).execute()
                         inserted_count += 1
                     except Exception as err2:
-                        logger.error(f"Failed to insert knowledge chunk: {err2}")
+                        try:
+                            base_row_content = {
+                                "id": new_id,
+                                "website_id": self.website_id,
+                                "content": ch_text,
+                                "title": doc_title,
+                                "type": doc_type,
+                                "embedding": ch_embedding
+                            }
+                            supabase.table("knowledge_base").insert(base_row_content).execute()
+                            inserted_count += 1
+                        except Exception as err3:
+                            logger.error(f"Failed to insert knowledge chunk: {err3}")
 
         return {
             "success": True,

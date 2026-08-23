@@ -225,3 +225,6 @@ class HumanWriterAgent:
 
 def create_human_writer(website_id: str) -> HumanWriterAgent:
     return HumanWriterAgent(website_id)
+
+
+HumanWriter = HumanWriterAgent

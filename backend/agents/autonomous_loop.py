@@ -160,3 +160,12 @@ def queue_worker_job():
 
 def feedback_learning_job():
     pass
+
+
+class AutonomousLoop:
+    """Autonomous loop orchestrator for background SEO tasks."""
+    def __init__(self, website_id: str = None):
+        self.website_id = website_id
+
+    async def run(self):
+        return await run_hourly_autonomous_loop()

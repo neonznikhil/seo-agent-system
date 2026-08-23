@@ -8,20 +8,26 @@ import json
 from datetime import datetime
 
 from ...database import get_supabase
+from ..serper_service import serper_service
+
+logger = logging.getLogger("backend.services.monitors.competitor_monitor")
 
 
 class CompetitorMonitor:
+    """Competitor Monitor watching pricing changes, sitemap pages, and real-time news via Serper.dev."""
+
     def __init__(self, website_id: str):
         self.website_id = website_id
         self.supabase = get_supabase()
     
     async def check_competitor(self, competitor: Dict) -> Dict:
-        """Check competitor for pricing and content changes."""
+        """Check competitor for pricing, content, and Serper news changes."""
         result = {
             "pricing_changed": False,
             "new_content": False,
             "new_pages": 0,
-            "new_urls": []
+            "new_urls": [],
+            "news_updates": []
         }
         
         pricing_url = competitor.get("pricing_page_url")
@@ -33,9 +39,29 @@ class CompetitorMonitor:
         
         if homepage_url:
             result.update(await self._check_content(homepage_url, domain))
+
+        if domain:
+            news_res = await self._check_competitor_news(domain)
+            result.update(news_res)
         
         return result
     
+    async def _check_competitor_news(self, domain: str) -> Dict:
+        """Check latest competitor news and content releases via Serper.dev news endpoint."""
+        try:
+            news_data = await serper_service.news(f"{domain} legal news 2026", num=5)
+            news_items = news_data.get("news", [])
+            if news_items:
+                return {
+                    "new_content": True if len(news_items) > 0 else False,
+                    "new_pages": len(news_items),
+                    "new_urls": [n.get("link") for n in news_items if n.get("link")],
+                    "news_updates": news_items
+                }
+        except Exception as e:
+            logger.debug(f"Competitor news check note for {domain}: {e}")
+        return {}
+
     async def _check_pricing(self, pricing_url: str, domain: str) -> Dict:
         """Check pricing page for changes using Crawlee."""
         try:
@@ -50,7 +76,6 @@ class CompetitorMonitor:
                 
                 old_data = json.dumps(last_snapshot[0].get("pricing_data", {})) if last_snapshot else "{}"
                 old_parsed = json.loads(old_data) if old_data else {}
-                new_data = json.dumps(pricing_data)
                 
                 if pricing_data != old_parsed:
                     self.supabase.table("competitor_snapshots").insert({
@@ -59,7 +84,7 @@ class CompetitorMonitor:
                         "content_hash": new_hash,
                         "pricing_data": pricing_data,
                         "url": pricing_url,
-                        "created_at": datetime.utcnow()
+                        "created_at": datetime.utcnow().isoformat()
                     }).execute()
                     
                     return {
@@ -98,7 +123,7 @@ class CompetitorMonitor:
                     "content_hash": new_hash,
                     "sitemap_count": current_count,
                     "url": homepage_url,
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.utcnow().isoformat()
                 }).execute()
                 
                 return {
@@ -107,7 +132,7 @@ class CompetitorMonitor:
                     "new_urls": sitemap_urls[old_count:] if old_count < len(sitemap_urls) else []
                 }
             return {}
-        except Exception as e:
+        except Exception:
             pass
         return {}
     
@@ -123,23 +148,20 @@ class CompetitorMonitor:
                 return f"Title: {page.get('title', '')}\nH1s: {page.get('h1s', [])}\nH2s: {page.get('h2s', [])}\nWord Count: {page.get('word_count', 0)}\nContent: {page.get('meta_description', '')}"
             return ""
         except Exception as e:
-            logger = __import__('logging').getLogger("backend.services.monitors.competitor_monitor")
             logger.warning(f"Crawlee scrape failed: {e}")
             return ""
     
     async def _extract_pricing(self, content: str) -> Dict:
         """Extract pricing using NVIDIA NIM."""
         from ...database import call_nim_llm
-        
         prompt = f"""Extract pricing plan data from this webpage content. Return JSON:
 {{"plans": [{{"name": string, "price": number, "features": [string]}}]}}
 
 Content: {content[:3000]}"""
-        
         try:
             result = await call_nim_llm(prompt)
             return json.loads(result)
-        except:
+        except Exception:
             return {"plans": []}
     
     async def _get_sitemap_urls(self, domain: str) -> list:
@@ -153,6 +175,6 @@ Content: {content[:3000]}"""
                             import re
                             urls = re.findall(r'<loc>(.*?)</loc>', text)
                             return urls[:100]
-            except:
+            except Exception:
                 pass
         return []

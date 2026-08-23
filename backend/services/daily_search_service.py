@@ -13,6 +13,7 @@ async def daily_search_job(website_id: str) -> Dict[str, Any]:
     from ..database import get_supabase, call_nim_llm
     from ..services.gsc_service import GSCService
     from ..services.crawlee_service import CrawleeService, extract_serp_landscape
+    from ..services.serper_service import serper_service
     from ..services.brain_service import BrainService
     from ..services.reporting_service import report_problem
 
@@ -66,8 +67,8 @@ async def daily_search_job(website_id: str) -> Dict[str, Any]:
                 continue
             result["new_keywords"] += 1
 
-            serp = await extract_serp_landscape(keyword, count=10)
-            top_pages = serp.get("top_pages", [])
+            serp = await serper_service.search(keyword, num=10, auto_fallback=True)
+            top_pages = [{"url": o.get("link"), "title": o.get("title")} for o in serp.get("organic", [])]
 
             our_domain = website.get("domain", "").lower()
             known_domains = set()

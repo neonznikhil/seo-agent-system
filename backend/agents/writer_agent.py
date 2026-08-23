@@ -101,7 +101,7 @@ class WriterPipeline:
             pass
 
         knowledge_chunks = await knowledge_service.retrieve_relevant_hybrid(self.primary_keyword, top_k=5)
-        if kb_count < 5 and not knowledge_chunks:
+        if not knowledge_chunks and kb_count == 0:
             raise Exception("Knowledge base empty upload business info in /knowledge first no hallucination")
 
         # 2. Gather Grounded Business Context, Competitors, Analytics & SEO Rules

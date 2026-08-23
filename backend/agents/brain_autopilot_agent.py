@@ -203,3 +203,12 @@ async def run_daily_autopilot():
         except Exception as e:
             logger.error(f"[BrainAutopilot] Loop error: {e}")
             await asyncio.sleep(60)
+
+
+class BrainAutopilotAgent:
+    """Autopilot Agent managing background brain workflows."""
+    def __init__(self, website_id: str = None):
+        self.website_id = website_id
+
+    async def run_all(self):
+        return await _run_all_jobs()

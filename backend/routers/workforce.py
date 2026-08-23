@@ -677,12 +677,14 @@ async def run_agent_task(agent_id: str, payload: AgentRunRequest):
 async def pipeline_status():
     """Get live pipeline graph state, nodes, and scheduler timeline."""
     sched = get_scheduler_status()
+    jobs_list = sched.get("jobs") or []
+    next_job = jobs_list[0].get("name", "Daily Search") if jobs_list else "09:00 Daily Search"
     return {
         "status": "active",
         "nodes_count": len(WORKFORCE_AGENTS),
         "active_nodes": len([a for a in WORKFORCE_AGENTS if a["status"] == "active"]),
         "scheduler_running": sched.get("running", True),
-        "next_scheduled_job": sched.get("jobs", [{}])[0].get("name", "09:00 Daily Search"),
+        "next_scheduled_job": next_job,
         "timestamp": datetime.utcnow().isoformat()
     }
 

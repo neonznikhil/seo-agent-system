@@ -3,7 +3,16 @@ import logging
 import os
 
 from crewai import Agent, Task, Crew, Process
-from langchain_openai import ChatOpenAI
+try:
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    try:
+        from langchain_community.chat_models import ChatOpenAI
+    except ImportError:
+        try:
+            from langchain.chat_models import ChatOpenAI
+        except ImportError:
+            ChatOpenAI = None
 
 from .personas import AUDITOR_PERSONA, EDITOR_PERSONA, WRITER_PERSONA, TECH_SEO_PERSONA, MANAGER_PERSONA, SEO_BACKLINK_PERSONA
 from .tools.think_and_log_tool import ThinkAndLogTool

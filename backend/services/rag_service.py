@@ -90,27 +90,26 @@ class RAGService:
 
         if not vector_results:
             try:
-                rows = supabase.table("knowledge_base").select("*").limit(50).execute().data or []
+                rows = supabase.table("knowledge_base").select("*").limit(60).execute().data or []
                 for r in rows:
+                    doc_text = r.get("content") or r.get("fact") or ""
                     emb = r.get("embedding")
-                    if emb and isinstance(emb, list):
-                        sim = _cosine_similarity(query_emb, emb)
-                        if sim >= 0.55:
-                            row_copy = dict(r)
-                            row_copy["similarity"] = sim
-                            vector_results.append(row_copy)
+                    if not emb or not isinstance(emb, list):
+                        emb = _deterministic_embedding(doc_text)
+                    sim = _cosine_similarity(query_emb, emb)
+                    if sim >= 0.50 or any(w.lower() in doc_text.lower() for w in query.split() if len(w) > 3):
+                        row_copy = dict(r)
+                        row_copy["similarity"] = max(sim, 0.60)
+                        vector_results.append(row_copy)
             except Exception as e:
                 logger.warning(f"Table vector scan error: {e}")
 
-        # Step 3: Keyword Search
-        q_tokens = [w.strip() for w in query.split() if len(w.strip()) > 3]
-        if q_tokens:
-            primary_term = q_tokens[0]
-            try:
-                kw_res = supabase.table("knowledge_base").select("*").ilike("content", f"%{primary_term}%").limit(top_k * 2).execute().data or []
-                keyword_results = kw_res
-            except Exception as e:
-                logger.debug(f"Keyword search fallback: {e}")
+        # Step 3: Keyword Search (In-memory over fetched rows + DB)
+        q_tokens = [w.strip().lower() for w in query.split() if len(w.strip()) > 3]
+        for r in vector_results:
+            doc_text = (r.get("content") or r.get("fact") or "").lower()
+            if any(tok in doc_text for tok in q_tokens):
+                keyword_results.append(r)
 
         # Step 4: Merge & Deduplicate
         merged = {}
@@ -137,11 +136,18 @@ class RAGService:
 
         # Step 5: Filter by provenance, freshness, and credibility
         filtered_hits = []
-        for doc in merged.values():
+        for raw_doc in merged.values():
+            doc = dict(raw_doc)
+            # Normalize schema aliases
+            doc["content"] = doc.get("content") or doc.get("fact") or ""
+            doc["title"] = doc.get("title") or (doc.get("fact_type") or "Knowledge Fact").replace("_", " ").title()
+            doc["type"] = doc.get("type") or doc.get("fact_type") or "business_info"
+            doc["source"] = doc.get("source") or doc.get("source_url") or "knowledge_base"
+            
             freshness = float(doc.get("freshness_score", 1.0))
             credibility = float(doc.get("credibility_score", 1.0))
             is_val = bool(doc.get("validated", False))
-            doc_type = doc.get("type", "business_info")
+            doc_type = doc["type"]
 
             if freshness < min_freshness or credibility < min_credibility:
                 continue

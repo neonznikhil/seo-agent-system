@@ -271,3 +271,6 @@ class RefreshAgent:
 async def run_refresh_pipeline(decay_log_id: str, website_id: str) -> Dict:
     agent = RefreshAgent()
     return await agent.refresh_content(decay_log_id, website_id)
+
+
+run_refresh_agent = run_refresh_pipeline

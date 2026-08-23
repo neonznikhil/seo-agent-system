@@ -114,18 +114,34 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
     }
     
     candidate_models = [
-        os.getenv("NIM_LLM_MODEL", "meta/llama-3.3-70b-instruct"),
-        "nvidia/llama-3.1-nemotron-70b-instruct",
-        "meta/llama-3.1-8b-instruct"
+        os.getenv("NIM_LLM_MODEL", "meta/llama-3.1-8b-instruct"),
+        "meta/llama-3.1-70b-instruct"
     ]
 
     import asyncio
-            _log_task_fail(website_id, "call_nim_llm", str(e))
-            if attempt < max_retries - 1:
+    for model_name in candidate_models:
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=45.0) as client:
+                    resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
+                    if resp.status_code == 429:
+                        await asyncio.sleep(2)
+                        continue
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        if content and content.strip():
+                            return content.strip()
+            except Exception as e:
+                logger.debug(f"NIM LLM attempt error with model {model_name}: {e}")
                 await asyncio.sleep(1)
-    
-    # No template fallback: returning fake content would violate the
-    # accuracy guarantee. Callers must treat "" as failure and skip/abort.
+
     logger.error(
         "NIM LLM call failed after retries (prompt starting '%s') - "
         "returning empty result instead of fabricated content",

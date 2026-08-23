@@ -33,10 +33,11 @@ from .routers.approvals import router as approvals_router
 from .services.continuous_monitor import start_all_monitors  # noqa: F401 (kept for manual runs)
 from .agents.backlink_autopilot_agent import run_backlink_daily_jobs
 from .routers.setup import router as setup_router
-from .api_web_browsing import router as web_browsing_router
 from .routers.chat import router as chat_router
 from .routers.workforce import router as workforce_router
 from .routers.rag import router as rag_router
+from .routers.connectors_serper import router as connectors_serper_router
+from .agents.seo_agent_group import seo_agent_group
 
 validate_env()
 
@@ -439,9 +440,10 @@ app.include_router(knowledge_router, prefix="/api")
 app.include_router(content_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
+app.include_router(connectors_serper_router, prefix="/api")
+app.include_router(connectors_serper_router, prefix="")
 app.include_router(brain_router, prefix="/api")
 app.include_router(setup_router, prefix="/api")
-app.include_router(web_browsing_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(workforce_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
@@ -462,5 +464,19 @@ app.include_router(llms_txt)
 app.include_router(workforce_router)
 app.include_router(connectors_router)
 app.include_router(rag_router)
+
+
+# ---------------------------------------------------------
+# SEO Agent Group Status Endpoint
+# ---------------------------------------------------------
+@app.get("/api/seo-agent-group/status")
+@app.get("/seo-agent-group/status")
+async def get_seo_agent_group_status():
+    """Unified status endpoint for RankForge's Autonomous SEO Agent Group.
+    Returns agent states, last run times, next scheduled runs, brain memory breakdown,
+    Serper.dev connector health, and human gate metrics.
+    """
+    return await seo_agent_group.get_status_snapshot()
+
 
 
