@@ -1,122 +1,189 @@
+import os
 import logging
-from typing import List, Optional
-
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
+from pydantic import BaseModel, Field
 
 from ..database import get_supabase
+from ..services.knowledge_service import KnowledgeService
 
 logger = logging.getLogger("backend.routers.knowledge")
-router = APIRouter()
+router = APIRouter(tags=["knowledge"])
 
 
-class KnowledgeIn(BaseModel):
+class IngestTextRequest(BaseModel):
+    title: Optional[str] = None
+    content: str
+    type: Optional[str] = None
     website_id: Optional[str] = None
+
+
+class IngestUrlRequest(BaseModel):
+    url: str
     title: Optional[str] = None
-    content: Optional[str] = None
-    fact: Optional[str] = None
-    fact_type: Optional[str] = "company_info"
-    source: Optional[str] = None
-    tags: Optional[List[str]] = None
+    type: Optional[str] = None
+    website_id: Optional[str] = None
 
 
-class KnowledgeUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
-    source: Optional[str] = None
-    tags: Optional[List[str]] = None
+class ScrapeCompetitorRequest(BaseModel):
+    url: str
+    website_id: Optional[str] = None
 
 
+# ---------------------------------------------------------
+# Knowledge Base Endpoints
+# ---------------------------------------------------------
+
+@router.get("/api/knowledge")
 @router.get("/knowledge")
-async def list_knowledge(website_id: Optional[str] = None, q: Optional[str] = None):
+async def get_knowledge(
+    type: Optional[str] = None,
+    website_id: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 50
+):
+    """List knowledge base documents filtered by type or text query."""
     supabase = get_supabase()
-    query = supabase.table("knowledge_base").select("*")
-    if website_id:
-        query = query.eq("website_id", website_id)
-    if q:
-        query = query.ilike("fact", f"%{q}%")
-    res = query.order("created_at", desc=True).execute()
-    data = res.data or []
-    # Normalize rows so frontend always has title, content/fact, source
-    normalized = []
-    for item in data:
-        fact_text = item.get("fact") or item.get("content") or item.get("title") or ""
-        normalized.append({
-            "id": item.get("id"),
-            "website_id": item.get("website_id"),
-            "title": item.get("title") or (fact_text[:60] + "..." if len(fact_text) > 60 else fact_text),
-            "content": fact_text,
-            "fact": fact_text,
-            "fact_type": item.get("fact_type", "company_info"),
-            "source": item.get("source_url") or item.get("source") or "",
-            "source_url": item.get("source_url") or item.get("source") or "",
-            "tags": item.get("tags") or [item.get("fact_type")] if item.get("fact_type") else [],
-            "created_at": item.get("created_at"),
-        })
-    return normalized
-
-
-@router.post("/knowledge")
-async def create_knowledge(body: KnowledgeIn):
-    from ..database import get_supabase, get_embedding
-    import datetime
-    
-    supabase = get_supabase()
-    wid = body.website_id
-    if not wid:
-        try:
-            sites = supabase.table("websites").select("id").limit(1).execute().data
-            if sites:
-                wid = sites[0]["id"]
-        except Exception:
-            pass
-
-    fact_val = body.fact or body.content or body.title or "Knowledge fact"
-    
-    emb = None
     try:
-        emb = await get_embedding(fact_val)
-    except Exception:
-        pass
-
-    insert_payload = {
-        "fact": fact_val,
-        "fact_type": body.fact_type or "company_info",
-        "source_url": body.source or "",
-        "created_at": datetime.datetime.utcnow().isoformat(),
-    }
-    if wid:
-        insert_payload["website_id"] = wid
-    if emb:
-        insert_payload["embedding"] = emb
-
-    try:
-        res = supabase.table("knowledge_base").insert(insert_payload).execute()
-        if res.data:
-            row = res.data[0]
-            return {
-                "id": row.get("id"),
-                "title": body.title or fact_val[:60],
-                "content": fact_val,
-                "fact": fact_val,
-                "fact_type": row.get("fact_type"),
-                "source": row.get("source_url"),
-                "created_at": row.get("created_at"),
-            }
+        query = supabase.table("knowledge_base").select("*")
+        if website_id:
+            query = query.eq("website_id", website_id)
+        if type and type != "all":
+            query = query.eq("type", type)
+        if q:
+            query = query.ilike("content", f"%{q}%")
+            
+        res = query.order("created_at", desc=True).limit(limit).execute()
+        data = res.data or []
+        
+        # Format for UI presentation
+        formatted = []
+        for item in data:
+            formatted.append({
+                "id": item.get("id"),
+                "title": item.get("title") or "Untitled Fact",
+                "content": item.get("content") or "",
+                "type": item.get("type", "business_info"),
+                "source": item.get("source", "text"),
+                "url": item.get("url"),
+                "chunk_index": item.get("chunk_index", 0),
+                "total_chunks": item.get("total_chunks", 1),
+                "freshness_score": float(item.get("freshness_score", 1.0)),
+                "usage_count": int(item.get("usage_count", 0)),
+                "last_used": item.get("last_used"),
+                "created_at": item.get("created_at")
+            })
+        return formatted
     except Exception as e:
-        logger.error(f"Knowledge insert error: {e}")
-        raise HTTPException(status_code=500, detail=f"Database insert error: {str(e)}")
-
-    return {"status": "created", "fact": fact_val}
+        logger.error(f"Error fetching knowledge items: {e}")
+        return []
 
 
-@router.delete("/knowledge/{knowledge_id}")
-async def delete_knowledge(knowledge_id: str):
-    supabase = get_supabase()
-    supabase.table("knowledge_base").delete().eq("id", knowledge_id).execute()
-    return {"status": "deleted", "id": knowledge_id}
-
-
+@router.get("/api/knowledge/search")
 @router.get("/knowledge/search")
-async def search_knowledge(q: str, website_id: Optional[str] = None):
-    return await list_knowledge(website_id=website_id, q=q)
+async def search_knowledge(
+    q: str = Query(..., description="Semantic search query"),
+    website_id: Optional[str] = None,
+    top_k: int = 5
+):
+    """Deep vector search into knowledge base with anti-hallucination threshold."""
+    service = KnowledgeService(website_id=website_id)
+    results = await service.query(keyword=q, top_k=top_k)
+    return {
+        "query": q,
+        "results_count": len(results),
+        "results": results
+    }
+
+
+@router.post("/api/knowledge/upload")
+@router.post("/knowledge/upload")
+async def upload_knowledge(
+    file: Optional[UploadFile] = File(None),
+    url: Optional[str] = Form(None),
+    text: Optional[str] = Form(None),
+    title: Optional[str] = Form(None),
+    type: Optional[str] = Form(None),
+    website_id: Optional[str] = Form(None)
+):
+    """Multipart upload endpoint for PDF documents, scraped URLs, or raw text."""
+    service = KnowledgeService(website_id=website_id)
+    
+    # 1. File Upload (PDF / TXT / DOCX)
+    if file:
+        file_bytes = await file.read()
+        filename = file.filename or "uploaded_doc"
+        is_pdf = filename.lower().endswith(".pdf") or (file.content_type and "pdf" in file.content_type)
+        
+        res = await service.ingest(
+            content=None if is_pdf else file_bytes.decode("utf-8", errors="ignore"),
+            source_type="pdf" if is_pdf else "text",
+            title=title or filename,
+            file_bytes=file_bytes if is_pdf else None,
+            explicit_type=type,
+            user_id=None
+        )
+        return res
+        
+    # 2. URL Scrape
+    elif url:
+        res = await service.ingest(
+            url=url.strip(),
+            source_type="url",
+            title=title or url,
+            explicit_type=type
+        )
+        return res
+        
+    # 3. Direct Text
+    elif text:
+        res = await service.ingest(
+            content=text.strip(),
+            source_type="text",
+            title=title or "Business Fact",
+            explicit_type=type
+        )
+        return res
+        
+    else:
+        raise HTTPException(status_code=400, detail="Must provide either file, url, or text")
+
+
+@router.post("/api/knowledge/scrape-competitor")
+@router.post("/knowledge/scrape-competitor")
+async def scrape_competitor_endpoint(payload: ScrapeCompetitorRequest):
+    """Scrape competitor domain, analyze keyword strategies, and store as competitor type."""
+    service = KnowledgeService(website_id=payload.website_id)
+    res = await service.scrape_competitor(url=payload.url)
+    return res
+
+
+@router.delete("/api/knowledge/{item_id}")
+@router.delete("/knowledge/{item_id}")
+async def delete_knowledge_item(item_id: str):
+    """Delete a chunk or document from the knowledge base."""
+    supabase = get_supabase()
+    try:
+        supabase.table("knowledge_base").delete().eq("id", item_id).execute()
+        return {"success": True, "id": item_id, "message": "Item removed from Knowledge Base"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/knowledge/reindex")
+@router.post("/knowledge/reindex")
+async def reindex_knowledge():
+    """Re-compute embeddings for all knowledge base entries."""
+    supabase = get_supabase()
+    try:
+        items = supabase.table("knowledge_base").select("id, content, title").execute().data or []
+        reindexed = 0
+        for it in items:
+            txt = it.get("content") or it.get("title", "")
+            if txt:
+                emb = await KnowledgeService.create_embedding(txt)
+                supabase.table("knowledge_base").update({"embedding": emb, "freshness_score": 1.0}).eq("id", it["id"]).execute()
+                reindexed += 1
+        return {"success": True, "reindexed_count": reindexed}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

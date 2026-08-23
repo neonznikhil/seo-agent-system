@@ -16,9 +16,9 @@ FRONTEND_ENV_FILE = PROJECT_ROOT / "frontend-next" / ".env.local"
 TABLES = {
     "users": """
         CREATE TABLE IF NOT EXISTS users (
-            id uuid PRIMARY KEY,
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             email text,
-            created_at timestamptz
+            created_at timestamptz DEFAULT now()
         )
     """,
     "websites": """
@@ -49,21 +49,15 @@ TABLES = {
         CREATE TABLE IF NOT EXISTS agent_memory (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id text,
+            agent_name text,
             memory_type text,
-            title text,
             content text,
+            embedding vector(1536),
+            metadata jsonb DEFAULT '{}'::jsonb,
             confidence float DEFAULT 1.0,
             times_used int DEFAULT 0,
             times_successful int DEFAULT 0,
-            last_used_at timestamptz,
-            created_at timestamptz DEFAULT now()
-        )
-    """,
-    "memory_embeddings": """
-        CREATE TABLE IF NOT EXISTS memory_embeddings (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            memory_id uuid REFERENCES agent_memory(id),
-            embedding vector(1024),
+            last_used timestamptz DEFAULT now(),
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -72,33 +66,38 @@ TABLES = {
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id text,
             agent_name text,
-            message text,
             role text,
-            created_at timestamptz DEFAULT now()
-        )
-    """,
-    "knowledge_sources": """
-        CREATE TABLE IF NOT EXISTS knowledge_sources (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            website_id uuid,
-            source_type text,
-            title text,
-            file_path text,
-            content_extracted text,
-            is_verified boolean DEFAULT true,
+            message text,
+            metadata jsonb DEFAULT '{}'::jsonb,
             created_at timestamptz DEFAULT now()
         )
     """,
     "knowledge_base": """
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id text,
             website_id uuid,
-            source_id uuid,
-            fact_type text DEFAULT 'general',
+            type text DEFAULT 'business_info',
+            title text,
             content text,
-            embedding vector(1024),
-            confidence float DEFAULT 0.9,
+            embedding vector(1536),
             source text,
+            url text,
+            chunk_index int DEFAULT 0,
+            total_chunks int DEFAULT 1,
+            freshness_score float DEFAULT 1.0,
+            usage_count int DEFAULT 0,
+            metadata jsonb DEFAULT '{}'::jsonb,
+            last_used timestamptz DEFAULT now(),
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "knowledge_relations": """
+        CREATE TABLE IF NOT EXISTS knowledge_relations (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            source_id uuid,
+            target_id uuid,
+            relation_type text,
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -107,10 +106,17 @@ TABLES = {
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             website_id uuid,
             title text,
+            slug text,
             content text,
+            html_content text,
+            meta_description text,
+            primary_keyword text,
             status text DEFAULT 'draft_pending_approval',
+            seo_score float DEFAULT 0,
+            word_count int DEFAULT 0,
             wp_post_id int,
             wp_url text,
+            published_at timestamptz,
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -175,23 +181,6 @@ TABLES = {
             captured_at timestamptz DEFAULT now()
         )
     """,
-    "brain_memory": """
-        CREATE TABLE IF NOT EXISTS brain_memory (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            website_id uuid,
-            memory_type text,
-            title text,
-            content text,
-            embedding vector(1024),
-            source_type text,
-            source_id text,
-            confidence float DEFAULT 0.8,
-            times_used int DEFAULT 0,
-            times_successful int DEFAULT 0,
-            last_used_at timestamptz,
-            created_at timestamptz DEFAULT now()
-        )
-    """,
     "brain_daily_jobs": """
         CREATE TABLE IF NOT EXISTS brain_daily_jobs (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -224,7 +213,10 @@ TABLES = {
             user_id text,
             site_url text,
             wp_username text,
+            wp_app_password text,
             encrypted_password text,
+            status text DEFAULT 'connected',
+            last_synced timestamptz,
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -274,8 +266,81 @@ TABLES = {
             website_id uuid,
             source_url text,
             target_url text,
-            domain_authority float,
+            domain_authority float DEFAULT 0,
+            type text DEFAULT 'outreach',
             status text DEFAULT 'active',
+            anchor_text text,
+            email_draft text,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "backlink_opportunities": """
+        CREATE TABLE IF NOT EXISTS backlink_opportunities (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            target_url text,
+            domain_authority float DEFAULT 0,
+            type text DEFAULT 'competitor_replication',
+            status text DEFAULT 'pending',
+            anchor_text text,
+            email_draft text,
+            gap_analysis text,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "seo_reports": """
+        CREATE TABLE IF NOT EXISTS seo_reports (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            report_data jsonb,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "daily_searches": """
+        CREATE TABLE IF NOT EXISTS daily_searches (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            keyword text,
+            trends jsonb DEFAULT '{}'::jsonb,
+            competitor_data jsonb DEFAULT '{}'::jsonb,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "analytics_data": """
+        CREATE TABLE IF NOT EXISTS analytics_data (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            blog_id uuid,
+            wordpress_post_id int,
+            views int DEFAULT 0,
+            clicks int DEFAULT 0,
+            avg_time float DEFAULT 0,
+            bounce_rate float DEFAULT 0,
+            source text DEFAULT 'wordpress',
+            date date DEFAULT CURRENT_DATE,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "autonomous_settings": """
+        CREATE TABLE IF NOT EXISTS autonomous_settings (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id text,
+            auto_publish boolean DEFAULT true,
+            auto_generate boolean DEFAULT true,
+            auto_refresh boolean DEFAULT true,
+            updated_at timestamptz DEFAULT now()
+        )
+    """,
+    "aeo_citations": """
+        CREATE TABLE IF NOT EXISTS aeo_citations (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            query text,
+            llm_name text,
+            cited boolean DEFAULT false,
+            competitor_cited boolean DEFAULT false,
+            citation_snippet text,
+            schema_markup jsonb DEFAULT '{}'::jsonb,
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -312,50 +377,52 @@ RPCS = {
     "enable_vector_ext": "CREATE EXTENSION IF NOT EXISTS vector",
     "match_knowledge": """
         CREATE OR REPLACE FUNCTION match_knowledge (
-            query_embedding vector(1024),
-            p_website_id uuid,
+            query_embedding vector(1536),
             match_threshold float DEFAULT 0.70,
             match_count int DEFAULT 5
         ) RETURNS TABLE (
             id uuid,
+            title text,
             content text,
-            fact_type text,
+            type text,
             source text,
             similarity float
-        ) LANGUAGE sql STABLE AS $$
-            SELECT kb.id, kb.content, kb.fact_type, kb.source,
-                   1 - (kb.embedding <=> query_embedding) AS similarity
+        ) LANGUAGE plpgsql STABLE AS $$
+        BEGIN
+            RETURN QUERY
+            SELECT kb.id, kb.title, kb.content, kb.type, kb.source,
+                   (1 - (kb.embedding <=> query_embedding))::float AS similarity
             FROM knowledge_base kb
-            WHERE kb.website_id = p_website_id
+            WHERE kb.embedding IS NOT NULL
               AND 1 - (kb.embedding <=> query_embedding) > match_threshold
             ORDER BY kb.embedding <=> query_embedding
-            LIMIT match_count
-        $$
+            LIMIT match_count;
+        END;
+        $$;
     """,
     "match_brain_memory": """
         CREATE OR REPLACE FUNCTION match_brain_memory (
-            query_embedding vector(1024),
-            p_website_id uuid,
-            match_threshold float DEFAULT 0.75,
+            query_embedding vector(1536),
+            match_threshold float DEFAULT 0.70,
             match_count int DEFAULT 5
         ) RETURNS TABLE (
             id uuid,
             title text,
             content text,
             memory_type text,
-            confidence float,
-            times_used int,
             similarity float
-        ) LANGUAGE sql STABLE AS $$
-            SELECT bm.id, bm.title, bm.content, bm.memory_type, bm.confidence,
-                   bm.times_used,
-                   1 - (bm.embedding <=> query_embedding) AS similarity
-            FROM brain_memory bm
-            WHERE bm.website_id = p_website_id
+        ) LANGUAGE plpgsql STABLE AS $$
+        BEGIN
+            RETURN QUERY
+            SELECT bm.id, bm.agent_name AS title, bm.content, bm.memory_type,
+                   (1 - (bm.embedding <=> query_embedding))::float AS similarity
+            FROM agent_memory bm
+            WHERE bm.embedding IS NOT NULL
               AND 1 - (bm.embedding <=> query_embedding) > match_threshold
             ORDER BY bm.embedding <=> query_embedding
-            LIMIT match_count
-        $$
+            LIMIT match_count;
+        END;
+        $$;
     """,
 }
 
@@ -385,48 +452,87 @@ def _load_existing_env(env_path: Path) -> dict:
     return {k: v for k, v in values.items() if v is not None}
 
 
-def write_env_file(
-    supabase_url: str,
-    anon_key: str,
-    service_key: str,
-    db_password: str,
-) -> dict:
-    """Write .env and frontend-next/.env.local with Supabase credentials."""
-    project_ref = extract_project_ref(supabase_url)
-    db_url = build_db_url(project_ref, db_password)
-
+def update_env_keys(keys_dict: dict) -> dict:
+    """Merge arbitrary keys into root .env, backend/.env and frontend-next/.env.local."""
+    backend_env_file = PROJECT_ROOT / "backend" / ".env"
+    
+    # 1. Update root .env
     backend_env = _load_existing_env(ENV_FILE)
-    backend_env.update({
-        "SUPABASE_URL": supabase_url,
-        "NEXT_PUBLIC_SUPABASE_URL": supabase_url,
-        "SUPABASE_ANON_KEY": anon_key,
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY": anon_key,
-        "SUPABASE_SERVICE_ROLE_KEY": service_key,
-        "SUPABASE_DB_URL": db_url,
-        "DATABASE_URL": db_url,
-    })
-
+    backend_env.update(keys_dict)
     ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(ENV_FILE, "w") as f:
+    with open(ENV_FILE, "w", encoding="utf-8") as f:
         for key, value in backend_env.items():
             f.write(f"{key}={value}\n")
-    logger.info(f"Wrote backend .env to {ENV_FILE}")
+            
+    # 2. Update backend/.env
+    backend_env_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(backend_env_file, "w", encoding="utf-8") as f:
+        for key, value in backend_env.items():
+            f.write(f"{key}={value}\n")
+            
+    # 3. Update frontend-next/.env.local with NEXT_PUBLIC_* variables
+    frontend_env = _load_existing_env(FRONTEND_ENV_FILE)
+    for k, v in keys_dict.items():
+        if k.startswith("NEXT_PUBLIC_") or k in ["SUPABASE_URL", "SUPABASE_ANON_KEY"]:
+            if k == "SUPABASE_URL":
+                frontend_env["NEXT_PUBLIC_SUPABASE_URL"] = v
+            elif k == "SUPABASE_ANON_KEY":
+                frontend_env["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = v
+            else:
+                frontend_env[k] = v
+        if k == "NVIDIA_API_KEY":
+            frontend_env["NEXT_PUBLIC_NVIDIA_CONFIGURED"] = "true"
+        if k == "WORDPRESS_SITE_URL":
+            frontend_env["NEXT_PUBLIC_WORDPRESS_CONFIGURED"] = "true"
 
-    frontend_env = {
-        "NEXT_PUBLIC_SUPABASE_URL": supabase_url,
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY": anon_key,
-    }
     FRONTEND_ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(FRONTEND_ENV_FILE, "w") as f:
+    with open(FRONTEND_ENV_FILE, "w", encoding="utf-8") as f:
         for key, value in frontend_env.items():
             f.write(f"{key}={value}\n")
-    logger.info(f"Wrote frontend .env.local to {FRONTEND_ENV_FILE}")
-
+            
+    # Also update current process os.environ
+    for k, v in keys_dict.items():
+        os.environ[k] = str(v)
+        
     return {
         "backend_env": str(ENV_FILE),
         "frontend_env": str(FRONTEND_ENV_FILE),
-        "keys_set": list(backend_env.keys()),
+        "keys_set": list(keys_dict.keys()),
     }
+
+
+def write_env_file(
+    supabase_url: Optional[str] = None,
+    anon_key: Optional[str] = None,
+    service_key: Optional[str] = None,
+    db_password: Optional[str] = None,
+    custom_keys: Optional[dict] = None,
+) -> dict:
+    """Write .env and frontend-next/.env.local with Supabase or custom credentials."""
+    keys_to_update = {}
+    if custom_keys and isinstance(custom_keys, dict):
+        keys_to_update.update(custom_keys)
+
+    if supabase_url:
+        keys_to_update["SUPABASE_URL"] = supabase_url
+        keys_to_update["NEXT_PUBLIC_SUPABASE_URL"] = supabase_url
+    if anon_key:
+        keys_to_update["SUPABASE_ANON_KEY"] = anon_key
+        keys_to_update["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = anon_key
+    if service_key:
+        keys_to_update["SUPABASE_SERVICE_ROLE_KEY"] = service_key
+        keys_to_update["SUPABASE_KEY"] = service_key
+    if supabase_url and db_password:
+        try:
+            project_ref = extract_project_ref(supabase_url)
+            db_url = build_db_url(project_ref, db_password)
+            keys_to_update["SUPABASE_DB_URL"] = db_url
+            keys_to_update["DATABASE_URL"] = db_url
+        except Exception as e:
+            logger.warning(f"Could not build DB URL: {e}")
+
+    return update_env_keys(keys_to_update)
+
 
 
 def _test_supabase_connection(supabase_url: str, anon_key: str) -> bool:

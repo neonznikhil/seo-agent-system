@@ -82,17 +82,50 @@ class WriterPipeline:
             return False
 
     async def generate(self, topic: str, primary_keyword: str = None) -> Dict[str, Any]:
-        """Main entry point - starts the 12-phase pipeline with brain recall/learn."""
+        """Main entry point - starts the 12-phase pipeline with knowledge grounding and brain recall/learn."""
         self.topic = topic
-        self.primary_keyword = primary_keyword
+        self.primary_keyword = primary_keyword or topic
 
         if not self.supabase:
             from ..database import get_supabase
             self.supabase = get_supabase()
 
+        # 1. Anti-hallucination Knowledge Base Verification Gate
+        from ..services.knowledge_service import KnowledgeService
+        knowledge_service = KnowledgeService(self.website_id)
+        kb_count = 0
+        try:
+            kb_res = self.supabase.table("knowledge_base").select("id", count="exact").execute()
+            kb_count = kb_res.count if kb_res.count is not None else len(kb_res.data or [])
+        except Exception:
+            pass
+
+        knowledge_chunks = await knowledge_service.query(self.primary_keyword, top_k=5)
+        if kb_count < 5 and not knowledge_chunks:
+            raise Exception("Knowledge base empty upload business info in /knowledge first no hallucination")
+
+        # 2. Gather Grounded Business Context, Competitors, Analytics & SEO Rules
+        competitor_insights = await knowledge_service.get_competitor_insights(self.primary_keyword)
+        analytics_learnings = []
+        seo_rules = []
+        try:
+            a_res = self.supabase.table("knowledge_base").select("content").eq("type", "analytics_learning").limit(3).execute().data
+            analytics_learnings = [r["content"] for r in (a_res or [])]
+            r_res = self.supabase.table("knowledge_base").select("content").eq("type", "seo_rule").limit(5).execute().data
+            seo_rules = [r["content"] for r in (r_res or [])]
+        except Exception:
+            pass
+
+        self.knowledge_context = {
+            "chunks": knowledge_chunks,
+            "competitors": competitor_insights,
+            "analytics": analytics_learnings,
+            "seo_rules": seo_rules
+        }
+
         is_duplicate = await self.check_duplicate_title(self.website_id, topic)
         if is_duplicate:
-            print(f"[Writer] Duplicate detected: {topic} — skipping")
+            logger.info(f"[Writer] Duplicate detected: {topic} — skipping")
             return {"status": "skipped", "reason": "duplicate_title"}
 
         self.content_id = str(uuid.uuid4())
@@ -132,11 +165,22 @@ class WriterPipeline:
         learn_result = await self._phase_brain_learn()
         self.phase_results['brain_learn'] = learn_result
 
+        # Check Autonomous Settings for Auto-Publish
+        auto_publish = True
+        try:
+            auto_res = self.supabase.table("autonomous_settings").select("auto_publish").limit(1).execute().data
+            if auto_res and auto_res[0].get("auto_publish") is not None:
+                auto_publish = bool(auto_res[0]["auto_publish"])
+        except Exception:
+            pass
+
+        final_status = "published" if auto_publish else "pending_approval"
         self._update_content_log(
             pipeline_status='completed',
-            status='pending_approval',
+            status=final_status,
             final_scores=self.final_scores
         )
+
 
         from ..services.reporting_service import report_problem
         await report_problem(
