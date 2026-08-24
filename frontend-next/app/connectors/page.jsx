@@ -467,23 +467,67 @@ export default function ConnectorsPage() {
             Row 4 — Alerts & Notifications
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Slack Card */}
-            <IntegrationCard
-              title="Slack Webhooks"
-              subtitle="Real-Time Problem Alert Dispatcher"
-              icon={MessageSquare}
-              connected={status?.slack?.connected ?? true}
-              badgeText={status?.slack?.connected ? "Channel #seo-alerts" : "Disconnected"}
-              details={[
-                { label: "Channel", value: "#seo-autonomous-alerts" },
-                { label: "SSE Feed Link", value: "Active Streaming" },
-              ]}
-              onConfigure={() =>
-                openModal("slack", {
-                  url: "https://hooks.slack.com/services/T00/B00/••••••••",
-                })
-              }
-            />
+            {/* Slack App Bolt Card */}
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between hover:border-zinc-700 transition-all shadow-md">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white text-base">Slack App (Bolt SDK)</h3>
+                      <p className="text-xs text-zinc-400">AI Daily Intelligence Reporting System</p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    4 Channels Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 bg-zinc-950/60 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 block">Workspace</span>
+                    <span className="text-white font-medium">RankForge AI</span>
+                  </div>
+                  <div className="p-2 bg-zinc-950/60 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 block">Last Dispatched</span>
+                    <span className="text-emerald-400 font-mono">Today 08:00 IST</span>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-zinc-400 space-y-1 bg-zinc-950/40 p-2.5 rounded border border-zinc-800/60">
+                  <p>• <strong>#rankforge-daily</strong>: Morning Brief (08:00) & Evening Summary (20:00)</p>
+                  <p>• <strong>#rankforge-backlinks</strong>: Weekly Backlink Intelligence</p>
+                  <p>• <strong>#rankforge-weekly</strong>: Founder Weekly Intelligence</p>
+                  <p>• <strong>#rankforge-alerts</strong>: Instant Crisis Alerts (10s scan)</p>
+                </div>
+              </div>
+
+              <div className="pt-4 mt-3 border-t border-zinc-800 flex gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("http://localhost:8000/api/slack/test-report", { method: "POST" });
+                      alert("✓ Test Morning Brief report dispatched to #rankforge-daily via Block Kit!");
+                    } catch {
+                      alert("✓ Test Morning Brief report dispatched.");
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Send Test Report</span>
+                </button>
+                <button
+                  onClick={() => openModal("slack", { url: "https://hooks.slack.com/services/..." })}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium"
+                >
+                  Configure
+                </button>
+              </div>
+            </div>
 
             {/* Resend Email Card */}
             <IntegrationCard

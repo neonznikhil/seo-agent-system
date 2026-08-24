@@ -401,6 +401,151 @@ def setup_scheduler() -> AsyncIOScheduler:
         max_instances=1
     )
 
+    # ---------------------------------------------------------
+    # PHASE 3 SELF-EVOLVING ORGANISM JOBS
+    # ---------------------------------------------------------
+    # Daily 03:00 IST - KnowledgeEvolutionService (Living Knowledge & Statute Decay)
+    async def _job_knowledge_evolution():
+        from ..services.knowledge_evolution_service import KnowledgeEvolutionService
+        svc = KnowledgeEvolutionService()
+        await svc.run_daily_evolution_jobs()
+
+    scheduler.add_job(
+        _job_knowledge_evolution,
+        CronTrigger(hour=3, minute=0, timezone=IST),
+        id="job_knowledge_evolution",
+        name="03:00 Knowledge Evolution (Freshness & Statute Monitor)",
+        replace_existing=True
+    )
+
+    # Daily 08:00 IST - Slack Morning Brief
+    async def _job_slack_morning():
+        from ..services.slack_intelligence_service import slack_intelligence_service
+        await slack_intelligence_service.send_morning_brief()
+
+    scheduler.add_job(
+        _job_slack_morning,
+        CronTrigger(hour=8, minute=0, timezone=IST),
+        id="job_slack_morning_brief",
+        name="08:00 Slack Daily Morning Briefing",
+        replace_existing=True
+    )
+
+    # Daily 20:00 IST - Slack Evening Summary
+    async def _job_slack_evening():
+        from ..services.slack_intelligence_service import slack_intelligence_service
+        await slack_intelligence_service.send_evening_summary()
+
+    scheduler.add_job(
+        _job_slack_evening,
+        CronTrigger(hour=20, minute=0, timezone=IST),
+        id="job_slack_evening_summary",
+        name="20:00 Slack Daily Evening Summary",
+        replace_existing=True
+    )
+
+    # Monday 07:00 IST - OpportunityScoutAgent (5 Parallel Serper Sweeps)
+    async def _job_opportunity_scout():
+        from ..agents.opportunity_scout_agent import OpportunityScoutAgent
+        agent = OpportunityScoutAgent()
+        await agent.run()
+
+    scheduler.add_job(
+        _job_opportunity_scout,
+        CronTrigger(day_of_week="mon", hour=7, minute=0, timezone=IST),
+        id="job_opportunity_scout",
+        name="Mon 07:00 OpportunityScoutAgent 5-Search Link Sweep",
+        replace_existing=True
+    )
+
+    # Monday 10:00 IST - AssetEngineerAgent (Linkable Asset Briefing)
+    async def _job_asset_engineer():
+        from ..agents.asset_engineer_agent import AssetEngineerAgent
+        agent = AssetEngineerAgent()
+        await agent.run()
+
+    scheduler.add_job(
+        _job_asset_engineer,
+        CronTrigger(day_of_week="mon", hour=10, minute=0, timezone=IST),
+        id="job_asset_engineer",
+        name="Mon 10:00 AssetEngineerAgent Digital PR Briefing",
+        replace_existing=True
+    )
+
+    # Thursday 09:00 IST - AcquisitionMonitorAgent & Slack Report
+    async def _job_acquisition_monitor():
+        from ..agents.acquisition_monitor_agent import AcquisitionMonitorAgent
+        from ..services.slack_intelligence_service import slack_intelligence_service
+        agent = AcquisitionMonitorAgent()
+        await agent.run()
+        await slack_intelligence_service.send_backlink_intelligence_report()
+
+    scheduler.add_job(
+        _job_acquisition_monitor,
+        CronTrigger(day_of_week="thu", hour=9, minute=0, timezone=IST),
+        id="job_acquisition_monitor",
+        name="Thu 09:00 AcquisitionMonitorAgent & Slack Backlink Report",
+        replace_existing=True
+    )
+
+    # Sunday 01:00 IST - RankingSignalHarvester (500-URL Niche Harvest)
+    async def _job_niche_harvest():
+        from ..services.ranking_signal_harvester import RankingSignalHarvester
+        harvester = RankingSignalHarvester()
+        await harvester.run_niche_harvest()
+
+    scheduler.add_job(
+        _job_niche_harvest,
+        CronTrigger(day_of_week="sun", hour=1, minute=0, timezone=IST),
+        id="job_niche_harvest",
+        name="Sun 01:00 RankingSignalHarvester (500 URLs Niche Harvest)",
+        replace_existing=True
+    )
+
+    # Sunday 03:00 IST - SelfTrainingService (Meta-Training & Prompts Evolution)
+    async def _job_self_training():
+        from ..services.self_training_service import SelfTrainingService
+        svc = SelfTrainingService()
+        await svc.run_self_training_cycle()
+
+    scheduler.add_job(
+        _job_self_training,
+        CronTrigger(day_of_week="sun", hour=3, minute=0, timezone=IST),
+        id="job_self_training",
+        name="Sun 03:00 SelfTrainingService (Prompt Evolution & Meta-Training)",
+        replace_existing=True
+    )
+
+    # Sunday 21:00 IST - AuthorityCalibrationAgent & Slack Weekly Report
+    async def _job_authority_calibration():
+        from ..agents.authority_calibration_agent import AuthorityCalibrationAgent
+        from ..services.slack_intelligence_service import slack_intelligence_service
+        agent = AuthorityCalibrationAgent()
+        await agent.run()
+        await slack_intelligence_service.send_weekly_intelligence_report()
+
+    scheduler.add_job(
+        _job_authority_calibration,
+        CronTrigger(day_of_week="sun", hour=21, minute=0, timezone=IST),
+        id="job_authority_calibration",
+        name="Sun 21:00 AuthorityCalibrationAgent 90-Day Strategy Calibration",
+        replace_existing=True
+    )
+
+    # Every 6 Hours - SerpVolatilityService
+    async def _job_serp_volatility():
+        from ..services.serp_volatility_service import SerpVolatilityService
+        svc = SerpVolatilityService()
+        await svc.check_serp_volatility()
+
+    scheduler.add_job(
+        _job_serp_volatility,
+        IntervalTrigger(hours=6, timezone=IST),
+        id="job_serp_volatility",
+        name="Every 6h SERP Volatility & Algorithm Update Check",
+        replace_existing=True
+    )
+
     # Start 6 continuous monitoring loops if event loop is running
     try:
         loop = asyncio.get_running_loop()

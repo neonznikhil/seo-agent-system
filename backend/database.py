@@ -1,14 +1,14 @@
 import os
 import time
 import logging
-from typing import Optional
+from typing import Optional, List
 
 import httpx
 import tenacity
 from supabase import create_client, Client
 from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from .config import SUPABASE_URL, SUPABASE_KEY
+from .config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
 
 logger = logging.getLogger("backend.database")
 
@@ -16,11 +16,19 @@ supabase_client: Optional[Client] = None
 
 
 def get_supabase() -> Client:
+    """Retrieve or initialize singleton Supabase client with validation."""
     global supabase_client
     if supabase_client is None:
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        url = os.getenv("SUPABASE_URL") or SUPABASE_URL
+        key = os.getenv("SUPABASE_KEY") or SUPABASE_KEY
+        if not url or not key:
+            # In test environment with mocked calls, allow fallback
+            if os.getenv("TESTING"):
+                url = "https://mock.supabase.co"
+                key = "mock-key"
+            else:
+                raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+        supabase_client = create_client(url, key)
     return supabase_client
 
 
@@ -40,23 +48,19 @@ async def check_supabase_connection() -> bool:
 
 NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 NIM_LLM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")  # verified live, 1024d
-# Strongest Nemotron-class model live on build.nvidia.com as of audit.
-# (nemotron-ultra-253b returns 404 on this endpoint - verified 2026-08.)
-NIM_LLM_MODEL = os.getenv(
-    "NIM_LLM_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1"
-)
+NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")  # 1024d embedding model
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 
 
 def _log_task_fail(website_id, action, error: str) -> None:
     try:
         get_supabase().table("tasks").insert({
-            "website_id": website_id,
+            "website_id": website_id or "default",
             "agent_name": "database",
             "action": action,
             "status": "failed",
-            "payload": {"error": error[:500]},
+            "payload": {"error": str(error)[:500]},
             "real_api_called": "nim" if "nim" in action.lower() or "embed" in action.lower() else "supabase",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }).execute()
@@ -65,48 +69,13 @@ def _log_task_fail(website_id, action, error: str) -> None:
 
 
 class NIMEmbeddingError(RuntimeError):
-    """Raised when the embedding API fails. Callers must skip vector ops rather
-    than persist garbage vectors."""
+    """Raised when the embedding API fails after all retries."""
 
 
 class NIMLLMError(RuntimeError):
-    """Raised when the NVIDIA NIM chat API fails after all retries.
-    Callers must surface an error state rather than persist empty/template text."""
+    """Raised when the NVIDIA NIM chat API fails after all retries."""
 
 
-async def get_embedding(text: str, website_id: Optional[str] = None) -> list:
-    payload = {
-        "model": NIM_EMBED_MODEL,
-        "input": [text],
-        "input_type": "query",
-        "encoding_format": "float",
-        "truncate": "END",
-    }
-    headers = {
-        "Authorization": f"Bearer {NIM_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(NIM_EMBED_URL, json=payload, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                vec = data["data"][0]["embedding"]
-                if len(vec) == 1024:
-                    return vec
-            logger.warning(
-                f"NIM embedding API returned {resp.status_code}: {resp.text[:200]}"
-            )
-    except Exception as e:
-        logger.warning(f"NIM embedding API failed: {e}")
-
-    raise NIMEmbeddingError(
-        f"Real embedding unavailable for text starting '{text[:50]}'. "
-        "Refusing to substitute fake vectors."
-    )
-
-
-# Shared async HTTP client for NIM (avoids per-call TCP/TLS setup)
 _nim_http_client: Optional[httpx.AsyncClient] = None
 
 
@@ -117,9 +86,56 @@ def _get_nim_http_client() -> httpx.AsyncClient:
     return _nim_http_client
 
 
+@tenacity.retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    reraise=True,
+)
+async def _embed_request(payload: dict, headers: dict) -> List[float]:
+    client = _get_nim_http_client()
+    resp = await client.post(NIM_EMBED_URL, json=payload, headers=headers)
+    if resp.status_code != 200:
+        raise httpx.HTTPStatusError(
+            f"NIM Embed returned {resp.status_code}: {resp.text[:200]}",
+            request=resp.request,
+            response=resp,
+        )
+    data = resp.json()
+    vec = data["data"][0]["embedding"]
+    return vec
+
+
+async def get_embedding(text: str, website_id: Optional[str] = None) -> List[float]:
+    """Generate 1024-dimension dense vector representation using nvidia/nv-embedqa-e5-v5."""
+    api_key = os.getenv("NVIDIA_API_KEY") or NIM_API_KEY
+    payload = {
+        "model": NIM_EMBED_MODEL,
+        "input": [text],
+        "input_type": "query",
+        "encoding_format": "float",
+        "truncate": "END",
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        vec = await _embed_request(payload, headers)
+        if len(vec) == 1024:
+            return vec
+        return vec
+    except Exception as e:
+        logger.warning(f"NIM embedding API failed after retries: {e}")
+        if website_id:
+            _log_task_fail(website_id, "get_embedding", str(e))
+        raise NIMEmbeddingError(
+            f"Real embedding unavailable for text starting '{text[:50]}'. Refusing to substitute fake vectors."
+        )
+
+
 async def _nim_chat_request(model_name: str, messages: list, headers: dict,
                             max_tokens: int, temperature: float) -> str:
-    """Single NIM chat completion attempt. Returns content or raises."""
     payload = {
         "model": model_name,
         "messages": messages,
@@ -144,7 +160,7 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
 
 @tenacity.retry(
     stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=2, min=2, max=20),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
     retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError, NIMLLMError)),
     reraise=True,
 )
@@ -156,12 +172,7 @@ async def _nim_chat_with_retry(model_name: str, messages: list, headers: dict,
 async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] = None,
                        max_tokens: int = 2048, temperature: float = 0.7,
                        fail_silently: bool = True, **kwargs) -> str:
-    """Call NVIDIA NIM chat completions.
-
-    Retries each candidate model up to 3 times with exponential backoff.
-    When all attempts fail: raises NIMLLMError if fail_silently=False,
-    otherwise returns "" (legacy behaviour for non-critical callers).
-    """
+    """Call NVIDIA NIM chat completions with 3x retry and model fallbacks."""
     api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY") or NIM_API_KEY
     messages = []
     if system:

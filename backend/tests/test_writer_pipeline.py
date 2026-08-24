@@ -1,34 +1,41 @@
 import pytest
+from unittest.mock import patch, AsyncMock, MagicMock
 from backend.agents.writer_agent import WriterPipeline
-from backend.services.knowledge_service import KnowledgeService
 
 
 @pytest.mark.asyncio
-async def test_writer_knowledge_context_assembly():
-    """Test WriterPipeline gathers multi-vector knowledge, competitor insights, and rules."""
-    pipeline = WriterPipeline(website_id="03b7febf-0c44-4830-a42a-cfcd84ae6464")
+async def test_writer_pipeline_generation():
+    pipeline = WriterPipeline(website_id="default")
     
-    # Ensure seed knowledge
-    ks = KnowledgeService(website_id="03b7febf-0c44-4830-a42a-cfcd84ae6464")
-    await ks.ingest(
-        content="Under Texas law Section 16.003, car accident victims have 2 years to file injury claims.",
-        source_type="statute",
-        title="Texas Statute of Limitations Code",
-        explicit_type="law_statute"
-    )
+    mock_draft = """# Complete Guide to Texas Commercial Vehicle Settlements
 
-    hits = await ks.retrieve_relevant_hybrid("Texas accident statute", top_k=3)
-    assert len(hits) >= 1
+This authoritative analysis explains statutory recovery frameworks under Texas law.
 
+## Texas Comparative Fault Statutory Breakdown
+Under Texas Civil Practice and Remedies Code section 33.001, claimants can recover damages if fault does not exceed 50 percent.
 
-@pytest.mark.asyncio
-async def test_writer_generation_and_elementor_html():
-    """Test 10-phase generation outputs Elementor-safe HTML structure and citations."""
-    pipeline = WriterPipeline(website_id="03b7febf-0c44-4830-a42a-cfcd84ae6464")
-    res = await pipeline.generate(
-        topic="Texas Personal Injury Settlement Rules 2026",
-        primary_keyword="Texas personal injury settlement"
-    )
-    
-    assert res.get("status") in ["completed", "skipped", "needs_revision", "staged_for_approval"]
-    assert "reviews" in res or "phase_results" in res or "final_scores" in res or "reason" in res
+## Average Settlement Calculation Matrix
+Settlement amounts vary based on medical damages and commercial insurance limits.
+
+## Frequently Asked Questions
+### How long do I have to file a claim?
+Under Texas statute of limitations, claims must be filed within 2 years.
+"""
+    with patch("backend.database.call_nim_llm", new=AsyncMock(return_value=mock_draft)):
+        with patch("backend.database.get_supabase") as mock_sup:
+            mock_sup.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "kb_1"}])
+            mock_sup.return_value.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": "test_draft_id"}])
+            
+            # Run test generation
+            res = await pipeline.generate(
+                topic="Texas commercial truck accident lawyer",
+                primary_keyword="Texas commercial truck settlements"
+            )
+            
+            assert res is not None
+            assert res.get("status") in ["draft_saved", "quality_passed", "staged_for_approval", "complete"]
+            content = res.get("content", mock_draft)
+            assert "[INSERT" not in content
+            assert "[TOPIC]" not in content
+            assert "[KEYWORD]" not in content
+

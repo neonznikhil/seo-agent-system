@@ -290,8 +290,8 @@ class WriterPipeline:
             'step_in_phase': step_number,
             'step_name': step_name,
             'status': status,
-            'input_data': json.dumps(input_data) if input_data else None,
-            'output_data': json.dumps(output_data) if output_data else None,
+            'input_data': json.dumps(input_data, default=str) if input_data else None,
+            'output_data': json.dumps(output_data, default=str) if output_data else None,
             'thought': thought,
             'created_at': datetime.utcnow().isoformat()
         }
@@ -323,9 +323,9 @@ class WriterPipeline:
         if not self.supabase:
             return
         if 'final_scores' in kwargs and not isinstance(kwargs['final_scores'], str):
-            kwargs['final_scores'] = json.dumps(kwargs['final_scores'])
+            kwargs['final_scores'] = json.dumps(kwargs['final_scores'], default=str)
         if 'phase_results' in kwargs and not isinstance(kwargs['phase_results'], str):
-            kwargs['phase_results'] = json.dumps(kwargs['phase_results'])
+            kwargs['phase_results'] = json.dumps(kwargs['phase_results'], default=str)
         self.supabase.table('content_log').update(kwargs).eq('id', self.content_id).execute()
 
     # ==================== PHASE 1: AUDIENCE DEMAND ANALYSIS (Steps 1-10) ====================
@@ -1092,7 +1092,7 @@ class WriterPipeline:
 
     async def _score_business_potential(self, topic: str, kb: List[Dict]) -> int:
         from ..database import call_nim_llm
-        prompt = f"Score 0-3: Does '{topic}' match our business? KB: {json.dumps(kb[:10])}"
+        prompt = f"Score 0-3: Does '{topic}' match our business? KB: {json.dumps(kb[:10], default=str)}"
         result = await call_nim_llm(prompt, website_id=self.website_id)
         try: return int(result.strip().split()[0])
         except: return 2

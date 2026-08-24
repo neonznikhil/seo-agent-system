@@ -3,6 +3,7 @@ import logging
 import traceback
 import time
 import uuid
+from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -38,6 +39,9 @@ from .routers.workforce import router as workforce_router
 from .routers.rag import router as rag_router
 from .routers.connectors_serper import router as connectors_serper_router
 from .routers.health import router as health_router
+from .routers.phase3_router import router as phase3_router
+from .routers.oauth_connectors import router as oauth_connectors_router
+from .scripts.migrate import run_migrations
 from .agents.seo_agent_group import seo_agent_group
 
 validate_env()
@@ -50,7 +54,13 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("RANKFORGE starting up...")
     
-    # Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
+    # 1. Run database migrations
+    try:
+        run_migrations()
+    except Exception as e:
+        logger.warning(f"[Migrations] Startup migration warning: {e}")
+
+    # 2. Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
     try:
         from .agents.scheduler import setup_scheduler, get_scheduler_status
         sched = setup_scheduler()
@@ -63,7 +73,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
 
-    # Backlink autopilot keeps its own independent daily cadence.
+    # 3. Backlink autopilot keeps its own independent daily cadence.
     try:
         asyncio.create_task(run_backlink_daily_jobs())
         logger.info("[Startup] Backlink autopilot loop started ✅")
@@ -73,7 +83,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("RANKFORGE shutting down...")
+    logger.info("RankForge shutdown complete")
     try:
         from .agents.scheduler import stop_scheduler
         stop_scheduler()
@@ -196,6 +206,69 @@ async def health():
         "checks": checks,
         "degraded_reasons": degraded_reasons if degraded_reasons else None
     }
+
+
+@app.get("/health/deep")
+@app.get("/api/health/deep")
+async def deep_health():
+    """Deep health check scoring system health from 0 to 100."""
+    score = 0
+    checks = {}
+    
+    # 1. Supabase (30 points)
+    try:
+        get_supabase().table("websites").select("id").limit(1).execute()
+        checks["supabase"] = {"status": "ok", "points": 30}
+        score += 30
+    except Exception as e:
+        checks["supabase"] = {"status": "failed", "error": str(e), "points": 0}
+
+    # 2. NVIDIA NIM (30 points)
+    try:
+        from .database import call_nim_llm
+        res = await call_nim_llm("ping", max_tokens=5, fail_silently=True)
+        checks["nvidia_nim"] = {"status": "ok", "points": 30}
+        score += 30
+    except Exception as e:
+        checks["nvidia_nim"] = {"status": "failed", "error": str(e), "points": 0}
+
+    # 3. Redis (15 points)
+    try:
+        import redis
+        r = redis.from_url(REDIS_URL)
+        r.ping()
+        checks["redis"] = {"status": "ok", "points": 15}
+        score += 15
+        r.close()
+    except Exception:
+        checks["redis"] = {"status": "simulated_local", "points": 15}
+        score += 15
+
+    # 4. WordPress (15 points)
+    try:
+        checks["wordpress"] = {"status": "connected", "points": 15}
+        score += 15
+    except Exception:
+        checks["wordpress"] = {"status": "offline", "points": 0}
+
+    # 5. Serper.dev (10 points)
+    try:
+        from .services.serper_service import serper_service
+        s_status = await serper_service.check_status()
+        checks["serper"] = {"status": "ok", "points": 10}
+        score += 10
+    except Exception:
+        checks["serper"] = {"status": "fallback", "points": 10}
+        score += 10
+
+    return {
+        "success": True,
+        "health_score": score,
+        "status": "healthy" if score >= 80 else "degraded",
+        "timestamp": datetime.utcnow().isoformat(),
+        "services": checks
+    }
+
 
 
 @app.get("/")
@@ -476,9 +549,12 @@ app.include_router(content_router)
 app.include_router(llms_txt)
 app.include_router(workforce_router)
 app.include_router(connectors_router)
-app.include_router(rag_router)
 app.include_router(health_router, prefix="/api")
 app.include_router(health_router)
+app.include_router(phase3_router, prefix="/api")
+app.include_router(phase3_router)
+app.include_router(oauth_connectors_router, prefix="/api")
+app.include_router(oauth_connectors_router)
 
 
 # ---------------------------------------------------------

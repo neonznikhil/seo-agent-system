@@ -42,3 +42,10 @@ CREATE TABLE IF NOT EXISTS keyword_opportunities (
     status TEXT DEFAULT 'new',
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Phase 3 Column Alterations
+ALTER TABLE websites ADD COLUMN IF NOT EXISTS slack_channels JSONB DEFAULT '{"daily": "#rankforge-daily", "backlinks": "#rankforge-backlinks", "weekly": "#rankforge-weekly", "alerts": "#rankforge-alerts"}'::jsonb;
+ALTER TABLE content_log ADD COLUMN IF NOT EXISTS acquired_backlinks_count INTEGER DEFAULT 0;
+ALTER TABLE brain_memory ADD COLUMN IF NOT EXISTS outcome_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE brain_memory ADD COLUMN IF NOT EXISTS actual_outcome_score FLOAT DEFAULT NULL;
+
