@@ -70,6 +70,9 @@ export default function HomePage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [deleteModalArticle, setDeleteModalArticle] = useState<any | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Quick generator state
   const [genTopic, setGenTopic] = useState("");
@@ -197,15 +200,27 @@ export default function HomePage() {
     }
   };
 
-  const handleDeleteDraft = async (item: any) => {
-    if (!confirm(`Delete draft: "${item.title}"?`)) return;
+  const confirmDeleteArticle = async () => {
+    if (!deleteModalArticle) return;
+    const item = deleteModalArticle;
+    setDeletingId(item.id);
     try {
-      await del(`/api/blogs/${item.id}`);
-      showToast("Draft deleted.");
-      fetchDashboardData();
+      await del(`/api/content/${item.id}`);
+      showToast(`Draft deleted: "${item.title}"`);
+      setDeleteModalArticle(null);
+      setTimeout(() => {
+        setDeletingId(null);
+        fetchDashboardData();
+      }, 300);
     } catch (err: any) {
       showToast(`Delete failed: ${err.message}`);
+      setDeletingId(null);
     }
+  };
+
+  const handleDeleteDraft = (item: any) => {
+    setActiveMenuId(null);
+    setDeleteModalArticle(item);
   };
 
   const stateBadge = (state: string) =>
@@ -360,8 +375,10 @@ export default function HomePage() {
                     metrics.recent_content.map((item) => {
                       const isPublished =
                         item.status === "published" || item.approval_status === "published";
+                      const isMenuOpen = activeMenuId === item.id;
+                      const isFading = deletingId === item.id;
                       return (
-                        <tr key={item.id}>
+                        <tr key={item.id} style={{ opacity: isFading ? 0 : 1, transition: "opacity 0.3s ease" }}>
                           <td style={{ fontWeight: 600, maxWidth: "240px" }}>{item.title}</td>
                           <td>
                             <span style={{ color: "var(--muted)", fontSize: "10px" }}>
@@ -376,46 +393,97 @@ export default function HomePage() {
                           <td style={{ fontSize: "9.5px", color: "var(--muted)" }}>
                             {item.created_at ? new Date(item.created_at).toLocaleDateString() : "—"}
                           </td>
-                          <td>
-                            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                          <td style={{ position: "relative" }}>
+                            <div style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "flex-end" }}>
                               <button
                                 type="button"
                                 className="btn"
-                                style={{ fontSize: "8.5px", padding: "2px 7px", color: "var(--accent)", borderColor: "var(--accent)" }}
-                                onClick={() => openDraftPreview(item)}
+                                style={{ fontSize: "11px", padding: "2px 8px", fontWeight: "bold", letterSpacing: "1px" }}
+                                onClick={() => setActiveMenuId(isMenuOpen ? null : item.id)}
+                                title="Actions"
                               >
-                                View Draft
+                                ⋯
                               </button>
-                              {!isPublished && item.approval_id ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-accent"
-                                  style={{ fontSize: "8.5px", padding: "2px 7px" }}
-                                  disabled={approvingId === item.approval_id}
-                                  onClick={() => handleApproveDraft(item)}
+
+                              {isMenuOpen && (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    right: "8px",
+                                    top: "34px",
+                                    background: "var(--stone)",
+                                    border: "1px solid var(--line)",
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                                    zIndex: 50,
+                                    borderRadius: "4px",
+                                    minWidth: "150px",
+                                    padding: "4px 0",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                  }}
                                 >
-                                  {approvingId === item.approval_id ? "Publishing..." : "Approve ✓"}
-                                </button>
-                              ) : isPublished ? (
-                                <a
-                                  href={item.wordpress_url || "#"}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={{ color: "var(--green)", fontSize: "9px", textDecoration: "none" }}
-                                >
-                                  Live ↗
-                                </a>
-                              ) : null}
-                              {!isPublished && (
-                                <button
-                                  type="button"
-                                  className="btn"
-                                  style={{ fontSize: "8.5px", padding: "2px 7px", color: "var(--red)", borderColor: "rgba(255,85,85,0.4)" }}
-                                  title="Delete Draft"
-                                  onClick={() => handleDeleteDraft(item)}
-                                >
-                                  🗑️
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuId(null);
+                                      openDraftPreview(item);
+                                    }}
+                                    style={{
+                                      textAlign: "left",
+                                      padding: "6px 12px",
+                                      background: "transparent",
+                                      border: "none",
+                                      color: "var(--ink)",
+                                      fontSize: "11px",
+                                      cursor: "pointer",
+                                      fontFamily: "var(--font-mono, monospace)",
+                                    }}
+                                  >
+                                    👁️ View Draft
+                                  </button>
+
+                                  {!isPublished && item.approval_id && (
+                                    <button
+                                      type="button"
+                                      disabled={approvingId === item.approval_id}
+                                      onClick={() => {
+                                        setActiveMenuId(null);
+                                        handleApproveDraft(item);
+                                      }}
+                                      style={{
+                                        textAlign: "left",
+                                        padding: "6px 12px",
+                                        background: "transparent",
+                                        border: "none",
+                                        color: "var(--green, #4ade80)",
+                                        fontSize: "11px",
+                                        cursor: "pointer",
+                                        fontFamily: "var(--font-mono, monospace)",
+                                      }}
+                                    >
+                                      ✓ Approve & Publish
+                                    </button>
+                                  )}
+
+                                  <div style={{ height: "1px", background: "var(--line)", margin: "3px 0" }} />
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDraft(item)}
+                                    style={{
+                                      textAlign: "left",
+                                      padding: "6px 12px",
+                                      background: "transparent",
+                                      border: "none",
+                                      color: "var(--red, #f87171)",
+                                      fontSize: "11px",
+                                      cursor: "pointer",
+                                      fontFamily: "var(--font-mono, monospace)",
+                                    }}
+                                  >
+                                    🗑️ Delete
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -676,6 +744,80 @@ export default function HomePage() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteModalArticle && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--panel-bg)",
+              border: "1px solid var(--red, #f87171)",
+              borderRadius: "8px",
+              maxWidth: "460px",
+              width: "100%",
+              padding: "24px",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+            }}
+          >
+            <h3
+              style={{
+                fontSize: "15px",
+                fontWeight: "bold",
+                color: "var(--red, #f87171)",
+                marginBottom: "12px",
+                textTransform: "uppercase",
+                fontFamily: "var(--font-mono, monospace)",
+              }}
+            >
+              Delete &apos;{deleteModalArticle.title}&apos;?
+            </h3>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--ink)",
+                lineHeight: "1.6",
+                marginBottom: "20px",
+                fontFamily: "var(--font-mono, monospace)",
+              }}
+            >
+              This cannot be undone. The article will be removed from RankForge and will NOT be deleted from WordPress if already published.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setDeleteModalArticle(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  background: "var(--red, #f87171)",
+                  color: "#fff",
+                  borderColor: "var(--red, #f87171)",
+                  fontWeight: "bold",
+                }}
+                onClick={confirmDeleteArticle}
+              >
+                Delete Draft
+              </button>
             </div>
           </div>
         </div>

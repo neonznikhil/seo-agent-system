@@ -647,11 +647,19 @@ class WriterPipeline:
         self.supabase.table('content_pipeline_logs').insert(step_record).execute()
 
     def _log_pipeline_start(self):
-        """Initialize content_log entry with the real generated title."""
+        """Initialize content_log entry with the real generated title and account_id."""
         if not self.supabase:
             return
 
-        self.supabase.table('content_log').insert({
+        acc_id = None
+        try:
+            site_row = self.supabase.table("websites").select("account_id").eq("id", self.website_id).limit(1).execute().data
+            if site_row:
+                acc_id = site_row[0].get("account_id")
+        except Exception:
+            pass
+
+        insert_payload = {
             'id': self.content_id,
             'website_id': self.website_id,
             'title': getattr(self, 'generated_title', None) or self.topic or self.primary_keyword,
@@ -661,7 +669,11 @@ class WriterPipeline:
             'phase_results': json.dumps({}),
             'final_scores': json.dumps({}),
             'created_at': datetime.utcnow().isoformat()
-        }).execute()
+        }
+        if acc_id:
+            insert_payload['account_id'] = acc_id
+
+        self.supabase.table('content_log').insert(insert_payload).execute()
 
     def _update_content_log(self, **kwargs):
         """Update the content_log entry."""

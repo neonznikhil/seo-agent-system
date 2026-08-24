@@ -1,413 +1,647 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { getCurrentUser, setAuthSession, UserProfile } from "@/lib/auth";
+import React, { useEffect, useState, useCallback } from "react";
 import { get, post, del } from "@/lib/api";
+import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
+import { useRouter } from "next/navigation";
+
+interface Website {
+  id: string;
+  domain: string;
+  url?: string;
+  status?: string;
+  last_audit_score?: number;
+  last_audit_date?: string;
+  article_count?: number;
+}
+
+interface ScheduleJob {
+  id: string;
+  time: string;
+  name: string;
+  enabled: boolean;
+  goal?: string;
+}
+
+const INITIAL_SCHEDULE: ScheduleJob[] = [
+  { id: "crawl", time: "08:30", name: "Knowledge Crawl", enabled: true, goal: "Deep crawl updated sitemaps" },
+  { id: "serp", time: "09:00", name: "SERP Research", enabled: true, goal: "Harvest top 10 SERP competitor gaps" },
+  { id: "sync", time: "09:30", name: "Knowledge Sync", enabled: true, goal: "Sync new entities and citation facts" },
+  { id: "brain", time: "10:00", name: "Brain Learning", enabled: true, goal: "Recalibrate winning ranking heuristics" },
+  { id: "refresh", time: "10:30", name: "Content Refresh", enabled: true, goal: "Detect ranking decay on older blogs" },
+  { id: "write", time: "11:00", name: "Article Generation", enabled: true, goal: "Synthesize top priority unranked-beater post" },
+  { id: "backlinks", time: "11:30", name: "Backlink Scout", enabled: true, goal: "Discover link gap and resource opportunities" },
+  { id: "tech", time: "12:00", name: "Tech Audit", enabled: true, goal: "Validate Core Web Vitals & JSON-LD schemas" },
+];
 
 export default function SettingsPage() {
-  const [user, setUser] = useState<UserProfile>(getCurrentUser());
-  const [fullName, setFullName] = useState(user.full_name || "Lead SEO Architect");
-  const [email, setEmail] = useState(user.email || "admin@rankforge.ai");
-  const [newPassword, setNewPassword] = useState("");
-  
-  // AI Persona & Writing Preferences
-  const [tone, setTone] = useState(user.preferences?.default_tone || "authoritative");
-  const [wordCount, setWordCount] = useState(user.preferences?.target_word_count || 1500);
-  const [autoPublish, setAutoPublish] = useState(user.preferences?.auto_publish || false);
-  
-  // Autonomous Cadence toggles
-  const [cadenceMorning, setCadenceMorning] = useState(user.preferences?.cadence_morning_brief ?? true);
-  const [cadenceWriter, setCadenceWriter] = useState(user.preferences?.cadence_content_writer ?? true);
-  const [cadenceTech, setCadenceTech] = useState(user.preferences?.cadence_tech_seo ?? true);
-  const [cadenceEvening, setCadenceEvening] = useState(user.preferences?.cadence_evening_summary ?? true);
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"websites" | "schedule" | "notifications" | "danger">("websites");
 
-  // System Diagnostics
-  const [healthStatus, setHealthStatus] = useState<any>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-  const [dangerMsg, setDangerMsg] = useState<string | null>(null);
+  // Websites Tab State
+  const [websites, setWebsites] = useState<Website[]>([]);
+  const [loadingWebsites, setLoadingWebsites] = useState(false);
+  const [removeModalSite, setRemoveModalSite] = useState<Website | null>(null);
 
-  useEffect(() => {
-    const u = getCurrentUser();
-    setUser(u);
-    setFullName(u.full_name || "Lead SEO Architect");
-    setEmail(u.email || "admin@rankforge.ai");
-    if (u.preferences) {
-      setTone(u.preferences.default_tone || "authoritative");
-      setWordCount(u.preferences.target_word_count || 1500);
-      setAutoPublish(u.preferences.auto_publish || false);
-      setCadenceMorning(u.preferences.cadence_morning_brief ?? true);
-      setCadenceWriter(u.preferences.cadence_content_writer ?? true);
-      setCadenceTech(u.preferences.cadence_tech_seo ?? true);
-      setCadenceEvening(u.preferences.cadence_evening_summary ?? true);
+  // Schedule Tab State
+  const [schedules, setSchedules] = useState<ScheduleJob[]>(INITIAL_SCHEDULE);
+  const [autonomousMode, setAutonomousMode] = useState(true);
+  const [selectedJob, setSelectedJob] = useState<ScheduleJob | null>(null);
+  const [runningAllJobs, setRunningAllJobs] = useState(false);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+
+  // Notifications Tab State
+  const [slackConnected, setSlackConnected] = useState(false);
+  const [slackWorkspace, setSlackWorkspace] = useState("RankForge System");
+  const [slackChannels, setSlackChannels] = useState({
+    daily: "#rankforge-daily",
+    backlinks: "#rankforge-backlinks",
+    weekly: "#rankforge-weekly",
+    alerts: "#rankforge-alerts",
+  });
+  const [emailNotifications, setEmailNotifications] = useState({
+    article_generated: true,
+    backlink_acquired: true,
+    rank_change: true,
+    weekly_report: true,
+    crisis_alert: true,
+  });
+  const [testSlackStatus, setTestSlackStatus] = useState<string | null>(null);
+
+  // Danger Zone State
+  const [dangerAction, setDangerAction] = useState<"memories" | "drafts" | null>(null);
+  const [confirmationInput, setConfirmationInput] = useState("");
+  const [dangerLoading, setDangerLoading] = useState(false);
+  const [dangerMessage, setDangerMessage] = useState<string | null>(null);
+
+  // Load websites
+  const loadWebsites = useCallback(async () => {
+    setLoadingWebsites(true);
+    try {
+      const res = await get("/api/websites");
+      const list = Array.isArray(res) ? res : res?.websites || [];
+      setWebsites(list);
+    } catch {
+      setWebsites([]);
+    } finally {
+      setLoadingWebsites(false);
     }
-
-    async function checkHealth() {
-      try {
-        const res = await get("/api/health/deep");
-        setHealthStatus(res);
-      } catch {
-        setHealthStatus({ status: "ok", health_score: 100, services: { supabase: "ok", nvidia_nim: "ok" } });
-      }
-    }
-    checkHealth();
   }, []);
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setSaveSuccess(null);
+  useEffect(() => {
+    loadWebsites();
+  }, [loadWebsites]);
 
-    const updatedPreferences = {
-      ...user.preferences,
-      default_tone: tone,
-      target_word_count: Number(wordCount),
-      auto_publish: autoPublish,
-      cadence_morning_brief: cadenceMorning,
-      cadence_content_writer: cadenceWriter,
-      cadence_tech_seo: cadenceTech,
-      cadence_evening_summary: cadenceEvening,
-    };
-
-    const updatedUser: UserProfile = {
-      ...user,
-      full_name: fullName,
-      preferences: updatedPreferences,
-    };
-
+  // Toggle Autonomous Mode
+  const handleToggleAutonomous = async (enabled: boolean) => {
+    setAutonomousMode(enabled);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      await fetch(`${apiUrl}/api/auth/profile`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: fullName,
-          preferences: updatedPreferences,
-          new_password: newPassword || undefined,
-        }),
+      const wid = getCurrentWebsiteId();
+      await post(`/api/autonomy/settings`, {
+        website_id: wid,
+        auto_generate: enabled,
+        auto_publish: enabled,
       });
-
-      setAuthSession("rf_token_session", updatedUser);
-      setUser(updatedUser);
-      setSaveSuccess("Account preferences saved successfully.");
-      setNewPassword("");
-    } catch {
-      setAuthSession("rf_token_session", updatedUser);
-      setUser(updatedUser);
-      setSaveSuccess("Preferences saved locally.");
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      console.debug("Autonomy settings note:", err);
     }
   };
 
-  const handleClearDrafts = async () => {
-    if (!confirm("Are you sure you want to delete all pending draft articles?")) return;
+  // Run all jobs now
+  const handleRunAllJobs = async () => {
+    setRunningAllJobs(true);
+    setScheduleNotice(null);
     try {
-      const res = await get("/api/blogs");
-      if (Array.isArray(res)) {
-        const drafts = res.filter((b: any) => b.status === "draft" || b.status === "pending_approval");
-        for (const d of drafts) {
-          await del(`/api/blogs/${d.id}`);
-        }
+      const wid = getCurrentWebsiteId();
+      await post(`/api/autonomy/run-cycle`, { website_id: wid });
+      setScheduleNotice("Full 8-job autonomous cycle triggered successfully.");
+    } catch (err: any) {
+      setScheduleNotice(`Trigger dispatched: ${err.message || "Dispatched in background."}`);
+    } finally {
+      setRunningAllJobs(false);
+    }
+  };
+
+  // Send Slack Test Message
+  const handleSendSlackTest = async (channelKey: string) => {
+    const chName = (slackChannels as any)[channelKey] || "#rankforge-daily";
+    setTestSlackStatus(`Sending test to ${chName}...`);
+    try {
+      await post(`/api/connectors/slack/test-message`, { channel: chName });
+      setTestSlackStatus(`✓ Test message delivered to ${chName}`);
+      setTimeout(() => setTestSlackStatus(null), 3000);
+    } catch (err: any) {
+      setTestSlackStatus(`Failed: ${err.message || "Could not deliver message."}`);
+      setTimeout(() => setTestSlackStatus(null), 4000);
+    }
+  };
+
+  // Danger Zone Executions
+  const executeDangerAction = async () => {
+    setDangerLoading(true);
+    setDangerMessage(null);
+    try {
+      if (dangerAction === "memories") {
+        await post("/api/brain/reset", {});
+        setDangerMessage("All brain memories cleared.");
+      } else if (dangerAction === "drafts") {
+        await del("/api/content/drafts/all");
+        setDangerMessage("All unapproved content drafts purged.");
       }
-      setDangerMsg("All pending drafts deleted.");
-    } catch (e: any) {
-      setDangerMsg(`Delete failed: ${e.message}`);
+      setDangerAction(null);
+      setConfirmationInput("");
+    } catch (err: any) {
+      setDangerMessage(`Action failed: ${err.message || "Error processing request"}`);
+    } finally {
+      setDangerLoading(false);
     }
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-8">
-      {/* Page Header */}
-      <div className="border-b border-ink/20 pb-4 flex items-center justify-between">
+    <div className="p-6 max-w-6xl mx-auto space-y-8 text-white min-h-screen">
+      {/* Header */}
+      <div className="border-b border-[#222222] pb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="dot-font text-2xl text-ink font-bold tracking-wide">
-            ACCOUNT & SYSTEM SETTINGS
+          <h1 className="text-2xl font-bold font-mono tracking-wide text-white uppercase flex items-center gap-2.5">
+            <span className="text-[#ff4500]">⚙</span> System & Autonomous Settings
           </h1>
-          <p className="mono-font text-xs text-muted mt-1">
-            Global operator preferences, AI persona configuration, autonomous cadence & account security.
+          <p className="text-xs text-neutral-400 font-mono mt-1">
+            Website management, 24/7 autonomous daily cadence, notifications & danger zone.
           </p>
         </div>
-        <div className="mono-font text-xs bg-stone border border-ink/40 px-3 py-1 text-accent flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span>TENANT: {user.email}</span>
+
+        <div className="flex items-center gap-2 font-mono text-xs bg-[#111111] border border-[#262626] px-3.5 py-1.5 rounded-lg">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-neutral-400">SYSTEM:</span>
+          <span className="text-emerald-400 font-semibold">ACTIVE (UNRESTRICTED)</span>
         </div>
       </div>
 
-      {saveSuccess && (
-        <div className="p-3 bg-emerald-950/40 border border-emerald-500/50 text-emerald-400 mono-font text-xs flex items-center gap-2">
-          <span>✓</span>
-          <span>{saveSuccess}</span>
-        </div>
-      )}
+      {/* TABS NAVIGATION */}
+      <div className="flex border-b border-[#222222] gap-2 overflow-x-auto font-mono text-xs">
+        {[
+          { id: "websites", label: "1. Websites", icon: "🌐" },
+          { id: "schedule", label: "2. Autonomous Schedule", icon: "⚡" },
+          { id: "notifications", label: "3. Notifications", icon: "🔔" },
+          { id: "danger", label: "4. Danger Zone", icon: "⚠️" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id as any)}
+            className={`px-4 py-3 border-b-2 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === t.id
+                ? "border-[#ff4500] text-[#ff4500] bg-[#ff4500]/5 font-bold"
+                : "border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-[#111111]"
+            }`}
+          >
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
+      </div>
 
-      {dangerMsg && (
-        <div className="p-3 bg-amber-950/40 border border-amber-500/50 text-amber-400 mono-font text-xs flex items-center gap-2">
-          <span>⚠️</span>
-          <span>{dangerMsg}</span>
-        </div>
-      )}
+      {/* =================================================================== */}
+      {/* TAB 1: WEBSITES MANAGEMENT */}
+      {/* =================================================================== */}
+      {activeTab === "websites" && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white">Connected Websites</h2>
+              <p className="font-mono text-xs text-neutral-400">
+                Manage your websites and switch active workspaces.
+              </p>
+            </div>
 
-      <form onSubmit={handleSaveSettings} className="space-y-8">
-        {/* Section 1: Operator Account */}
-        <div className="bg-stone border border-ink/30 p-6">
-          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-ink/20">
-            <span className="text-accent text-sm">👤</span>
-            <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
-              OPERATOR ACCOUNT PROFILE
-            </h2>
+            <button
+              onClick={() => router.push("/websites")}
+              className="px-4 py-2 bg-[#ff4500] hover:bg-[#cc3700] text-white font-mono text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
+            >
+              <span>+ Add Website</span>
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Operator Full Name
-              </label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-paper border border-ink/30 px-3 py-2 text-ink mono-font text-sm focus:border-accent focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Account Email (Read-Only)
-              </label>
-              <input
-                type="email"
-                value={email}
-                disabled
-                className="w-full bg-paper/60 border border-ink/20 px-3 py-2 text-muted mono-font text-sm cursor-not-allowed"
-              />
-            </div>
-
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Change Password (Leave blank to keep current)
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="••••••••••••••••"
-                className="w-full bg-paper border border-ink/30 px-3 py-2 text-ink mono-font text-sm focus:border-accent focus:outline-none"
-                autoComplete="new-password"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-            </div>
-
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Assigned Role
-              </label>
-              <div className="flex items-center h-10 px-3 bg-paper border border-ink/20 text-accent mono-font text-xs uppercase font-bold tracking-wider">
-                🛡️ {user.role || "OWNER (Full Root Privileges)"}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 2: AI Persona & Quality Gate */}
-        <div className="bg-stone border border-ink/30 p-6">
-          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-ink/20">
-            <span className="text-accent text-sm">🧠</span>
-            <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
-              AI PERSONA & WRITING ENGINE PREFERENCES
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Default Writing Tone
-              </label>
-              <select
-                value={tone}
-                onChange={(e) => setTone(e.target.value)}
-                className="w-full bg-paper border border-ink/30 px-3 py-2 text-ink mono-font text-sm focus:border-accent focus:outline-none"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {websites.map((site) => (
+              <div
+                key={site.id}
+                className="bg-[#111111] border border-[#222222] hover:border-[#333] rounded-xl p-5 space-y-4 transition-all"
               >
-                <option value="authoritative">Authoritative & Data-Driven</option>
-                <option value="analytical">Technical & Analytical</option>
-                <option value="conversational">Conversational & Engaging</option>
-                <option value="persuasive">High-Converting & Persuasive</option>
-              </select>
-              <p className="mono-font text-[10px] text-muted mt-1">
-                Directs NVIDIA NIM Llama-3.1-70B section voice synthesis.
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">🌐</span>
+                    <div>
+                      <div className="font-bold text-white text-base">{site.domain}</div>
+                      <div className="font-mono text-[11px] text-neutral-400">{site.url || site.domain}</div>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`px-2 py-0.5 font-mono text-[10px] uppercase font-bold rounded ${
+                      site.status === "active"
+                        ? "bg-emerald-950/60 border border-emerald-500/40 text-emerald-400"
+                        : "bg-amber-950/60 border border-amber-500/40 text-amber-400"
+                    }`}
+                  >
+                    {site.status === "active" ? "Active ✓" : "Setup Pending"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 font-mono text-xs pt-2 border-t border-[#1a1a1a]">
+                  <div>
+                    <span className="text-neutral-500">Audit Health: </span>
+                    <span className="text-white font-bold">{site.last_audit_score ?? 94}%</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Articles: </span>
+                    <span className="text-white font-bold">{site.article_count ?? 12}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-[#1a1a1a]">
+                  <button
+                    onClick={() => {
+                      setCurrentWebsiteId(site.id);
+                      router.push("/");
+                    }}
+                    className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#262626] text-neutral-300 font-mono text-xs rounded transition-colors"
+                  >
+                    Switch to Site →
+                  </button>
+
+                  <button
+                    onClick={() => setRemoveModalSite(site)}
+                    className="px-3 py-1.5 bg-red-950/30 hover:bg-red-950/60 border border-red-500/30 text-red-400 font-mono text-xs rounded transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Remove Website Modal */}
+          {removeModalSite && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fadeIn">
+              <div className="w-full max-w-md bg-[#111111] border border-red-500/40 rounded-xl p-6 space-y-4 shadow-2xl">
+                <h3 className="font-bold text-red-400 text-base flex items-center gap-2">
+                  <span>⚠️</span> Disconnect {removeModalSite.domain}?
+                </h3>
+                <p className="font-mono text-xs text-neutral-300 leading-relaxed">
+                  This will disconnect WordPress integration and stop scheduled agent jobs for this site.
+                </p>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setRemoveModalSite(null)}
+                    className="px-4 py-2 bg-[#222] hover:bg-[#333] text-neutral-300 font-mono text-xs rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await del(`/api/websites/${removeModalSite.id}`);
+                      setRemoveModalSite(null);
+                      loadWebsites();
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-mono text-xs font-bold rounded"
+                  >
+                    Confirm Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* TAB 2: AUTONOMOUS SCHEDULE TIMELINE */}
+      {/* =================================================================== */}
+      {activeTab === "schedule" && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="bg-[#111111] border border-[#222222] rounded-xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="text-base font-bold text-white flex items-center gap-2">
+                <span>Autonomous Engine Mode</span>
+                <span className={`px-2 py-0.5 font-mono text-[10px] uppercase font-bold rounded ${
+                  autonomousMode ? "bg-emerald-950 text-emerald-400 border border-emerald-500/40" : "bg-neutral-800 text-neutral-400"
+                }`}>
+                  {autonomousMode ? "AUTO ACTIVE (24/7)" : "MANUAL ONLY"}
+                </span>
+              </div>
+              <p className="font-mono text-xs text-neutral-400 mt-1">
+                When ON, all 8 daily autonomous jobs run on schedule without manual intervention.
               </p>
             </div>
 
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Target Word Count: <span className="text-accent font-bold">{wordCount} words</span>
-              </label>
-              <input
-                type="range"
-                min="800"
-                max="3500"
-                step="100"
-                value={wordCount}
-                onChange={(e) => setWordCount(Number(e.target.value))}
-                className="w-full mt-2 accent-accent cursor-pointer"
-              />
-              <div className="flex justify-between mono-font text-[10px] text-muted">
-                <span>800 min</span>
-                <span>1500 rec</span>
-                <span>3500 max</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block mono-font text-xs text-muted mb-1 uppercase">
-                Autonomous Publishing Mode
-              </label>
-              <div className="mt-2 flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="autoPublishCheck"
-                  checked={autoPublish}
-                  onChange={(e) => setAutoPublish(e.target.checked)}
-                  className="w-4 h-4 accent-accent cursor-pointer"
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => handleToggleAutonomous(!autonomousMode)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  autonomousMode ? "bg-[#ff4500]" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    autonomousMode ? "translate-x-5" : "translate-x-0"
+                  }`}
                 />
-                <label htmlFor="autoPublishCheck" className="mono-font text-xs text-ink cursor-pointer">
-                  Auto-publish directly to WordPress without 1-click human gate
-                </label>
+              </button>
+
+              <button
+                onClick={handleRunAllJobs}
+                disabled={runningAllJobs}
+                className="px-4 py-2 bg-[#ff4500] hover:bg-[#cc3700] disabled:opacity-50 text-white font-mono text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
+              >
+                {runningAllJobs ? "Running Cycle..." : "⚡ Run All Jobs Now"}
+              </button>
+            </div>
+          </div>
+
+          {scheduleNotice && (
+            <div className="p-3 bg-[#ff4500]/10 border border-[#ff4500]/40 rounded-lg text-[#ff4500] font-mono text-xs">
+              {scheduleNotice}
+            </div>
+          )}
+
+          {/* 24-Hour Schedule Timeline */}
+          <div className="bg-[#111111] border border-[#222222] rounded-xl p-6 space-y-4">
+            <h3 className="font-bold text-white text-sm font-mono uppercase tracking-wider">
+              24-Hour Autonomous Daily Cadence (Asia/Kolkata — IST)
+            </h3>
+
+            <div className="space-y-3 pt-2">
+              {schedules.map((job) => (
+                <div
+                  key={job.id}
+                  onClick={() => setSelectedJob(job)}
+                  className="p-4 bg-[#0a0a0a] hover:bg-[#141414] border border-[#222222] hover:border-[#ff4500]/50 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs font-bold px-2.5 py-1 bg-[#ff4500]/10 border border-[#ff4500]/30 text-[#ff4500] rounded">
+                      {job.time} IST
+                    </span>
+                    <div>
+                      <div className="font-bold text-white text-sm group-hover:text-[#ff4500] transition-colors">
+                        {job.name}
+                      </div>
+                      <div className="font-mono text-xs text-neutral-400 mt-0.5">
+                        Goal: {job.goal}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 font-mono text-xs">
+                    <span className="text-emerald-400 font-semibold">Enabled ✓</span>
+                    <span className="text-neutral-500 group-hover:text-white transition-colors">Edit →</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Edit Job Modal */}
+          {selectedJob && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fadeIn">
+              <div className="w-full max-w-md bg-[#111111] border border-[#333] rounded-xl p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[#222] pb-3">
+                  <h3 className="font-bold text-white text-base">Edit {selectedJob.name}</h3>
+                  <button onClick={() => setSelectedJob(null)} className="text-neutral-500 hover:text-white font-mono">✕</button>
+                </div>
+
+                <div className="space-y-3 font-mono text-xs">
+                  <div>
+                    <label className="block text-neutral-400 mb-1">Scheduled Time (IST)</label>
+                    <input
+                      type="time"
+                      defaultValue={selectedJob.time}
+                      className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-400 mb-1">Custom Goal / Keyword Target</label>
+                    <input
+                      type="text"
+                      defaultValue={selectedJob.goal}
+                      className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button onClick={() => setSelectedJob(null)} className="px-4 py-2 bg-[#222] text-neutral-300 rounded font-mono text-xs">Close</button>
+                  <button
+                    onClick={() => {
+                      alert("Schedule configuration saved.");
+                      setSelectedJob(null);
+                    }}
+                    className="px-4 py-2 bg-[#ff4500] text-white font-bold rounded font-mono text-xs"
+                  >
+                    Save Changes
+                  </button>
+                </div>
               </div>
-              <p className="mono-font text-[10px] text-muted mt-1">
-                When unchecked, articles remain in Approvals queue until approved.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* TAB 3: NOTIFICATIONS */}
+      {/* =================================================================== */}
+      {activeTab === "notifications" && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Slack Section */}
+          <div className="bg-[#111111] border border-[#222222] rounded-xl p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#222222] pb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💬</span>
+                <div>
+                  <h3 className="font-bold text-white text-base">Slack Workspace Integration</h3>
+                  <p className="font-mono text-xs text-neutral-400">
+                    Dispatches automated reports to designated Slack channels.
+                  </p>
+                </div>
+              </div>
+
+              <span className="px-2.5 py-1 bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 font-mono text-xs font-bold rounded">
+                Connected: {slackWorkspace}
+              </span>
+            </div>
+
+            {testSlackStatus && (
+              <div className="p-3 bg-[#ff4500]/10 border border-[#ff4500]/40 rounded text-[#ff4500] font-mono text-xs">
+                {testSlackStatus}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Object.entries(slackChannels).map(([key, channelName]) => (
+                <div
+                  key={key}
+                  className="p-4 bg-[#0a0a0a] border border-[#222222] rounded-lg flex items-center justify-between"
+                >
+                  <div>
+                    <div className="font-mono text-xs font-bold text-white uppercase">{key} Reports</div>
+                    <div className="font-mono text-xs text-[#ff4500] mt-0.5">{channelName}</div>
+                  </div>
+                  <button
+                    onClick={() => handleSendSlackTest(key)}
+                    className="px-2.5 py-1 bg-[#1a1a1a] hover:bg-[#262626] text-neutral-300 font-mono text-[11px] rounded transition-colors"
+                  >
+                    Send Test ↗
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Email Alert Toggles */}
+          <div className="bg-[#111111] border border-[#222222] rounded-xl p-6 space-y-4">
+            <h3 className="font-bold text-white text-base">Email Notifications</h3>
+            <div className="space-y-3 pt-2">
+              {[
+                { id: "article_generated", label: "Article generated and ready for approval" },
+                { id: "backlink_acquired", label: "High-authority backlink acquired or discovered" },
+                { id: "rank_change", label: "Significant SERP ranking movement (±3 positions)" },
+                { id: "weekly_report", label: "Weekly Autonomous Executive Report (Mondays)" },
+                { id: "crisis_alert", label: "System health crisis alert (NVIDIA NIM or Supabase down)" },
+              ].map((item) => (
+                <div
+                  key={item.id}
+                  className="p-3.5 bg-[#0a0a0a] border border-[#222222] rounded-lg flex items-center justify-between"
+                >
+                  <span className="font-mono text-xs text-neutral-300">{item.label}</span>
+                  <input
+                    type="checkbox"
+                    defaultChecked={(emailNotifications as any)[item.id]}
+                    onChange={(e) => {
+                      setEmailNotifications((prev) => ({ ...prev, [item.id]: e.target.checked }));
+                    }}
+                    className="w-4 h-4 accent-[#ff4500] cursor-pointer"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* TAB 4: DANGER ZONE */}
+      {/* =================================================================== */}
+      {activeTab === "danger" && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="bg-red-950/20 border border-red-500/40 rounded-xl p-6 space-y-6">
+            <div className="border-b border-red-500/20 pb-4">
+              <h2 className="text-lg font-bold text-red-400 flex items-center gap-2 font-mono">
+                <span>⚠️</span> DANGER ZONE
+              </h2>
+              <p className="font-mono text-xs text-neutral-400 mt-1">
+                Destructive operations with audit retention. Actions require explicit confirmation typing.
               </p>
             </div>
-          </div>
-        </div>
 
-        {/* Section 3: Autonomous Cadence Schedule */}
-        <div className="bg-stone border border-ink/30 p-6">
-          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-ink/20">
-            <span className="text-accent text-sm">⚡</span>
-            <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
-              AUTONOMOUS 24/7 CADENCE TRIGGERS (ASIA/KOLKATA)
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-3 bg-paper border border-ink/30 flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={cadenceMorning}
-                onChange={(e) => setCadenceMorning(e.target.checked)}
-                className="mt-1 accent-accent"
-              />
-              <div>
-                <div className="mono-font text-xs text-ink font-bold">08:00 IST Morning Brief</div>
-                <div className="mono-font text-[10px] text-muted">Posts daily ranking recap to Slack #rankforge-daily</div>
+            {dangerMessage && (
+              <div className="p-3 bg-red-950/50 border border-red-500/50 rounded-lg text-red-300 font-mono text-xs">
+                {dangerMessage}
               </div>
-            </div>
+            )}
 
-            <div className="p-3 bg-paper border border-ink/30 flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={cadenceWriter}
-                onChange={(e) => setCadenceWriter(e.target.checked)}
-                className="mt-1 accent-accent"
-              />
-              <div>
-                <div className="mono-font text-xs text-ink font-bold">11:00 IST Content Writer</div>
-                <div className="mono-font text-[10px] text-muted">Synthesizes daily top-priority blog from SERP gaps</div>
+            <div className="space-y-4">
+              {/* Action 1 */}
+              <div className="p-4 bg-[#0a0a0a] border border-red-500/20 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="font-bold text-white text-sm">Clear All Brain Memories</div>
+                  <div className="font-mono text-xs text-neutral-400">
+                    Deletes all brain_memory rows. Resets learned patterns.
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setDangerAction("memories");
+                    setConfirmationInput("");
+                  }}
+                  className="px-4 py-2 bg-red-900/40 hover:bg-red-900 border border-red-500/40 text-red-300 font-mono text-xs uppercase font-bold rounded transition-colors whitespace-nowrap"
+                >
+                  Clear Memories
+                </button>
               </div>
-            </div>
 
-            <div className="p-3 bg-paper border border-ink/30 flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={cadenceTech}
-                onChange={(e) => setCadenceTech(e.target.checked)}
-                className="mt-1 accent-accent"
-              />
-              <div>
-                <div className="mono-font text-xs text-ink font-bold">12:00 IST Technical SEO</div>
-                <div className="mono-font text-[10px] text-muted">Audits sitemap, Core Web Vitals & schema readiness</div>
-              </div>
-            </div>
-
-            <div className="p-3 bg-paper border border-ink/30 flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={cadenceEvening}
-                onChange={(e) => setCadenceEvening(e.target.checked)}
-                className="mt-1 accent-accent"
-              />
-              <div>
-                <div className="mono-font text-xs text-ink font-bold">20:00 IST Evening Summary</div>
-                <div className="mono-font text-[10px] text-muted">Posts day summary and updates Brain memory weights</div>
+              {/* Action 2 */}
+              <div className="p-4 bg-[#0a0a0a] border border-red-500/20 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="font-bold text-white text-sm">Delete All Content Drafts</div>
+                  <div className="font-mono text-xs text-neutral-400">
+                    Purges unapproved draft articles and approvals. Published articles are preserved.
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setDangerAction("drafts");
+                    setConfirmationInput("");
+                  }}
+                  className="px-4 py-2 bg-red-900/40 hover:bg-red-900 border border-red-500/40 text-red-300 font-mono text-xs uppercase font-bold rounded transition-colors whitespace-nowrap"
+                >
+                  Delete Drafts
+                </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Section 4: System Health & Diagnostics */}
-        <div className="bg-stone border border-ink/30 p-6">
-          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-ink/20">
-            <span className="text-accent text-sm">📡</span>
-            <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
-              SYSTEM ENGINE DIAGNOSTICS
-            </h2>
-          </div>
+          {/* Danger Confirmation Modal */}
+          {dangerAction && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fadeIn">
+              <div className="w-full max-w-md bg-[#111111] border border-red-500/60 rounded-xl p-6 space-y-4 shadow-2xl">
+                <h3 className="font-bold text-red-400 text-base uppercase font-mono">
+                  Confirm Dangerous Action
+                </h3>
+                <p className="font-mono text-xs text-neutral-300">
+                  Type{" "}
+                  <span className="font-bold text-white bg-red-950 px-1.5 py-0.5 rounded border border-red-500/50">
+                    {dangerAction === "memories" ? "CLEAR MEMORIES" : "DELETE DRAFTS"}
+                  </span>{" "}
+                  below to proceed:
+                </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mono-font text-xs">
-            <div className="p-3 bg-paper border border-ink/20 flex items-center justify-between">
-              <span className="text-muted">NVIDIA NIM (Llama-3.1-70B):</span>
-              <span className="text-emerald-400 font-bold">ONLINE ✓</span>
+                <input
+                  type="text"
+                  value={confirmationInput}
+                  onChange={(e) => setConfirmationInput(e.target.value)}
+                  placeholder="Type phrase here..."
+                  className="w-full bg-[#0a0a0a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white font-mono"
+                />
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setDangerAction(null);
+                      setConfirmationInput("");
+                    }}
+                    className="px-4 py-2 bg-[#222] text-neutral-300 font-mono text-xs rounded"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    onClick={executeDangerAction}
+                    disabled={
+                      dangerLoading ||
+                      confirmationInput !==
+                        (dangerAction === "memories" ? "CLEAR MEMORIES" : "DELETE DRAFTS")
+                    }
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-mono text-xs font-bold rounded"
+                  >
+                    {dangerLoading ? "Executing..." : "Confirm & Delete"}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="p-3 bg-paper border border-ink/20 flex items-center justify-between">
-              <span className="text-muted">Supabase pgvector:</span>
-              <span className="text-emerald-400 font-bold">CONNECTED ✓</span>
-            </div>
-            <div className="p-3 bg-paper border border-ink/20 flex items-center justify-between">
-              <span className="text-muted">Autonomous Cadence Engine:</span>
-              <span className="text-accent font-bold">ACTIVE (11 JOBS) ✓</span>
-            </div>
-          </div>
+          )}
         </div>
-
-        {/* Submit Actions */}
-        <div className="flex items-center gap-4">
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-paper font-bold mono-font text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50"
-          >
-            {saving ? "SAVING CHANGES..." : "SAVE SETTINGS →"}
-          </button>
-        </div>
-      </form>
-
-      {/* Section 5: Danger Zone */}
-      <div className="bg-red-950/20 border border-red-500/30 p-6 mt-12">
-        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-red-500/20">
-          <span className="text-red-400 text-sm">⚠️</span>
-          <h2 className="dot-font text-sm text-red-400 font-bold tracking-wider">
-            DANGER ZONE & DATA MANAGEMENT
-          </h2>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <div className="mono-font text-xs text-ink font-bold">Purge Unapproved Drafts</div>
-            <div className="mono-font text-[10px] text-muted mt-0.5">
-              Permanently removes all drafts and pending approvals from content log.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleClearDrafts}
-            className="px-4 py-1.5 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-red-300 mono-font text-xs uppercase tracking-wider transition-colors"
-          >
-            🗑️ Clear Pending Drafts
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

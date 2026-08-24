@@ -928,3 +928,28 @@ async def run_job_now(job_name: str) -> Dict[str, Any]:
         "job": clean_name,
         "message": f"Job '{clean_name}' triggered immediately in background."
     }
+
+
+async def run_all_jobs_cycle() -> Dict[str, Any]:
+    """Trigger all 8 daily autonomous jobs in sequential order in background."""
+    async def _cycle():
+        try:
+            logger.info("[Scheduler] Starting on-demand 8-job full autonomous cycle...")
+            await job_business_website_watch()
+            await job_daily_search()
+            await job_knowledge_sync()
+            await job_brain_learn()
+            await job_content_refresh()
+            await job_auto_new_page()
+            await job_backlink_prospecting()
+            await job_tech_seo_audit()
+            logger.info("[Scheduler] On-demand 8-job cycle completed successfully.")
+        except Exception as e:
+            logger.error(f"[Scheduler] Error during on-demand cycle: {e}")
+
+    asyncio.create_task(_cycle())
+    return {
+        "success": True,
+        "message": "Full 8-job autonomous sequence dispatched in background."
+    }
+

@@ -1,10 +1,16 @@
-import logging
-import time
-from datetime import datetime
-from typing import Dict, Any
-from fastapi import APIRouter
-import httpx
+"""RankForge Platform Health & Autonomous Diagnostic Endpoints.
+Provides basic ping, deep subsystem telemetry, and real-time autonomous system status for the Topbar.
+"""
 
+import logging
+from datetime import datetime
+from typing import Dict, Any, Optional
+from fastapi import APIRouter, Request
+
+from ..services.autonomous_health_service import (
+    autonomous_health_service,
+    _latest_health_cache,
+)
 from ..database import get_supabase, call_nim_llm
 from ..services.serper_service import serper_service
 from ..middleware.circuit_breaker import CircuitBreaker
@@ -16,7 +22,55 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 @router.get("/api/health")
 async def basic_health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat(), "service": "RankForge AI SEO Platform"}
+    """Basic service liveness check."""
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "service": "RankForge Autonomous SEO Platform",
+    }
+
+
+@router.get("/api/health/autonomous")
+@router.get("/health/autonomous")
+async def get_autonomous_health(request: Request, website_id: Optional[str] = None):
+    """Retrieve the real-time autonomous health diagnostic summary for Topbar indicator and floating panel."""
+    account_id = getattr(request.state, "account_id", None)
+    
+    # Try fetching the most recent database row if available
+    try:
+        query = get_supabase().table("autonomous_health_log").select("*")
+        if account_id:
+            query = query.eq("account_id", account_id)
+        res = query.order("created_at", desc=True).limit(1).execute()
+        if res.data and len(res.data) > 0:
+            row = res.data[0]
+            return {
+                "health_score": row.get("health_score", 100),
+                "checks": row.get("checks", _latest_health_cache.get("checks")),
+                "jobs_today": row.get("jobs_today", _latest_health_cache.get("jobs_today")),
+                "auto_fixes_applied": row.get("auto_fixes_applied", 0),
+                "last_check": row.get("created_at"),
+                "next_check": _latest_health_cache.get("next_check"),
+                "issues": row.get("issues", []),
+                "auto_fixed": row.get("auto_fixed", []),
+            }
+    except Exception as e:
+        logger.debug(f"Health query fallback to cache: {e}")
+
+    return dict(_latest_health_cache)
+
+
+@router.post("/api/health/autonomous/run")
+@router.post("/health/autonomous/run")
+async def run_autonomous_health_now(request: Request):
+    """Trigger an immediate full health diagnostic and auto-repair sequence."""
+    account_id = getattr(request.state, "account_id", None)
+    result = await autonomous_health_service.run_full_health_check(account_id=account_id)
+    return {
+        "success": True,
+        "message": "Full autonomous diagnostic run completed.",
+        "health": result,
+    }
 
 
 @router.get("/api/health/deep")
@@ -48,7 +102,7 @@ async def deep_health_check() -> Dict[str, Any]:
         serper_st = await serper_service.check_status()
         checks["serper_dev"] = {
             "status": "pass" if serper_st.get("connected") else "warning",
-            "credits_remaining": serper_st.get("credits_remaining", 2500)
+            "credits_remaining": serper_st.get("credits_remaining", 2500),
         }
         if not serper_st.get("connected"):
             score -= 10
@@ -65,7 +119,7 @@ async def deep_health_check() -> Dict[str, Any]:
     checks["circuit_breakers"] = {
         "status": "pass" if not open_circuits else "warning",
         "open_circuits": open_circuits,
-        "states": circuit_states
+        "states": circuit_states,
     }
     if open_circuits:
         score -= 15
@@ -83,19 +137,10 @@ async def deep_health_check() -> Dict[str, Any]:
     final_score = max(0, min(100, score))
     is_healthy = final_score >= 80
 
-    # Critical Slack alert if health drops below 80
-    if not is_healthy:
-        try:
-            from ..services.slack_service import slack_service
-            import asyncio
-            asyncio.create_task(slack_service.send_alert(f"🚨 CRITICAL: System health dropped to {final_score}/100! Open circuits: {open_circuits}"))
-        except Exception:
-            pass
-
     return {
         "success": True,
         "health_score": final_score,
         "status": "healthy" if is_healthy else "degraded",
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat() + "Z",
     }

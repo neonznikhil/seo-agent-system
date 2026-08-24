@@ -37,6 +37,16 @@ def reset_supabase_client() -> None:
     supabase_client = None
 
 
+def set_account_context(supabase_client: Optional[Client], account_id: str) -> None:
+    """Set the Postgres session variable app.current_account_id for Supabase RLS."""
+    if not supabase_client or not account_id:
+        return
+    try:
+        supabase_client.rpc("set_account_context", {"p_account_id": str(account_id)}).execute()
+    except Exception as e:
+        logger.debug(f"RLS set_account_context note: {e}")
+
+
 async def check_supabase_connection() -> bool:
     try:
         get_supabase().table("websites").select("id").limit(1).execute()

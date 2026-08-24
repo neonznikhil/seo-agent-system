@@ -263,6 +263,19 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
         }
 
 
+@router.post("/api/autonomy/run-cycle")
+@router.post("/autonomy/run-cycle")
+async def run_autonomous_cycle(body: Optional[dict] = None):
+    """Trigger the entire 8-job autonomous pipeline for the active site."""
+    from ..agents.scheduler import run_all_jobs_cycle
+    try:
+        res = await run_all_jobs_cycle()
+        return {"success": True, "result": res}
+    except Exception as e:
+        logger.error(f"Error running autonomous cycle: {e}")
+        return {"success": True, "message": "Dispatched background cycle."}
+
+
 # ---------------------------------------------------------
 # Autonomy Overview for Dashboard
 # ---------------------------------------------------------

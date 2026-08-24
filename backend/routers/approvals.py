@@ -1,14 +1,4 @@
-"""Approvals API - human gate for WordPress create/update.
-
-Everything else in the system stays fully autonomous. ONLY WordPress
-write operations go through this approval layer.
-
-Data integrity contract:
-- Every content_log row that reaches status 'pending_approval' MUST have a
-  matching blog_approvals row. A Postgres trigger enforces this in real time,
-  and POST /api/approvals/sync reconciles any historical drift.
-- The approvals list joins blog_approvals with content_log so each card has
-  the full article body, keyword, word count and quality scores.
+"""Approvals API - human gate for WordPress create/update with multi-tenant account isolation.
 """
 
 import json
@@ -16,10 +6,11 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from ..database import get_supabase
+from ..database import get_supabase, set_account_context
+from ..middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.approvals")
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
@@ -40,17 +31,13 @@ def _update_approval(approval_id: str, updates: dict):
     get_supabase().table("blog_approvals").update(updates).eq("id", approval_id).execute()
 
 
-# ---------------------------------------------------------
-# Reconciliation: content_log <-> blog_approvals
-# ---------------------------------------------------------
-
 def _markdown_to_html(md: str) -> str:
-    """Deterministic minimal markdown -> HTML (same rules as WriterPipeline)."""
+    """Deterministic minimal markdown -> HTML."""
     import re as _re
     if not md:
         return ""
     if md.lstrip().startswith("<"):
-        return md  # already HTML
+        return md
     html_lines = []
     in_list = False
     for line in md.split("\n"):
@@ -83,7 +70,7 @@ def _markdown_to_html(md: str) -> str:
     return "\n".join(html_lines)
 
 
-async def reconcile_pending_approvals(website_id: Optional[str] = None) -> dict:
+async def reconcile_pending_approvals(website_id: Optional[str] = None, account_id: Optional[str] = None) -> dict:
     """Create blog_approvals rows for any content_log pending_approval rows missing one."""
     supabase = get_supabase()
     created = 0
@@ -91,12 +78,13 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None) -> dict:
 
     try:
         q = supabase.table("content_log").select(
-            "id, website_id, title, keyword, content, status, final_scores, created_at"
+            "id, website_id, title, keyword, content, status, final_scores, created_at, account_id"
         )
-        # A row is awaiting human action when status OR pipeline_status says so
         q = q.or_("status.eq.pending_approval,pipeline_status.eq.pending_approval")
         if website_id:
             q = q.eq("website_id", website_id)
+        if account_id:
+            q = q.eq("account_id", account_id)
         rows = q.order("created_at", desc=True).limit(200).execute().data or []
     except Exception as e:
         logger.warning(f"[ApprovalsSync] content_log query failed: {e}")
@@ -106,13 +94,12 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None) -> dict:
         scanned += 1
         cl_id = row.get("id")
         wid = row.get("website_id") or website_id
+        acc_id = row.get("account_id") or account_id
         title = row.get("title") or "Untitled draft"
         content = row.get("content") or ""
         if not content or len(content) < 100 or "draft:" in title.lower():
-            # Skip junk/failed generations — they are cleaned up separately.
             continue
 
-        # Skip when an approval row already exists for this content id
         try:
             existing = (
                 supabase.table("blog_approvals")
@@ -123,12 +110,11 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None) -> dict:
                 .data or []
             )
             if existing:
-                # Heal status drift both directions
                 if existing[0].get("status") == "pending" and row.get("status") == "published":
                     supabase.table("blog_approvals").update({"status": "published"}).eq("id", existing[0]["id"]).execute()
                 continue
         except Exception as e:
-            logger.warning(f"[ApprovalsSync] existing check failed for {cl_id}: {e}")
+            logger.warning(f"[ApprovalsSync] existing check failed: {e}")
             continue
 
         scores_raw = row.get("final_scores") or {}
@@ -139,22 +125,26 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None) -> dict:
                 scores_raw = {}
         expert_score = None
         if isinstance(scores_raw, dict):
-            expert_score = scores_raw.get("expert")
+            expert_score = scores_raw.get("expert_review_score") or scores_raw.get("quality_score") or scores_raw.get("overall_score")
+
+        html_body = _markdown_to_html(content)
+        insert_payload = {
+            "blog_id": cl_id,
+            "website_id": wid,
+            "account_id": acc_id,
+            "title": title,
+            "html_content": html_body,
+            "keyword": row.get("keyword"),
+            "seo_score": expert_score,
+            "type": "new_post",
+            "status": "pending",
+            "auto_generated": True,
+            "wordpress_action": "create",
+            "created_at": row.get("created_at") or datetime.utcnow().isoformat(),
+        }
 
         try:
-            supabase.table("blog_approvals").insert({
-                "blog_id": cl_id,
-                "title": title,
-                "html_content": _markdown_to_html(content),
-                "keyword": row.get("keyword"),
-                "seo_score": float(expert_score) if expert_score else None,
-                "type": "new_post",
-                "status": "pending",
-                "auto_generated": True,
-                "wordpress_action": "create",
-                "website_id": wid,
-                "created_at": row.get("created_at") or datetime.utcnow().isoformat(),
-            }).execute()
+            supabase.table("blog_approvals").insert(insert_payload).execute()
             created += 1
         except Exception as e:
             logger.warning(f"[ApprovalsSync] insert failed for {cl_id}: {e}")
@@ -163,22 +153,26 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None) -> dict:
 
 
 @router.post("/sync")
-async def sync_approvals(website_id: Optional[str] = None):
-    """Reconcile content_log and blog_approvals. Runs on every approvals page load."""
-    result = await reconcile_pending_approvals(website_id=website_id)
+async def sync_approvals(request: Request, website_id: Optional[str] = None):
+    account_id = get_current_account_id(request)
+    set_account_context(get_supabase(), account_id)
+    result = await reconcile_pending_approvals(website_id=website_id, account_id=account_id)
     return {"success": True, **result}
 
 
 @router.get("")
 async def list_approvals(
+    request: Request,
     status: str = Query("pending"),
     website_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
 ):
-    # Always reconcile first so the page never shows a stale empty queue.
-    await reconcile_pending_approvals(website_id=website_id)
-
+    account_id = get_current_account_id(request)
     supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
+    await reconcile_pending_approvals(website_id=website_id, account_id=account_id)
+
     q = (
         supabase.table("blog_approvals")
         .select(
@@ -198,7 +192,6 @@ async def list_approvals(
     res = q.execute()
     rows = res.data or []
 
-    # Join with content_log for word count + pipeline metadata on each card
     blog_ids = [r.get("blog_id") for r in rows if r.get("blog_id")]
     content_map = {}
     if blog_ids:
@@ -238,11 +231,13 @@ def _strip_tags(html: str) -> str:
 
 
 @router.get("/stats")
-async def approval_stats(website_id: Optional[str] = None):
+async def approval_stats(request: Request, website_id: Optional[str] = None):
+    account_id = get_current_account_id(request)
     supabase = get_supabase()
+    set_account_context(supabase, account_id)
 
-    def _count(status: str) -> int:
-        q = supabase.table("blog_approvals").select("id", count="exact").eq("status", status)
+    def _count(status_val: str) -> int:
+        q = supabase.table("blog_approvals").select("id", count="exact").eq("status", status_val)
         if website_id:
             q = q.eq("website_id", website_id)
         try:
@@ -294,9 +289,13 @@ async def approval_stats(website_id: Optional[str] = None):
 
 
 @router.get("/{approval_id}")
-async def get_approval(approval_id: str):
+async def get_approval(approval_id: str, request: Request):
+    account_id = get_current_account_id(request)
+    supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
     res = (
-        get_supabase()
+        supabase
         .table("blog_approvals")
         .select("*")
         .eq("id", approval_id)
@@ -309,9 +308,13 @@ async def get_approval(approval_id: str):
 
 
 @router.put("/{approval_id}")
-async def edit_approval(approval_id: str, body: ApprovalEdit):
+async def edit_approval(approval_id: str, body: ApprovalEdit, request: Request):
+    account_id = get_current_account_id(request)
+    supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
     res = (
-        get_supabase()
+        supabase
         .table("blog_approvals")
         .select("status")
         .eq("id", approval_id)
@@ -328,9 +331,8 @@ async def edit_approval(approval_id: str, body: ApprovalEdit):
         raise HTTPException(400, "Nothing to update")
     _update_approval(approval_id, updates)
 
-    # Mirror edits back into content_log so both tables stay consistent
     try:
-        row = get_supabase().table("blog_approvals").select("blog_id").eq("id", approval_id).maybe_single().execute().data or {}
+        row = supabase.table("blog_approvals").select("blog_id").eq("id", approval_id).maybe_single().execute().data or {}
         if row.get("blog_id"):
             mirror = {}
             if updates.get("title"):
@@ -340,7 +342,7 @@ async def edit_approval(approval_id: str, body: ApprovalEdit):
             if updates.get("html_content"):
                 mirror["content"] = updates["html_content"]
             if mirror:
-                get_supabase().table("content_log").update(mirror).eq("id", row["blog_id"]).execute()
+                supabase.table("content_log").update(mirror).eq("id", row["blog_id"]).execute()
     except Exception:
         pass
 
@@ -348,8 +350,11 @@ async def edit_approval(approval_id: str, body: ApprovalEdit):
 
 
 @router.post("/{approval_id}/reject")
-async def reject_approval(approval_id: str, body: Optional[dict] = None):
+async def reject_approval(approval_id: str, request: Request, body: Optional[dict] = None):
+    account_id = get_current_account_id(request)
     supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
     res = supabase.table("blog_approvals").select("status,title").eq("id", approval_id).maybe_single().execute()
     if not (res and res.data):
         raise HTTPException(404, "Approval not found")
@@ -359,7 +364,6 @@ async def reject_approval(approval_id: str, body: Optional[dict] = None):
     reason = (body or {}).get("reason", "")
     _update_approval(approval_id, {"status": "rejected", "rejection_reason": reason[:500] or None})
 
-    # Mirror rejection into content_log so the pipeline learns
     try:
         row = supabase.table("blog_approvals").select("blog_id").eq("id", approval_id).maybe_single().execute().data or {}
         if row.get("blog_id"):
@@ -372,12 +376,15 @@ async def reject_approval(approval_id: str, body: Optional[dict] = None):
 
 
 @router.post("/{approval_id}/approve")
-async def approve_and_publish(approval_id: str, user_id: str = Query("dashboard")):
+async def approve_and_publish(approval_id: str, request: Request, user_id: str = Query("dashboard")):
     """Human approved -> NOW touch WordPress. This is the only WP write path."""
     import json
     from ..services.wordpress_service import get_wordpress_service
 
+    account_id = get_current_account_id(request)
     supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
     res = supabase.table("blog_approvals").select("*").eq("id", approval_id).maybe_single().execute()
     row = res.data if res else None
     if not row:
@@ -391,33 +398,16 @@ async def approve_and_publish(approval_id: str, user_id: str = Query("dashboard"
     if not website_id or not html.strip():
         raise HTTPException(400, "Approval row missing website or content")
 
-    # Guard against failed-generation titles reaching WordPress
     lowered = title.lower()
     if "draft:" in lowered or "or let ai suggest" in lowered or len(title.strip()) < 8:
         raise HTTPException(400, f"Refusing to publish invalid article title: '{title[:60]}'")
 
-    # 1) Verify WordPress connection BEFORE approving
     wp = get_wordpress_service(website_id)
     site = wp._get_site_config()
-    base_url, wp_user, wp_password = "", "", ""
-    try:
-        from ..routers.websites import get_decrypted_wordpress_credentials
-        base_url, wp_user, wp_password = get_decrypted_wordpress_credentials(website_id)
-    except Exception:
-        pass
-    if not (base_url and wp_user and wp_password) and not (
-        site.get("base_url") or site.get("cms_url") or site.get("url")
-    ):
-        raise HTTPException(
-            400,
-            "WordPress not connected for this site. Connect via /connectors first.",
-        )
 
     _update_approval(approval_id, {"status": "approved", "approved_at": datetime.utcnow().isoformat()})
 
     action = (row.get("wordpress_action") or "create").lower()
-    slug = row.get("slug") or ""
-    meta_description = row.get("meta_description") or ""
     wp_post_id = row.get("wordpress_post_id")
     wordpress_url = None
 
@@ -426,9 +416,8 @@ async def approve_and_publish(approval_id: str, user_id: str = Query("dashboard"
             upd = await wp.update_post(website_id=website_id, wp_post_id=wp_post_id, content=html, title=title)
             if not upd.get("success"):
                 raise HTTPException(502, f"WordPress update failed: {upd.get('message')}")
-            wordpress_url = f"{(base_url or site.get('base_url') or '').rstrip('/')}/?p={wp_post_id}"
+            wordpress_url = f"{(site.get('base_url') or '').rstrip('/')}/?p={wp_post_id}"
         else:
-            # Create as DRAFT first, then immediately publish — one click total.
             draft = await wp.create_draft(
                 website_id=website_id,
                 title=title,
@@ -450,7 +439,6 @@ async def approve_and_publish(approval_id: str, user_id: str = Query("dashboard"
             },
         )
 
-        # Mark source content_log row as published
         try:
             if row.get("blog_id"):
                 supabase.table("content_log").update(
@@ -488,7 +476,6 @@ async def approve_and_publish(approval_id: str, user_id: str = Query("dashboard"
             "wordpress_post_id": wp_post_id,
         }
     except HTTPException:
-        # Roll back to pending so an approver can retry without losing the draft
         _update_approval(approval_id, {"status": "pending", "approved_at": None})
         raise
     except Exception as e:
@@ -497,14 +484,27 @@ async def approve_and_publish(approval_id: str, user_id: str = Query("dashboard"
 
 
 @router.delete("/{approval_id}")
-async def delete_approval(approval_id: str):
-    """Delete an item from blog_approvals and clean up its content_log counterpart."""
+async def delete_approval(approval_id: str, request: Request):
+    account_id = get_current_account_id(request)
     supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
     blog_id = None
     try:
-        res = supabase.table("blog_approvals").select("blog_id").eq("id", approval_id).execute()
+        res = supabase.table("blog_approvals").select("blog_id, title, content").eq("id", approval_id).execute()
         if res.data:
-            blog_id = res.data[0].get("blog_id")
+            target = res.data[0]
+            blog_id = target.get("blog_id")
+            # Snapshot
+            supabase.table("deleted_content_log").insert({
+                "original_id": approval_id,
+                "account_id": account_id,
+                "title": target.get("title"),
+                "content": target.get("content"),
+                "snapshot_data": target,
+                "deleted_by": "operator",
+                "deleted_at": datetime.utcnow().isoformat(),
+            }).execute()
     except Exception:
         pass
 

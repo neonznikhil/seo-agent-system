@@ -39,14 +39,14 @@ interface NavItem {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState("dark");
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
     if (saved) {
       setTheme(saved);
       document.documentElement.setAttribute("data-theme", saved);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    } else {
       setTheme("dark");
       document.documentElement.setAttribute("data-theme", "dark");
     }
@@ -68,7 +68,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={item.href}
-            className={`nav-item ${isActive ? 'active' : ''}`}
+            className={`nav-item ${isActive ? "active" : ""}`}
           >
             <span className="nav-sq"></span>
             {item.label}
@@ -81,17 +81,22 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
+      {/* Brand Logo Header */}
       <div className="sidebar-logo">
         <div className="logo-mark">*</div>
         <div className="logo-sq"></div>
         <span className="logo-text">RankForge</span>
       </div>
+
+      {/* Navigation Sections */}
       <nav className="sidebar-nav">
         {renderNav(coreNav, "Core")}
         {renderNav(seoNav, "SEO Studio")}
         {renderNav(aiNav, "AI Intelligence")}
         {renderNav(integrationsNav, "Integrations")}
       </nav>
+
+      {/* Footer System Status */}
       <div className="sidebar-footer">
         <div className="sys-row">
           <div className="sys-indicators">
@@ -99,9 +104,17 @@ export function Sidebar() {
             <span className="sq-ind"></span>
             <span className="sq-ind off"></span>
           </div>
-          <button type="button" className="theme-toggle" onClick={toggleTheme} title="Toggle dark mode" aria-label="Toggle dark mode">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title="Toggle dark mode"
+            aria-label="Toggle dark mode"
+          >
             <div className="theme-toggle-knob"></div>
-            <span className="theme-toggle-icon" id="theme-icon">☀</span>
+            <span className="theme-toggle-icon" id="theme-icon">
+              ☀
+            </span>
           </button>
         </div>
         <div className="sys-label">System Active</div>

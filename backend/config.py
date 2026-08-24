@@ -14,6 +14,23 @@ SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
 NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+# Custom Auth JWT Secret (Minimum 32 characters)
+_raw_jwt = os.getenv("JWT_SECRET")
+if not _raw_jwt:
+    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
+        _raw_jwt = "rankforge-super-secret-jwt-key-2026-production-ready-32-chars-min"
+    else:
+        raise ValueError("JWT_SECRET environment variable is required and must be at least 32 characters.")
+if len(_raw_jwt) < 32:
+    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
+        _raw_jwt = _raw_jwt.ljust(32, "x")
+    else:
+        raise ValueError("JWT_SECRET must be at least 32 characters long.")
+
+JWT_SECRET: str = _raw_jwt
+JWT_ALGORITHM: str = "HS256"
+JWT_EXPIRATION_DAYS: int = 30
+
 # Integration API Keys
 SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")
 SERPAPI_KEY: str = os.getenv("SERPAPI_KEY", "")
@@ -61,11 +78,10 @@ if not _raw_secret:
 TOKEN_ENCRYPTION_KEY: str = base64.urlsafe_b64encode(hashlib.sha256(_raw_secret.encode()).digest()).decode()
 ENCRYPTION_SECRET: str = TOKEN_ENCRYPTION_KEY
 
-
 # Thresholds & URLs
 DUPLICATE_THRESHOLD: float = float(os.getenv("DUPLICATE_THRESHOLD", "0.85"))
-FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
-BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000")
+FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 REDIRECT_URI: str = os.getenv("REDIRECT_URI", f"{BACKEND_URL}/api/wordpress/oauth/callback")
 
 _default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
@@ -95,6 +111,7 @@ def validate_env() -> None:
         "SUPABASE_URL": SUPABASE_URL,
         "SUPABASE_KEY": SUPABASE_KEY,
         "NVIDIA_API_KEY": NVIDIA_API_KEY,
+        "JWT_SECRET": JWT_SECRET,
         "REDIS_URL": REDIS_URL,
     }
     
@@ -114,7 +131,7 @@ def validate_env() -> None:
         masked = _mask(v)
         status = "[OK]" if v else "[MISSING]"
         print(f"  [CORE] {k.ljust(20)}: {masked.ljust(18)} {status}")
-        if not v and k in ["SUPABASE_URL", "SUPABASE_KEY", "NVIDIA_API_KEY"]:
+        if not v and k in ["SUPABASE_URL", "SUPABASE_KEY", "NVIDIA_API_KEY", "JWT_SECRET"]:
             missing_core.append(k)
 
     print("----------------------------------------------------------------")
