@@ -1,0 +1,17 @@
+{
+  "unique_key": "https://www.google.com/search?gl=in&hl=en&num=10&q=site:toplawyers.com+-site:accident.innovatcs.com+%22texas+personal+injury+resources%22",
+  "url": "https://www.google.com/search?q=site%3Atoplawyers.com%20-site%3Aaccident.innovatcs.com%20%22Texas%20personal%20injury%20resources%22&num=10&gl=IN&hl=en",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 4,
+      "sessionRotationCount": 1
+    }
+  },
+  "retry_count": 0,
+  "no_retry": false,
+  "loaded_url": "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3Dsite%253Atoplawyers.com%2520-site%253Aaccident.innovatcs.com%2520%2522Texas%2520personal%2520injury%2520resources%2522%26num%3D10%26gl%3DIN%26hl%3Den%26sei%3DsO-LatiuFIba1sQPzbCjoAI&hl=en&q=EhAkCUDQEBFmcVTpnx9D6PVrGLHfr9QGIjCVGmiED5rg7DbRMbvv7e1Rs_FmeMrXr-7AIcdB29x4RPO9nnqhYYmecv29i0hEfaAyAVJaAUM",
+  "handled_at": "2026-08-24 07:16:03.730199+00:00"
+}

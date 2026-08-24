@@ -1,0 +1,17 @@
+{
+  "unique_key": "https://www.google.com/search?gl=in&hl=en&num=10&q=%22texas+personal+injury+resources%22+(%22statistics+2026%22+or+%22industry+data+2026%22)",
+  "url": "https://www.google.com/search?q=%22Texas%20personal%20injury%20resources%22%20%28%22statistics%202026%22%20OR%20%22industry%20data%202026%22%29&num=10&gl=IN&hl=en",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 4,
+      "sessionRotationCount": 1
+    }
+  },
+  "retry_count": 0,
+  "no_retry": false,
+  "loaded_url": "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3D%2522Texas%2520personal%2520injury%2520resources%2522%2520%2528%2522statistics%25202026%2522%2520OR%2520%2522industry%2520data%25202026%2522%2529%26num%3D10%26gl%3DIN%26hl%3Den%26sei%3Dp--LaqK2LLbWwPAP3tGauQQ&hl=en&q=EhAkCUDQEBFmcVTpnx9D6PVrGKnfr9QGIjDiczlNCVOcoOo-9R-QVf06rD4JzEMMh-qb6AmAD2UHfzKPX-ozjqJ0vO7kj24VXB0yAVJaAUM",
+  "handled_at": "2026-08-24 07:15:55.818086+00:00"
+}
