@@ -546,6 +546,61 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
+    # Every 5 Minutes - Reactive Alert Dispatcher & Autonomous Routing
+    async def _job_reactive_alerts():
+        from .autonomous_loop import process_unread_alerts
+        await process_unread_alerts()
+
+    scheduler.add_job(
+        _job_reactive_alerts,
+        IntervalTrigger(minutes=5, timezone=IST),
+        id="job_reactive_alerts",
+        name="Every 5m Reactive Realtime Alert Dispatcher & Router",
+        replace_existing=True
+    )
+
+    # Daily 23:30 IST - Autonomous Budget Manager
+    async def _job_budget_manager():
+        from .autonomous_loop import run_autonomous_budget_manager
+        for target_id in await _get_target_website_ids():
+            await run_autonomous_budget_manager(target_id)
+
+    scheduler.add_job(
+        _job_budget_manager,
+        CronTrigger(hour=23, minute=30, timezone=IST),
+        id="job_budget_manager",
+        name="Daily 23:30 Autonomous Budget Manager (Real Daily Costs)",
+        replace_existing=True
+    )
+
+    # Friday 23:00 IST - Weekly Self Audit
+    async def _job_weekly_self_audit():
+        from .autonomous_loop import run_weekly_self_audit
+        for target_id in await _get_target_website_ids():
+            await run_weekly_self_audit(target_id)
+
+    scheduler.add_job(
+        _job_weekly_self_audit,
+        CronTrigger(day_of_week="fri", hour=23, minute=0, timezone=IST),
+        id="job_weekly_self_audit",
+        name="Fri 23:00 Weekly Self-Audit (Empirical Task Telemetry)",
+        replace_existing=True
+    )
+
+    # 1st of Month 06:00 IST - Monthly Goal Setting
+    async def _job_monthly_goals():
+        from .autonomous_loop import run_monthly_goal_setting
+        for target_id in await _get_target_website_ids():
+            await run_monthly_goal_setting(target_id)
+
+    scheduler.add_job(
+        _job_monthly_goals,
+        CronTrigger(day="1", hour=6, minute=0, timezone=IST),
+        id="job_monthly_goals",
+        name="1st of Month 06:00 Autonomous Goal Setting",
+        replace_existing=True
+    )
+
     # Start 6 continuous monitoring loops if event loop is running
     try:
         loop = asyncio.get_running_loop()
@@ -557,7 +612,7 @@ def setup_scheduler() -> AsyncIOScheduler:
     except Exception as e:
         logger.warning(f"Continuous monitors startup note: {e}")
 
-    _add_log("scheduler_init", "active", "APScheduler Phase 2 initialized with 7 SEO Agents in Asia/Kolkata")
+    _add_log("scheduler_init", "active", "APScheduler Phase 2 initialized with unified autonomous jobs in Asia/Kolkata")
     return scheduler
 
 
