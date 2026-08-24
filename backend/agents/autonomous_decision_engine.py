@@ -168,7 +168,7 @@ class AutonomousDecisionEngine:
         supabase = get_supabase()
         
         # 1. Fetch focus keywords from autonomous_settings
-        focus_kws = ["Houston car accident lawyer", "Texas commercial truck crash claims", "wrongful death settlement calculator"]
+        focus_kws = []
         try:
             settings_res = supabase.table("autonomous_settings").select("goals").limit(1).execute().data
             if settings_res and settings_res[0].get("goals"):
@@ -265,6 +265,7 @@ class AutonomousDecisionEngine:
         try:
             supabase.table("daily_costs").insert({
                 "id": str(uuid.uuid4()),
+                "website_id": self.website_id or "default",
                 "date": datetime.utcnow().strftime("%Y-%m-%d"),
                 "agent_name": agent_name,
                 "tokens": tokens,
