@@ -6,9 +6,10 @@ import { useState, useEffect } from "react";
 
 const coreNav = [
   { label: "Dashboard", href: "/" },
-  { label: "Approvals", href: "/approvals" },
-  { label: "Generate", href: "/generate" },
+  { label: "Websites", href: "/websites" },
+  { label: "Writer", href: "/writer" },
   { label: "Content", href: "/content" },
+  { label: "Approvals", href: "/approvals" },
 ];
 
 const seoNav = [
@@ -16,17 +17,21 @@ const seoNav = [
   { label: "Tech SEO", href: "/tech-seo" },
   { label: "Monitoring", href: "/monitoring" },
   { label: "Calendar", href: "/calendar" },
+  { label: "ROI Attribution", href: "/roi" },
 ];
 
 const aiNav = [
+  { label: "Workforce", href: "/workforce" },
   { label: "Brain", href: "/brain" },
   { label: "Knowledge", href: "/knowledge" },
+  { label: "Memory", href: "/memory" },
+  { label: "AEO / Schema", href: "/aeo" },
   { label: "LLMs.txt", href: "/llms-txt" },
 ];
 
 const integrationsNav = [
-  { label: "WordPress", href: "/wordpress" },
   { label: "Connectors", href: "/connectors" },
+  { label: "WordPress", href: "/wordpress" },
   { label: "Settings", href: "/settings" },
 ];
 

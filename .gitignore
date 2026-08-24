@@ -23,10 +23,12 @@ get-pip.py
 Thumbs.db
 .DS_Store
 
-# Logs
-*.log
-logs/
-
-# Temp
+# Temp & Cache
 tmp/
 temp/
+scratch/
+storage/
+.pytest_cache/
+test_output/
+*.log
+logs/
