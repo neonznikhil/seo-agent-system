@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from fastapi import APIRouter, HTTPException, Query, Body, Depends, Path
 from pydantic import BaseModel
 
 from ..database import get_supabase
@@ -19,6 +19,11 @@ class GenerateAssetRequest(BaseModel):
     niche_keyword: str
     asset_type: Optional[str] = "statistics_page"
     target_opportunity_id: Optional[str] = None
+
+
+class ScoutBacklinksRequest(BaseModel):
+    website_id: Optional[str] = "default"
+    niche_keyword: Optional[str] = None
 
 
 class ApproveRedirectRequest(BaseModel):
@@ -45,14 +50,8 @@ async def get_backlink_metrics(website_id: str = "default"):
 @router.get("/api/backlinks/pipeline")
 @router.get("/backlinks/pipeline")
 async def get_backlink_pipeline(website_id: str = "default"):
-    """Return kanban columns for backlink acquisition pipeline."""
+    """Return kanban columns for backlink acquisition pipeline with zero mock data."""
     supabase = get_supabase()
-    try:
-        res = supabase.table("backlink_opportunities").select("*").eq("website_id", website_id).order("priority_score", desc=True).execute()
-        opps = res.data or []
-    except Exception:
-        opps = []
-
     pipeline = {
         "discovered": [],
         "asset_briefed": [],
@@ -60,107 +59,35 @@ async def get_backlink_pipeline(website_id: str = "default"):
         "link_acquired": []
     }
 
-    for item in opps:
-        st = item.get("status", "discovered")
-        if st in pipeline:
-            pipeline[st].append(item)
-        else:
-            pipeline["discovered"].append(item)
-
-    # Fallback simulated entries if empty
-    if not opps:
-        pipeline["discovered"].append({
-            "id": "opp_1",
-            "url": "https://www.texasbar.com/resources/public-injury-guide",
-            "domain_rating": 68,
-            "opportunity_type": "resource_page",
-            "placement_context": "Recommended Statutory Reference & Calculator section",
-            "our_best_matching_asset_url": "https://accident.innovatcs.com/texas-car-accident-claims-guide",
-            "priority_score": 64.6,
-            "status": "discovered"
-        })
-        pipeline["asset_briefed"].append({
-            "id": "opp_2",
-            "url": "https://www.houstonlawreview.org/traffic-collision-statutes",
-            "domain_rating": 70,
-            "opportunity_type": "statistics_citation",
-            "placement_context": "Empirical Litigation & Settlement Timeline section",
-            "our_best_matching_asset_url": "https://accident.innovatcs.com/texas-truck-accident-lawyer-settlement-guide",
-            "priority_score": 66.5,
-            "status": "asset_briefed"
-        })
-        pipeline["asset_published"].append({
-            "id": "opp_3",
-            "url": "https://injurylawportal.org/resources/auto-injury-statistics",
-            "domain_rating": 62,
-            "opportunity_type": "statistics_citation",
-            "placement_context": "Comprehensive 2026 Commercial Vehicle Claims table",
-            "our_best_matching_asset_url": "https://accident.innovatcs.com/texas-truck-accident-statistics-2026",
-            "priority_score": 58.9,
-            "status": "asset_published"
-        })
-        pipeline["link_acquired"].append({
-            "id": "opp_4",
-            "url": "https://texaslawreview.org/articles/commercial-vehicle-statutory-breakdown",
-            "domain_rating": 58,
-            "opportunity_type": "statistics_citation",
-            "placement_context": "Cited 2026 Texas Settlement Data Guide",
-            "our_best_matching_asset_url": "https://accident.innovatcs.com/texas-truck-accident-lawyer-settlement-guide",
-            "acquired_date": datetime.utcnow().isoformat(),
-            "priority_score": 55.1,
-            "status": "link_acquired"
-        })
+    try:
+        res = supabase.table("backlink_opportunities").select("*").eq("website_id", website_id).order("priority_score", desc=True).execute()
+        opps = res.data or []
+        for item in opps:
+            st = item.get("status", "discovered")
+            if st in pipeline:
+                pipeline[st].append(item)
+            else:
+                pipeline["discovered"].append(item)
+    except Exception as e:
+        logger.warning(f"Error fetching backlink pipeline: {e}")
 
     return {"success": True, "data": pipeline}
 
 
 # ---------------------------------------------------------------------------
-# 3. Acquired Links Table & CSV Data
+# 3. Acquired Links Table
 # ---------------------------------------------------------------------------
 @router.get("/api/backlinks/acquired")
 @router.get("/backlinks/acquired")
 async def get_acquired_links(website_id: str = "default"):
-    """Get all acquired backlinks with linking domain, DR, anchor text, and our linked page."""
+    """Get all acquired backlinks from real Supabase table."""
     supabase = get_supabase()
     try:
         res = supabase.table("backlinks").select("*").eq("website_id", website_id).order("acquired_date", desc=True).execute()
         links = res.data or []
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Error fetching acquired backlinks: {e}")
         links = []
-
-    if not links:
-        links = [
-            {
-                "id": "acq_1",
-                "source_domain": "texaslawreview.org",
-                "domain_rating": 58,
-                "anchor_text": "commercial vehicle statutory breakdown",
-                "our_linked_page": "/texas-truck-accident-lawyer-settlement-guide",
-                "opportunity_type": "statistics_citation",
-                "acquired_date": "2026-08-20",
-                "days_to_acquire": 14
-            },
-            {
-                "id": "acq_2",
-                "source_domain": "houstonlegalresource.org",
-                "domain_rating": 51,
-                "anchor_text": "Texas accident claim compensation rules",
-                "our_linked_page": "/texas-car-accident-claims-guide",
-                "opportunity_type": "resource_page",
-                "acquired_date": "2026-08-16",
-                "days_to_acquire": 21
-            },
-            {
-                "id": "acq_3",
-                "source_domain": "austinlawguide.com",
-                "domain_rating": 49,
-                "anchor_text": "Texas injury statute of limitations calculator",
-                "our_linked_page": "/texas-statute-of-limitations-injury-calculator",
-                "opportunity_type": "link_page",
-                "acquired_date": "2026-08-11",
-                "days_to_acquire": 9
-            }
-        ]
 
     return {"success": True, "data": links}
 
@@ -172,106 +99,47 @@ async def get_acquired_links(website_id: str = "default"):
 @router.get("/backlinks/assets")
 async def get_asset_performance(website_id: str = "default"):
     """Get performance of all published linkable assets with Star Asset badge status."""
-    assets = [
-        {
-            "id": "ast_1",
-            "url": "/texas-truck-accident-lawyer-settlement-guide",
-            "title": "2026 Texas Commercial Truck Accident Settlement Guide",
-            "asset_type": "statistics_page",
-            "publish_date": "2026-07-28",
-            "opportunities_targeted": 6,
-            "links_acquired": 3,
-            "velocity_per_month": 1.5,
-            "is_star_asset": False
-        },
-        {
-            "id": "ast_2",
-            "url": "/texas-car-accident-claims-guide",
-            "title": "Comprehensive Guide to Texas Personal Injury Claims",
-            "asset_type": "ultimate_guide",
-            "publish_date": "2026-07-14",
-            "opportunities_targeted": 8,
-            "links_acquired": 6,
-            "velocity_per_month": 3.0,
-            "is_star_asset": True
-        },
-        {
-            "id": "ast_3",
-            "url": "/texas-statute-of-limitations-injury-calculator",
-            "title": "Texas Injury Claim Deadline Calculator & Statutory Index",
-            "asset_type": "calculator_tool",
-            "publish_date": "2026-08-02",
-            "opportunities_targeted": 4,
-            "links_acquired": 2,
-            "velocity_per_month": 1.0,
-            "is_star_asset": False
-        }
-    ]
+    supabase = get_supabase()
+    try:
+        res = supabase.table("content_log").select("id, title, slug, status, created_at, final_scores").eq("website_id", website_id).eq("status", "published").execute()
+        assets = [
+            {
+                "id": r.get("id"),
+                "url": f"/{r.get('slug', '')}",
+                "title": r.get("title"),
+                "asset_type": "guide",
+                "backlinks_acquired": 0,
+                "monthly_organic_traffic": 0,
+                "is_star_asset": False,
+                "status": "active"
+            }
+            for r in (res.data or [])
+        ]
+    except Exception:
+        assets = []
+
     return {"success": True, "data": assets}
 
 
 # ---------------------------------------------------------------------------
-# 5. Opportunity Intelligence Table with Placement Context
+# 5. Full Opportunities List
 # ---------------------------------------------------------------------------
 @router.get("/api/backlinks/opportunities")
 @router.get("/backlinks/opportunities")
-async def get_opportunity_intelligence(
-    website_id: str = "default",
-    status_filter: Optional[str] = None,
-    type_filter: Optional[str] = None
-):
-    """Full table of backlink_opportunities with placement context and priority scoring."""
+async def get_all_opportunities(website_id: str = "default"):
+    """Get ranked 5-tier technical backlink opportunities."""
     supabase = get_supabase()
     try:
-        q = supabase.table("backlink_opportunities").select("*").eq("website_id", website_id)
-        if status_filter:
-            q = q.eq("status", status_filter)
-        if type_filter:
-            q = q.eq("opportunity_type", type_filter)
-        res = q.order("priority_score", desc=True).execute()
+        res = supabase.table("backlink_opportunities").select("*").eq("website_id", website_id).order("priority_score", desc=True).limit(50).execute()
         opps = res.data or []
     except Exception:
         opps = []
-
-    if not opps:
-        opps = [
-            {
-                "id": "opp_1",
-                "url": "https://www.texasbar.com/resources/public-injury-guide",
-                "domain_rating": 68,
-                "opportunity_type": "resource_page",
-                "topic_relevance_score": 0.95,
-                "placement_context": "Recommended Statutory Reference & Calculator section: Needs an authoritative 2026 comparative fault breakdown.",
-                "priority_score": 64.6,
-                "status": "discovered"
-            },
-            {
-                "id": "opp_2",
-                "url": "https://www.houstonlawreview.org/traffic-collision-statutes",
-                "domain_rating": 70,
-                "opportunity_type": "statistics_citation",
-                "topic_relevance_score": 0.95,
-                "placement_context": "Empirical Litigation & Settlement Timeline section: Missing latest 2026 Texas DOT commercial collision stats.",
-                "priority_score": 66.5,
-                "status": "asset_briefed"
-            },
-            {
-                "id": "opp_3",
-                "url": "https://injurylawportal.org/resources/auto-injury-statistics",
-                "domain_rating": 62,
-                "opportunity_type": "statistics_citation",
-                "topic_relevance_score": 0.92,
-                "placement_context": "Comparative State Payout Charts: Links to outdated 2021 insurance statistics.",
-                "priority_score": 57.0,
-                "status": "asset_published"
-            }
-        ]
 
     return {"success": True, "data": opps}
 
 
 # ---------------------------------------------------------------------------
-# 6. Technical Subsystems Endpoints (Broken Links, Lost Links, Unlinked Mentions, Link Gap)
+# 6. Technical Subsystems Endpoints
 # ---------------------------------------------------------------------------
 @router.get("/api/backlinks/broken")
 @router.get("/backlinks/broken")
@@ -333,19 +201,48 @@ async def get_gap_domains(website_id: str = "default"):
         return {"success": True, "data": []}
 
 
-@router.post("/api/backlinks/generate-asset")
-@router.post("/backlinks/generate-asset")
-async def trigger_asset_generation(payload: GenerateAssetRequest, website_id: str = "default"):
-    """Queue linkable digital PR asset generation directly into WriterPipeline."""
-    engine = BacklinkAuthorityEngine(website_id=website_id)
-    opps = await engine.generate_digital_pr_assets(payload.niche_keyword)
-    return {"success": True, "message": f"Queued {len(opps)} linkable asset briefs to WriterPipeline.", "assets": opps}
-
-
-@router.post("/api/backlinks/run-cycle")
-@router.post("/backlinks/run-cycle")
-async def trigger_backlink_cycle(website_id: str = "default", keyword: str = "Texas personal injury resources"):
-    """Trigger full 4-agent backlink acquisition cycle on demand."""
-    engine = BacklinkAcquisitionEngine(website_id=website_id)
+# ---------------------------------------------------------------------------
+# 7. Scout & Acquisition Actions
+# ---------------------------------------------------------------------------
+@router.post("/api/backlinks/scout")
+@router.post("/backlinks/scout")
+async def scout_backlink_opportunities(payload: ScoutBacklinksRequest):
+    """Trigger 5-tier technical backlink scout sweep into database and Brain memory."""
+    wid = payload.website_id or "default"
+    engine = BacklinkAcquisitionEngine(website_id=wid)
+    keyword = payload.niche_keyword or "commercial practice area guides"
     result = await engine.run_full_weekly_cycle(keyword)
-    return {"success": True, "data": result}
+    return {"success": True, "scout_result": result}
+
+
+@router.post("/api/backlinks/generate-outreach")
+@router.post("/backlinks/generate-outreach")
+async def generate_backlink_outreach(payload: ScoutBacklinksRequest):
+    """Alias for technical opportunity generation (zero cold email outreach policy)."""
+    return await scout_backlink_opportunities(payload)
+
+
+@router.get("/api/backlinks/{website_id}")
+@router.get("/backlinks/{website_id}")
+async def get_website_backlinks(website_id: str = Path(...)):
+    """Unified endpoint returning opportunities and active monitor rows for a website."""
+    supabase = get_supabase()
+    try:
+        opp_res = supabase.table("backlink_opportunities").select("*").eq("website_id", website_id).limit(50).execute()
+        opps = opp_res.data or []
+    except Exception:
+        opps = []
+
+    try:
+        mon_res = supabase.table("backlinks").select("*").eq("website_id", website_id).limit(50).execute()
+        mon = mon_res.data or []
+    except Exception:
+        mon = []
+
+    return {
+        "success": True,
+        "website_id": website_id,
+        "opportunities": opps,
+        "monitor": mon,
+        "count": len(opps) + len(mon)
+    }

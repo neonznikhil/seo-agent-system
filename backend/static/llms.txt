@@ -12,4 +12,4 @@ https://accident.innovatcs.com/contact
 ## Optional Full Details
 * [llms-full.txt](https://accident.innovatcs.com/llms-full.txt): Comprehensive multi-document knowledge base context for offline ingestion.
 
-Last Updated: 2026-08-23 17:59 UTC
+Last Updated: 2026-08-24 07:58 UTC

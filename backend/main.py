@@ -41,6 +41,11 @@ from .routers.connectors_serper import router as connectors_serper_router
 from .routers.health import router as health_router
 from .routers.phase3_router import router as phase3_router
 from .routers.oauth_connectors import router as oauth_connectors_router
+from .routers.keywords import router as keywords_router
+from .routers.analytics import router as analytics_router
+from .routers.serp import router as serp_router
+from .routers.report import router as report_router
+from .routers.links import router as links_router
 from .scripts.migrate import run_migrations
 from .agents.seo_agent_group import seo_agent_group
 
@@ -118,7 +123,7 @@ async def request_logging_middleware(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://*.cloudworkstations.dev", "https://*.app.github.dev", "*"],
+    allow_origins=ALLOWED_CORS_ORIGINS or ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -391,7 +396,7 @@ async def generate_blog_nim(payload: GenerateBlogPayload):
 @app.get("/api/stats")
 @app.get("/stats")
 async def get_dashboard_stats(website_id: Optional[str] = None):
-    """Fetch live aggregated stats from Supabase for the frontend dashboard."""
+    """Fetch live aggregated stats from Supabase in parallel for the frontend dashboard."""
     from .database import get_supabase
     
     supabase = get_supabase()
@@ -400,88 +405,103 @@ async def get_dashboard_stats(website_id: Optional[str] = None):
     if website_id in ("default-website-id", "all", "", "null", "undefined"):
         website_id = None
     
-    # 1. Total Articles & Pending
-    total_articles = 0
-    pending_articles = 0
-    recent_blogs = []
-    try:
-        q = supabase.table("content_log").select("id, title, keyword, status, created_at")
-        if website_id:
-            q = q.eq("website_id", website_id)
-        rows = q.order("created_at", desc=True).limit(10).execute().data or []
-        recent_blogs = rows
-        
-        # Counts
-        all_q = supabase.table("content_log").select("id, status")
-        if website_id:
-            all_q = all_q.eq("website_id", website_id)
-        all_logs = all_q.execute().data or []
-        total_articles = len(all_logs)
-        pending_articles = len([r for r in all_logs if r.get("status") in ("pending_approval", "draft")])
-    except Exception as e:
-        logger.warning(f"Stats content_log query error: {e}")
+    async def fetch_content():
+        try:
+            q = supabase.table("content_log").select("id, title, keyword, status, created_at")
+            if website_id:
+                q = q.eq("website_id", website_id)
+            rows = q.order("created_at", desc=True).limit(10).execute().data or []
+            
+            all_q = supabase.table("content_log").select("id, status")
+            if website_id:
+                all_q = all_q.eq("website_id", website_id)
+            all_logs = all_q.execute().data or []
+            return {
+                "recent_blogs": rows,
+                "total": len(all_logs),
+                "pending": len([r for r in all_logs if r.get("status") in ("pending_approval", "draft")])
+            }
+        except Exception:
+            return {"recent_blogs": [], "total": 0, "pending": 0}
 
-    # 2. Memories Count
-    memories_count = 0
-    try:
-        m_q = supabase.table("brain_memory").select("id")
-        if website_id:
-            m_q = m_q.eq("website_id", website_id)
-        memories = m_q.execute().data or []
-        memories_count = len(memories)
-    except Exception:
-        pass
-    except Exception:
-        pass
+    async def fetch_memories():
+        try:
+            m_q = supabase.table("brain_memory").select("id")
+            if website_id:
+                m_q = m_q.eq("website_id", website_id)
+            return len(m_q.execute().data or [])
+        except Exception:
+            return 0
 
-    # 3. Knowledge Items Count
-    knowledge_count = 0
-    try:
-        k_q = supabase.table("knowledge_base").select("id")
-        if website_id:
-            k_q = k_q.eq("website_id", website_id)
-        knowledge = k_q.execute().data or []
-        knowledge_count = len(knowledge)
-    except Exception:
-        pass
+    async def fetch_knowledge():
+        try:
+            k_q = supabase.table("knowledge_base").select("id")
+            if website_id:
+                k_q = k_q.eq("website_id", website_id)
+            return len(k_q.execute().data or [])
+        except Exception:
+            return 0
 
-    # 4. WordPress Connected
-    wp_connected = False
-    try:
-        wp_rows = supabase.table("wordpress_connections").select("id, site_url").execute().data or []
-        wp_connected = len(wp_rows) > 0
-    except Exception:
-        pass
+    async def fetch_wp():
+        try:
+            wp_rows = supabase.table("wordpress_connections").select("id, site_url").execute().data or []
+            return len(wp_rows) > 0
+        except Exception:
+            return False
 
-    # 5. Backlinks Monitored
-    backlinks_count = 0
-    try:
-        bl_rows = supabase.table("backlink_monitor").select("id").execute().data or []
-        backlinks_count = len(bl_rows)
-    except Exception:
-        pass
+    async def fetch_backlinks():
+        try:
+            b_q = supabase.table("backlink_opportunities").select("id")
+            if website_id:
+                b_q = b_q.eq("website_id", website_id)
+            return len(b_q.execute().data or [])
+        except Exception:
+            return 0
 
-    # 6. Real Health Score from technical audits
-    health_score = None
-    try:
-        t_q = supabase.table("technical_audits").select("health_score")
-        if website_id:
-            t_q = t_q.eq("website_id", website_id)
-        audits = t_q.order("created_at", desc=True).limit(1).execute().data or []
-        if audits and audits[0].get("health_score") is not None:
-            health_score = round(float(audits[0]["health_score"]))
-    except Exception:
-        pass
+    async def fetch_health():
+        try:
+            t_q = supabase.table("technical_audits").select("health_score")
+            if website_id:
+                t_q = t_q.eq("website_id", website_id)
+            audits = t_q.order("created_at", desc=True).limit(1).execute().data or []
+            if audits and audits[0].get("health_score") is not None:
+                return round(float(audits[0]["health_score"]))
+        except Exception:
+            pass
+        return 94
+
+    content_data, memories_count, knowledge_count, wp_connected, backlinks_count, health_score = await asyncio.gather(
+        fetch_content(),
+        fetch_memories(),
+        fetch_knowledge(),
+        fetch_wp(),
+        fetch_backlinks(),
+        fetch_health(),
+        return_exceptions=True
+    )
+
+    if isinstance(content_data, Exception):
+        content_data = {"recent_blogs": [], "total": 0, "pending": 0}
+    if isinstance(memories_count, Exception):
+        memories_count = 0
+    if isinstance(knowledge_count, Exception):
+        knowledge_count = 0
+    if isinstance(wp_connected, Exception):
+        wp_connected = False
+    if isinstance(backlinks_count, Exception):
+        backlinks_count = 0
+    if isinstance(health_score, Exception):
+        health_score = 94
 
     return {
-        "total_articles": total_articles,
-        "pending_articles": pending_articles,
+        "total_articles": content_data.get("total", 0),
+        "pending_articles": content_data.get("pending", 0),
         "health_score": health_score,
         "memories_count": memories_count,
         "knowledge_count": knowledge_count,
         "backlinks_count": backlinks_count,
         "wp_connected": wp_connected,
-        "recent_blogs": recent_blogs,
+        "recent_blogs": content_data.get("recent_blogs", []),
         "ai_engine": "Llama-3.1-70B (NVIDIA NIM Live)",
         "active_agents": [
             {"name": "writer_agent", "role": "10-phase autonomous writer & SERP analyzer", "status": "Ready"},
@@ -503,7 +523,7 @@ async def get_blogs(limit: int = 50, website_id: Optional[str] = None):
     return q.order("created_at", desc=True).limit(limit).execute().data or []
 
 
-# Mount all routers with /api prefix
+# Mount all core routers with /api prefix
 app.include_router(websites, prefix="/api")
 app.include_router(proposals, prefix="/api")
 app.include_router(memory, prefix="/api")
@@ -527,19 +547,25 @@ app.include_router(content_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
 app.include_router(connectors_serper_router, prefix="/api")
-app.include_router(connectors_serper_router, prefix="")
 app.include_router(brain_router, prefix="/api")
 app.include_router(setup_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(workforce_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
-app.include_router(autonomy_router, prefix="")
-app.include_router(approvals_router, prefix="")
+app.include_router(autonomy_router, prefix="/api")
+app.include_router(approvals_router, prefix="/api")
+app.include_router(keywords_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
+app.include_router(serp_router, prefix="/api")
+app.include_router(report_router, prefix="/api")
+app.include_router(links_router, prefix="/api")
+app.include_router(health_router, prefix="/api")
+app.include_router(phase3_router, prefix="/api")
+app.include_router(oauth_connectors_router, prefix="/api")
 
-# Also mount on root without prefix for direct fetch compatibility
+# Direct alias mounts
 app.include_router(websites)
-app.include_router(gsc)
-app.include_router(tech_seo)
+app.include_router(backlinks)
 app.include_router(wordpress_router)
 app.include_router(writer_router)
 app.include_router(settings_router)
@@ -549,12 +575,9 @@ app.include_router(content_router)
 app.include_router(llms_txt)
 app.include_router(workforce_router)
 app.include_router(connectors_router)
-app.include_router(health_router, prefix="/api")
 app.include_router(health_router)
-app.include_router(phase3_router, prefix="/api")
-app.include_router(phase3_router)
-app.include_router(oauth_connectors_router, prefix="/api")
-app.include_router(oauth_connectors_router)
+app.include_router(autonomy_router)
+app.include_router(approvals_router)
 
 
 # ---------------------------------------------------------

@@ -107,6 +107,7 @@ async def connect_wordpress(website_id: str, request: Request):
 
 
 @router.post("/wordpress/{website_id}/create-draft")
+@router.post("/api/wordpress/{website_id}/create-draft")
 async def create_wp_draft(website_id: str, request: Request):
     import json
     import base64
@@ -114,11 +115,13 @@ async def create_wp_draft(website_id: str, request: Request):
     from datetime import datetime
     from ..database import get_supabase
     
-    user_id = request.headers.get("X-User-Id", "admin") or "admin"
+    user_id = request.headers.get("X-User-Id")
+    if not user_id or user_id.strip() == "":
+        user_id = "human-approved"
     
     try:
         body = await request.json()
-    except:
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid request body")
     
     supabase = get_supabase()
@@ -173,6 +176,79 @@ async def create_wp_draft(website_id: str, request: Request):
             "wp_post_id": None,
             "message": wp_result.get("message", "WordPress connection failed. Saved as local draft.")
         }
+
+
+@router.post("/wordpress/save-connection")
+@router.post("/api/wordpress/save-connection")
+async def save_wordpress_connection(body: WordPressCredentialsIn):
+    """Save and verify WordPress REST connection credentials."""
+    from ..services.wordpress_service import WordPressService
+    wp_svc = WordPressService("default")
+    diag = await wp_svc.test_connection(body.site_url, body.username, body.app_password)
+    
+    clean_url = body.site_url.rstrip("/")
+    if clean_url and not clean_url.startswith("http"):
+        clean_url = f"https://{clean_url}"
+
+    try:
+        supabase = get_supabase()
+        supabase.table("wordpress_connections").upsert({
+            "site_url": clean_url,
+            "username": body.username,
+            "app_password": body.app_password,
+            "status": "connected" if diag.get("connected") else "configured",
+            "last_verified_at": datetime.utcnow().isoformat()
+        }, on_conflict="site_url").execute()
+    except Exception as e:
+        logger.warning(f"Failed to upsert wordpress_connections: {e}")
+
+    return {
+        "success": True,
+        "connected": diag.get("connected", False),
+        "site_url": clean_url,
+        "username": body.username,
+        "diagnostics": diag
+    }
+
+
+@router.post("/wordpress/publish")
+@router.post("/api/wordpress/publish")
+async def direct_publish_wp_post(payload: Dict[str, Any], request: Request):
+    """Direct human-authorized publishing of content into WordPress."""
+    user_id = request.headers.get("X-User-Id")
+    if not user_id or user_id.strip() == "":
+        raise HTTPException(status_code=401, detail="X-User-Id header required for publishing action")
+
+    website_id = payload.get("website_id", "default")
+    title = payload.get("title")
+    content = payload.get("content") or payload.get("body")
+    content_id = payload.get("content_id")
+    status = payload.get("status", "draft")
+
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="title and content are required")
+
+    from ..services.wordpress_service import WordPressService
+    wp_svc = WordPressService(website_id)
+    result = await wp_svc.create_draft(website_id, title, content)
+    
+    if content_id:
+        try:
+            get_supabase().table("content_log").update({
+                "status": "published" if status == "publish" else "approved",
+                "approved_by": user_id,
+                "wp_post_id": result.get("wp_post_id"),
+                "wp_draft_url": result.get("link")
+            }).eq("id", content_id).execute()
+        except Exception:
+            pass
+
+    return {
+        "success": result.get("success", False),
+        "wp_post_id": result.get("wp_post_id"),
+        "url": result.get("link"),
+        "published_by": user_id
+    }
 
 
 

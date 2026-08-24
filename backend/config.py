@@ -47,8 +47,16 @@ WP_OAUTH_TOKEN_URL: str = os.getenv("WP_OAUTH_TOKEN_URL", "https://public-api.wo
 # Token Encryption
 import base64
 import hashlib
+import secrets
 
-_raw_secret = os.getenv("TOKEN_ENCRYPTION_KEY") or os.getenv("ENCRYPTION_SECRET") or "rankforge-production-master-secret-key-32bytes"
+_raw_secret = os.getenv("TOKEN_ENCRYPTION_KEY") or os.getenv("ENCRYPTION_SECRET")
+if not _raw_secret:
+    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
+        _raw_secret = "rankforge-local-dev-secret-key-32bytes-secure"
+    else:
+        logger.warning("[Security] TOKEN_ENCRYPTION_KEY not set in production. Generating ephemeral 256-bit key.")
+        _raw_secret = secrets.token_urlsafe(32)
+
 # Always ensure exactly 32 url-safe base64-encoded bytes for Fernet
 TOKEN_ENCRYPTION_KEY: str = base64.urlsafe_b64encode(hashlib.sha256(_raw_secret.encode()).digest()).decode()
 ENCRYPTION_SECRET: str = TOKEN_ENCRYPTION_KEY
@@ -59,13 +67,12 @@ DUPLICATE_THRESHOLD: float = float(os.getenv("DUPLICATE_THRESHOLD", "0.85"))
 FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000")
 REDIRECT_URI: str = os.getenv("REDIRECT_URI", f"{BACKEND_URL}/api/wordpress/oauth/callback")
+
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
 ALLOWED_CORS_ORIGINS: list = [
     origin.strip()
-    for origin in os.getenv(
-        "ALLOWED_CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,https://*.cloudworkstations.dev,https://*.app.github.dev,*",
-    ).split(",")
-    if origin.strip()
+    for origin in os.getenv("ALLOWED_CORS_ORIGINS", _default_origins).split(",")
+    if origin.strip() and origin.strip() != "*"
 ]
 
 

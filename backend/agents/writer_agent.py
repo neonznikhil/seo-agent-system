@@ -706,15 +706,6 @@ class WriterPipeline:
             'quality_check': quality_check,
             'content_preview': content[:300]
         }
-        return {
-            'status': 'completed',
-            'word_count': len(content.split()),
-            'h1': h1,
-            'meta_title': meta_title,
-            'meta_description': meta_desc,
-            'quality_check': quality_check,
-            'keyword_density': keyword_density
-        }
 
     # ==================== PHASE 5: MULTI-EXPERT REVIEW (Steps 58-77) ====================
 
@@ -1152,45 +1143,72 @@ class WriterPipeline:
             return {'competitors': [], 'headings': [], 'pa': [], 'error': str(e)}
 
     async def _analyze_competitor_content_depth(self, serp_data: Dict) -> Dict:
-        return {'avg_word_count': 2500, 'deep_content_count': 3}
+        competitors = serp_data.get("competitors", [])
+        if not competitors:
+            return {'avg_word_count': 1800, 'deep_content_count': 0}
+        word_counts = [len(c.get("snippet", "").split()) * 15 for c in competitors if c.get("snippet")]
+        avg_words = int(sum(word_counts) / max(1, len(word_counts))) if word_counts else 1800
+        return {'avg_word_count': max(1200, avg_words), 'deep_content_count': len(competitors)}
 
     async def _extract_competitor_headings(self, serp_data: Dict) -> List[str]:
-        return ['Introduction', 'What is', 'How to', 'Best Practices', 'Conclusion']
+        headings = serp_data.get("headings", [])
+        if headings:
+            return headings[:8]
+        competitors = serp_data.get("competitors", [])
+        extracted = [c.get("title", "") for c in competitors if c.get("title")]
+        return extracted[:6] if extracted else ['Overview', 'Key Requirements', 'Process & Timeline', 'Legal Considerations', 'Conclusion']
 
     async def _generate_ai_questions(self) -> List[str]:
-        return [f"What is {self.topic}?", f"How {self.topic}", f"Why {self.topic}"]
+        topic = self.topic or "Autonomous SEO Strategy"
+        prompt = f"Generate 4 high-intent natural questions readers ask about {topic}. Return JSON array of strings only."
+        try:
+            raw = await self._call_llm(prompt)
+            if "```json" in raw:
+                raw = raw.split("```json")[1].split("```")[0]
+            elif "```" in raw:
+                raw = raw.split("```")[1].split("```")[0]
+            return json.loads(raw.strip())
+        except Exception:
+            return [f"What is {topic}?", f"How does {topic} work?", f"What are the benefits of {topic}?", f"How to get started with {topic}?"]
 
     async def _identify_content_gaps(self, serp_data: Dict) -> List[str]:
-        return ['first_party_data', 'case_studies', 'original_research']
+        competitors = serp_data.get("competitors", [])
+        if not competitors:
+            return ['first_party_data', 'case_studies', 'original_research', 'comparative_breakdowns']
+        return ['verified_statistics', 'step_by_step_breakdown', 'statutory_citations', 'faqs']
 
     async def _analyze_topical_authority(self, topic: str, serp_data: Dict) -> Dict:
-        return {'authority_score': 65, 'authoritative_sources': 3}
+        competitors = serp_data.get("competitors", [])
+        return {'authority_score': min(95, 50 + len(competitors) * 4), 'authoritative_sources': len(competitors)}
 
     async def _evaluate_backlink_profiles(self, serp_data: Dict) -> Dict:
-        return {'avg_domain_authority': 45, 'high_da_competitors': 2}
+        competitors = serp_data.get("competitors", [])
+        return {'avg_domain_authority': 52, 'high_da_competitors': sum(1 for c in competitors if "gov" in c.get("link", "") or "edu" in c.get("link", "") or "bar" in c.get("link", ""))}
 
     async def _check_featured_snippet_opportunities(self, topic: str, serp_data: Dict) -> List[str]:
-        return ['definition_snippet', 'list_snippet', 'table_snippet']
+        return ['definition_snippet', 'list_snippet', 'table_snippet', 'step_by_step']
 
     async def _analyze_video_carousels(self, topic: str, serp_data: Dict) -> Dict:
         return {'present': False, 'video_count': 0}
 
     async def _extract_people_also_ask(self, questions: List[str], serp_data: Dict) -> List[str]:
-        return questions
+        paa = serp_data.get("pa", []) or serp_data.get("people_also_ask", [])
+        return paa if paa else questions
 
     async def _analyze_local_pack(self, topic: str, serp_data: Dict) -> Dict:
         return {'present': False, 'businesses': []}
 
     async def _calculate_difficulty_score(self, serp_data: Dict, backlink_analysis: Dict) -> int:
-        return 55
+        competitors = serp_data.get("competitors", [])
+        return min(85, max(30, 40 + len(competitors) * 3))
 
     def _classify_difficulty(self, score: int) -> str:
-        if score < 30: return 'easy'
-        if score < 60: return 'medium'
+        if score < 40: return 'easy'
+        if score < 70: return 'medium'
         return 'hard'
 
     async def _determine_unique_angle(self, topic: str, serp_results: Dict) -> str:
-        return f"data_driven_approach_to_{topic.replace(' ', '_').lower()}"
+        return f"empirical_data_and_statutory_guide_for_{topic.replace(' ', '_').lower()}"
 
     async def _build_outline(self, title: Optional[str] = None, keywords: Optional[list] = None) -> Dict:
         topic_title = title or self.topic or "Autonomous SEO Strategy"

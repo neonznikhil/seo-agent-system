@@ -80,20 +80,15 @@ async def get_autonomous_goals():
     default_goals = {
         "target_articles_per_week": 5,
         "target_traffic_growth": 15.0,
-        "focus_keywords": [
-            "Houston car accident lawyer",
-            "Texas commercial truck crash claims",
-            "wrongful death compensation rules",
-            "statute of limitations personal injury Texas"
-        ]
+        "focus_keywords": []
     }
-    success_rate = 0.98
+    success_rate = 1.0
     
     try:
         res = supabase.table("autonomous_settings").select("goals, success_rate, daily_costs").limit(1).execute().data
         if res:
             stored_goals = res[0].get("goals") or default_goals
-            success_rate = float(res[0].get("success_rate", 0.98))
+            success_rate = float(res[0].get("success_rate", 1.0))
             return {
                 "goals": stored_goals,
                 "success_rate": success_rate,
@@ -256,14 +251,7 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
         }
     except Exception as e:
         logger.error(f"Failed to update autonomous settings: {e}")
-        return {
-            "success": True,
-            "settings": {
-                "auto_publish": payload.auto_publish,
-                "auto_generate": payload.auto_generate,
-                "auto_refresh": payload.auto_refresh
-            }
-        }
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
 
 
 # ---------------------------------------------------------
@@ -280,21 +268,25 @@ async def autonomy_overview():
     pending_approvals = 0
     brain_memories = 0
     kb_count = 0
+    published_today = 0
     
     try:
-        b_res = supabase.table("blogs").select("id", count="exact").execute()
-        total_blogs = b_res.count if b_res.count is not None else len(b_res.data or [])
+        b_res = supabase.table("content_log").select("id, status, created_at").execute()
+        rows = b_res.data or []
+        total_blogs = len(rows)
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        published_today = sum(1 for r in rows if r.get("status") in ("published", "approved") and (r.get("created_at") or "").startswith(today_str))
     except Exception:
         pass
         
     try:
-        app_res = supabase.table("blog_approvals").select("id", count="exact").eq("status", "pending").execute()
+        app_res = supabase.table("approvals").select("id", count="exact").eq("status", "pending").execute()
         pending_approvals = app_res.count if app_res.count is not None else len(app_res.data or [])
     except Exception:
         pass
         
     try:
-        mem_res = supabase.table("agent_memory").select("id", count="exact").execute()
+        mem_res = supabase.table("brain_memory").select("id", count="exact").execute()
         brain_memories = mem_res.count if mem_res.count is not None else len(mem_res.data or [])
     except Exception:
         pass
@@ -310,6 +302,6 @@ async def autonomy_overview():
         "pending_approvals": pending_approvals,
         "brain_memories": brain_memories,
         "knowledge_docs": kb_count,
-        "published_today": max(1, total_blogs),
+        "published_today": published_today,
         "scheduler": get_scheduler_status()
     }

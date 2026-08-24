@@ -78,5 +78,15 @@
     "error": "Simulated Network Timeout",
     "retry_count": 0,
     "queued_at": "2026-08-23T17:58:36.954979"
+  },
+  {
+    "id": "9e44dc5a-8e1e-4780-9ba8-07a62182f33e",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T07:50:05.074033"
   }
 ]
