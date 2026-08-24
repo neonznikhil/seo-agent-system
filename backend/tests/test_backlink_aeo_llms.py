@@ -24,7 +24,8 @@ async def test_backlink_opportunities_api():
         res = await client.get("/api/backlinks/opportunities")
         assert res.status_code == 200
         data = res.json()
-        assert isinstance(data, list)
+        opps = data.get("data") if isinstance(data, dict) else data
+        assert isinstance(opps, list)
 
 
 @pytest.mark.asyncio
