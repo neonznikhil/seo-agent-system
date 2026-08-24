@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..database import get_supabase
 from ..agents.backlink_agent import BacklinkAgent
+from ..services.outreach_draft_service import create_outreach_draft
 
 logger = logging.getLogger("backend.routers.backlinks")
 router = APIRouter(tags=["backlinks"])
@@ -17,9 +18,34 @@ class ProspectBacklinksRequest(BaseModel):
     website_id: Optional[str] = None
 
 
+class OutreachDraftRequest(BaseModel):
+    website_id: Optional[str] = None
+    opportunity_id: Optional[str] = None
+    prospect_url: Optional[str] = None
+    target_keyword: Optional[str] = "Houston personal injury guide"
+    strategy: Optional[str] = "broken_link"
+
+
 # ---------------------------------------------------------
-# 4-Module Backlink Engine Endpoints
+# Backlink Inventory & Opportunity Endpoints
 # ---------------------------------------------------------
+
+@router.get("/api/backlinks")
+@router.get("/backlinks")
+async def list_backlink_inventory(website_id: Optional[str] = None):
+    """Retrieve current backlink inventory from the backlinks table."""
+    supabase = get_supabase()
+    try:
+        query = supabase.table("backlinks").select("*")
+        if website_id:
+            query = query.eq("website_id", website_id)
+        res = query.order("created_at", desc=True).limit(50).execute()
+        rows = res.data or []
+        return {"success": True, "data": rows}
+    except Exception as e:
+        logger.warning(f"Error fetching backlinks: {e}")
+        return {"success": True, "data": []}
+
 
 @router.get("/api/backlinks/opportunities")
 @router.get("/backlinks/opportunities")
@@ -42,9 +68,9 @@ async def list_backlink_opportunities(
         res = query.order("created_at", desc=True).limit(50).execute()
         data = res.data or []
         
-        # If database is fresh, run initial prospecting
+        # If database has no opportunities, trigger BacklinkAgent prospecting run
         if not data:
-            agent = BacklinkAgent(website_id=website_id)
+            agent = BacklinkAgent(website_id=website_id or "default")
             await agent.run_prospecting_loop()
             res2 = supabase.table("backlink_opportunities").select("*").order("created_at", desc=True).limit(20).execute()
             data = res2.data or []
@@ -53,6 +79,34 @@ async def list_backlink_opportunities(
     except Exception as e:
         logger.error(f"Error fetching backlink opportunities: {e}")
         return []
+
+
+@router.post("/api/backlinks/outreach/draft")
+@router.post("/backlinks/outreach/draft")
+async def generate_outreach_draft(payload: OutreachDraftRequest):
+    """Generate a personalized, publication-grade outreach email via NVIDIA NIM LLM."""
+    website_id = payload.website_id or "default"
+    agent = BacklinkAgent(website_id=website_id)
+    
+    prospect = {
+        "url": payload.prospect_url or "https://texasinjurylawyers.org/resources",
+        "domain": (payload.prospect_url or "texasinjurylawyers.org").split("/")[2] if "//" in (payload.prospect_url or "") else "texasinjurylawyers.org",
+        "strategy": payload.strategy or "broken_link",
+        "broken_url": "https://broken-statute-link.org/guide",
+        "contact_name": "Editor"
+    }
+    
+    pitch = await agent.generate_pitch(prospect, payload.target_keyword or "2026 Legal Framework")
+    return {
+        "success": True,
+        "data": {
+            "opportunity_id": payload.opportunity_id,
+            "prospect_url": prospect["url"],
+            "subject": pitch.get("subject", "Resource update for your legal guide"),
+            "email_body": pitch.get("email_body", ""),
+            "strategy": prospect["strategy"]
+        }
+    }
 
 
 @router.post("/api/backlinks/{opportunity_id}/approve-send")
@@ -125,4 +179,4 @@ async def manual_prospect_backlinks(payload: ProspectBacklinksRequest):
     """Trigger manual prospecting and qualification run."""
     agent = BacklinkAgent(website_id=payload.website_id)
     res = await agent.run_prospecting_loop(keyword=payload.keyword or "Houston accident legal guide")
-    return res
+    return {"success": True, "data": res}

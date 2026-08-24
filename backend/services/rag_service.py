@@ -357,7 +357,8 @@ class RAGService:
         # If no hits found in knowledge base
         if not reranked_hits:
             return {
-                "answer": "I do not have verified information on that in the knowledge base. Please upload business context or contact our Houston office.",
+                "success": True,
+                "answer": "The knowledge base is currently empty or does not contain relevant information for this query. Please run ingestion on the /knowledge page first so the assistant is grounded in verified facts.",
                 "citations": [],
                 "used_hits": [],
                 "hallucination_check": {"hallucinated": False, "reason": "No knowledge matches"}

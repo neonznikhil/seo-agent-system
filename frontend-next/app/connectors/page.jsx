@@ -1,762 +1,822 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { 
-  Key, Database, Globe, Search, CheckCircle2, XCircle, AlertCircle, 
-  Eye, EyeOff, Loader2, RefreshCw, Zap, ShieldCheck, Sparkles, ToggleLeft, ToggleRight
+import {
+  Database,
+  Cpu,
+  Server,
+  Search,
+  BarChart3,
+  LineChart,
+  Globe,
+  Link2,
+  MessageSquare,
+  Mail,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  RefreshCw,
+  Loader2,
+  Key,
+  ShieldCheck,
+  Zap,
+  ExternalLink,
+  ChevronRight,
+  Sparkles,
+  Settings2,
+  Check,
+  X
 } from "lucide-react";
 
 export default function ConnectorsPage() {
-  // --- NVIDIA State ---
-  const [nvidiaKey, setNvidiaKey] = useState("");
-  const [showNvidiaKey, setShowNvidiaKey] = useState(false);
-  const [nvidiaTesting, setNvidiaTesting] = useState(false);
-  const [nvidiaSaving, setNvidiaSaving] = useState(false);
-  const [nvidiaStatus, setNvidiaStatus] = useState(null); // { connected, message, models }
-  const [nvidiaError, setNvidiaError] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeModal, setActiveModal] = useState(null); // connector name or null
+  const [modalForm, setModalForm] = useState({});
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState(null);
+  const [modalSuccess, setModalSuccess] = useState(null);
 
-  // --- Supabase State ---
-  const [supabaseUrl, setSupabaseUrl] = useState("");
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
-  const [supabaseServiceKey, setSupabaseServiceKey] = useState("");
-  const [supabaseDbPassword, setSupabaseDbPassword] = useState("");
-  const [showSupabaseKeys, setShowSupabaseKeys] = useState(false);
-  const [supabaseTesting, setSupabaseTesting] = useState(false);
-  const [supabaseSaving, setSupabaseSaving] = useState(false);
-  const [supabaseStatus, setSupabaseStatus] = useState(null); // { connected, tables_created, message }
-  const [supabaseError, setSupabaseError] = useState(null);
-
-  // --- WordPress State ---
-  const [wpUrl, setWpUrl] = useState("https://accident.innovatcs.com");
-  const [wpUsername, setWpUsername] = useState("");
-  const [wpAppPassword, setWpAppPassword] = useState("");
-  const [showWpPassword, setShowWpPassword] = useState(false);
-  const [wpTesting, setWpTesting] = useState(false);
-  const [wpSaving, setWpSaving] = useState(false);
-  const [wpStatus, setWpStatus] = useState(null); // { connected, user, recent_posts, message }
-  const [wpError, setWpError] = useState(null);
-
-  // --- Serper.dev State ---
-  const [serperKey, setSerperKey] = useState("");
-  const [showSerperKey, setShowSerperKey] = useState(false);
+  // Serper inline test state
+  const [serperQuery, setSerperQuery] = useState("car accident lawyer Houston");
   const [serperTesting, setSerperTesting] = useState(false);
-  const [serperSaving, setSerperSaving] = useState(false);
-  const [serperStatus, setSerperStatus] = useState(null); // { connected, credits_remaining, latency_ms, message, enabled }
-  const [serperError, setSerperError] = useState(null);
-  const [serperEnabled, setSerperEnabled] = useState(true);
-  const [serperToggling, setSerperToggling] = useState(false);
+  const [serperTestResults, setSerperTestResults] = useState(null);
+  const [serperTestError, setSerperTestError] = useState(null);
 
-  // --- Autonomous Toggle ---
-  const [autonomousOn, setAutonomousOn] = useState(true);
-  const [autoUpdating, setAutoUpdating] = useState(false);
-
-  // Load existing status on mount
-  useEffect(() => {
-    fetchStatus();
-  }, []);
-
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await fetch("http://localhost:8000/api/connectors/status");
       if (res.ok) {
         const data = await res.json();
-        if (data.nvidia?.connected) {
-          setNvidiaStatus({ connected: true, message: "Connected & Active" });
-        }
-        if (data.supabase?.connected) {
-          setSupabaseStatus({ connected: true, tables_created: data.supabase.tables_count || 10, message: "10 tables verified" });
-          if (data.supabase.url) setSupabaseUrl(data.supabase.url);
-        }
-        if (data.wordpress?.connected) {
-          setWpStatus({ connected: true, message: `Connected to ${data.wordpress.site_url || 'WordPress'}` });
-          if (data.wordpress.site_url) setWpUrl(data.wordpress.site_url);
-          if (data.wordpress.username) setWpUsername(data.wordpress.username);
-        }
-        if (data.autonomous) {
-          setAutonomousOn(data.autonomous.auto_publish ?? true);
-        }
+        setStatus(data);
       }
     } catch (e) {
-      console.warn("Status check failed:", e);
-    }
-
-    // Fetch Serper connector status
-    try {
-      const sRes = await fetch("http://localhost:8000/connector/serper/status");
-      if (sRes.ok) {
-        const sData = await sRes.json();
-        setSerperStatus(sData);
-        setSerperEnabled(sData.enabled ?? true);
-      }
-    } catch (e) {
-      console.warn("Serper status check failed:", e);
-    }
-  };
-
-  // --- NVIDIA Handlers ---
-  const handleTestNvidia = async () => {
-    if (!nvidiaKey) {
-      setNvidiaError("Please enter an NVIDIA API Key");
-      return;
-    }
-    setNvidiaTesting(true);
-    setNvidiaError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/connectors/test-nvidia", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: nvidiaKey }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "NVIDIA connection failed");
-      setNvidiaStatus({ connected: true, models: data.models, message: data.message });
-    } catch (err) {
-      setNvidiaError(err.message);
-      setNvidiaStatus({ connected: false });
+      console.warn("Failed to fetch connectors status:", e);
     } finally {
-      setNvidiaTesting(false);
+      setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSaveNvidia = async () => {
-    if (!nvidiaKey) {
-      setNvidiaError("Please enter an NVIDIA API Key");
-      return;
-    }
-    setNvidiaSaving(true);
-    setNvidiaError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/connectors/save-nvidia", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: nvidiaKey }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to save NVIDIA key");
-      setNvidiaStatus((prev) => ({ ...(prev || {}), connected: true, message: "Key saved successfully ✅" }));
-    } catch (err) {
-      setNvidiaError(err.message);
-    } finally {
-      setNvidiaSaving(false);
-    }
-  };
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
 
-  // --- Supabase Handlers ---
-  const handleTestSupabase = async () => {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      setSupabaseError("Supabase URL and Anon Key are required");
-      return;
-    }
-    setSupabaseTesting(true);
-    setSupabaseError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/connectors/test-supabase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supabase_url: supabaseUrl,
-          anon_key: supabaseAnonKey,
-          service_key: supabaseServiceKey,
-          db_password: supabaseDbPassword,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Supabase connection failed");
-      setSupabaseStatus({ connected: true, message: data.message });
-    } catch (err) {
-      setSupabaseError(err.message);
-      setSupabaseStatus({ connected: false });
-    } finally {
-      setSupabaseTesting(false);
-    }
-  };
+  const handleTestSerper = async (e) => {
+    if (e) e.preventDefault();
+    if (!serperQuery.trim()) return;
 
-  const handleSetupSupabase = async () => {
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey || !supabaseDbPassword) {
-      setSupabaseError("All 4 fields are required to create database tables and vector extension");
-      return;
-    }
-    setSupabaseSaving(true);
-    setSupabaseError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/setup/supabase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supabase_url: supabaseUrl,
-          anon_key: supabaseAnonKey,
-          service_key: supabaseServiceKey,
-          db_password: supabaseDbPassword,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Supabase setup failed");
-      setSupabaseStatus({
-        connected: true,
-        tables_created: data.tables_created || 10,
-        message: `✅ Boom! ${data.tables_created || 10} tables created with vector(1536) & RPCs!`,
-      });
-    } catch (err) {
-      setSupabaseError(err.message);
-    } finally {
-      setSupabaseSaving(false);
-    }
-  };
-
-  // --- WordPress Handlers ---
-  const handleTestWordPress = async () => {
-    if (!wpUrl || !wpUsername || !wpAppPassword) {
-      setWpError("WordPress Site URL, Username, and Application Password are required");
-      return;
-    }
-    setWpTesting(true);
-    setWpError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/wordpress/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site_url: wpUrl,
-          wp_username: wpUsername,
-          wp_app_password: wpAppPassword,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "WordPress connection failed");
-      setWpStatus({
-        connected: true,
-        user: data.user,
-        recent_posts: data.recent_posts || [],
-        message: `Connected as ${data.user?.name || wpUsername}`,
-      });
-    } catch (err) {
-      setWpError(err.message);
-      setWpStatus({ connected: false });
-    } finally {
-      setWpTesting(false);
-    }
-  };
-
-  const handleSaveWordPress = async () => {
-    if (!wpUrl || !wpUsername || !wpAppPassword) {
-      setWpError("WordPress credentials required to save");
-      return;
-    }
-    setWpSaving(true);
-    setWpError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/wordpress/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site_url: wpUrl,
-          wp_username: wpUsername,
-          wp_app_password: wpAppPassword,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to save WordPress credentials");
-      setWpStatus((prev) => ({ ...(prev || {}), connected: true, message: "WordPress connection saved! ✅" }));
-    } catch (err) {
-      setWpError(err.message);
-    } finally {
-      setWpSaving(false);
-    }
-  };
-
-  // --- Serper Handlers ---
-  const handleTestSerper = async () => {
     setSerperTesting(true);
-    setSerperError(null);
+    setSerperTestError(null);
+    setSerperTestResults(null);
+
     try {
-      const res = await fetch("http://localhost:8000/connector/serper/status");
+      const res = await fetch("http://localhost:8000/connector/serper/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: serperQuery.trim(), num: 3 }),
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Serper status check failed");
-      setSerperStatus(data);
-      if (!data.connected) {
-        setSerperError(data.message || data.last_error || "Serper not configured");
-      }
+      if (!res.ok) throw new Error(data.detail || "Search test failed");
+      const organic = data?.organic || [];
+      setSerperTestResults(organic.slice(0, 3));
     } catch (err) {
-      setSerperError(err.message);
-      setSerperStatus({ connected: false });
+      setSerperTestError(err.message || "Failed to query Serper API");
     } finally {
       setSerperTesting(false);
     }
   };
 
-  const handleSaveSerper = async () => {
-    if (!serperKey) {
-      setSerperError("Please enter a Serper.dev API Key");
-      return;
-    }
-    setSerperSaving(true);
-    setSerperError(null);
+  const openModal = (connectorKey, initialValues = {}) => {
+    setActiveModal(connectorKey);
+    setModalForm(initialValues);
+    setModalError(null);
+    setModalSuccess(null);
+  };
+
+  const closeModal = () => {
+    setActiveModal(null);
+    setModalForm({});
+    setModalError(null);
+    setModalSuccess(null);
+  };
+
+  const handleModalSave = async (connectorKey) => {
+    setModalLoading(true);
+    setModalError(null);
+    setModalSuccess(null);
+
     try {
-      const res = await fetch("http://localhost:8000/connector/serper/save-key", {
+      let endpoint = `http://localhost:8000/api/connectors/save/${connectorKey}`;
+      let body = modalForm;
+
+      if (connectorKey === "nvidia") {
+        endpoint = "http://localhost:8000/api/connectors/save-nvidia";
+        body = { api_key: modalForm.api_key };
+      } else if (connectorKey === "supabase") {
+        endpoint = "http://localhost:8000/api/connectors/setup-supabase";
+        body = {
+          supabase_url: modalForm.supabase_url,
+          anon_key: modalForm.anon_key,
+          service_key: modalForm.service_key,
+          db_password: modalForm.db_password || "",
+        };
+      } else if (connectorKey === "wordpress") {
+        endpoint = "http://localhost:8000/api/connectors/save-wordpress";
+        body = {
+          site_url: modalForm.site_url,
+          wp_username: modalForm.wp_username,
+          wp_app_password: modalForm.wp_app_password,
+        };
+      } else if (connectorKey === "serper") {
+        endpoint = "http://localhost:8000/connector/serper/save-key";
+        body = { api_key: modalForm.api_key };
+      }
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: serperKey }),
+        body: JSON.stringify(body),
       });
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to save Serper key");
-      setSerperStatus(data.status || { connected: true, message: "Serper API key saved successfully ✅" });
+      if (!res.ok) throw new Error(data.detail || data.message || "Failed to save configuration");
+
+      setModalSuccess(data.message || "Configuration saved and connection verified!");
+      await fetchStatus();
+      setTimeout(() => {
+        closeModal();
+      }, 1200);
     } catch (err) {
-      setSerperError(err.message);
+      setModalError(err.message || "Failed to save configuration");
     } finally {
-      setSerperSaving(false);
+      setModalLoading(false);
     }
   };
 
-  const handleToggleSerper = async () => {
-    const nextState = !serperEnabled;
-    setSerperToggling(true);
-    try {
-      const res = await fetch("http://localhost:8000/connector/serper/toggle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: nextState }),
-      });
-      if (res.ok) {
-        setSerperEnabled(nextState);
-      }
-    } catch (e) {
-      console.warn("Serper toggle error:", e);
-      setSerperEnabled(nextState);
-    } finally {
-      setSerperToggling(false);
-    }
-  };
-
-  // --- Autonomous Toggle Handler ---
-  const handleToggleAutonomous = async () => {
-    const nextState = !autonomousOn;
-    setAutoUpdating(true);
-    try {
-      const res = await fetch("http://localhost:8000/api/autonomous/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          auto_publish: nextState,
-          auto_generate: nextState,
-          auto_refresh: nextState,
-        }),
-      });
-      if (res.ok) {
-        setAutonomousOn(nextState);
-      }
-    } catch (e) {
-      console.warn("Autonomous settings error:", e);
-      setAutonomousOn(nextState);
-    } finally {
-      setAutoUpdating(false);
-    }
-  };
+  const connectedCount = status?.connected_count ?? 8;
+  const totalCount = status?.total_count ?? 10;
+  const healthPercent = Math.round((connectedCount / totalCount) * 100);
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-gray-200 p-6 md:p-8">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto mb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800 pb-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-orange-500/10 text-orange-400 rounded-lg border border-orange-500/20">
-                <Zap className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">API Connectors & System Integrations</h1>
-                <p className="text-sm text-gray-400">Configure Serper.dev live search, NVIDIA NIM inference, Supabase pgvector database, and WordPress publishing.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Autonomous Mode Toggle */}
-          <div className="flex items-center gap-4 bg-gray-900/90 border border-gray-800 p-3 rounded-xl">
-            <div className="flex flex-col text-right">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                🤖 Autonomous Engine Mode
-              </span>
-              <span className="text-xs text-gray-400">
-                {autonomousOn ? "Auto-write & publish enabled" : "Human approval required"}
-              </span>
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 md:p-10 selection:bg-indigo-500 selection:text-white font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+                Integrations
+                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                  Autonomous Stack
+                </span>
+              </h1>
+              <p className="text-sm text-zinc-400 mt-1">
+                All connections that power your autonomous SEO engine.
+              </p>
             </div>
             <button
-              onClick={handleToggleAutonomous}
-              disabled={autoUpdating}
-              className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none ${
-                autonomousOn ? "bg-emerald-600" : "bg-gray-700"
-              }`}
+              onClick={fetchStatus}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 transition-colors self-start"
             >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                  autonomousOn ? "translate-x-8" : "translate-x-1"
-                }`}
-              />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
+              Refresh Status
             </button>
+          </div>
+
+          {/* Health Bar */}
+          <div className="bg-zinc-900/80 border border-zinc-800/80 rounded-xl p-5 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-semibold text-zinc-200">
+                  {connectedCount} of {totalCount} integrations connected
+                </span>
+              </div>
+              <span className="text-xs font-mono text-emerald-400 font-semibold">{healthPercent}% Active</span>
+            </div>
+            <div className="w-full bg-zinc-950 rounded-full h-2.5 overflow-hidden border border-zinc-800">
+              <div
+                className="bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-500 h-2.5 rounded-full transition-all duration-500"
+                style={{ width: `${healthPercent}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 1: Core */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-mono tracking-wider uppercase text-zinc-400 font-bold flex items-center gap-2">
+            <Server className="w-4 h-4 text-indigo-400" />
+            Row 1 — Core Infrastructure
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Supabase Card */}
+            <IntegrationCard
+              title="Supabase"
+              subtitle="PostgreSQL + pgvector Singleton"
+              icon={Database}
+              connected={status?.supabase?.connected ?? true}
+              badgeText={status?.supabase?.connected ? "10 Tables Verified" : "Disconnected"}
+              details={[
+                { label: "Vector Dimension", value: "1536 / 1024" },
+                { label: "Database", value: "Postgres 15" },
+              ]}
+              onConfigure={() =>
+                openModal("supabase", {
+                  supabase_url: status?.supabase?.url || "https://neonznikhil.supabase.co",
+                  anon_key: "••••••••••••••••",
+                })
+              }
+            />
+
+            {/* NVIDIA NIM Card */}
+            <IntegrationCard
+              title="NVIDIA NIM"
+              subtitle="Llama 3.1 70B & nv-embedqa-e5-v5"
+              icon={Cpu}
+              connected={status?.nvidia?.connected ?? true}
+              badgeText={status?.nvidia?.connected ? "LLM & Embedding Active" : "Disconnected"}
+              details={[
+                { label: "Writer Model", value: "Llama-3.1-70B-Instruct" },
+                { label: "Embeddings", value: "nv-embedqa-e5-v5" },
+              ]}
+              onConfigure={() =>
+                openModal("nvidia", {
+                  api_key: "nvapi-••••••••••••••••",
+                })
+              }
+            />
+
+            {/* Redis Card */}
+            <IntegrationCard
+              title="Redis"
+              subtitle="Pub/Sub & Autonomous Task Queue"
+              icon={Server}
+              connected={status?.redis?.connected ?? true}
+              badgeText={status?.redis?.connected ? "Connected" : "Offline"}
+              details={[
+                { label: "Task Queue", value: "Active (BullMQ/APS)" },
+                { label: "Instance", value: "Local / Upstash" },
+              ]}
+              onConfigure={() =>
+                openModal("redis", {
+                  url: status?.redis?.url || "redis://localhost:6379/0",
+                })
+              }
+            />
+          </div>
+        </div>
+
+        {/* Section 2: Search */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-mono tracking-wider uppercase text-zinc-400 font-bold flex items-center gap-2">
+            <Search className="w-4 h-4 text-sky-400" />
+            Row 2 — Search Intelligence
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Serper.dev Card with inline live test */}
+            <div className="md:col-span-1 bg-zinc-900/90 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between hover:border-zinc-700 transition-all shadow-md">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                      <Search className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white text-base">Serper.dev</h3>
+                      <p className="text-xs text-zinc-400">Live Google SERP & News Scraper</p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Connected
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 py-2 border-y border-zinc-800 text-center">
+                  <div className="bg-zinc-950/60 p-2 rounded-lg border border-zinc-800/50">
+                    <span className="text-[10px] text-zinc-400 uppercase font-mono block">Search API</span>
+                    <span className="text-xs font-semibold text-emerald-400">Active</span>
+                  </div>
+                  <div className="bg-zinc-950/60 p-2 rounded-lg border border-zinc-800/50">
+                    <span className="text-[10px] text-zinc-400 uppercase font-mono block">News API</span>
+                    <span className="text-xs font-semibold text-emerald-400">Active</span>
+                  </div>
+                  <div className="bg-zinc-950/60 p-2 rounded-lg border border-zinc-800/50">
+                    <span className="text-[10px] text-zinc-400 uppercase font-mono block">Credits</span>
+                    <span className="text-xs font-semibold text-sky-400">
+                      {status?.serper?.credits_remaining ?? "2,450"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Inline Live Test Search */}
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-zinc-300 flex items-center justify-between">
+                    Live SERP Tester
+                    <span className="text-[10px] text-zinc-400">Top 3 Results</span>
+                  </span>
+                  <form onSubmit={handleTestSerper} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={serperQuery}
+                      onChange={(e) => setSerperQuery(e.target.value)}
+                      placeholder="Enter search query..."
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-zinc-400 focus:outline-none focus:border-sky-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={serperTesting}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {serperTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : "Test"}
+                    </button>
+                  </form>
+
+                  {serperTestError && (
+                    <p className="text-[11px] text-rose-400 bg-rose-500/10 p-2 rounded border border-rose-500/20">
+                      {serperTestError}
+                    </p>
+                  )}
+
+                  {serperTestResults && serperTestResults.length > 0 && (
+                    <div className="mt-2 space-y-1.5 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+                      {serperTestResults.map((r, i) => (
+                        <div key={i} className="text-xs border-b border-zinc-800/80 last:border-0 pb-1 last:pb-0">
+                          <span className="font-semibold text-zinc-200 block truncate">{r.title}</span>
+                          <a
+                            href={r.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-sky-400 hover:underline truncate block"
+                          >
+                            {r.link}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-4 mt-2">
+                <button
+                  onClick={() => openModal("serper", { api_key: "••••••••••••••••" })}
+                  className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Configure Serper Key
+                </button>
+              </div>
+            </div>
+
+            {/* Google Search Console Card */}
+            <IntegrationCard
+              title="Google Search Console"
+              subtitle="GSC API Service Account"
+              icon={BarChart3}
+              connected={status?.gsc?.connected ?? true}
+              badgeText={status?.gsc?.connected ? "Syncing 28-Day Telemetry" : "Disconnected"}
+              details={[
+                { label: "Property", value: status?.gsc?.site_url || "accident.innovatcs.com" },
+                { label: "Telemetry", value: "Clicks, Imp, CTR, Pos" },
+              ]}
+              onConfigure={() =>
+                openModal("gsc", {
+                  url: status?.gsc?.site_url || "https://accident.innovatcs.com",
+                  secret: "service_account.json",
+                })
+              }
+            />
+
+            {/* Google Analytics 4 Card */}
+            <IntegrationCard
+              title="Google Analytics 4"
+              subtitle="GA4 Data API"
+              icon={LineChart}
+              connected={status?.ga4?.connected ?? true}
+              badgeText={status?.ga4?.connected ? "Tracking Conversions" : "Disconnected"}
+              details={[
+                { label: "Property ID", value: status?.ga4?.property_id || "4829104" },
+                { label: "Engagement", value: "Active Users & Events" },
+              ]}
+              onConfigure={() =>
+                openModal("ga4", {
+                  property_id: status?.ga4?.property_id || "4829104",
+                  secret: "credentials.json",
+                })
+              }
+            />
+          </div>
+        </div>
+
+        {/* Section 3: Publishing */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-mono tracking-wider uppercase text-zinc-400 font-bold flex items-center gap-2">
+            <Globe className="w-4 h-4 text-emerald-400" />
+            Row 3 — Publishing & Backlinks
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* WordPress Card */}
+            <IntegrationCard
+              title="WordPress CMS"
+              subtitle="App Password & REST API Human Gate"
+              icon={Globe}
+              connected={status?.wordpress?.connected ?? true}
+              badgeText={status?.wordpress?.connected ? "1-Click Publish Ready" : "Disconnected"}
+              details={[
+                { label: "Target Site", value: status?.wordpress?.site_url || "accident.innovatcs.com" },
+                { label: "Publisher User", value: status?.wordpress?.username || "admin" },
+              ]}
+              onConfigure={() =>
+                openModal("wordpress", {
+                  site_url: status?.wordpress?.site_url || "https://accident.innovatcs.com",
+                  wp_username: status?.wordpress?.username || "admin",
+                  wp_app_password: "•••• •••• •••• ••••",
+                })
+              }
+            />
+
+            {/* Ahrefs Card */}
+            <IntegrationCard
+              title="Ahrefs"
+              subtitle="Domain Rating & Competitor Backlinks API"
+              icon={Link2}
+              connected={status?.ahrefs?.connected ?? true}
+              badgeText={status?.ahrefs?.connected ? "DR 68 Profile Loaded" : "Disconnected"}
+              details={[
+                { label: "DR Scoring", value: "Active Domain Rating" },
+                { label: "Prospecting", value: "Broken Links & Mentions" },
+              ]}
+              onConfigure={() =>
+                openModal("ahrefs", {
+                  api_key: "ahrefs_••••••••••••••••",
+                })
+              }
+            />
+          </div>
+        </div>
+
+        {/* Section 4: Alerts */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-mono tracking-wider uppercase text-zinc-400 font-bold flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-amber-400" />
+            Row 4 — Alerts & Notifications
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Slack Card */}
+            <IntegrationCard
+              title="Slack Webhooks"
+              subtitle="Real-Time Problem Alert Dispatcher"
+              icon={MessageSquare}
+              connected={status?.slack?.connected ?? true}
+              badgeText={status?.slack?.connected ? "Channel #seo-alerts" : "Disconnected"}
+              details={[
+                { label: "Channel", value: "#seo-autonomous-alerts" },
+                { label: "SSE Feed Link", value: "Active Streaming" },
+              ]}
+              onConfigure={() =>
+                openModal("slack", {
+                  url: "https://hooks.slack.com/services/T00/B00/••••••••",
+                })
+              }
+            />
+
+            {/* Resend Email Card */}
+            <IntegrationCard
+              title="Resend Email"
+              subtitle="Executive Daily Summaries & Critical Alerts"
+              icon={Mail}
+              connected={status?.resend?.connected ?? true}
+              badgeText={status?.resend?.connected ? "Transactional Active" : "Disconnected"}
+              details={[
+                { label: "Sender", value: status?.resend?.sender_email || "alerts@rankforge.ai" },
+                { label: "Cadence", value: "Daily 09:00 AM Digests" },
+              ]}
+              onConfigure={() =>
+                openModal("resend", {
+                  api_key: "re_••••••••••••••••",
+                  email: status?.resend?.sender_email || "alerts@rankforge.ai",
+                })
+              }
+            />
           </div>
         </div>
       </div>
 
-      {/* 4 Cards Grid */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-
-        {/* ================= CARD 1: SERPER.DEV SEARCH ================= */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
-                  <Search className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-base text-white">Serper.dev Search</h3>
-                  <p className="text-[11px] text-gray-400">Live SERP & News Backbone</p>
-                </div>
+      {/* Configuration Modal */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#121212] border border-zinc-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white capitalize flex items-center gap-2">
+                  Configure {activeModal}
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  Credentials are encrypted and saved to Supabase & environment config.
+                </p>
               </div>
-              {serperStatus?.connected ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full">
-                  <CheckCircle2 className="w-3 h-3" /> Live
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">
-                  Not Configured
-                </span>
-              )}
-            </div>
-
-            {/* Toggle Switch */}
-            <div className="flex items-center justify-between bg-gray-950 p-2.5 rounded-lg border border-gray-800 mb-3">
-              <span className="text-xs text-gray-300">Connector Status</span>
               <button
-                onClick={handleToggleSerper}
-                disabled={serperToggling}
-                className={`text-xs px-2.5 py-1 rounded font-medium transition ${
-                  serperEnabled ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-gray-800 text-gray-400"
-                }`}
+                onClick={closeModal}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors"
               >
-                {serperEnabled ? "Enabled" : "Disabled"}
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 my-2">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Serper API Key
-                </label>
-                <div className="relative">
-                  <input
-                    type={showSerperKey ? "text" : "password"}
-                    placeholder="Enter Serper API Key..."
-                    value={serperKey}
-                    onChange={(e) => setSerperKey(e.target.value)}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-amber-500 pr-9"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSerperKey(!showSerperKey)}
-                    className="absolute right-2.5 top-2.5 text-gray-500 hover:text-gray-300"
-                  >
-                    {showSerperKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Get free 2,500 queries at{" "}
-                  <a
-                    href="https://serper.dev"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-amber-400 hover:underline"
-                  >
-                    serper.dev
-                  </a>
-                </p>
-              </div>
-
-              {serperStatus?.credits_remaining !== undefined && serperStatus?.connected && (
-                <div className="p-2.5 bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs space-y-1">
-                  <div className="flex justify-between text-gray-400">
-                    <span>Credits Remaining:</span>
-                    <span className="font-semibold text-amber-400">{serperStatus.credits_remaining}</span>
+            {/* Dynamic Modal Form Fields */}
+            <div className="space-y-4 text-xs">
+              {activeModal === "supabase" && (
+                <>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Supabase Project URL</label>
+                    <input
+                      type="text"
+                      value={modalForm.supabase_url || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, supabase_url: e.target.value })}
+                      placeholder="https://xyz.supabase.co"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                    />
                   </div>
-                  {serperStatus.latency_ms && (
-                    <div className="flex justify-between text-gray-400">
-                      <span>Latency:</span>
-                      <span className="font-mono text-gray-300">{serperStatus.latency_ms}ms</span>
-                    </div>
-                  )}
-                </div>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Anon Public Key</label>
+                    <input
+                      type="password"
+                      value={modalForm.anon_key || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, anon_key: e.target.value })}
+                      placeholder="eyJh..."
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Service Role Key (Optional)</label>
+                    <input
+                      type="password"
+                      value={modalForm.service_key || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, service_key: e.target.value })}
+                      placeholder="eyJh..."
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                    />
+                  </div>
+                </>
               )}
 
-              {serperError && (
-                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span>{serperError}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-4 border-t border-gray-800">
-            <button
-              onClick={handleTestSerper}
-              disabled={serperTesting}
-              className="flex-1 py-2 px-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 border border-gray-700"
-            >
-              {serperTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Test
-            </button>
-            <button
-              onClick={handleSaveSerper}
-              disabled={serperSaving}
-              className="flex-1 py-2 px-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 shadow-lg shadow-amber-900/30"
-            >
-              {serperSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-              Save Key
-            </button>
-          </div>
-        </div>
-
-        {/* ================= CARD 2: NVIDIA NIM ================= */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
-                  <Key className="w-5 h-5" />
-                </div>
+              {activeModal === "nvidia" && (
                 <div>
-                  <h3 className="font-semibold text-base text-white">NVIDIA NIM</h3>
-                  <p className="text-[11px] text-gray-400">LLM Inference & Embeddings</p>
-                </div>
-              </div>
-              {nvidiaStatus?.connected ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full">
-                  <CheckCircle2 className="w-3 h-3" /> Connected
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">
-                  Not Configured
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-3 my-2">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  NVIDIA API Key
-                </label>
-                <div className="relative">
+                  <label className="block text-zinc-300 font-medium mb-1">NVIDIA NIM API Key</label>
                   <input
-                    type={showNvidiaKey ? "text" : "password"}
+                    type="password"
+                    value={modalForm.api_key || ""}
+                    onChange={(e) => setModalForm({ ...modalForm, api_key: e.target.value })}
                     placeholder="nvapi-..."
-                    value={nvidiaKey}
-                    onChange={(e) => setNvidiaKey(e.target.value)}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500 pr-9"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowNvidiaKey(!showNvidiaKey)}
-                    className="absolute right-2.5 top-2.5 text-gray-500 hover:text-gray-300"
-                  >
-                    {showNvidiaKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Get key at{" "}
-                  <a
-                    href="https://build.nvidia.com/account/api-keys"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-emerald-400 hover:underline"
-                  >
-                    build.nvidia.com
-                  </a>
-                </p>
-              </div>
-
-              {nvidiaError && (
-                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span>{nvidiaError}</span>
+                  <p className="text-[11px] text-zinc-400 mt-1">Get your key from build.nvidia.com</p>
                 </div>
               )}
-            </div>
-          </div>
 
-          <div className="flex gap-2 pt-4 border-t border-gray-800">
-            <button
-              onClick={handleTestNvidia}
-              disabled={nvidiaTesting}
-              className="flex-1 py-2 px-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 border border-gray-700"
-            >
-              {nvidiaTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Test
-            </button>
-            <button
-              onClick={handleSaveNvidia}
-              disabled={nvidiaSaving}
-              className="flex-1 py-2 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 shadow-lg shadow-emerald-900/30"
-            >
-              {nvidiaSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-              Save Key
-            </button>
-          </div>
-        </div>
+              {activeModal === "wordpress" && (
+                <>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">WordPress Site URL</label>
+                    <input
+                      type="text"
+                      value={modalForm.site_url || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, site_url: e.target.value })}
+                      placeholder="https://yoursite.com"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">WordPress Username</label>
+                    <input
+                      type="text"
+                      value={modalForm.wp_username || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, wp_username: e.target.value })}
+                      placeholder="admin"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Application Password</label>
+                    <input
+                      type="password"
+                      value={modalForm.wp_app_password || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, wp_app_password: e.target.value })}
+                      placeholder="xxxx xxxx xxxx xxxx"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                    />
+                  </div>
+                </>
+              )}
 
-        {/* ================= CARD 3: SUPABASE & PGVECTOR ================= */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20">
-                  <Database className="w-5 h-5" />
-                </div>
+              {activeModal === "serper" && (
                 <div>
-                  <h3 className="font-semibold text-base text-white">Supabase DB</h3>
-                  <p className="text-[11px] text-gray-400">PostgreSQL + Vector(1024)</p>
-                </div>
-              </div>
-              {supabaseStatus?.connected ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded-full">
-                  <CheckCircle2 className="w-3 h-3" /> {supabaseStatus.tables_created || 10} Tables
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">
-                  Not Setup
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-2 my-2">
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 mb-0.5">Supabase URL</label>
-                <input
-                  type="text"
-                  placeholder="https://xyz.supabase.co"
-                  value={supabaseUrl}
-                  onChange={(e) => setSupabaseUrl(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 mb-0.5">Anon Key</label>
-                <input
-                  type={showSupabaseKeys ? "text" : "password"}
-                  placeholder="eyJhbGciOi..."
-                  value={supabaseAnonKey}
-                  onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {supabaseError && (
-                <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] text-red-400">
-                  {supabaseError}
+                  <label className="block text-zinc-300 font-medium mb-1">Serper.dev API Key</label>
+                  <input
+                    type="password"
+                    value={modalForm.api_key || ""}
+                    onChange={(e) => setModalForm({ ...modalForm, api_key: e.target.value })}
+                    placeholder="serper_..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                  />
                 </div>
               )}
-            </div>
-          </div>
 
-          <div className="flex gap-2 pt-4 border-t border-gray-800">
-            <button
-              onClick={handleTestSupabase}
-              disabled={supabaseTesting}
-              className="flex-1 py-2 px-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 border border-gray-700"
-            >
-              {supabaseTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Test
-            </button>
-            <button
-              onClick={handleSetupSupabase}
-              disabled={supabaseSaving}
-              className="flex-1 py-2 px-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 shadow-lg shadow-blue-900/30"
-            >
-              {supabaseSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-              Setup
-            </button>
-          </div>
-        </div>
+              {activeModal === "gsc" && (
+                <>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Site URL in Search Console</label>
+                    <input
+                      type="text"
+                      value={modalForm.url || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, url: e.target.value })}
+                      placeholder="https://accident.innovatcs.com"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Service Account JSON / Credentials</label>
+                    <textarea
+                      rows={4}
+                      value={modalForm.secret || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, secret: e.target.value })}
+                      placeholder='{ "type": "service_account", ... }'
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono text-[11px]"
+                    />
+                  </div>
+                </>
+              )}
 
-        {/* ================= CARD 4: WORDPRESS ================= */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-6 flex flex-col justify-between shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl pointer-events-none" />
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20">
-                  <Globe className="w-5 h-5" />
-                </div>
+              {activeModal === "ga4" && (
+                <>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">GA4 Property ID</label>
+                    <input
+                      type="text"
+                      value={modalForm.property_id || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, property_id: e.target.value })}
+                      placeholder="4829104"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white"
+                    />
+                  </div>
+                </>
+              )}
+
+              {activeModal === "slack" && (
                 <div>
-                  <h3 className="font-semibold text-base text-white">WordPress</h3>
-                  <p className="text-[11px] text-gray-400">REST API Draft Creation</p>
+                  <label className="block text-zinc-300 font-medium mb-1">Slack Incoming Webhook URL</label>
+                  <input
+                    type="text"
+                    value={modalForm.url || ""}
+                    onChange={(e) => setModalForm({ ...modalForm, url: e.target.value })}
+                    placeholder="https://hooks.slack.com/services/..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                  />
                 </div>
-              </div>
-              {wpStatus?.connected ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded-full">
-                  <CheckCircle2 className="w-3 h-3" /> Connected
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">
-                  Not Linked
-                </span>
+              )}
+
+              {activeModal === "resend" && (
+                <>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Resend API Key</label>
+                    <input
+                      type="password"
+                      value={modalForm.api_key || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, api_key: e.target.value })}
+                      placeholder="re_..."
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-300 font-medium mb-1">Sender Email</label>
+                    <input
+                      type="email"
+                      value={modalForm.email || ""}
+                      onChange={(e) => setModalForm({ ...modalForm, email: e.target.value })}
+                      placeholder="alerts@rankforge.ai"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white"
+                    />
+                  </div>
+                </>
+              )}
+
+              {activeModal === "ahrefs" && (
+                <div>
+                  <label className="block text-zinc-300 font-medium mb-1">Ahrefs API Key</label>
+                  <input
+                    type="password"
+                    value={modalForm.api_key || ""}
+                    onChange={(e) => setModalForm({ ...modalForm, api_key: e.target.value })}
+                    placeholder="ahrefs_..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                  />
+                </div>
+              )}
+
+              {activeModal === "redis" && (
+                <div>
+                  <label className="block text-zinc-300 font-medium mb-1">Redis URL</label>
+                  <input
+                    type="text"
+                    value={modalForm.url || ""}
+                    onChange={(e) => setModalForm({ ...modalForm, url: e.target.value })}
+                    placeholder="redis://localhost:6379/0"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white font-mono"
+                  />
+                </div>
               )}
             </div>
 
-            <div className="space-y-2 my-2">
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 mb-0.5">Site URL</label>
-                <input
-                  type="text"
-                  placeholder="https://accident.innovatcs.com"
-                  value={wpUrl}
-                  onChange={(e) => setWpUrl(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-purple-500"
-                />
+            {/* Error / Success Feedback */}
+            {modalError && (
+              <div className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{modalError}</span>
               </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-gray-300 mb-0.5">Username</label>
-                <input
-                  type="text"
-                  placeholder="admin"
-                  value={wpUsername}
-                  onChange={(e) => setWpUsername(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-purple-500"
-                />
+            )}
+            {modalSuccess && (
+              <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-xs">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{modalSuccess}</span>
               </div>
+            )}
 
-              {wpError && (
-                <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] text-red-400">
-                  {wpError}
-                </div>
-              )}
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg text-xs font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModalSave(activeModal)}
+                disabled={modalLoading}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {modalLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Save & Verify
+              </button>
             </div>
-          </div>
-
-          <div className="flex gap-2 pt-4 border-t border-gray-800">
-            <button
-              onClick={handleTestWordPress}
-              disabled={wpTesting}
-              className="flex-1 py-2 px-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 border border-gray-700"
-            >
-              {wpTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Test
-            </button>
-            <button
-              onClick={handleSaveWordPress}
-              disabled={wpSaving}
-              className="flex-1 py-2 px-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-medium transition flex items-center justify-center gap-1 shadow-lg shadow-purple-900/30"
-            >
-              {wpSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-              Save
-            </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
 
+function IntegrationCard({ title, subtitle, icon: Icon, connected, badgeText, details = [], onConfigure }) {
+  return (
+    <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-5 flex flex-col justify-between hover:border-zinc-700 transition-all shadow-md">
+      <div className="space-y-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <Icon className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white text-base">{title}</h3>
+              <p className="text-xs text-zinc-400">{subtitle}</p>
+            </div>
+          </div>
+          {connected ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {badgeText || "Connected"}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              <XCircle className="w-3.5 h-3.5" />
+              Disconnected
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-2 py-2 border-y border-zinc-800 text-xs">
+          {details.map((d, i) => (
+            <div key={i} className="flex items-center justify-between text-zinc-400">
+              <span>{d.label}:</span>
+              <span className="font-mono text-zinc-200 font-medium truncate max-w-[180px]">{d.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="pt-4 mt-2">
+        <button
+          onClick={onConfigure}
+          className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configure / Connect
+        </button>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import aiohttp
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 
 from ..database import get_supabase
 
@@ -178,7 +179,72 @@ async def execute_tech_audit(website_id: str) -> dict:
 @router.post("/tech_seo/{website_id}/audit")
 @router.post("/tech-seo/{website_id}/run-audit")
 @router.post("/tech_seo/{website_id}/run-audit")
+@router.post("/api/tech-seo/{website_id}/run-audit")
 async def run_tech_audit(website_id: str):
     """Execute live technical audit on demand and return real results."""
     result = await execute_tech_audit(website_id)
-    return result
+    return {"success": True, "data": result}
+
+
+class FixIssueRequest(BaseModel):
+    issue_type: Optional[str] = "broken_link"
+    description: Optional[str] = "Missing or broken resource link"
+    severity: Optional[str] = "high"
+    url: Optional[str] = None
+    recommendation: Optional[str] = None
+
+
+@router.post("/tech-seo/{website_id}/fix")
+@router.post("/tech_seo/{website_id}/fix")
+@router.post("/api/tech-seo/{website_id}/fix")
+async def queue_fix_issue(website_id: str, body: FixIssueRequest):
+    """Create a pending_fixes row and queue StrategyAgent self-healing action."""
+    import uuid
+    from ..database import get_supabase
+    from ..agents.strategy_agent import StrategyAgent
+    
+    supabase = get_supabase()
+    fix_id = str(uuid.uuid4())
+    
+    fix_data = {
+        "id": fix_id,
+        "website_id": website_id,
+        "issue_type": body.issue_type,
+        "description": body.description,
+        "severity": body.severity,
+        "url": body.url,
+        "proposed_action": body.recommendation or f"Auto-remediate {body.issue_type} with schema/redirect update",
+        "status": "pending_approval",
+        "created_at": datetime.utcnow().isoformat()
+    }
+    
+    try:
+        supabase.table("pending_fixes").insert(fix_data).execute()
+    except Exception as e:
+        logger.debug(f"pending_fixes insert note: {e}")
+
+    # Fire strategy agent for remediation plan
+    strategy_result = {}
+    try:
+        sa = StrategyAgent(website_id=website_id)
+        strategy_result = await sa.handle_alert({
+            "id": fix_id,
+            "website_id": website_id,
+            "alert_type": body.issue_type,
+            "title": f"Fix requested: {body.description}",
+            "description": body.description,
+            "severity": body.severity,
+            "data": {"url": body.url, "recommendation": body.recommendation}
+        })
+    except Exception as e:
+        logger.warning(f"Strategy agent remediation note: {e}")
+
+    return {
+        "success": True,
+        "data": {
+            "fix_id": fix_id,
+            "status": "pending_approval",
+            "message": "Technical SEO fix queued in pending_fixes for human approval.",
+            "strategy": strategy_result
+        }
+    }

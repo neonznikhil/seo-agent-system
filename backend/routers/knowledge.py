@@ -233,6 +233,20 @@ async def upload_knowledge(
         raise HTTPException(status_code=400, detail="Must provide either file, url, or text")
 
 
+@router.post("/api/knowledge/reingest")
+@router.post("/knowledge/reingest")
+async def reingest_url_endpoint(payload: IngestUrlRequest):
+    """Manual Re-ingest button: executes the full 11-step ingestion pipeline for a selected URL."""
+    service = KnowledgeService(website_id=payload.website_id)
+    res = await service.ingest(
+        url=payload.url.strip(),
+        source_type="url",
+        title=payload.title or payload.url,
+        explicit_type=payload.type or "business_info"
+    )
+    return {"success": True, "data": res}
+
+
 @router.post("/api/knowledge/scrape-competitor")
 @router.post("/knowledge/scrape-competitor")
 async def scrape_competitor_endpoint(payload: ScrapeCompetitorRequest):

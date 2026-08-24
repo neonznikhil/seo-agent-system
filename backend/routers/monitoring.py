@@ -75,32 +75,48 @@ async def approve_alert(website_id: str, alert_id: str, request: Request):
 
 
 @router.get("/monitoring/{website_id}/live")
+@router.get("/api/monitoring/{website_id}/live")
 async def live_alerts(website_id: str):
     from ..database import get_supabase
     
     async def event_generator():
+        last_seen_ids = set()
         try:
-            yield "event: connected\n\n"
+            yield "event: connected\ndata: {\"status\": \"connected\", \"website_id\": \"" + website_id + "\"}\n\n"
             
+            counter = 0
             while True:
                 try:
-                    alerts = get_supabase().table("realtime_alerts").select("*").eq("website_id", website_id).eq("is_read", False).order("created_at", desc=True).limit(1).execute().data
+                    # 1. Fetch unread alerts
+                    alerts = get_supabase().table("realtime_alerts").select("*").eq("website_id", website_id).eq("is_read", False).order("created_at", desc=True).limit(5).execute().data or []
                     
-                    if alerts:
-                        for alert in alerts:
-                            yield f"event: alert\n"
-                            yield f"data: {json.dumps(alert)}\n\n"
+                    for alert in alerts:
+                        aid = alert.get("id")
+                        if aid and aid not in last_seen_ids:
+                            last_seen_ids.add(aid)
+                            yield f"event: alert\ndata: {json.dumps(alert)}\n\n"
+                    
+                    # 2. Periodic SSE heartbeat every 15 seconds to prevent drops
+                    counter += 1
+                    if counter % 3 == 0:
+                        yield f": heartbeat {datetime.utcnow().isoformat()}\n\n"
                     
                     await asyncio.sleep(5)
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    logger.warning(f"Live feed error: {e}")
-                    await asyncio.sleep(10)
+                    logger.warning(f"Live feed polling error: {e}")
+                    await asyncio.sleep(5)
         except asyncio.CancelledError:
             pass
     
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+        "Content-Type": "text/event-stream"
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @router.get("/monitoring/{website_id}/logs")

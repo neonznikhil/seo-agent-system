@@ -51,23 +51,37 @@ async def is_auto_publish_enabled() -> bool:
     return True
 
 
+async def _get_target_website_ids(website_id: Optional[str] = None) -> List[str]:
+    """Retrieve all active website IDs from Supabase websites table."""
+    if website_id:
+        return [website_id]
+    try:
+        from ..database import get_supabase
+        sites = get_supabase().table("websites").select("id").execute().data or []
+        ids = [s["id"] for s in sites if s.get("id")]
+        return ids if ids else ["default"]
+    except Exception:
+        return ["default"]
+
+
 # ---------------------------------------------------------
 # 1. 08:30 IST - KnowledgeAgent crawls sitemap for new and changed pages
 # ---------------------------------------------------------
 async def job_business_website_watch(website_id: Optional[str] = None):
     job_name = "business_website_watch"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "KnowledgeAgent scanning sitemap for new or modified pages")
-    try:
-        from ..services.knowledge_service import KnowledgeService
-        ks = KnowledgeService(website_id=website_id)
-        res = await ks.watch_business_website()
-        await engine.track_cost("KnowledgeAgent", 4500)
-        await engine.learn_from_result(job_name, res, True, "Sitemap synced")
-        _add_log(job_name, "completed", f"Business sitemap checked ({res.get('new_pages_ingested', 0)} new, {res.get('updated_pages', 0)} updated)")
-    except Exception as e:
-        _add_log(job_name, "error", f"Business watch error: {str(e)}")
-        engine.queue_job_for_retry(job_name, {}, str(e))
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        _add_log(job_name, "running", f"KnowledgeAgent scanning sitemap on {target_id}")
+        try:
+            from ..services.knowledge_service import KnowledgeService
+            ks = KnowledgeService(website_id=target_id)
+            res = await ks.watch_business_website()
+            await engine.track_cost("KnowledgeAgent", 4500)
+            await engine.learn_from_result(job_name, res, True, "Sitemap synced")
+            _add_log(job_name, "completed", f"Business sitemap checked for {target_id} ({res.get('new_pages_ingested', 0)} new, {res.get('updated_pages', 0)} updated)")
+        except Exception as e:
+            _add_log(job_name, "error", f"Business watch error on {target_id}: {str(e)}")
+            engine.queue_job_for_retry(job_name, {}, str(e))
 
 
 # ---------------------------------------------------------
@@ -75,35 +89,36 @@ async def job_business_website_watch(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_daily_search(website_id: Optional[str] = None):
     job_name = "daily_search"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    decision = await engine.should_run(job_name)
-    if not decision["should_run"]:
-        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision['reason']}")
-        return
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        decision = await engine.should_run(job_name)
+        if not decision["should_run"]:
+            _add_log(job_name, "skipped", f"Decision Engine skipped on {target_id}: {decision['reason']}")
+            continue
 
-    _add_log(job_name, "running", "ResearchAgent mining SERP trends and competitor gaps via Serper.dev")
-    try:
-        from .research_agent import ResearchAgent
-        from ..database import get_supabase
-        
-        agent = ResearchAgent(website_id=website_id or "default")
-        trends = await agent.run(topic="Texas car accident statutes legal claims trends 2026")
-        
-        supabase = get_supabase()
-        supabase.table("daily_searches").insert({
-            "website_id": website_id,
-            "keyword": "Texas personal injury and car accident claims",
-            "trends": trends if isinstance(trends, dict) else {"summary": str(trends)},
-            "competitor_data": {"serp_volume": 1200, "difficulty": 38},
-            "created_at": datetime.utcnow().isoformat()
-        }).execute()
-        
-        await engine.track_cost("ResearchAgent", 8200)
-        await engine.learn_from_result(job_name, trends, True, "SERP trends stored via Serper.dev")
-        _add_log(job_name, "completed", "Daily search trends extracted and stored in daily_searches table")
-    except Exception as e:
-        _add_log(job_name, "error", f"Daily search failed: {str(e)}")
-        engine.queue_job_for_retry(job_name, {}, str(e))
+        _add_log(job_name, "running", f"ResearchAgent mining SERP trends on {target_id} via Serper.dev")
+        try:
+            from .research_agent import ResearchAgent
+            from ..database import get_supabase
+            
+            agent = ResearchAgent(website_id=target_id)
+            trends = await agent.run(topic="Legal rights, statutory frameworks and SEO trends 2026")
+            
+            supabase = get_supabase()
+            supabase.table("daily_searches").insert({
+                "website_id": target_id,
+                "keyword": "Personal injury and commercial claims 2026",
+                "trends": trends if isinstance(trends, dict) else {"summary": str(trends)},
+                "competitor_data": {"serp_volume": 1200, "difficulty": 38},
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+            
+            await engine.track_cost("ResearchAgent", 8200)
+            await engine.learn_from_result(job_name, trends, True, "SERP trends stored via Serper.dev")
+            _add_log(job_name, "completed", f"Daily search trends extracted and stored for {target_id}")
+        except Exception as e:
+            _add_log(job_name, "error", f"Daily search failed on {target_id}: {str(e)}")
+            engine.queue_job_for_retry(job_name, {}, str(e))
 
 
 # ---------------------------------------------------------
@@ -111,33 +126,34 @@ async def job_daily_search(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_knowledge_sync(website_id: Optional[str] = None):
     job_name = "knowledge_sync"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    decision = await engine.should_run(job_name)
-    if not decision.get("should_run", True):
-        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision.get('reason')}")
-        return
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        decision = await engine.should_run(job_name)
+        if not decision.get("should_run", True):
+            _add_log(job_name, "skipped", f"Decision Engine skipped on {target_id}: {decision.get('reason')}")
+            continue
 
-    _add_log(job_name, "running", "KnowledgeAgent applying freshness decay and synchronizing legal statutes")
-    try:
-        from ..services.knowledge_service import KnowledgeService
-        ks = KnowledgeService(website_id=website_id)
-        
-        decay_res = await ks.apply_freshness_decay()
-        cons_res = await ks.auto_consolidate()
-        
-        statute_text = "Texas Civil Practice and Remedies Code Section 16.003: 2-year statute of limitations for personal injury."
-        await ks.ingest(
-            content=statute_text,
-            source_type="statute_sync",
-            title="Texas Statute of Limitations Code Update",
-            explicit_type="law_statute"
-        )
-        
-        await engine.track_cost("KnowledgeAgent", 6000)
-        await engine.learn_from_result(job_name, decay_res, True, "Freshness decay applied")
-        _add_log(job_name, "completed", f"Knowledge base synced ({decay_res.get('total_decayed', 0)} chunks decayed, {cons_res.get('consolidated_pairs', 0)} consolidated)")
-    except Exception as e:
-        _add_log(job_name, "error", f"Knowledge sync failed: {str(e)}")
+        _add_log(job_name, "running", f"KnowledgeAgent applying freshness decay on {target_id}")
+        try:
+            from ..services.knowledge_service import KnowledgeService
+            ks = KnowledgeService(website_id=target_id)
+            
+            decay_res = await ks.apply_freshness_decay()
+            cons_res = await ks.auto_consolidate()
+            
+            statute_text = "Statutory guidelines 2026: 2-year limitation period and structured liability evidence requirements."
+            await ks.ingest(
+                content=statute_text,
+                source_type="statute_sync",
+                title="Statutory Standards Update 2026",
+                explicit_type="law_statute"
+            )
+            
+            await engine.track_cost("KnowledgeAgent", 6000)
+            await engine.learn_from_result(job_name, decay_res, True, "Freshness decay applied")
+            _add_log(job_name, "completed", f"Knowledge base synced for {target_id} ({decay_res.get('total_decayed', 0)} chunks decayed, {cons_res.get('consolidated_pairs', 0)} consolidated)")
+        except Exception as e:
+            _add_log(job_name, "error", f"Knowledge sync failed on {target_id}: {str(e)}")
 
 
 # ---------------------------------------------------------
@@ -145,17 +161,18 @@ async def job_knowledge_sync(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_brain_learn(website_id: Optional[str] = None):
     job_name = "brain_learn"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "SupervisorAgent analyzing 14-day outcomes and codifying preference memories")
-    try:
-        from ..services.brain_service import BrainService
-        brain = BrainService(website_id=website_id)
-        res = await brain.synthesize_14day_learnings(website_id=website_id)
-        await engine.track_cost("SupervisorAgent", 5500)
-        await engine.learn_from_result(job_name, res, True, "14-day outcome patterns codified into preferences")
-        _add_log(job_name, "completed", f"SupervisorAgent outcome learning finished ({res.get('learnings_codified', 1)} preference rules codified)")
-    except Exception as e:
-        _add_log(job_name, "error", f"Brain learning failed: {str(e)}")
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        _add_log(job_name, "running", f"SupervisorAgent analyzing 14-day outcomes for {target_id}")
+        try:
+            from ..services.brain_service import BrainService
+            brain = BrainService(website_id=target_id)
+            res = await brain.synthesize_14day_learnings(website_id=target_id)
+            await engine.track_cost("SupervisorAgent", 5500)
+            await engine.learn_from_result(job_name, res, True, "14-day outcome patterns codified into preferences")
+            _add_log(job_name, "completed", f"SupervisorAgent outcome learning finished for {target_id} ({res.get('learnings_codified', 1)} preference rules codified)")
+        except Exception as e:
+            _add_log(job_name, "error", f"Brain learning failed on {target_id}: {str(e)}")
 
 
 # ---------------------------------------------------------
@@ -163,35 +180,36 @@ async def job_brain_learn(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_content_refresh(website_id: Optional[str] = None):
     job_name = "content_refresh"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    decision = await engine.should_run(job_name)
-    if not decision.get("should_run", True):
-        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision.get('reason')}")
-        return
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        decision = await engine.should_run(job_name)
+        if not decision.get("should_run", True):
+            _add_log(job_name, "skipped", f"Decision Engine skipped on {target_id}: {decision.get('reason')}")
+            continue
 
-    _add_log(job_name, "running", "RefreshAgent executing 10-phase refresh on decaying articles")
-    try:
-        from ..services.analytics_service import AnalyticsService
-        from .refresh_agent import RefreshAgent
-        
-        decaying_list = await AnalyticsService.get_decaying_content(website_id=website_id)
-        refreshed_count = 0
-        
-        for item in decaying_list[:2]:
-            decay_id = item.get("id") or str(item.get("decay_log_id", ""))
-            agent = RefreshAgent(website_id=website_id)
-            if decay_id:
-                try:
-                    await agent.refresh_content(decay_id, website_id=website_id)
-                    refreshed_count += 1
-                except Exception as ex:
-                    logger.warning(f"Refresh failed for {decay_id}: {ex}")
+        _add_log(job_name, "running", f"RefreshAgent executing refresh on decaying articles for {target_id}")
+        try:
+            from ..services.analytics_service import AnalyticsService
+            from .refresh_agent import RefreshAgent
             
-        await engine.track_cost("RefreshAgent", 14000)
-        await engine.learn_from_result(job_name, decaying_list, True, "Refreshed decaying content")
-        _add_log(job_name, "completed", f"Refreshed {refreshed_count} decaying posts for 2026 freshness")
-    except Exception as e:
-        _add_log(job_name, "error", f"Content refresh failed: {str(e)}")
+            decaying_list = await AnalyticsService.get_decaying_content(website_id=target_id)
+            refreshed_count = 0
+            
+            for item in decaying_list[:2]:
+                decay_id = item.get("id") or str(item.get("decay_log_id", ""))
+                agent = RefreshAgent(website_id=target_id)
+                if decay_id:
+                    try:
+                        await agent.refresh_content(decay_id, website_id=target_id)
+                        refreshed_count += 1
+                    except Exception as ex:
+                        logger.warning(f"Refresh failed for {decay_id}: {ex}")
+                
+            await engine.track_cost("RefreshAgent", 14000)
+            await engine.learn_from_result(job_name, decaying_list, True, "Refreshed decaying content")
+            _add_log(job_name, "completed", f"Refreshed {refreshed_count} decaying posts for {target_id}")
+        except Exception as e:
+            _add_log(job_name, "error", f"Content refresh failed on {target_id}: {str(e)}")
 
 
 # ---------------------------------------------------------
@@ -199,49 +217,50 @@ async def job_content_refresh(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_auto_new_page(website_id: Optional[str] = None):
     job_name = "auto_new_page"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    decision = await engine.should_run(job_name)
-    if not decision.get("should_run", True):
-        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision.get('reason')}")
-        return
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        decision = await engine.should_run(job_name)
+        if not decision.get("should_run", True):
+            _add_log(job_name, "skipped", f"Decision Engine skipped on {target_id}: {decision.get('reason')}")
+            continue
 
-    target_kw = decision.get("target_keyword") or await engine.get_next_target_keyword()
-    topic = f"{target_kw.title()}: 2026 Legal Rights & Settlement Framework"
-    
-    _add_log(job_name, "running", f"Goal-Driven Writer Pipeline generating 10-phase article for '{target_kw}'")
-    try:
-        from .writer_agent import WriterPipeline
-        from ..services.knowledge_service import KnowledgeService
+        target_kw = decision.get("target_keyword") or await engine.get_next_target_keyword()
+        topic = f"{target_kw.title()}: 2026 Actionable Guide & Legal Framework"
         
-        ks = KnowledgeService(website_id=website_id)
-        knowledge_hits = await ks.retrieve_relevant_hybrid(target_kw, top_k=5)
-        sim_avg = sum(h.get("final_score", 0.8) for h in knowledge_hits) / max(1, len(knowledge_hits)) if knowledge_hits else 0.8
-        
-        writer = WriterPipeline(website_id=website_id or "default")
-        result = await writer.generate(topic=topic, primary_keyword=target_kw)
-        
-        content_text = result.get("content", "")
-        seo_score = float(result.get("final_scores", {}).get("seo_score", 88.0))
-        val_score = float(result.get("final_scores", {}).get("validation_score", 0.92))
-        
-        gate_res = await engine.check_quality_gate(
-            blog_content=content_text,
-            seo_score=seo_score,
-            validation_score=val_score,
-            knowledge_similarity_avg=sim_avg
-        )
-        
-        await engine.track_cost("WriterPipeline", 32000)
-        await engine.learn_from_result(job_name, result, gate_res["passed"], gate_res["reason"])
-        
-        _add_log(
-            job_name,
-            "completed" if gate_res["passed"] else "warning",
-            f"Generation finished for '{target_kw}'. Quality Gate: {'PASSED' if gate_res['passed'] else 'STAGED FOR REVIEW'} ({gate_res['reason']})"
-        )
-    except Exception as e:
-        _add_log(job_name, "error", f"Auto new page generation failed: {str(e)}")
-        engine.queue_job_for_retry(job_name, {"keyword": target_kw}, str(e))
+        _add_log(job_name, "running", f"Goal-Driven Writer Pipeline generating article for '{target_kw}' on {target_id}")
+        try:
+            from .writer_agent import WriterPipeline
+            from ..services.knowledge_service import KnowledgeService
+            
+            ks = KnowledgeService(website_id=target_id)
+            knowledge_hits = await ks.retrieve_relevant_hybrid(target_kw, top_k=5)
+            sim_avg = sum(h.get("final_score", 0.8) for h in knowledge_hits) / max(1, len(knowledge_hits)) if knowledge_hits else 0.8
+            
+            writer = WriterPipeline(website_id=target_id)
+            result = await writer.generate(topic=topic, primary_keyword=target_kw)
+            
+            content_text = result.get("content", "")
+            seo_score = float(result.get("final_scores", {}).get("seo_score", 88.0))
+            val_score = float(result.get("final_scores", {}).get("validation_score", 0.92))
+            
+            gate_res = await engine.check_quality_gate(
+                blog_content=content_text,
+                seo_score=seo_score,
+                validation_score=val_score,
+                knowledge_similarity_avg=sim_avg
+            )
+            
+            await engine.track_cost("WriterPipeline", 32000)
+            await engine.learn_from_result(job_name, result, gate_res["passed"], gate_res["reason"])
+            
+            _add_log(
+                job_name,
+                "completed" if gate_res["passed"] else "warning",
+                f"Generation finished for '{target_kw}' on {target_id}. Quality Gate: {'PASSED' if gate_res['passed'] else 'STAGED FOR REVIEW'}"
+            )
+        except Exception as e:
+            _add_log(job_name, "error", f"Auto new page generation failed on {target_id}: {str(e)}")
+            engine.queue_job_for_retry(job_name, {"keyword": target_kw}, str(e))
 
 
 # ---------------------------------------------------------
@@ -249,22 +268,23 @@ async def job_auto_new_page(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_backlink_prospecting(website_id: Optional[str] = None):
     job_name = "backlink_prospecting"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    decision = await engine.should_run(job_name)
-    if not decision.get("should_run", True):
-        _add_log(job_name, "skipped", f"Decision Engine skipped: {decision['reason']}")
-        return
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        decision = await engine.should_run(job_name)
+        if not decision.get("should_run", True):
+            _add_log(job_name, "skipped", f"Decision Engine skipped on {target_id}: {decision['reason']}")
+            continue
 
-    _add_log(job_name, "running", "BacklinkAgent executing 4-module prospecting via Serper.dev")
-    try:
-        from .backlink_agent import BacklinkAgent
-        agent = BacklinkAgent(website_id=website_id)
-        res = await agent.run_prospecting_loop(keyword="Houston car accident legal resources")
-        await engine.track_cost("BacklinkAgent", 11000)
-        await engine.learn_from_result(job_name, res, True, "Opportunities qualified & staged")
-        _add_log(job_name, "completed", f"Backlink loop finished ({res.get('opportunities_found', 3)} qualified leads staged in /backlinks)")
-    except Exception as e:
-        _add_log(job_name, "error", f"Backlink prospecting failed: {str(e)}")
+        _add_log(job_name, "running", f"BacklinkAgent executing 4-module prospecting on {target_id} via Serper.dev")
+        try:
+            from .backlink_agent import BacklinkAgent
+            agent = BacklinkAgent(website_id=target_id)
+            res = await agent.run_prospecting_loop(keyword="Legal and personal injury resources 2026")
+            await engine.track_cost("BacklinkAgent", 11000)
+            await engine.learn_from_result(job_name, res, True, "Opportunities qualified & staged")
+            _add_log(job_name, "completed", f"Backlink loop finished for {target_id} ({res.get('opportunities_found', 3)} qualified leads staged)")
+        except Exception as e:
+            _add_log(job_name, "error", f"Backlink prospecting failed on {target_id}: {str(e)}")
 
 
 # ---------------------------------------------------------
@@ -272,17 +292,18 @@ async def job_backlink_prospecting(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def job_tech_seo_audit(website_id: Optional[str] = None):
     job_name = "tech_seo_audit"
-    engine = AutonomousDecisionEngine(website_id=website_id)
-    _add_log(job_name, "running", "TechSEOAgent executing full technical audit (CWV, sitemap, redirects, orphans)")
-    try:
-        from .tech_seo_agent import TechSEOAgent
-        agent = TechSEOAgent(website_id=website_id)
-        res = await agent.run_audit(website_id or "default")
-        await engine.track_cost("TechSEOAgent", 8000)
-        await engine.learn_from_result(job_name, res, True, "Technical audit completed")
-        _add_log(job_name, "completed", f"Tech SEO audit complete. Health Score: {res.get('health_score', 88)}/100")
-    except Exception as e:
-        _add_log(job_name, "error", f"Tech SEO audit failed: {str(e)}")
+    for target_id in await _get_target_website_ids(website_id):
+        engine = AutonomousDecisionEngine(website_id=target_id)
+        _add_log(job_name, "running", f"TechSEOAgent executing full technical audit on {target_id}")
+        try:
+            from .tech_seo_agent import TechSEOAgent
+            agent = TechSEOAgent(website_id=target_id)
+            res = await agent.run_audit(target_id)
+            await engine.track_cost("TechSEOAgent", 8000)
+            await engine.learn_from_result(job_name, res, True, "Technical audit completed")
+            _add_log(job_name, "completed", f"Tech SEO audit complete for {target_id}. Health Score: {res.get('health_score', 88)}/100")
+        except Exception as e:
+            _add_log(job_name, "error", f"Tech SEO audit failed on {target_id}: {str(e)}")
 
 
 # ---------------------------------------------------------

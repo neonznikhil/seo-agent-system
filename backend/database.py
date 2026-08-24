@@ -69,6 +69,11 @@ class NIMEmbeddingError(RuntimeError):
     than persist garbage vectors."""
 
 
+class NIMLLMError(RuntimeError):
+    """Raised when the NVIDIA NIM chat API fails after all retries.
+    Callers must surface an error state rather than persist empty/template text."""
+
+
 async def get_embedding(text: str, website_id: Optional[str] = None) -> list:
     payload = {
         "model": NIM_EMBED_MODEL,
@@ -101,50 +106,97 @@ async def get_embedding(text: str, website_id: Optional[str] = None) -> list:
     )
 
 
-async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] = None, max_tokens: int = 2048, temperature: float = 0.7, **kwargs) -> str:
+# Shared async HTTP client for NIM (avoids per-call TCP/TLS setup)
+_nim_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_nim_http_client() -> httpx.AsyncClient:
+    global _nim_http_client
+    if _nim_http_client is None or _nim_http_client.is_closed:
+        _nim_http_client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
+    return _nim_http_client
+
+
+async def _nim_chat_request(model_name: str, messages: list, headers: dict,
+                            max_tokens: int, temperature: float) -> str:
+    """Single NIM chat completion attempt. Returns content or raises."""
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    client = _get_nim_http_client()
+    resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
+    if resp.status_code == 429:
+        raise httpx.HTTPStatusError("rate_limited", request=resp.request, response=resp)
+    if resp.status_code != 200:
+        raise httpx.HTTPStatusError(
+            f"NIM returned {resp.status_code}: {resp.text[:200]}",
+            request=resp.request, response=resp,
+        )
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    if not content or not content.strip():
+        raise NIMLLMError("NIM returned an empty completion")
+    return content.strip()
+
+
+@tenacity.retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=20),
+    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError, NIMLLMError)),
+    reraise=True,
+)
+async def _nim_chat_with_retry(model_name: str, messages: list, headers: dict,
+                               max_tokens: int, temperature: float) -> str:
+    return await _nim_chat_request(model_name, messages, headers, max_tokens, temperature)
+
+
+async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] = None,
+                       max_tokens: int = 2048, temperature: float = 0.7,
+                       fail_silently: bool = True, **kwargs) -> str:
+    """Call NVIDIA NIM chat completions.
+
+    Retries each candidate model up to 3 times with exponential backoff.
+    When all attempts fail: raises NIMLLMError if fail_silently=False,
+    otherwise returns "" (legacy behaviour for non-critical callers).
+    """
     api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY") or NIM_API_KEY
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    
-    candidate_models = [
-        os.getenv("NIM_LLM_MODEL", "meta/llama-3.1-8b-instruct"),
-        "meta/llama-3.1-70b-instruct"
-    ]
 
-    import asyncio
+    candidate_models = []
+    env_model = os.getenv("NIM_LLM_MODEL")
+    if env_model:
+        candidate_models.append(env_model)
+    for m in (NIM_LLM_MODEL, "meta/llama-3.1-70b-instruct", "meta/llama-3.1-8b-instruct"):
+        if m not in candidate_models:
+            candidate_models.append(m)
+
+    last_error: Optional[Exception] = None
     for model_name in candidate_models:
-        payload = {
-            "model": model_name,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        for attempt in range(2):
-            try:
-                async with httpx.AsyncClient(timeout=45.0) as client:
-                    resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
-                    if resp.status_code == 429:
-                        await asyncio.sleep(2)
-                        continue
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        content = data["choices"][0]["message"]["content"]
-                        if content and content.strip():
-                            return content.strip()
-            except Exception as e:
-                logger.debug(f"NIM LLM attempt error with model {model_name}: {e}")
-                await asyncio.sleep(1)
+        try:
+            return await _nim_chat_with_retry(
+                model_name, messages, headers, max_tokens, temperature
+            )
+        except Exception as e:
+            last_error = e
+            logger.warning(f"NIM LLM model {model_name} failed after retries: {e}")
 
     logger.error(
-        "NIM LLM call failed after retries (prompt starting '%s') - "
-        "returning empty result instead of fabricated content",
+        "NIM LLM call failed for all models (prompt starting '%s')",
         prompt[:60].replace("\n", " "),
     )
+    if website_id:
+        _log_task_fail(website_id, "call_nim_llm", str(last_error)[:500])
+    if not fail_silently:
+        raise NIMLLMError(f"NVIDIA NIM unavailable after retries: {last_error}")
     return ""

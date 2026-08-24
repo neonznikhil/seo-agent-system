@@ -50,14 +50,15 @@ async def lifespan(app: FastAPI):
     logger.info("RANKFORGE starting up...")
     
     # Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
-    # 09:00 research | 10:00 refresh | 10:30 auto-publish | hourly monitors
-    # plus a boot catch-up for any stale daily job.
     try:
-        from .agents.scheduler import setup_scheduler
+        from .agents.scheduler import setup_scheduler, get_scheduler_status
         sched = setup_scheduler()
         if not sched.running:
             sched.start()
-        logger.info("[Scheduler] Started ✅ (Asia/Kolkata)")
+        status = get_scheduler_status()
+        logger.info(f"[Scheduler] Started ✅ ({len(status.get('jobs', []))} daily jobs registered in Asia/Kolkata):")
+        for j in status.get('jobs', []):
+            logger.info(f"  📅 {j['name']} -> Next run: {j['next_run']}")
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
 

@@ -40,7 +40,12 @@ class BacklinkAgent:
         keyword: str,
         modules: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        """Search live SERP via Serper.dev across 4 distinct prospecting strategies."""
+        """Search live SERP via Serper.dev with 60% effort allocated to the strategic winning prospect type."""
+        from ..agents.brain_autopilot_agent import get_active_strategic_patterns
+        
+        strategic_defaults = await get_active_strategic_patterns(self.website_id or "default")
+        top_prospect_type = strategic_defaults.get("preferred_backlink_type", "broken_link")
+
         target_modules = modules or ["resource_page", "broken_link", "competitor_gap", "guest_post"]
         all_targets = []
 
@@ -51,16 +56,19 @@ class BacklinkAgent:
             "guest_post": f"{keyword} \"write for us\" OR \"submit guest post\" OR \"contribute\""
         }
 
+        # 60% effort to top prospect type (fetch 12), 40% distributed among others (fetch 4 each)
         for mod in target_modules:
             q = query_templates.get(mod, f"{keyword} resources")
+            num_to_fetch = 12 if mod == top_prospect_type else 5
             try:
-                serp_res = await serper_service.search(query=q, num=8, auto_fallback=True)
-                for item in serp_res.get("organic", [])[:5]:
+                serp_res = await serper_service.search(query=q, num=num_to_fetch, auto_fallback=True)
+                for item in serp_res.get("organic", []):
                     all_targets.append({
                         "url": item.get("link"),
                         "title": item.get("title", f"Legal resource: {keyword}"),
                         "snippet": item.get("snippet", ""),
                         "module_type": mod,
+                        "is_priority_pattern": (mod == top_prospect_type),
                         "source": serp_res.get("source", "serper.dev")
                     })
             except Exception as e:
