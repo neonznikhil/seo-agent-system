@@ -145,7 +145,8 @@ export const api = {
   post,
   put,
   del,
-  fetchWithTimeout,
+  authFetch,
+  fetchWithTimeout: authFetch,
   buildUrl,
   createSSE,
 };
