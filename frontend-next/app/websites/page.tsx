@@ -63,6 +63,9 @@ export default function WebsitesPage() {
   const handleSelectWebsite = (id: string) => {
     setActiveId(id);
     setCurrentWebsiteId(id);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("website-changed", { detail: id }));
+    }
     setNoticeMsg("Active website updated across all pages.");
   };
 
@@ -88,6 +91,9 @@ export default function WebsitesPage() {
       if (newId) {
         setActiveId(newId);
         setCurrentWebsiteId(newId);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("website-changed", { detail: newId }));
+        }
       }
 
       setDomain("");

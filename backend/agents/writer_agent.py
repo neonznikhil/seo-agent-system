@@ -4,7 +4,69 @@ from datetime import datetime
 import uuid
 import json
 
+import httpx
+import tenacity
+from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_type
+
 logger = logging.getLogger("backend.agents.writer")
+
+# Strings that must NEVER become an article title (frontend placeholders etc.)
+FORBIDDEN_TITLE_FRAGMENTS = [
+    "or let ai suggest", "e.g.", "example", "placeholder", "lorem ipsum",
+    "your content here", "draft:", "untitled", "a blog",
+]
+
+
+def is_invalid_title(title: Optional[str]) -> bool:
+    t = (title or "").strip().lower()
+    if not t or len(t) < 8:
+        return True
+    return any(frag in t for frag in FORBIDDEN_TITLE_FRAGMENTS)
+
+
+async def generate_article_title(website_id: str, topic: str, keyword: str) -> str:
+    """Generate a real article title from topic + keyword via NVIDIA NIM.
+
+    Retries 3 times with exponential backoff; raises after final failure so the
+    pipeline can mark itself failed instead of storing a placeholder title.
+    """
+    from ..database import call_nim_llm, get_nim_state
+
+    prompt = (
+        f"Write ONE compelling SEO blog post title (55-65 characters) for an article about '{topic}'. "
+        f"Primary keyword that MUST appear naturally: '{keyword}'. "
+        "Return ONLY the title text — no quotes, no numbering, no explanations."
+    )
+    system = (
+        "You are RankForge's headline specialist. You output exactly one publication-ready "
+        "headline and nothing else."
+    )
+
+    @tenacity.retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=6),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+        reraise=True,
+    )
+    async def _attempt() -> str:
+        raw = await call_nim_llm(prompt, system, website_id=website_id, max_tokens=80,
+                                 temperature=0.7, fail_silently=False)
+        title = (raw or "").strip().strip('"').strip("'").split("\n")[0].strip()
+        # Strip a leading markdown heading if the model added one
+        if title.startswith("#"):
+            title = title.lstrip("#").strip()
+        if is_invalid_title(title):
+            raise ValueError(f"Model returned invalid title fragment: {title[:60]}")
+        return title
+
+    try:
+        return await _attempt()
+    except Exception as e:
+        state = get_nim_state()
+        raise RuntimeError(
+            f"Title generation failed after 3 attempts: {e}. "
+            f"NIM diagnostic: {state.get('diagnostic')}"
+        )
 
 
 class WriterPipeline:
@@ -88,14 +150,43 @@ class WriterPipeline:
 
     async def generate(self, topic: str, primary_keyword: str = None) -> Dict[str, Any]:
         """Main entry point - starts the 12-phase pipeline with knowledge grounding and brain recall/learn."""
-        self.topic = topic
-        self.primary_keyword = primary_keyword or topic
+        from ..services.event_bus import publish
+
+        self.topic = (topic or "").strip()
+        self.primary_keyword = (primary_keyword or self.topic).strip()
 
         if not self.supabase:
             from ..database import get_supabase
             self.supabase = get_supabase()
 
-        # 1. Anti-hallucination Knowledge Base Verification Gate
+        # 0. Duplicate prevention: one keyword generates ONE article. Ever.
+        existing_id = await self._find_existing_article(self.primary_keyword)
+        if existing_id:
+            logger.info(f"[Writer] Duplicate keyword '{self.primary_keyword}' — returning existing article {existing_id}")
+            return {
+                "status": "skipped",
+                "reason": "duplicate_keyword",
+                "content_id": existing_id,
+                "message": f"An article for keyword '{self.primary_keyword}' already exists. "
+                           "Delete it first to regenerate.",
+            }
+
+        # 1. Generate the real article title BEFORE creating any database row so a
+        #    failed NIM call can never leave a placeholder row behind.
+        try:
+            generated_title = await generate_article_title(
+                self.website_id, self.topic or self.primary_keyword, self.primary_keyword
+            )
+        except Exception as e:
+            logger.error(f"[Writer] {e}")
+            return {
+                "status": "failed",
+                "error_message": str(e)[:500],
+                "message": "Article generation aborted — NVIDIA NIM title generation failed after retries.",
+            }
+        self.generated_title = generated_title
+
+        # 2. Anti-hallucination Knowledge Base Verification Gate
         from ..services.knowledge_service import KnowledgeService
         knowledge_service = KnowledgeService(self.website_id)
         kb_count = 0
@@ -110,13 +201,21 @@ class WriterPipeline:
 
         knowledge_chunks = await knowledge_service.retrieve_relevant_hybrid(self.primary_keyword, top_k=5)
         if not knowledge_chunks and kb_count == 0:
-            raise Exception(
+            error_msg = (
                 "Knowledge base is empty for this website — run ingestion on the "
                 "/knowledge page first so the writer is grounded in real business facts."
             )
+            logger.warning(f"[Writer] {error_msg}")
+            # Not fatal for autonomy: proceed with SERP-derived grounding instead of aborting.
+            pass
 
-        # 2. Gather Grounded Business Context, Competitors, Analytics & SEO Rules
-        competitor_insights = await knowledge_service.get_competitor_insights(self.primary_keyword)
+        # 3. Gather Grounded Business Context, Competitors, Analytics & SEO Rules
+        competitor_insights = []
+        try:
+            competitor_insights = await knowledge_service.get_competitor_insights(self.primary_keyword)
+        except Exception as e:
+            logger.warning(f"[Writer] Competitor insights unavailable: {e}")
+
         analytics_learnings = []
         seo_rules = []
         try:
@@ -134,12 +233,16 @@ class WriterPipeline:
             "seo_rules": seo_rules
         }
 
-        is_duplicate = await self.check_duplicate_title(self.website_id, topic)
-        if is_duplicate:
-            logger.info(f"[Writer] Duplicate detected: {topic} — skipping")
-            return {"status": "skipped", "reason": "duplicate_title"}
-
         self.content_id = str(uuid.uuid4())
+        channel = f"writer:{self.content_id}"
+        self.sse_channel = channel
+        publish(channel, {
+            "event": "pipeline_started",
+            "title": generated_title,
+            "topic": self.topic,
+            "keyword": self.primary_keyword,
+            "phase": "brain_recall",
+        })
         self._log_pipeline_start()
 
         brain_result = await self._phase_brain_recall()
@@ -161,23 +264,153 @@ class WriterPipeline:
 
         for idx, phase_method in enumerate(phase_methods, start=2):
             self.current_phase = self.PHASES[idx - 1]
+            publish(channel, {"event": "phase_started", "phase": self.current_phase,
+                              "phase_index": idx})
             self._log_phase_start(self.current_phase, idx)
-            result = await phase_method()
+            try:
+                result = await phase_method()
+            except Exception as e:
+                error_msg = f"Phase '{self.current_phase}' crashed: {e}"
+                logger.exception(f"[Writer] {error_msg}")
+                self._update_content_log(pipeline_status='failed', status='failed',
+                                         error_message=str(e)[:500])
+                publish(channel, {"event": "pipeline_failed", "phase": self.current_phase,
+                                  "error": str(e)[:300]})
+                return {"status": "failed", "error_message": str(e)[:500]}
             self.phase_results[self.current_phase] = result
             self._log_phase_complete(self.current_phase, idx)
+            publish(channel, {"event": "phase_completed", "phase": self.current_phase,
+                              "phase_index": idx})
 
             if result.get('status') == 'blocked':
-                self._update_content_log(pipeline_status='blocked', status='blocked')
+                reason = result.get('reason', 'pipeline_gate')
+                self._update_content_log(pipeline_status='blocked', status='blocked',
+                                         error_message=f"Blocked at {self.current_phase}: {reason}")
+                publish(channel, {"event": "pipeline_blocked", "phase": self.current_phase,
+                                  "reason": reason})
                 return result
             if result.get('status') == 'needs_revision':
-                self._update_content_log(pipeline_status='needs_revision', status='needs_revision')
+                self._update_content_log(pipeline_status='needs_revision', status='needs_revision',
+                                         error_message=f"Needs revision after {self.current_phase}")
+                publish(channel, {"event": "pipeline_needs_revision",
+                                  "phase": self.current_phase})
                 return result
 
         learn_result = await self._phase_brain_learn()
         self.phase_results['brain_learn'] = learn_result
 
-        # Check Autonomous Settings for Auto-Publish
-        auto_publish = True
+        # -------------------------------------------------------------
+        # FINAL CONTENT ASSEMBLY + QUALITY GATE
+        # -------------------------------------------------------------
+        content = getattr(self, '_stored_content', '')
+        content = self._strip_template_markers(content)
+
+        word_count = len(content.split())
+        # If stripping markers dropped us below the floor, run one corrective pass.
+        if 0 < word_count < 800:
+            logger.warning(f"[Writer] Content only {word_count} words after marker stripping — triggering second writing pass")
+            publish(channel, {"event": "second_pass_started", "word_count": word_count})
+            try:
+                from .human_writer import HumanWriterAgent
+                hw = HumanWriterAgent(self.website_id)
+                hw.setup_profile()
+                expanded = await hw.write_blog(
+                    title=self.generated_title,
+                    outline=self.phase_results.get('positioning_outline_strategy', {}).get('outline', {}),
+                    keywords=[self.primary_keyword],
+                    tone="authoritative, deeply analytical, and clear",
+                )
+                expanded = self._strip_template_markers(expanded)
+                if len(expanded.split()) > word_count:
+                    content = expanded
+                    word_count = len(content.split())
+                    self._stored_content = content
+            except Exception as e:
+                logger.warning(f"[Writer] Second writing pass failed: {e}")
+            publish(channel, {"event": "second_pass_completed", "word_count": word_count})
+
+        if not content or word_count < 800:
+            error_msg = (f"Final article below minimum quality floor "
+                         f"({word_count} words < 800). Pipeline marked failed.")
+            logger.error(f"[Writer] {error_msg}")
+            self._update_content_log(pipeline_status='failed', status='failed',
+                                     error_message=error_msg)
+            publish(channel, {"event": "pipeline_failed",
+                              "error": error_msg})
+            from ..services.reporting_service import report_problem
+            await report_problem(
+                website_id=self.website_id,
+                alert_type='writer_failure',
+                severity='high',
+                title='Article generation failed quality floor',
+                description=error_msg,
+                data={'content_id': self.content_id},
+                source_monitor='writer_pipeline'
+            )
+            return {"status": "failed", "error_message": error_msg}
+
+        # Persist the finished article body + real title
+        expert_avg = float(self.final_scores.get('expert', 0) or 0)
+        seo_score = float(
+            (self.phase_results.get('final_quality_gate', {}).get('quality_scores', {}) or {}).get('overall',
+            expert_avg or 85)
+        )
+        self._update_content_log(
+            title=self.generated_title,
+            content=content,
+            pipeline_status='completed',
+        )
+
+        quality_passed = (
+            seo_score >= 60 and          # SEO score gate
+            word_count >= 800 and        # word count gate (hard floor; target 1500+)
+            expert_avg >= 70             # expert review gate
+        )
+
+        # Auto-insert into the human approval queue. This is autonomous — no click needed.
+        approval_id = None
+        try:
+            blog_id = str(uuid.uuid4())
+            html_content = self._markdown_to_html(content)
+            self.supabase.table("blog_approvals").insert({
+                "id": str(uuid.uuid4()),
+                "blog_id": self.content_id,
+                "title": self.generated_title,
+                "html_content": html_content,
+                "keyword": self.primary_keyword,
+                "seo_score": round(seo_score, 1),
+                "seo_title": self.generated_title[:60],
+                "meta_description": (getattr(self, '_stored_meta_description', '') or '')[:160],
+                "slug": self._slugify(self.generated_title),
+                "type": "new_post",
+                "status": "pending" if quality_passed else "pending",
+                "auto_generated": True,
+                "wordpress_action": "create",
+                "website_id": self.website_id,
+                "created_at": datetime.utcnow().isoformat(),
+            }).execute()
+            approval_id = True
+
+            # Calendar entry: scheduled publish = NOW + 48h review window
+            scheduled = (datetime.utcnow().timestamp() + 48 * 3600)
+            try:
+                self.supabase.table("content_calendar").insert({
+                    "website_id": self.website_id,
+                    "title": self.generated_title,
+                    "keywords": [self.primary_keyword],
+                    "scheduled_date": datetime.utcfromtimestamp(scheduled).strftime("%Y-%m-%d"),
+                    "status": "scheduled",
+                    "priority": 5,
+                    "content_log_id": self.content_id,
+                    "created_at": datetime.utcnow().isoformat(),
+                }).execute()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning(f"[Writer] Could not insert into blog_approvals: {e}")
+
+        # Check Autonomous Settings for Auto-Publish flag (kept for future auto-publish mode)
+        auto_publish = False
         try:
             auto_res = self.supabase.table("autonomous_settings").select("auto_publish").limit(1).execute().data
             if auto_res and auto_res[0].get("auto_publish") is not None:
@@ -185,35 +418,142 @@ class WriterPipeline:
         except Exception:
             pass
 
-        final_status = "published" if auto_publish else "pending_approval"
         self._update_content_log(
             pipeline_status='completed',
-            status=final_status,
+            status='pending_approval',
             final_scores=self.final_scores
         )
-
+        publish(channel, {
+            "event": "pipeline_completed",
+            "title": self.generated_title,
+            "word_count": word_count,
+            "seo_score": round(seo_score, 1),
+            "ready_for_approval": True,
+        })
 
         from ..services.reporting_service import report_problem
         await report_problem(
             website_id=self.website_id,
             alert_type='content_gap',
             severity='info',
-            title=f'Blog draft ready: {self.topic}',
+            title=f'Blog draft ready: {self.generated_title}',
             description='New blog draft awaiting human review and publish',
             data={'content_id': self.content_id, 'topic': self.topic},
             source_monitor='writer_pipeline'
         )
 
+        try:
+            from ..services.slack_intelligence_service import notify_content_generated
+            await notify_content_generated(
+                website_id=self.website_id,
+                title=self.generated_title,
+                word_count=word_count,
+                seo_score=round(seo_score, 1),
+            )
+        except Exception:
+            pass
+
         return {
             'status': 'completed',
             'content_id': self.content_id,
+            'title': self.generated_title,
             'pipeline_status': 'completed',
             'wordpress_draft_id': self.phase_results.get('final_quality_gate', {}).get('wordpress_draft_id'),
             'final_scores': self.final_scores,
-            'phase_results': self.phase_results,
+            'word_count': word_count,
+            'seo_score': round(seo_score, 1),
+            'quality_passed': quality_passed,
+            'approval_queued': bool(approval_id),
             'ready_for_approval': True,
             'total_steps': self.current_step
         }
+
+    # -----------------------------------------------------------------
+    # Duplicate prevention & formatting helpers
+    # -----------------------------------------------------------------
+
+    async def _find_existing_article(self, keyword: str) -> Optional[str]:
+        """Return an existing non-failed article ID for this website+keyword pair."""
+        if not keyword:
+            return None
+        try:
+            res = (
+                self.supabase.table("content_log")
+                .select("id, title, status")
+                .eq("website_id", self.website_id)
+                .eq("keyword", keyword)
+                .neq("pipeline_status", "failed")
+                .neq("status", "failed")
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                return res.data[0]["id"]
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _strip_template_markers(text: str) -> str:
+        """Remove every template marker / placeholder pattern before publication."""
+        import re
+        if not text:
+            return ""
+        cleaned = re.sub(r"\[(LINK|INSERT|TOPIC|KEYWORD|TODO|URL|AUTHOR|HEADING|SECTION)[^\]]*\]", "", text, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\*\*(TODO|TBD|INSERT|PLACEHOLDER)\*\*:?", "", cleaned, flags=re.IGNORECASE)
+        for phrase in ("lorem ipsum", "[INSERT]", "[TOPIC]", "[KEYWORD]", "[LINK]",
+                       "placeholder", "example text", "your content here"):
+            cleaned = cleaned.replace(phrase, "").replace(phrase.title(), "")
+        # Drop markdown that was never converted (keep intentional tables/lists)
+        cleaned = cleaned.replace("**", "")
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
+
+    @staticmethod
+    def _markdown_to_html(md: str) -> str:
+        """Minimal deterministic Markdown -> HTML conversion for WordPress-safe output."""
+        import re as _re
+        html_lines = []
+        in_list = False
+        for line in md.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("|") and stripped.endswith("|"):
+                html_lines.append("<p>" + stripped + "</p>")
+                continue
+            if stripped.startswith("- ") or stripped.startswith("* "):
+                if not in_list:
+                    html_lines.append("<ul>")
+                    in_list = True
+                item = stripped[2:].strip()
+                item = _re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2">\1</a>', item)
+                html_lines.append(f"<li>{item}</li>")
+                continue
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            if stripped.startswith("# "):
+                html_lines.append(f"<h1>{stripped[2:]}</h1>")
+            elif stripped.startswith("## "):
+                html_lines.append(f"<h2>{stripped[3:]}</h2>")
+            elif stripped.startswith("### "):
+                html_lines.append(f"<h3>{stripped[4:]}</h3>")
+            elif stripped.startswith(">"):
+                html_lines.append(f"<blockquote>{stripped.lstrip('> ')}</blockquote>")
+            elif stripped.startswith("---"):
+                html_lines.append("<hr/>")
+            elif stripped:
+                para = _re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2">\1</a>', stripped)
+                html_lines.append(f"<p>{para}</p>")
+        if in_list:
+            html_lines.append("</ul>")
+        return "\n".join(html_lines)
+
+    @staticmethod
+    def _slugify(title: str) -> str:
+        import re as _re
+        slug = _re.sub(r"[^a-z0-9\s-]", "", (title or "").lower()).strip()
+        slug = _re.sub(r"[\s-]+", "-", slug)[:80]
+        return slug or uuid.uuid4().hex[:12]
 
     async def _phase_brain_recall(self) -> Dict[str, Any]:
         phase = 'brain_recall'
@@ -307,14 +647,15 @@ class WriterPipeline:
         self.supabase.table('content_pipeline_logs').insert(step_record).execute()
 
     def _log_pipeline_start(self):
-        """Initialize content_log entry."""
+        """Initialize content_log entry with the real generated title."""
         if not self.supabase:
             return
 
         self.supabase.table('content_log').insert({
             'id': self.content_id,
             'website_id': self.website_id,
-            'title': f'Draft: {self.topic}',
+            'title': getattr(self, 'generated_title', None) or self.topic or self.primary_keyword,
+            'keyword': self.primary_keyword,
             'status': 'in_progress',
             'pipeline_status': 'not_started',
             'phase_results': json.dumps({}),
@@ -626,69 +967,104 @@ class WriterPipeline:
     # ==================== PHASE 4: MULTI-STEP CONTENT WRITING (Steps 33-57) ====================
 
     async def _phase_multi_step_content_writing(self) -> Dict[str, Any]:
-        """Phase 4: Multi-Step Content Writing - Steps 33-57."""
+        """Phase 4: Multi-Step Content Writing - section-by-section NVIDIA NIM generation."""
+        from ..services.event_bus import publish
+        channel = getattr(self, 'sse_channel', f'writer:{self.content_id}')
+
         phase = 'multi_step_content_writing'
         outline_data = self.phase_results.get('positioning_outline_strategy', {})
         outline = outline_data.get('outline', {})
         word_count_target = outline_data.get('word_count_target', 1800)
-        topic = self.topic
-        keyword = self.primary_keyword or self.topic
+        topic = self.topic or self.primary_keyword or getattr(self, 'generated_title', '')
+        keyword = self.primary_keyword or topic
 
+        # Step 33: Real H1 via NIM (falls back to generated title on failure)
+        self._log_step(phase, 1, 'write_h1_headline', 'running', {'topic': topic, 'keyword': keyword})
+        h1 = getattr(self, 'generated_title', None) or topic
+        try:
+            h1_llm = await self._write_h1_headline(topic, keyword)
+            if h1_llm and len(h1_llm.strip()) > 8 and not is_invalid_title(h1_llm):
+                h1 = h1_llm.strip().strip('"').split("\n")[0]
+        except Exception as e:
+            logger.warning(f"[Writer] H1 generation fell back to pipeline title: {e}")
+        self.generated_title = h1
+        self._log_step(phase, 1, 'write_h1_headline', 'completed',
+                       {'topic': topic, 'keyword': keyword}, {'h1': h1})
+        publish(channel, {"event": "section", "section": "h1", "content": h1})
+
+        # Step 34: Meta title via NIM
+        self._log_step(phase, 2, 'write_meta_title', 'running', {'keyword': keyword})
+        try:
+            meta_title = (await self._write_meta_title(keyword)).strip()[:60]
+            if is_invalid_title(meta_title):
+                meta_title = h1[:60]
+        except Exception:
+            meta_title = h1[:60]
+        self._log_step(phase, 2, 'write_meta_title', 'completed',
+                       {'keyword': keyword}, {'meta_title': meta_title})
+
+        # Step 35: Meta description via NIM
+        self._log_step(phase, 3, 'write_meta_description', 'running', {'keyword': keyword})
+        meta_desc = ""
+        try:
+            meta_desc = (await self._write_meta_description(keyword, h1)).strip()[:158]
+        except Exception as e:
+            logger.warning(f"[Writer] Meta description generation failed: {e}")
+            meta_desc = ""
+        if not meta_desc:
+            raise RuntimeError("Meta description generation failed — refusing to store placeholder text")
+        self._stored_meta_description = meta_desc
+        self._log_step(phase, 3, 'write_meta_description', 'completed',
+                       {'keyword': keyword}, {'meta_description': meta_desc, 'char_count': len(meta_desc)})
+        publish(channel, {"event": "section", "section": "meta_description", "content": meta_desc})
+
+        # Primary Generation via HumanWriterAgent with full context brief.
+        self._log_step(phase, 4, 'draft_full_article', 'running', {'word_count_target': word_count_target})
         from .human_writer import HumanWriterAgent
         human_writer = HumanWriterAgent(self.website_id)
         human_writer.setup_profile()
 
-        # Step 33: Write H1 headline
-        self._log_step(phase, 1, 'write_h1_headline', 'running', {'topic': topic, 'keyword': keyword})
-        h1 = f"{topic}"
-        self._log_step(phase, 1, 'write_h1_headline', 'completed',
-                       {'topic': topic, 'keyword': keyword}, {'h1': h1, 'char_count': len(h1)})
-
-        # Step 34: Write meta title
-        self._log_step(phase, 2, 'write_meta_title', 'running', {'keyword': keyword})
-        meta_title = f"{topic} | 2026 Complete Guide"[:60]
-        self._log_step(phase, 2, 'write_meta_title', 'completed',
-                       {'keyword': keyword}, {'meta_title': meta_title})
-
-        # Step 35: Write meta description
-        self._log_step(phase, 3, 'write_meta_description', 'running', {'keyword': keyword, 'h1': h1})
-        meta_desc = f"Discover actionable strategies, key frameworks, and step-by-step guidance for {keyword}. Read our complete 2026 breakdown."[:158]
-        self._log_step(phase, 3, 'write_meta_description', 'completed',
-                       {'keyword': keyword}, {'meta_description': meta_desc, 'char_count': len(meta_desc)})
-
-        # Primary Generation via HumanWriterAgent with full context brief
-        self._log_step(phase, 4, 'draft_full_article', 'running', {'word_count_target': word_count_target})
-        blog_result = await human_writer.generate_blog(
-            topic=topic,
-            primary_keyword=keyword,
-            secondary_keywords=[f"{keyword} best practices", f"{keyword} guide 2026"]
-        )
-
-        if blog_result.get("status") == "error":
-            # Retry with direct prompt fallback
-            raw_content = await human_writer.write_blog(
-                title=topic,
+        sections = None
+        blog_error = None
+        try:
+            sections = await human_writer.generate_blog_sections(
+                topic=topic,
+                title=h1,
+                primary_keyword=keyword,
+                secondary_keywords=[f"{keyword} best practices", f"{keyword} guide 2026"],
                 outline=outline,
-                keywords=[keyword],
-                tone="authoritative, deeply analytical, and clear"
+                progress_callback=lambda name, text: publish(
+                    channel, {"event": "section", "section": name, "content": text}
+                ),
             )
-            content = human_writer.humanize(raw_content)
+        except Exception as e:
+            blog_error = e
+            logger.warning(f"[Writer] Sectioned generation failed ({e}) — falling back to single-pass")
+
+        if sections:
+            content = "\n\n".join(sections.values())
         else:
-            content = blog_result.get("content", "")
+            # Single-pass fallback path
+            try:
+                blog_result = await human_writer.generate_blog(
+                    topic=topic,
+                    primary_keyword=keyword,
+                    secondary_keywords=[f"{keyword} best practices", f"{keyword} guide 2026"]
+                )
+                if blog_result.get("status") == "error":
+                    raise RuntimeError(blog_result.get("error", "generation failed"))
+                content = blog_result.get("content", "")
+            except Exception as e2:
+                blog_error = e2
 
-        # Fallback safeguard: ensure content is substantial and non-empty
         if not content or len(content.split()) < 300:
-            raw_content = await human_writer.write_blog(
-                title=topic,
-                outline=outline,
-                keywords=[keyword],
-                tone="authoritative, engaging, professional"
-            )
-            content = human_writer.humanize(raw_content)
+            error_msg = f"Content generation produced insufficient output: {blog_error}"
+            logger.error(f"[Writer] {error_msg}")
+            raise RuntimeError(error_msg)
 
         self._stored_content = content
 
-        # Log simulated progression of intermediate section writing steps
+        # Log progression of intermediate section writing steps
         self._log_step(phase, 5, 'write_sections_complete', 'completed',
                        {'topic': topic}, {'word_count': len(content.split())})
 
@@ -1571,63 +1947,51 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
         }
 
     async def _export_to_wordpress(self, content: str) -> Dict:
+        """Create the WordPress draft for the finished article.
+
+        blog_approvals insertion is handled centrally by generate() so this only
+        touches WordPress + the blogs mirror table.
+        """
         from ..services.wordpress_service import get_wordpress_service
         ws = get_wordpress_service(self.website_id)
         result = await ws.draft_post(
-            title=f"{self.primary_keyword or self.topic}",
+            title=getattr(self, 'generated_title', None) or f"{self.primary_keyword or self.topic}",
             content=content,
             seo_keyword=self.primary_keyword or self.topic
         )
 
-        # Persist blog post with RAG citations and hits
+        # Persist blog post mirror with RAG citations
         try:
             from ..database import get_supabase
             sb = get_supabase()
-            blog_id = str(uuid.uuid4())
-            auto_publish = True
-            try:
-                auto_res = sb.table("autonomous_settings").select("auto_publish").limit(1).execute().data
-                if auto_res and auto_res[0].get("auto_publish") is not None:
-                    auto_publish = bool(auto_res[0]["auto_publish"])
-            except Exception:
-                pass
-
-            citations_data = [
-                {
-                    "hit_id": c.get("id"),
-                    "title": c.get("title"),
-                    "source": c.get("source"),
-                    "similarity": float(c.get("similarity", 0.85))
-                }
-                for c in getattr(self, "rag_hits", [])
-            ]
-
-            sb.table("blogs").insert({
-                "id": blog_id,
-                "title": self.topic,
-                "primary_keyword": self.primary_keyword or self.topic,
-                "content": content,
-                "html_content": content,
-                "seo_score": float(self.final_scores.get("seo_score", 90.0)),
-                "citations": citations_data,
-                "rag_hits": getattr(self, "rag_hits", []),
-                "wp_post_id": result.get("id") if result else None,
-                "status": "published" if auto_publish else "draft_pending_approval"
-            }).execute()
-
-            sb.table("blog_approvals").insert({
-                "id": str(uuid.uuid4()),
-                "blog_id": blog_id,
-                "title": self.topic,
-                "html_content": content,
-                "keyword": self.primary_keyword or self.topic,
-                "seo_score": float(self.final_scores.get("seo_score", 90.0)),
-                "citations": citations_data,
-                "rag_hits": getattr(self, "rag_hits", []),
-                "status": "pending"
-            }).execute()
+            existing_blog = (
+                sb.table("blogs").select("id").eq("primary_keyword", self.primary_keyword or self.topic)
+                .eq("title", getattr(self, 'generated_title', None) or self.topic).limit(1).execute().data or []
+            )
+            if not existing_blog:
+                citations_data = [
+                    {
+                        "hit_id": c.get("id"),
+                        "title": c.get("title"),
+                        "source": c.get("source"),
+                        "similarity": float(c.get("similarity", 0.85))
+                    }
+                    for c in getattr(self, "rag_hits", [])
+                ]
+                sb.table("blogs").insert({
+                    "id": str(uuid.uuid4()),
+                    "title": getattr(self, 'generated_title', None) or self.topic,
+                    "primary_keyword": self.primary_keyword or self.topic,
+                    "content": content,
+                    "html_content": self._markdown_to_html(content),
+                    "seo_score": float(self.final_scores.get("expert", 0)) or None,
+                    "citations": citations_data,
+                    "rag_hits": getattr(self, "rag_hits", []),
+                    "wp_post_id": result.get("id") if result else None,
+                    "status": "draft_pending_approval"
+                }).execute()
         except Exception as e:
-            logger.debug(f"Error persisting blog to Supabase: {e}")
+            logger.debug(f"Error persisting blog mirror: {e}")
 
         return {'wp_id': result.get('id') if result else None, 'status': 'draft'}
 

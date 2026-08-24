@@ -66,7 +66,13 @@ async def execute_tech_audit(website_id: str) -> dict:
 
     domain = site.get("domain", "").strip() or site.get("cms_url", "").strip() or site.get("url", "").strip()
     if not domain:
-        domain = "example.com"
+        return {
+            "success": False,
+            "error": "Website has no domain configured — cannot run a technical audit.",
+            "health_score": None,
+            "issues": [],
+            "checks": [],
+        }
 
     clean_domain = domain.replace("https://", "").replace("http://", "").rstrip("/").split("/")[0]
     base_url = f"https://{clean_domain}"
@@ -183,7 +189,7 @@ async def execute_tech_audit(website_id: str) -> dict:
 async def run_tech_audit(website_id: str):
     """Execute live technical audit on demand and return real results."""
     result = await execute_tech_audit(website_id)
-    return {"success": True, "data": result}
+    return {**result, "success": True, "data": result}
 
 
 class FixIssueRequest(BaseModel):

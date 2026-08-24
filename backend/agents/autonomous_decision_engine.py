@@ -241,9 +241,16 @@ class AutonomousDecisionEngine:
                 f"Return JSON: {{\"has_hallucination\": false, \"reason\": \"clean\"}}"
             )
             raw = await call_nim_llm(prompt=hallucination_prompt, system="Output only JSON.", max_tokens=100)
-            if "true" in raw.lower():
-                checks["hallucination_check_passed"] = False
-                failure_reasons.append("Potential ungrounded legal claim detected in draft")
+            if raw and "has_hallucination" in raw:
+                cleaned = raw.strip()
+                if "```json" in cleaned:
+                    cleaned = cleaned.split("```json")[1].split("```")[0]
+                elif "```" in cleaned:
+                    cleaned = cleaned.split("```")[1].split("```")[0]
+                data = json.loads(cleaned.strip())
+                if data.get("has_hallucination") is True:
+                    checks["hallucination_check_passed"] = False
+                    failure_reasons.append("Potential ungrounded legal claim detected in draft")
         except Exception:
             pass
 

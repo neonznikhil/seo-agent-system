@@ -239,9 +239,11 @@ export function ApprovalCard({
             <div className="text-sm text-muted mono-font mb-3">
               Publish blog: <span className="text-ink font-bold">{title}</span>
             </div>
-            <div className="text-xs text-muted mono-font mb-3">
-              This will be live at: <span className="text-accent">{url || 'https://example.com/blog/...'}</span>
-            </div>
+            {url && (
+              <div className="text-xs text-muted mono-font mb-3">
+                Target URL: <span className="text-accent">{url}</span>
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => setShowPublishConfirm(false)}

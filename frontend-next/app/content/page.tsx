@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { get, post } from "@/lib/api";
+import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 interface BlogArticle {
@@ -122,6 +122,21 @@ export default function ContentPage() {
     }
   };
 
+  const handleDeleteArticle = async (id: string, title: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm(`Delete article: "${title}"?`)) return;
+    try {
+      await del(`/api/blogs/${id}`);
+      setNoticeMsg("Article deleted successfully.");
+      if (selectedArticle?.id === id) {
+        setSelectedArticle(null);
+      }
+      loadArticles();
+    } catch (err: any) {
+      setError(`Delete failed: ${err.message}`);
+    }
+  };
+
   if (loading && articles.length === 0) {
     return (
       <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
@@ -206,7 +221,17 @@ export default function ContentPage() {
                       background: selectedArticle?.id === a.id ? "rgba(255, 77, 18, 0.08)" : "transparent",
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: "13px" }}>{a.title}</div>
+                    <div style={{ fontWeight: 600, fontSize: "13px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <span>{a.title}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteArticle(a.id, a.title, e)}
+                        title="Delete Article"
+                        style={{ background: "transparent", border: "none", color: "var(--red)", cursor: "pointer", fontSize: "12px", padding: "0 4px" }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
                       <span className={`badge ${a.status === "published" ? "badge-green" : "badge-accent"}`}>
                         {a.status}
@@ -228,16 +253,25 @@ export default function ContentPage() {
             <div className="panel">
               <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="panel-label">Article Review</span>
-                {selectedArticle.status !== "published" && (
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <button
-                    onClick={() => handlePublishToWordPress(selectedArticle.id)}
-                    disabled={publishing === selectedArticle.id}
-                    className="btn btn-accent"
-                    style={{ padding: "6px 14px", fontSize: "11px" }}
+                    onClick={() => handleDeleteArticle(selectedArticle.id, selectedArticle.title)}
+                    className="btn"
+                    style={{ padding: "6px 12px", fontSize: "11px", color: "var(--red)", borderColor: "rgba(255,85,85,0.4)" }}
                   >
-                    {publishing === selectedArticle.id ? "Publishing..." : "🚀 Publish to WordPress"}
+                    🗑️ Delete
                   </button>
-                )}
+                  {selectedArticle.status !== "published" && (
+                    <button
+                      onClick={() => handlePublishToWordPress(selectedArticle.id)}
+                      disabled={publishing === selectedArticle.id}
+                      className="btn btn-accent"
+                      style={{ padding: "6px 14px", fontSize: "11px" }}
+                    >
+                      {publishing === selectedArticle.id ? "Publishing..." : "🚀 Publish to WordPress"}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="panel-body">
                 <h1 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "12px" }}>{selectedArticle.title}</h1>

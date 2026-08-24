@@ -1,4 +1,5 @@
 import os
+import json
 import uuid
 import logging
 from typing import Optional, List, Dict, Any
@@ -27,9 +28,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/research_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 42500,
-        "cost": "$0.085",
-        "executions_today": 8,
         "tools_list": ["CrawleeTool", "SerpAnalyzerTool", "RealTimeDataTool", "TavilySearch"],
         "inputs": ["Topic query", "Primary keyword", "Competitor URLs"],
         "outputs": ["SERP landscape", "Search intent breakdown", "Competitor gaps", "Search volume"],
@@ -45,9 +43,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/keyword_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 28400,
-        "cost": "$0.056",
-        "executions_today": 6,
         "tools_list": ["RankTools", "GscTools", "DirectoryTool"],
         "inputs": ["Seed topic", "Niche category", "GSC queries"],
         "outputs": ["Keyword clusters", "Search volume estimates", "Keyword difficulty score"],
@@ -63,9 +58,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/outline_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 31200,
-        "cost": "$0.062",
-        "executions_today": 5,
         "tools_list": ["CompetitorAnalysisTool", "ContentOptimizerTool"],
         "inputs": ["Keyword cluster", "Search intent", "Grounded knowledge"],
         "outputs": ["H1-H4 outline", "Word count targets", "BLUF executive summary points"],
@@ -81,9 +73,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/writer_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 185000,
-        "cost": "$0.370",
-        "executions_today": 12,
         "tools_list": ["KnowledgeService", "BrainService", "AntiAIPenTool", "HumanizerTool", "QualityGateTool"],
         "inputs": ["Outline", "Grounded business facts", "Learned tone", "Competitor insights"],
         "outputs": ["2,000+ word article", "Comparison tables", "FAQ schema", "Elementor-safe HTML"],
@@ -99,9 +88,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/human_writer.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 38900,
-        "cost": "$0.078",
-        "executions_today": 9,
         "tools_list": ["ToneAnalyzerTool", "HumanizerTool", "AntiAIPenTool"],
         "inputs": ["AI draft text", "Target voice persona"],
         "outputs": ["Humanized prose", "Varied sentence cadence", "Zero buzzwords"],
@@ -117,9 +103,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/seo_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 26500,
-        "cost": "$0.053",
-        "executions_today": 10,
         "tools_list": ["QualityGateTool", "ContentOptimizerTool", "SeoAeoGeoTool"],
         "inputs": ["Article HTML", "Primary keyword", "Meta tags"],
         "outputs": ["SEO Score (0-100)", "Keyword density check (1-2%)", "Title <60 char audit"],
@@ -135,9 +118,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/elementor_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 19400,
-        "cost": "$0.038",
-        "executions_today": 7,
         "tools_list": ["CmsTools", "ElementorTool"],
         "inputs": ["Raw HTML content"],
         "outputs": ["Elementor-safe HTML tags (h1-h4, p, ul, ol, li, strong, a, blockquote)"],
@@ -153,9 +133,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/services/wordpress_service.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 14200,
-        "cost": "$0.028",
-        "executions_today": 5,
         "tools_list": ["WordPressRestApi", "YoastMetaTool"],
         "inputs": ["Sanitized HTML", "Meta description", "Featured image ID", "Categories"],
         "outputs": ["Live WordPress post ID", "Permanent URL"],
@@ -171,9 +148,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/tech_seo_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 34100,
-        "cost": "$0.068",
-        "executions_today": 4,
         "tools_list": ["CrawleeTool", "SchemaInjectorTool", "WebBrowserTool"],
         "inputs": ["Domain URL", "Sitemap XML"],
         "outputs": ["Crawl error report", "Missing schema audit", "Core Web Vitals suggestions"],
@@ -189,9 +163,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/backlink_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 58300,
-        "cost": "$0.116",
-        "executions_today": 6,
         "tools_list": ["ProspectResearchTool", "OutreachTool", "DirectoryTool"],
         "inputs": ["Keyword niche", "Competitor backlink profiles"],
         "outputs": ["Qualified link opportunities (DA>30)", "Personalized email pitch drafts"],
@@ -207,9 +178,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/knowledge_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 47200,
-        "cost": "$0.094",
-        "executions_today": 8,
         "tools_list": ["KnowledgeExtractorTool", "VectorMemoryTool", "KnowledgeCrawlerTool"],
         "inputs": ["PDF documents", "Website URLs", "Business text"],
         "outputs": ["3200-char chunks", "1536-dim vector embeddings", "Category classifications"],
@@ -225,9 +193,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/refresh_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 29800,
-        "cost": "$0.059",
-        "executions_today": 3,
         "tools_list": ["GscTools", "SerpAnalyzerTool"],
         "inputs": ["Old published articles", "Falling impressions data"],
         "outputs": ["2026 freshness additions", "New H2 sections", "Updated statistics"],
@@ -243,9 +208,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/strategy_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 35600,
-        "cost": "$0.071",
-        "executions_today": 4,
         "tools_list": ["RankTools", "DirectoryTool"],
         "inputs": ["Website niche", "Target domain"],
         "outputs": ["Pillar-cluster content roadmap", "Publishing calendar"],
@@ -261,9 +223,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/supervisor_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 62400,
-        "cost": "$0.125",
-        "executions_today": 11,
         "tools_list": ["ThinkAndLogTool", "QualityGateTool"],
         "inputs": ["Website ID", "Pipeline trigger"],
         "outputs": ["Full pipeline execution state", "Cost tracking", "Error handling"],
@@ -279,9 +238,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/setup_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 41200,
-        "cost": "$0.082",
-        "executions_today": 2,
         "tools_list": ["CrawleeTool", "ToneAnalyzerTool", "KnowledgeExtractorTool"],
         "inputs": ["Homepage URL"],
         "outputs": ["Business profile", "Brand tone vector", "Core service catalogue"],
@@ -299,9 +255,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/brain_autopilot_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 51200,
-        "cost": "$0.102",
-        "executions_today": 6,
         "tools_list": ["BrainService", "VectorMemoryTool"],
         "inputs": ["Analytics data", "User feedback", "Approval rejections"],
         "outputs": ["Refined writing rules", "Conversion insights", "Avoidance heuristics"],
@@ -317,9 +270,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/backlink_autopilot_agent.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 33100,
-        "cost": "$0.066",
-        "executions_today": 5,
         "tools_list": ["ProspectResearchTool", "GscTools"],
         "inputs": ["GSC link data", "Anchor text distribution"],
         "outputs": ["Internal link graph", "Outreach priority queue"],
@@ -335,9 +285,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/autonomous_loop.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 22400,
-        "cost": "$0.045",
-        "executions_today": 24,
         "tools_list": ["ThinkAndLogTool"],
         "inputs": ["System timers", "API health checks"],
         "outputs": ["Hourly heartbeat logs", "Self-healing restarts"],
@@ -355,9 +302,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/crew.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 39500,
-        "cost": "$0.079",
-        "executions_today": 4,
         "tools_list": ["CrawleeTool", "SeoAeoGeoTool", "ThinkAndLogTool"],
         "inputs": ["Target site", "SERP competitive set"],
         "outputs": ["SEO/AEO/GEO barrier audit", "Proposal list"],
@@ -373,9 +317,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/crew.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 27800,
-        "cost": "$0.055",
-        "executions_today": 5,
         "tools_list": ["QualityGateTool", "ToneAnalyzerTool"],
         "inputs": ["Proposed draft fixes", "Client guidelines"],
         "outputs": ["Validated staging queue items"],
@@ -391,9 +332,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/crew.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 68200,
-        "cost": "$0.136",
-        "executions_today": 7,
         "tools_list": ["KnowledgeService", "ContentOptimizerTool"],
         "inputs": ["Target intent query", "Verified business facts"],
         "outputs": ["Direct answer snippets", "Structured data tables"],
@@ -409,9 +347,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/crew.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 31400,
-        "cost": "$0.063",
-        "executions_today": 3,
         "tools_list": ["CrawleeTool", "ThinkAndLogTool", "SeoAeoGeoTool"],
         "inputs": ["Site architecture"],
         "outputs": ["Rendering diagnostics", "JSON-LD graph validation"],
@@ -427,9 +362,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/crew.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 25100,
-        "cost": "$0.050",
-        "executions_today": 4,
         "tools_list": ["ProspectResearchTool", "OutreachTool"],
         "inputs": ["Target URL", "Anchor text profile"],
         "outputs": ["Anchor distribution plan", "Safe outreach targets"],
@@ -445,9 +377,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/crew_manager.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 44800,
-        "cost": "$0.090",
-        "executions_today": 5,
         "tools_list": ["ThinkAndLogTool"],
         "inputs": ["Full site optimization task"],
         "outputs": ["End-to-end task completion status"],
@@ -465,9 +394,6 @@ WORKFORCE_AGENTS = [
         "file_path": "backend/agents/scheduler.py",
         "is_used": True,
         "is_orphaned": False,
-        "tokens_used": 15000,
-        "cost": "$0.030",
-        "executions_today": 7,
         "tools_list": ["APScheduler", "AsyncIO"],
         "inputs": ["Daily timeline schedule"],
         "outputs": ["7 autonomous job runs daily"],
@@ -518,18 +444,379 @@ class AgentRunRequest(BaseModel):
     task_data: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Task payload for execution")
 
 
-# ---------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------
+class AgentDirectRunRequest(BaseModel):
+    website_id: Optional[str] = "default"
+    instruction: Optional[str] = None
+    topic: Optional[str] = None
+    primary_keyword: Optional[str] = None
 
+
+@router.get("/api/workforce")
+@router.get("/workforce")
 @router.get("/api/workforce/agents")
 @router.get("/workforce/agents")
-async def list_workforce_agents(category: Optional[str] = None):
-    """List all 25+ specialized agents with real metrics, tools, and execution stats."""
+async def list_workforce_agents(category: Optional[str] = None, website_id: Optional[str] = None):
+    """List all specialized agents with REAL execution stats from the tasks table."""
+    agents = WORKFORCE_AGENTS
     if category and category.lower() != "all":
-        filtered = [a for a in WORKFORCE_AGENTS if a["category"].lower() == category.lower()]
-        return filtered
-    return WORKFORCE_AGENTS
+        agents = [a for a in WORKFORCE_AGENTS if a.get("category", "").lower() == category.lower()]
+
+    supabase = get_supabase()
+    enriched = []
+    for agent in agents:
+        real = await _agent_real_stats(supabase, agent["name"], website_id)
+        enriched.append({**agent, **real})
+    return {"success": True, "agents": enriched, "total_count": len(enriched)}
+
+
+async def _agent_real_stats(supabase, agent_name: str, website_id: Optional[str]) -> dict:
+    """Derive last-run status, result summary and next scheduled run from tasks."""
+    aliases = [agent_name, agent_name.lower(), agent_name.replace("Agent", "").lower(),
+               f"{agent_name.lower().replace('agent', '')}_agent"]
+    if agent_name == "WriterPipeline":
+        aliases += ["writer_pipeline", "writer", "human_writer_agent"]
+    if agent_name == "Scheduler":
+        aliases = ["scheduler"]
+
+    last_run = None
+    last_status = None
+    last_result_summary = None
+    last_error = None
+    runs_7d = 0
+    try:
+        q = (
+            supabase.table("tasks")
+            .select("status, action, payload, result, created_at")
+            .order("created_at", desc=True)
+            .limit(50)
+        )
+        rows = q.execute().data or []
+        matching = [
+            r for r in rows
+            if (r.get("action") or "").lower().replace("_", "") in
+               {a.replace("_", "") for a in aliases} or
+               r.get("action") in aliases
+        ]
+        # Fall back to scanning agent_name column when actions don't match
+        if not matching:
+            matching = [
+                r for r in rows
+                if any(a.lower() in (r.get("action") or "").lower() for a in aliases)
+            ]
+        runs_7d = len(matching)
+        if matching:
+            latest = matching[0]
+            last_run = latest.get("created_at")
+            last_status = latest.get("status")
+            result = latest.get("result") or {}
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except Exception:
+                    result = {}
+            if last_status == "failed":
+                err = ((latest.get("payload") or {}).get("error")
+                       or (result or {}).get("error") or "Unknown error")
+                last_error = str(err)[:200]
+            else:
+                summary_bits = []
+                if isinstance(result, dict):
+                    for key in ("word_count", "opportunities_found", "health_score",
+                                "keywords_found", "pages_audited", "items_processed"):
+                        if result.get(key) is not None:
+                            summary_bits.append(f"{key.replace('_', ' ')}: {result[key]}")
+                    if result.get("summary"):
+                        summary_bits.insert(0, str(result["summary"])[:80])
+                last_result_summary = "; ".join(summary_bits)[:140] or "Completed successfully"
+    except Exception as e:
+        logger.debug(f"[Workforce] stats lookup failed for {agent_name}: {e}")
+
+    # Next scheduled run from APScheduler registry where applicable
+    next_run = None
+    try:
+        from ..agents.scheduler import get_scheduler_status
+        sched = get_scheduler_status()
+        mapping = {
+            "WriterPipeline": "auto_new_page",
+            "ResearchAgent": "daily_search",
+            "TechSEOAgent": "tech_seo_audit",
+            "BacklinkAgent": "backlink_prospecting",
+            "SupervisorAgent": "brain_learn",
+        }
+        job_key = mapping.get(agent_name)
+        for j in sched.get("jobs", []):
+            if job_key and job_key in (j.get("id") or ""):
+                next_run = j.get("next_run")
+                break
+    except Exception:
+        pass
+
+    cutoff_24h_ok = False
+    if last_run and last_status == "completed":
+        try:
+            from datetime import timedelta
+            last_dt = datetime.fromisoformat(str(last_run).replace("Z", "+00:00")).replace(tzinfo=None)
+            cutoff_24h_ok = last_dt >= datetime.utcnow() - timedelta(hours=24)
+        except Exception:
+            pass
+
+    if last_status == "failed" or (last_run and last_status not in ("completed", None) and last_status):
+        state = "ERROR" if last_status == "failed" else "ACTIVE"
+    elif cutoff_24h_ok:
+        state = "ACTIVE"
+    else:
+        state = "IDLE"
+
+    return {
+        "runtime_state": state,
+        "last_run": last_run,
+        "last_run_status": last_status,
+        "last_run_summary": last_result_summary,
+        "last_error": last_error,
+        "runs_last_7d": runs_7d,
+        "next_scheduled_run": next_run,
+    }
+
+
+@router.post("/api/workforce/{agent_id}/run")
+@router.post("/workforce/{agent_id}/run")
+@router.post("/api/workforce/agents/{agent_id}/run")
+@router.post("/workforce/agents/{agent_id}/run")
+async def run_workforce_agent(agent_id: str, payload: AgentDirectRunRequest):
+    """Execute live autonomous action for the selected workforce agent.
+
+    Gates on NVIDIA NIM availability and refuses to run agents when the LLM
+    backend is down, surfacing the exact diagnostic instead of a fake success.
+    """
+    match = next((a for a in WORKFORCE_AGENTS if a["id"] == agent_id or a["name"].lower() == agent_id.lower()), None)
+    if not match:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found in workforce")
+
+    instruction = (payload.instruction or f"Execute standard cadence for {match['name']}").strip()
+    wid = payload.website_id or "default"
+
+    # 1. NIM availability gate
+    from ..database import is_nim_available, get_nim_state
+    nim_ok = await is_nim_available()
+    if not nim_ok:
+        state = get_nim_state()
+        raise HTTPException(
+            status_code=503,
+            detail=f"NVIDIA NIM unavailable — {state.get('diagnostic') or 'check your API key in Connectors'}",
+        )
+
+    # 2. Knowledge base gate for writer pipeline
+    if agent_id in ("writer_agent", "writer_pipeline") and ("write" in instruction.lower() or payload.topic):
+        try:
+            kb = (
+                get_supabase().table("knowledge_base")
+                .select("id", count="exact").eq("website_id", wid).execute()
+            )
+            kb_count = getattr(kb, "count", None) or len(kb.data or [])
+        except Exception:
+            kb_count = 0
+        if kb_count == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Website has no knowledge base yet — KnowledgeAgent must crawl the site first "
+                       "(it runs automatically after connecting, or ingest documents on /knowledge).",
+            )
+
+        from ..agents.writer_agent import generate_content
+        topic = payload.topic or instruction.replace("write", "").replace("Write", "").strip() or "Primary service guide"
+        import asyncio
+        asyncio.create_task(generate_content(wid, topic, payload.primary_keyword or topic.lower()))
+        return {
+            "success": True,
+            "agent": match["name"],
+            "action": "writer_dispatched",
+            "message": f"Autonomous 10-phase writer initiated for '{topic}'. Track it on the Writer page.",
+        }
+
+    # 3. Real agent execution for research/keyword/techseo/backlink specialists
+    executed = await _dispatch_real_agent(agent_id, wid)
+    if executed is not None:
+        return executed
+
+    # 4. Generic LLM-backed execution with real thought logging
+    system_prompt = (
+        f"{match.get('prompt', 'You are an autonomous SEO Agent in RankForge.')}\n"
+        f"You are operating for website: {wid}.\n"
+        "Provide a structured, actionable response detailing the analysis performed."
+    )
+
+    start_t = datetime.utcnow()
+    reply = await call_nim_llm(instruction, system=system_prompt, website_id=wid)
+    duration = (datetime.utcnow() - start_t).total_seconds()
+
+    # Log to tasks + agent thoughts so telemetry is real
+    _log_agent_task(wid, match["name"], "completed", duration, {"instruction": instruction[:200]}, {"response_chars": len(reply)})
+    await _log_agent_thought(wid, match["name"],
+                             f"Executed instruction '{instruction[:80]}' — response generated ({len(reply)} chars).")
+
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "agent_name": match["name"],
+        "role": match.get("role", "Specialist"),
+        "instruction": instruction,
+        "response": reply,
+        "duration_sec": round(duration, 2),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+def _log_agent_task(website_id: str, agent_name: str, status: str,
+                    duration: float, payload: dict, result: dict) -> None:
+    try:
+        get_supabase().table("tasks").insert({
+            "website_id": website_id or "default",
+            "agent_name": agent_name.lower().replace(" ", "_"),
+            "action": f"{payload.get('instruction', 'manual_trigger')}"[:100],
+            "status": status,
+            "duration": round(duration, 2),
+            "payload": payload,
+            "result": result,
+            "created_at": datetime.utcnow().isoformat(),
+        }).execute()
+    except Exception as e:
+        logger.debug(f"[Workforce] task log failed: {e}")
+
+
+async def _log_agent_thought(website_id: str, agent_name: str, thought: str) -> None:
+    """Persist to agent_thoughts and publish on the SSE bus."""
+    entry = {
+        "website_id": website_id or "default",
+        "agent_name": agent_name,
+        "thought": thought[:800],
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    try:
+        get_supabase().table("agent_thoughts").insert(entry).execute()
+    except Exception as e:
+        logger.debug(f"[Workforce] thought log failed: {e}")
+    try:
+        from ..services.event_bus import publish
+        publish(f"agent:{agent_name.lower().replace(' ', '_')}:thoughts",
+                {"event": "thought", "agent": agent_name, "thought": entry["thought"]})
+    except Exception:
+        pass
+
+
+async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
+    """Run REAL specialist logic for concrete agents; returns None when no mapping."""
+    start_t = datetime.utcnow()
+
+    async def _finish(agent_label, summary, result_payload, items_count, slack_fn=None):
+        duration = (datetime.utcnow() - start_t).total_seconds()
+        _log_agent_task(wid, agent_label, "completed", duration,
+                        {"instruction": f"{agent_id} manual trigger"}, result_payload)
+        await _log_agent_thought(wid, agent_label, summary)
+        if slack_fn:
+            try:
+                from ..services.slack_intelligence_service import slack_intelligence_service
+                if slack_fn == "success":
+                    await slack_intelligence_service.notify_agent_completion(wid, agent_label, summary, items_count)
+                else:
+                    pass
+            except Exception:
+                pass
+        return {
+            "success": True,
+            "agent_id": agent_id,
+            "agent_name": agent_label,
+            "summary": summary,
+            "result": result_payload,
+            "items_processed": items_count,
+            "duration_sec": round(duration, 2),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    if agent_id in ("research_agent", "ResearchAgent"):
+        from ..agents.research_agent import ResearchAgent
+        agent = ResearchAgent(website_id=wid)
+        trends = await agent.run(topic="primary services and customer questions")
+        count = len(trends.get("keywords", []) or []) if isinstance(trends, dict) else 0
+        return await _finish("ResearchAgent", "SERP & competitor research completed",
+                             {"trends_summary": str(trends)[:300]}, count)
+
+    if agent_id in ("tech_seo_agent", "TechSEOAgent"):
+        from ..agents.tech_seo_agent import TechSEOAgent
+        agent = TechSEOAgent(website_id=wid)
+        res = await agent.run_audit(wid)
+        health = (res or {}).get("health_score")
+        pages = len((res or {}).get("issues", []) or [])
+        return await _finish("TechSEOAgent", f"Audit complete — health score {health}",
+                             {"health_score": health}, pages)
+
+    if agent_id in ("backlink_agent", "BacklinkAgent"):
+        from ..agents.backlink_agent import BacklinkAgent
+        agent = BacklinkAgent(website_id=wid)
+        res = await agent.run_prospecting_loop(keyword="primary service resources")
+        found = (res or {}).get("opportunities_found", 0)
+        return await _finish("BacklinkAgent", "Prospecting loop finished",
+                             res if isinstance(res, dict) else {}, int(found or 0))
+
+    if agent_id in ("knowledge_agent", "KnowledgeAgent"):
+        from ..services.knowledge_service import KnowledgeService
+        ks = KnowledgeService(website_id=wid)
+        res = await ks.watch_business_website()
+        new_pages = (res or {}).get("new_pages_ingested", 0)
+        return await _finish("KnowledgeAgent", "Knowledge crawl completed",
+                             res if isinstance(res, dict) else {}, int(new_pages or 0))
+
+    return None
+
+
+@router.get("/api/workforce/agents/{agent_id}/thoughts/stream")
+@router.get("/workforce/agents/{agent_id}/thoughts/stream")
+async def stream_agent_thoughts(agent_id: str, poll_seconds: float = 2.0):
+    """SSE stream of an agent's thoughts: replays DB history then streams live events."""
+    from fastapi.responses import StreamingResponse
+    from ..services.event_bus import stream as bus_stream
+
+    channel = f"agent:{agent_id.lower().replace(' ', '_')}:thoughts"
+
+    async def event_generator():
+        # Replay recent persisted thoughts first (real history, newest last)
+        try:
+            rows = (
+                get_supabase().table("agent_thoughts")
+                .select("agent_name, thought, created_at")
+                .order("created_at", desc=True)
+                .limit(10)
+                .execute()
+                .data or []
+            )
+            for r in reversed(rows):
+                yield f"data: {json.dumps({'event': 'thought', **r})}\n\n"
+        except Exception:
+            pass
+        async for event in bus_stream(channel, poll_interval=poll_seconds):
+            if event.get("keepalive"):
+                yield ": keepalive\n\n"
+                continue
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/api/workforce/nim-status")
+@router.get("/workforce/nim-status")
+async def workforce_nim_status():
+    """Real NVIDIA NIM availability + diagnostic for the workforce page banner."""
+    from ..database import validate_nim_connection
+    state = await validate_nim_connection(force=False)
+    return {
+        "available": bool(state.get("available")),
+        "diagnostic": state.get("diagnostic"),
+        "http_status": state.get("http_status"),
+        "last_check": state.get("last_check"),
+    }
 
 
 @router.get("/api/workforce/agents/{agent_id}")
@@ -548,13 +835,14 @@ async def get_agent_details(agent_id: str):
         history = res or []
     except Exception:
         pass
-        
+
+    # Real execution stats from tasks table
+    real = await _agent_real_stats(supabase, match["name"], None)
+
     return {
         "agent": match,
         "history": history,
-        "avg_execution_time": "2.4s",
-        "success_rate": "98.4%",
-        "status": "ready"
+        **real,
     }
 
 
@@ -577,19 +865,19 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
         from ..agents.setup_agent import SetupAgent
         agent = SetupAgent(website_id=params.get("website_id", "default"))
         result = await agent.setup_website_profile(url=params["url"])
-        reply = f"✅ Setup completed for {params['url']}:\n\n• Business Profile: {result.get('profile_summary', 'Extracted')}\n• Tone: {result.get('tone', 'Authoritative')}\n• Services: {len(result.get('services', []))} detected."
+        reply = f"âœ… Setup completed for {params['url']}:\n\nâ€¢ Business Profile: {result.get('profile_summary', 'Extracted')}\nâ€¢ Tone: {result.get('tone', 'Authoritative')}\nâ€¢ Services: {len(result.get('services', []))} detected."
         
     elif match["id"] == "crew_manager" and params.get("website_id"):
         from ..agents.crew_manager import run_full_site_optimization_async
         job = await run_full_site_optimization_async(website_id=params["website_id"])
-        reply = f"🚀 Launched Full Site Multi-Agent Optimization (Job ID: {job.get('job_id')}). CrewAI Auditor, Editor, and TechSEO agents are processing."
+        reply = f"ðŸš€ Launched Full Site Multi-Agent Optimization (Job ID: {job.get('job_id')}). CrewAI Auditor, Editor, and TechSEO agents are processing."
         
     elif match["id"] in ["writer_pipeline", "crew_writer"] and (params.get("topic") or user_msg.lower().startswith("write")):
         from ..agents.writer_agent import WriterPipeline
         topic = params.get("topic") or user_msg.replace("write", "").strip()
         writer = WriterPipeline(website_id=params.get("website_id", "default"))
         res = await writer.generate(topic=topic, primary_keyword=params.get("primary_keyword"))
-        reply = f"📝 WriterPipeline finished 10-phase generation for '{topic}'!\n\nStatus: {res.get('status')}\nSEO Score: {res.get('final_scores', {}).get('seo_score', 92)}/100\nDraft staged in /approvals queue."
+        reply = f"ðŸ“ WriterPipeline finished 10-phase generation for '{topic}'!\n\nStatus: {res.get('status')}\nSEO Score: {res.get('final_scores', {}).get('seo_score', 92)}/100\nDraft staged in /approvals queue."
         
     else:
         # Retrieve RAG Knowledge Context for this query
@@ -628,7 +916,7 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
             f"Context: Operating in production mode with zero mock data. Provide actionable, factual, expert responses."
         )
         if rag_res.get("answer") and "do not have verified information" not in rag_res["answer"]:
-            reply = f"{rag_res['answer']}\n\n*— Answer formulated by {match['name']} with verified Knowledge Base grounding.*"
+            reply = f"{rag_res['answer']}\n\n*â€” Answer formulated by {match['name']} with verified Knowledge Base grounding.*"
         else:
             reply = await call_nim_llm(prompt=user_msg, system=system_prompt, max_tokens=800)
 
@@ -652,23 +940,42 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
     }
 
 
-@router.post("/api/workforce/agents/{agent_id}/run")
-@router.post("/workforce/agents/{agent_id}/run")
+@router.post("/api/workforce/agents/{agent_id}/run-task")
+@router.post("/workforce/agents/{agent_id}/run-task")
 async def run_agent_task(agent_id: str, payload: AgentRunRequest):
-    """Trigger a standalone task run for any agent in the workforce."""
+    """Trigger a standalone task run — dispatches to the same real execution path."""
     match = next((a for a in WORKFORCE_AGENTS if a["id"] == agent_id or a["name"].lower() == agent_id.lower()), None)
     if not match:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
-        
-    task_id = str(uuid.uuid4())
-    logger.info(f"Triggering execution of agent {match['name']} (Task {task_id})")
-    
+
+    wid = (payload.task_data or {}).get("website_id", "default")
+    executed = await _dispatch_real_agent(agent_id, wid)
+    if executed is not None:
+        return {**executed, "task_id": str(uuid.uuid4())}
+
+    # No concrete mapping -> run a real LLM-backed task with telemetry
+    from ..database import is_nim_available, get_nim_state
+    if not await is_nim_available():
+        state = get_nim_state()
+        raise HTTPException(status_code=503,
+                            detail=f"NVIDIA NIM unavailable — {state.get('diagnostic')}")
+
+    instruction = f"Execute standard cadence: {(payload.task_data or {}).get('instruction') or match['role']}"
+    start_t = datetime.utcnow()
+    reply = await call_nim_llm(instruction, system=match.get("prompt", ""), website_id=wid)
+    duration = (datetime.utcnow() - start_t).total_seconds()
+    _log_agent_task(wid, match["name"], "completed", duration,
+                    {"instruction": instruction[:200]}, {"response_chars": len(reply)})
+    await _log_agent_thought(wid, match["name"], f"Ran standard cadence: {match['role']}")
+
     return {
         "success": True,
-        "task_id": task_id,
+        "task_id": str(uuid.uuid4()),
         "agent": match["name"],
         "status": "completed",
-        "message": f"Agent {match['name']} executed successfully."
+        "response_chars": len(reply),
+        "duration_sec": round(duration, 2),
+        "message": f"Agent {match['name']} executed successfully.",
     }
 
 

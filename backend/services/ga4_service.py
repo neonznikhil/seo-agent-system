@@ -195,3 +195,44 @@ async def get_content_performance(property_id: str = None) -> Dict:
     """Standalone function for content performance."""
     service = GA4Service(property_id)
     return await service.get_content_performance()
+
+
+class _GA4SingletonWrapper(GA4Service):
+    """Module-level singleton exposing get_recent_sessions for connector tests."""
+    def __init__(self):
+        super().__init__()
+
+    async def get_recent_sessions(self, website_id: str = None, days: int = 7) -> Dict[str, Any]:
+        return await get_recent_sessions(website_id=website_id, days=days)
+
+
+ga4_service = _GA4SingletonWrapper()
+
+
+async def get_recent_sessions(website_id: str = None, days: int = 7) -> Dict[str, Any]:
+    """Real GA4 call returning total sessions over the last `days` days."""
+    if not ga4_service.is_connected():
+        return {
+            "connected": False,
+            "error": "GA4 not configured — set GA4_PROPERTY_ID and GA4_CREDENTIALS_PATH in Connectors",
+            "sessions": 0,
+        }
+    try:
+        ga4_service._ensure_initialized()
+        end_date = datetime.utcnow().strftime("%Y-%m-%d")
+        start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+        request_body = {
+            "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+            "metrics": [{"name": "sessions"}],
+        }
+        response = ga4_service._service.runReport(body=request_body)
+        metrics = response.get("rows", [{}])[0].get("metricValues", [])
+        sessions = int(metrics[0].get("value", 0)) if metrics else 0
+        return {
+            "connected": True,
+            "sessions": sessions,
+            "message": f"GA4 returned {sessions} sessions for the last {days} days",
+        }
+    except Exception as e:
+        logger.error(f"GA4 recent-sessions error: {e}")
+        return {"connected": False, "error": str(e)[:200], "sessions": 0}

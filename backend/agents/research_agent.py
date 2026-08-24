@@ -83,13 +83,36 @@ class ResearchAgent:
             logger.warning(f"NIM research generation error: {e}")
             data = {}
 
-        # Merge live signals with fallback defaults
-        data["trends"] = data.get("trends") or (live_related[:5] if live_related else [f"{topic} 2026 trends", f"how to {topic}", f"{topic} guide", f"{topic} cost", f"{topic} checklist"])
-        data["competitors"] = data.get("competitors") or (list(dict.fromkeys(live_competitors))[:5] if live_competitors else ["example.com", "toplawyers.com", "legalguide.org"])
-        data["questions"] = data.get("questions") or (live_questions[:5] if live_questions else [f"What is {topic}?", f"How does {topic} work in 2026?", f"Why is {topic} critical?"])
-        data["search_volume"] = data.get("search_volume") or 8500
-        data["serp_features"] = data.get("serp_features") or ["featured_snippet", "people_also_ask"]
-        data["source_connector"] = serp_data.get("source", "serper.dev")
+        # Merge live signals; when a signal is unavailable it stays empty —
+        # fabricated competitors/volumes are never substituted.
+        data["trends"] = data.get("trends") or (live_related[:5] if live_related else [])
+        data["competitors"] = data.get("competitors") or (list(dict.fromkeys(live_competitors))[:5] if live_competitors else [])
+        data["questions"] = data.get("questions") or (live_questions[:5] if live_questions else [])
+        if not data.get("search_volume"):
+            # Derive from GSC impressions when available instead of inventing a number.
+            try:
+                gsc_res = (
+                    get_supabase().table("gsc_keywords")
+                    .select("impressions")
+                    .eq("website_id", self.website_id)
+                    .order("impressions", desc=True)
+                    .limit(10)
+                    .execute()
+                    .data or []
+                )
+                impressions = [int(r.get("impressions") or 0) for r in gsc_res]
+                data["search_volume"] = sum(impressions[:3]) if impressions else 0
+            except Exception:
+                data["search_volume"] = 0
+        observed_features = sorted({
+            f for f in [
+                "featured_snippet" if serp_data.get("answerBox") else None,
+                "people_also_ask" if serp_data.get("peopleAlsoAsk") else None,
+                "knowledge_panel" if serp_data.get("knowledgeGraph") else None,
+            ] if f
+        })
+        data["serp_features"] = data.get("serp_features") or observed_features
+        data["source_connector"] = serp_data.get("source", "unavailable")
 
         # ---------------------------------------------------------
         # Step 3: WRITE BACK AFTER

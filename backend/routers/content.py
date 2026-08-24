@@ -74,3 +74,22 @@ async def update_content(content_id: str, body: ContentUpdate):
         return {"detail": "no changes"}
     res = get_supabase().table("content_log").update(updates).eq("id", content_id).execute()
     return res.data[0] if res.data else {"detail": "updated"}
+
+
+@router.delete("/content/{content_id}")
+async def delete_content(content_id: str):
+    """Delete a blog draft / article from content_log and associated blog_approvals."""
+    supabase = get_supabase()
+    # 1. Delete associated blog_approvals
+    try:
+        supabase.table("blog_approvals").delete().eq("blog_id", content_id).execute()
+    except Exception as e:
+        logger.debug(f"Approval delete note: {e}")
+
+    # 2. Delete from content_log
+    try:
+        res = supabase.table("content_log").delete().eq("id", content_id).execute()
+        return {"success": True, "deleted_id": content_id, "detail": "Article draft deleted."}
+    except Exception as e:
+        logger.error(f"Error deleting content {content_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete article: {str(e)}")

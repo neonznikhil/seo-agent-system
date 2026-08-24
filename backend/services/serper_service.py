@@ -111,7 +111,12 @@ class SerperService:
         search_type: str = "search",
         auto_fallback: bool = True
     ) -> Dict[str, Any]:
-        """Primary search call returning structured organic, PAA, answerBox, knowledgeGraph, relatedSearches."""
+        """Primary search call returning structured organic, PAA, answerBox, knowledgeGraph, relatedSearches.
+
+        Fallback order: Serper.dev -> Tavily -> Crawlee scrape. When every source
+        fails this returns EMPTY organic results with a structured error â€”
+        fabricated SERP rows are never generated.
+        """
         _CONNECTOR_STATE["total_calls"] += 1
         payload = {"q": query, "location": location, "language": language, "num": num, "type": search_type}
 
@@ -124,7 +129,7 @@ class SerperService:
                 _CONNECTOR_STATE["successful_calls"] += 1
                 _CONNECTOR_STATE["last_successful_call"] = datetime.utcnow().isoformat()
                 _CONNECTOR_STATE["last_error"] = None
-                
+
                 # Normalize response keys
                 return {
                     "source": "serper.dev",
@@ -151,7 +156,7 @@ class SerperService:
             try:
                 logger.info(f"[SerperFallback] Trying Tavily for query '{query}'")
                 tavily_res = await self._fallback_tavily_search(query, num=num)
-                if tavily_res:
+                if tavily_res and tavily_res.get("organic"):
                     return tavily_res
             except Exception as e:
                 logger.warning(f"Tavily fallback also failed: {e}")
@@ -161,32 +166,27 @@ class SerperService:
             try:
                 logger.info(f"[SerperFallback] Trying Crawlee SERP scrape for '{query}'")
                 crawlee_res = await self._fallback_crawlee_search(query)
-                if crawlee_res:
+                if crawlee_res and crawlee_res.get("organic"):
                     return crawlee_res
             except Exception as e:
                 logger.warning(f"Crawlee fallback also failed: {e}")
 
-        # Default structured empty response with synthetic fallback
+        # All sources unavailable â€” honest empty result. Callers must treat an
+        # empty organic list as 'no live SERP data', never invent competitors.
+        error_detail = _CONNECTOR_STATE.get("last_error") or (
+            "No search source available: configure SERPER_API_KEY in Connectors "
+            "or ensure the Crawlee scraper is functional."
+        )
         return {
-            "source": "fallback_stub",
+            "source": "unavailable",
             "query": query,
-            "organic": [
-                {
-                    "title": f"Complete Guide: {query.title()}",
-                    "link": f"https://example.com/{query.replace(' ', '-')}",
-                    "snippet": f"Comprehensive authoritative insights and breakdown for {query}.",
-                    "position": 1
-                }
-            ],
-            "peopleAlsoAsk": [
-                {"question": f"What is {query}?", "snippet": f"Detailed definition and context for {query}."},
-                {"question": f"How to resolve {query}?", "snippet": f"Actionable steps to handle {query} effectively."}
-            ],
-            "relatedSearches": [
-                {"query": f"{query} 2026 guidelines"},
-                {"query": f"best {query} checklist"}
-            ],
-            "credits_used": 0
+            "organic": [],
+            "peopleAlsoAsk": [],
+            "knowledgeGraph": {},
+            "answerBox": {},
+            "relatedSearches": [],
+            "credits_used": 0,
+            "error": error_detail[:300],
         }
 
     # ---------------------------------------------------------
@@ -263,24 +263,32 @@ class SerperService:
                 if not auto_fallback:
                     raise
 
-        # Fallback to general search if news fails
+        # Fallback to general search if news endpoint fails
         if auto_fallback:
-            search_res = await self.search(f"{query} news 2026", location=location, language=language, num=num)
-            synthetic_news = [
+            search_res = await self.search(f"{query} news", location=location, language=language, num=num)
+            organic = search_res.get("organic") or []
+            if not organic:
+                return {"source": "unavailable", "query": query, "news": [],
+                        "total_results": 0, "error": search_res.get("error")}
+            # Derive news-shaped items strictly from real organic results
+            derived_news = [
                 {
                     "title": item.get("title"),
                     "link": item.get("link"),
                     "snippet": item.get("snippet"),
-                    "date": datetime.utcnow().strftime("%Y-%m-%d"),
-                    "source": item.get("link", "").split("/")[2] if "//" in item.get("link", "") else "Web"
+                    "date": item.get("date"),
+                    "source": (
+                        item.get("link", "").split("/")[2]
+                        if "//" in (item.get("link") or "") else "Web"
+                    ),
                 }
-                for item in search_res.get("organic", [])[:num]
+                for item in organic[:num]
             ]
             return {
-                "source": "search_fallback_news",
+                "source": "search_derived_news",
                 "query": query,
-                "news": synthetic_news,
-                "total_results": len(synthetic_news)
+                "news": derived_news,
+                "total_results": len(derived_news)
             }
 
         return {"source": "empty", "query": query, "news": [], "total_results": 0}
@@ -328,12 +336,12 @@ class SerperService:
                     "api_key_valid": True,
                     "api_key_masked": masked_key,
                     "latency_ms": elapsed_ms,
-                    "credits_remaining": _CONNECTOR_STATE.get("credits_remaining") or 2500,
+                    "credits_remaining": _CONNECTOR_STATE.get("credits_remaining"),
                     "last_successful_call": _CONNECTOR_STATE["last_successful_call"],
                     "total_calls": _CONNECTOR_STATE["total_calls"],
                     "successful_calls": _CONNECTOR_STATE["successful_calls"],
                     "failed_calls": _CONNECTOR_STATE["failed_calls"],
-                    "message": f"Serper.dev live & healthy (Response time: {elapsed_ms}ms) ✅"
+                    "message": f"Serper.dev live & healthy (Response time: {elapsed_ms}ms) âœ…"
                 }
             elif response.status_code in (401, 403):
                 _CONNECTOR_STATE["last_error"] = f"Invalid API Key (HTTP {response.status_code})"
@@ -455,18 +463,8 @@ class SerperService:
     async def scholar(self, query: str, num: int = 5) -> Dict[str, Any]:
         """Academic search via Serper Scholar API for fact-checking statistical claims."""
         if not self.is_configured():
-            return {
-                "source": "mock_scholar",
-                "organic": [
-                    {
-                        "title": f"Empirical Analysis of {query}",
-                        "link": "https://scholar.google.com/citations?view_op=view_citation",
-                        "snippet": f"A comprehensive empirical analysis establishing quantitative benchmarks for {query}.",
-                        "year": 2024,
-                        "cited_by": 42
-                    }
-                ]
-            }
+            return {"source": "unavailable", "organic": [],
+                    "error": "Serper API key not configured â€” scholar search unavailable"}
 
         url = f"{self.base_url}/scholar"
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
@@ -477,26 +475,21 @@ class SerperService:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.status_code == 200:
                     return res.json()
+                logger.warning(f"Serper Scholar HTTP {res.status_code}")
         except Exception as e:
             logger.warning(f"Serper Scholar error: {e}")
 
         # Fallback to search with scholar site restriction
-        return await self.search(f"{query} site:edu OR site:gov OR site:nih.gov", num=num)
+        result = await self.search(f"{query} site:edu OR site:gov", num=num)
+        if not result.get("organic"):
+            return {"source": "unavailable", "organic": [], "error": "Scholar and fallback search unavailable"}
+        return result
 
     async def images(self, query: str, num: int = 6) -> Dict[str, Any]:
         """Search relevant images via Serper Images API."""
         if not self.is_configured():
-            return {
-                "source": "fallback_images",
-                "images": [
-                    {
-                        "title": f"{query} Diagram",
-                        "imageUrl": "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800",
-                        "link": "https://unsplash.com",
-                        "alt": f"Strategic diagram illustrating {query}"
-                    }
-                ]
-            }
+            return {"source": "unavailable", "images": [],
+                    "error": "Serper API key not configured â€” image search unavailable"}
 
         url = f"{self.base_url}/images"
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
@@ -510,22 +503,13 @@ class SerperService:
         except Exception as e:
             logger.warning(f"Serper Images error: {e}")
 
-        return {"images": []}
+        return {"source": "unavailable", "images": []}
 
     async def maps(self, query: str, location: Optional[str] = None) -> Dict[str, Any]:
         """Local search via Serper Places/Maps API for GEO visibility."""
         if not self.is_configured():
-            return {
-                "source": "fallback_places",
-                "places": [
-                    {
-                        "title": f"{query} Official Office",
-                        "address": "1000 Main St, Houston, TX 77002",
-                        "rating": 4.9,
-                        "ratingCount": 128
-                    }
-                ]
-            }
+            return {"source": "unavailable", "places": [],
+                    "error": "Serper API key not configured â€” places search unavailable"}
 
         url = f"{self.base_url}/places"
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
@@ -541,20 +525,13 @@ class SerperService:
         except Exception as e:
             logger.warning(f"Serper Places error: {e}")
 
-        return {"places": []}
+        return {"source": "unavailable", "places": []}
 
     async def autocomplete(self, query: str) -> Dict[str, Any]:
         """Google Autocomplete expansions for seed keyword expansion."""
         if not self.is_configured():
-            return {
-                "suggestions": [
-                    {"value": f"{query} 2026"},
-                    {"value": f"{query} cost calculator"},
-                    {"value": f"how does {query} work"},
-                    {"value": f"{query} near me"},
-                    {"value": f"best {query} guide"}
-                ]
-            }
+            return {"source": "unavailable", "suggestions": [],
+                    "error": "Serper API key not configured â€” autocomplete unavailable"}
 
         url = f"{self.base_url}/autocomplete"
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
@@ -564,11 +541,32 @@ class SerperService:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.status_code == 200:
-                    return res.json()
+                    data = res.json()
+                    data.setdefault("source", "serper.dev")
+                    return data
         except Exception as e:
             logger.warning(f"Serper Autocomplete error: {e}")
 
-        return {"suggestions": []}
+        return {"source": "unavailable", "suggestions": []}
+
+    # ---------------------------------------------------------
+    # 5. Key verification (Connectors page save flow)
+    # ---------------------------------------------------------
+    async def verify_key(self, api_key: str) -> bool:
+        """Validate a Serper.dev key by issuing a real 1-result search."""
+        if not api_key or len(api_key.strip()) < 8:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(
+                    f"{self.base_url}/search",
+                    headers={"X-API-KEY": api_key.strip(), "Content-Type": "application/json"},
+                    json={"q": "test", "num": 1},
+                )
+                return resp.status_code == 200
+        except Exception as e:
+            logger.warning(f"[SerperService] verify_key error: {e}")
+            return False
 
 
 # Global singleton instance

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
@@ -13,9 +13,9 @@ interface WordPressPost {
 }
 
 export default function WordPressPage() {
-  const [wpUrl, setWpUrl] = useState("https://accident.innovatcs.com");
-  const [wpUser, setWpUser] = useState("admin");
-  const [wpPass, setWpPass] = useState("");
+  const [wpUrl, setWpUrl] = useState<string>("");
+  const [wpUser, setWpUser] = useState<string>("");
+  const [wpPass, setWpPass] = useState<string>("");
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectedUser, setConnectedUser] = useState<string | null>(null);
   const [posts, setPosts] = useState<WordPressPost[]>([]);
@@ -25,45 +25,87 @@ export default function WordPressPage() {
   const [error, setError] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
 
-  useEffect(() => {
-    setWebsiteId(getCurrentWebsiteId() || getWebsiteId());
-  }, []);
+  const fetchLivePosts = async (targetWid?: string) => {
+    const wid = targetWid || websiteId || getCurrentWebsiteId();
+    if (!wid) return;
+
+    try {
+      setActionLoading(true);
+      setNoticeMsg("Fetching live posts from WordPress REST API...");
+      const res = await get(`/api/wordpress/${wid}/posts`);
+      if (res?.posts && Array.isArray(res.posts)) {
+        setPosts(res.posts);
+        setNoticeMsg(`✓ Fetched ${res.posts.length} live posts from WordPress.`);
+      } else {
+        setPosts([]);
+        setNoticeMsg("Fetched posts response: 0 posts found on WordPress.");
+      }
+    } catch (err: any) {
+      setError(`Failed to fetch posts: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const loadStatus = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Check wordpress connection status from backend
+      // 1. Resolve active website
+      let wid = getCurrentWebsiteId() || getWebsiteId();
+      let sites: any[] = [];
       try {
-        const res = await get(`/api/wordpress/status`);
-        if (res?.connected) {
-          setIsConnected(true);
-          if (res.site_url) setWpUrl(res.site_url);
-          if (res.username) {
-            setWpUser(res.username);
-            setConnectedUser(res.username);
-          }
-        }
+        const sitesRes = await get("/api/websites");
+        sites = Array.isArray(sitesRes) ? sitesRes : [];
       } catch {}
 
-      // Try fetching live posts
-      try {
-        const postsRes = await get(`/api/wordpress/${websiteId}/posts`);
-        if (postsRes?.posts && Array.isArray(postsRes.posts)) {
-          setPosts(postsRes.posts);
-          setIsConnected(true);
+      if (!wid && sites.length > 0) {
+        wid = sites[0].id;
+        setCurrentWebsiteId(wid);
+        setWebsiteId(wid);
+      }
+
+      if (wid) {
+        setWebsiteId(wid);
+        const currentSite = sites.find((s: any) => s.id === wid) || (await get(`/api/websites/${wid}`).catch(() => null));
+        if (currentSite) {
+          const siteUrl = currentSite.wordpress_url || currentSite.cms_url || (currentSite.domain ? `https://${currentSite.domain}` : "");
+          const siteUser = currentSite.wordpress_user || currentSite.cms_user || "";
+          if (siteUrl) setWpUrl(siteUrl);
+          if (siteUser) {
+            setWpUser(siteUser);
+            setConnectedUser(siteUser);
+          }
+          if (currentSite.app_password || currentSite.wordpress_password) {
+            setIsConnected(true);
+          }
         }
-      } catch {}
+
+        // Try fetching live posts
+        try {
+          const postsRes = await get(`/api/wordpress/${wid}/posts`);
+          if (postsRes?.posts && Array.isArray(postsRes.posts)) {
+            setPosts(postsRes.posts);
+            setIsConnected(true);
+          }
+        } catch {}
+      }
     } catch (e: any) {
       console.warn("WP load error:", e);
     } finally {
       setLoading(false);
     }
-  }, [websiteId]);
+  }, []);
 
   useEffect(() => {
     loadStatus();
+    const handleWebsiteChange = (e: any) => {
+      setWebsiteId(e.detail);
+      loadStatus();
+    };
+    window.addEventListener("website-changed", handleWebsiteChange);
+    return () => window.removeEventListener("website-changed", handleWebsiteChange);
   }, [loadStatus]);
 
   const handleSaveAndConnect = async (e: React.FormEvent) => {
@@ -76,34 +118,33 @@ export default function WordPressPage() {
     try {
       setActionLoading(true);
       setError(null);
-      setNoticeMsg("Connecting to WordPress REST API...");
+      setNoticeMsg("Connecting to WordPress REST API and securing credentials...");
 
-      const domain = wpUrl.trim().replace(/^https?:\/\//, "").split("/")[0];
+      let activeWid = websiteId || getCurrentWebsiteId();
 
-      // Update website record in Supabase
-      if (websiteId) {
-        await post(`/api/wordpress/${websiteId}/credentials`, {
-          url: wpUrl.trim(),
-          username: wpUser.trim(),
-          password: wpPass.trim(),
-        });
-      } else {
-        const newSite = await post("/api/websites", {
-          domain: domain,
-          cms_url: wpUrl.trim(),
-          cms_user: wpUser.trim(),
-          app_password: wpPass.trim(),
-        });
-        if (newSite?.id) {
-          setCurrentWebsiteId(newSite.id);
-          setWebsiteId(newSite.id);
+      const res = await post(`/api/wordpress/${activeWid || "default"}/credentials`, {
+        url: wpUrl.trim(),
+        username: wpUser.trim(),
+        password: wpPass.trim(),
+      });
+
+      const newWid = res?.website_id || activeWid;
+      if (newWid) {
+        setCurrentWebsiteId(newWid);
+        setWebsiteId(newWid);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("website-changed", { detail: newWid }));
         }
       }
 
       setIsConnected(true);
       setConnectedUser(wpUser.trim());
-      setNoticeMsg(`✓ Successfully connected to WordPress site at ${wpUrl}!`);
-      fetchLivePosts();
+      setWpPass("");
+      setNoticeMsg(`✓ Successfully connected to WordPress at ${wpUrl}!`);
+
+      if (newWid) {
+        await fetchLivePosts(newWid);
+      }
     } catch (err: any) {
       setError(`WordPress connection failed: ${err.message}`);
     } finally {
@@ -122,19 +163,32 @@ export default function WordPressPage() {
       setError(null);
       setNoticeMsg("Testing WordPress REST connection...");
 
-      const res = await post(`/api/wordpress/${websiteId || "default"}/test`, {
+      let activeWid = websiteId || getCurrentWebsiteId();
+
+      const res = await post(`/api/wordpress/${activeWid || "default"}/test`, {
         url: wpUrl.trim(),
         username: wpUser.trim(),
         password: wpPass.trim(),
       });
 
       if (res && res.connected) {
+        const newWid = res?.website_id || activeWid;
+        if (newWid) {
+          setCurrentWebsiteId(newWid);
+          setWebsiteId(newWid);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("website-changed", { detail: newWid }));
+          }
+        }
         setIsConnected(true);
-        setNoticeMsg(`✓ WordPress REST connection verified successfully!`);
-        fetchLivePosts();
+        setConnectedUser(wpUser.trim());
+        setNoticeMsg(`✓ WordPress REST connection verified: ${res.message}`);
+        if (newWid) {
+          await fetchLivePosts(newWid);
+        }
       } else {
         setIsConnected(false);
-        setError(res?.message || "WordPress connection test failed. Check Application Password.");
+        setError(res?.message || "WordPress connection test failed. Verify Application Password.");
       }
     } catch (err: any) {
       setIsConnected(false);
@@ -144,270 +198,235 @@ export default function WordPressPage() {
     }
   };
 
-  const fetchLivePosts = async () => {
-    try {
-      setActionLoading(true);
-      setNoticeMsg("Fetching live posts from WordPress...");
-      const res = await get(`/api/wordpress/${websiteId}/posts`);
-      if (res?.posts && Array.isArray(res.posts)) {
-        setPosts(res.posts);
-        setNoticeMsg(`✓ Fetched ${res.posts.length} live posts from WordPress.`);
-      } else {
-        setNoticeMsg("Fetched posts response: 0 posts found.");
-      }
-    } catch (err: any) {
-      setError(`Failed to fetch posts: ${err.message}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handle1ClickOAuth = async () => {
-    try {
-      setActionLoading(true);
-      setError(null);
-      const res = await get("/api/wordpress/authorize-url");
-      if (res?.authorize_url) {
-        window.location.href = res.authorize_url;
-      } else {
-        const wpBase = wpUrl.replace(/\/+$/, "");
-        const authUrl = `${wpBase}/wp-admin/authorize-application.php?app_name=RankForge&success_url=${encodeURIComponent(window.location.origin + "/auth/wordpress/callback")}`;
-        window.location.href = authUrl;
-      }
-    } catch (err: any) {
-      const wpBase = wpUrl.replace(/\/+$/, "");
-      const authUrl = `${wpBase}/wp-admin/authorize-application.php?app_name=RankForge&success_url=${encodeURIComponent(window.location.origin + "/auth/wordpress/callback")}`;
-      window.location.href = authUrl;
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   return (
-    <div className="page-container active" style={{ position: "relative", display: "block" }}>
-      {/* PAGE HEADER */}
-      <div className="page-heading">WordPress Manager</div>
-      <div className="page-sub">
-        <span className="sub-sq"></span>
-        Direct WordPress REST API Connection · 1-Click Publishing · Yoast & RankMath Meta Integration
+    <div className="p-6 max-w-6xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="border-b border-ink/20 pb-4 flex items-center justify-between">
+        <div>
+          <h1 className="dot-font text-2xl text-ink font-bold tracking-wide">
+            WORDPRESS MANAGER
+          </h1>
+          <p className="mono-font text-xs text-muted mt-1">
+            Direct WordPress REST API Connection · 1-Click Publishing · Yoast & RankMath Meta Integration
+          </p>
+        </div>
+        <div className="mono-font text-xs bg-stone border border-ink/40 px-3 py-1 text-accent flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400" : "bg-amber-400"} animate-pulse`} />
+          <span>{isConnected ? "STATUS: CONNECTED" : "STATUS: NOT CONNECTED"}</span>
+        </div>
       </div>
 
-      {/* NOTICES */}
-      {error && (
-        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)" }}>
-          <span className="notice-sq" style={{ background: "var(--red)" }}></span>
-          <span style={{ color: "var(--red)" }}>{error}</span>
-        </div>
-      )}
-
       {noticeMsg && (
-        <div className="notice ok">
-          <span className="notice-sq"></span>
+        <div className="p-3 bg-emerald-950/40 border border-emerald-500/50 text-emerald-400 mono-font text-xs flex items-center gap-2">
+          <span>✓</span>
           <span>{noticeMsg}</span>
         </div>
       )}
 
-      {/* TOP SECTION: CREDENTIALS + PUBLISHING CONFIG */}
-      <div className="grid-2" style={{ marginBottom: "16px" }}>
-        {/* CREDENTIALS FORM */}
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-label">🔷 WordPress Connection</span>
-            <span className={`badge ${isConnected ? "badge-green" : "badge-amber"}`}>
-              {isConnected ? "Connected" : "Setup Required"}
+      {error && (
+        <div className="p-3 bg-red-950/40 border border-red-500/50 text-red-400 mono-font text-xs flex items-center gap-2">
+          <span>⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left Column: Credentials Form */}
+        <div className="lg:col-span-7 bg-stone border border-ink/30 p-6">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-ink/20">
+            <div className="flex items-center gap-2">
+              <span className="text-accent text-sm">◆</span>
+              <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
+                WORDPRESS CONNECTION
+              </h2>
+            </div>
+            <span className={`mono-font text-[10px] px-2 py-0.5 border ${isConnected ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-400" : "bg-amber-950/40 border-amber-500/40 text-amber-400"}`}>
+              {isConnected ? "CONNECTED" : "UNCONFIGURED"}
             </span>
           </div>
-          <form onSubmit={handleSaveAndConnect} className="panel-body">
-            <div className="field-group">
-              <div className="field-label">WordPress Site URL</div>
+
+          <form onSubmit={handleSaveAndConnect} className="space-y-4">
+            <div>
+              <label className="block mono-font text-xs text-muted mb-1 uppercase">
+                WordPress Site URL
+              </label>
               <input
-                className="field"
+                type="url"
                 value={wpUrl}
                 onChange={(e) => setWpUrl(e.target.value)}
-                placeholder="https://accident.innovatcs.com"
+                placeholder="https://yourdomain.com"
+                className="w-full bg-paper border border-ink/30 px-3 py-2 text-ink mono-font text-sm focus:border-accent focus:outline-none"
                 disabled={actionLoading}
+                required
               />
             </div>
 
-            <div className="field-group">
-              <div className="field-label">Auth Username</div>
+            <div>
+              <label className="block mono-font text-xs text-muted mb-1 uppercase">
+                Auth Username
+              </label>
               <input
-                className="field"
+                type="text"
                 value={wpUser}
                 onChange={(e) => setWpUser(e.target.value)}
                 placeholder="admin"
+                className="w-full bg-paper border border-ink/30 px-3 py-2 text-ink mono-font text-sm focus:border-accent focus:outline-none"
                 disabled={actionLoading}
+                required
               />
             </div>
 
-            <div className="field-group">
-              <div className="field-label">Application Password</div>
+            <div>
+              <label className="block mono-font text-xs text-muted mb-1 uppercase">
+                Application Password
+              </label>
               <input
                 type="password"
-                className="field"
                 value={wpPass}
                 onChange={(e) => setWpPass(e.target.value)}
-                placeholder="xxxx xxxx xxxx xxxx"
+                placeholder={isConnected ? "•••••••••••••••• (Saved)" : "abcd 1234 efgh 5678"}
+                className="w-full bg-paper border border-ink/30 px-3 py-2 text-ink mono-font text-sm focus:border-accent focus:outline-none"
+                autoComplete="new-password"
+                autoCorrect="off"
+                spellCheck={false}
                 disabled={actionLoading}
               />
-              <div className="field-hint">
-                Generate in WP Admin → Users → Edit Profile → Application Passwords
-              </div>
+              <p className="mono-font text-[10px] text-muted mt-1">
+                Generate in WP Admin → Users → Profile → Application Passwords. Stored Fernet-encrypted.
+              </p>
             </div>
 
-            <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 type="submit"
-                className="btn btn-accent"
                 disabled={actionLoading}
-                style={{ fontWeight: 600 }}
+                className="px-5 py-2 bg-accent hover:bg-accent/90 text-paper font-bold mono-font text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50"
               >
-                {actionLoading ? "Saving..." : "Save & Connect"}
+                {actionLoading ? "SAVING..." : "SAVE & CONNECT"}
               </button>
+
               <button
                 type="button"
-                className="btn"
                 onClick={handleTestConnection}
                 disabled={actionLoading}
+                className="px-4 py-2 bg-paper hover:bg-stone border border-ink/40 text-ink mono-font text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
               >
-                Test Connection
+                TEST CONNECTION
               </button>
+
               <button
                 type="button"
-                className="btn"
-                onClick={fetchLivePosts}
-                disabled={actionLoading}
+                onClick={() => fetchLivePosts()}
+                disabled={actionLoading || !websiteId}
+                className="px-4 py-2 bg-paper hover:bg-stone border border-ink/40 text-accent mono-font text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
               >
-                Sync Posts
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handle1ClickOAuth}
-                disabled={actionLoading}
-                title="Authorize application in 1-click via WordPress Admin"
-              >
-                1-Click WP OAuth ↗
+                SYNC POSTS
               </button>
             </div>
           </form>
         </div>
 
-        {/* PUBLISHING SETTINGS & STATUS */}
-        <div className="panel">
-          <div className="panel-head">
-            <span className="panel-label">Publishing Engine & Status</span>
-            <span className="badge badge-green">Ready</span>
+        {/* Right Column: Publishing Capabilities & Engine Status */}
+        <div className="lg:col-span-5 bg-stone border border-ink/30 p-6">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-ink/20">
+            <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
+              PUBLISHING ENGINE & CAPABILITIES
+            </h2>
+            <span className="mono-font text-[10px] px-2 py-0.5 bg-emerald-950/40 border border-emerald-500/40 text-emerald-400">
+              READY
+            </span>
           </div>
-          <div className="panel-body">
-            <div className="notice ok" style={{ marginBottom: "14px" }}>
-              <span className="notice-sq"></span>
-              When content is approved in RankForge, articles are pushed directly to WordPress with full Gutenberg/HTML formatting and Yoast/RankMath SEO focus keywords.
-            </div>
 
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">REST API endpoint: /wp-json/wp/v2/posts</span>
-              <span className="badge badge-green">Supported</span>
+          <p className="mono-font text-xs text-muted mb-4 leading-relaxed">
+            When content is approved in RankForge, articles are pushed directly to WordPress with full Gutenberg/HTML formatting and Yoast/RankMath SEO focus keywords.
+          </p>
+
+          <div className="space-y-3 mono-font text-xs">
+            <div className="p-2.5 bg-paper border border-ink/20 flex items-center justify-between">
+              <span className="text-muted">✓ REST API endpoint: /wp-json/wp/v2/posts</span>
+              <span className="text-emerald-400 font-bold">SUPPORTED</span>
             </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Post status options: Draft, Pending, or Instant Publish</span>
-              <span className="badge badge-green">Configured</span>
+            <div className="p-2.5 bg-paper border border-ink/20 flex items-center justify-between">
+              <span className="text-muted">✓ Post status: Draft, Pending, or Instant Publish</span>
+              <span className="text-emerald-400 font-bold">CONFIGURED</span>
             </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Yoast / RankMath Focus Keyword Meta mapping</span>
-              <span className="badge badge-green">Active</span>
+            <div className="p-2.5 bg-paper border border-ink/20 flex items-center justify-between">
+              <span className="text-muted">✓ Yoast / RankMath Focus Keyword mapping</span>
+              <span className="text-emerald-400 font-bold">ACTIVE</span>
             </div>
-            <div className="check-row">
-              <span className="ci pass">✓</span>
-              <span className="ck-label">Instant XML Sitemap Ping after article publish</span>
-              <span className="badge badge-green">Active</span>
+            <div className="p-2.5 bg-paper border border-ink/20 flex items-center justify-between">
+              <span className="text-muted">✓ Instant XML Sitemap Ping after publish</span>
+              <span className="text-emerald-400 font-bold">ACTIVE</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* LIVE WORDPRESS POSTS TABLE */}
-      <div className="panel">
-        <div className="panel-head">
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span className="panel-label">Live WordPress Published Articles</span>
-            <span className="badge badge-ink">{posts.length} Posts</span>
+      {/* Bottom Section: Live WordPress Published Articles */}
+      <div className="bg-stone border border-ink/30 p-6">
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-ink/20">
+          <div className="flex items-center gap-2">
+            <h2 className="dot-font text-sm text-ink font-bold tracking-wider">
+              LIVE WORDPRESS PUBLISHED ARTICLES
+            </h2>
+            <span className="mono-font text-[10px] px-2 py-0.5 bg-paper border border-ink/30 text-accent">
+              {posts.length} POSTS
+            </span>
           </div>
-          <button className="panel-action" onClick={fetchLivePosts} disabled={actionLoading}>
-            Fetch Posts
+          <button
+            onClick={() => fetchLivePosts()}
+            disabled={actionLoading || !websiteId}
+            className="px-3 py-1 bg-accent/10 border border-accent/30 text-accent mono-font text-xs uppercase hover:bg-accent/20 transition-colors disabled:opacity-50"
+          >
+            FETCH POSTS
           </button>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Status</th>
-                <th>Link</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+        {posts.length === 0 ? (
+          <div className="py-12 text-center mono-font text-xs text-muted border border-dashed border-ink/20">
+            No published WordPress posts fetched yet. Enter credentials above and click &quot;Save &amp; Connect&quot; or &quot;Sync Posts&quot;.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left mono-font text-xs">
+              <thead className="border-b border-ink/20 text-muted uppercase text-[10px]">
                 <tr>
-                  <td colSpan={4} style={{ textAlign: "center", padding: "24px", color: "var(--muted)" }}>
-                    Loading WordPress posts...
-                  </td>
+                  <th className="py-2 px-3">Title</th>
+                  <th className="py-2 px-3">Status</th>
+                  <th className="py-2 px-3">Link</th>
+                  <th className="py-2 px-3">Date</th>
                 </tr>
-              ) : posts.length === 0 ? (
-                <tr>
-                  <td colSpan={4} style={{ textAlign: "center", padding: "28px", color: "var(--muted)" }}>
-                    No published WordPress posts fetched yet. Enter credentials above and click "Save & Connect" or "Sync Posts".
-                  </td>
-                </tr>
-              ) : (
-                posts.map((p, idx) => {
-                  const titleStr = typeof p.title === "object" ? p.title?.rendered || "Untitled Post" : p.title || "Untitled Post";
+              </thead>
+              <tbody className="divide-y divide-ink/10">
+                {posts.map((p, idx) => {
+                  const postTitle = typeof p.title === "object" ? p.title?.rendered : p.title;
                   return (
-                    <tr key={p.id || idx}>
-                      <td style={{ fontWeight: 600, color: "var(--ink)" }}>{titleStr}</td>
-                      <td>
-                        <span className={`badge ${p.status === "publish" || p.status === "published" ? "badge-green" : "badge-amber"}`}>
-                          {p.status || "Published"}
+                    <tr key={p.id || idx} className="hover:bg-paper/40 transition-colors">
+                      <td className="py-3 px-3 font-bold text-ink max-w-md truncate" dangerouslySetInnerHTML={{ __html: postTitle || "Untitled Post" }} />
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 text-[10px]">
+                          {p.status || "published"}
                         </span>
                       </td>
-                      <td>
+                      <td className="py-3 px-3">
                         {p.link ? (
-                          <a href={p.link} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>
-                            View Post ↗
+                          <a href={p.link} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                            View on Site ↗
                           </a>
                         ) : (
-                          <span style={{ color: "var(--muted)" }}>Synced</span>
+                          <span className="text-muted">—</span>
                         )}
                       </td>
-                      <td style={{ color: "var(--muted)" }}>
+                      <td className="py-3 px-3 text-muted">
                         {p.date ? new Date(p.date).toLocaleDateString() : "Recent"}
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* BOTTOM TICKER */}
-      <div className="bticker">
-        <span className="bticker-inner">
-          <span className="bt-sq"></span>WORDPRESS INTEGRATION <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>REST API DIRECT CONNECTION <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ACCIDENT.INNOVATCS.COM SYNCED <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>1-CLICK PUBLISHING ACTIVE &nbsp;&nbsp;&nbsp;&nbsp;
-          <span className="bt-sq"></span>WORDPRESS INTEGRATION <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>REST API DIRECT CONNECTION <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ACCIDENT.INNOVATCS.COM SYNCED <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>1-CLICK PUBLISHING ACTIVE
-        </span>
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

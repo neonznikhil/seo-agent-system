@@ -19,6 +19,8 @@ class BrainMemoryIn(BaseModel):
 
 @router.get("/brain")
 @router.get("/api/brain")
+@router.get("/brain/{website_id}/memory")
+@router.get("/api/brain/{website_id}/memory")
 async def list_all_brain_memories(
     website_id: Optional[str] = None,
     query: str = "",
@@ -28,14 +30,14 @@ async def list_all_brain_memories(
     from ..database import get_supabase
     supabase = get_supabase()
     q = supabase.table("brain_memory").select("*")
-    if website_id:
+    if website_id and website_id not in ("brain", "default", "all"):
         q = q.eq("website_id", website_id)
     if memory_type and memory_type != "all":
         q = q.eq("memory_type", memory_type)
     if query:
         q = q.ilike("title", f"%{query}%")
     data = q.order("created_at", desc=True).limit(limit).execute().data or []
-    return {"success": True, "data": data} if isinstance(data, list) else data
+    return {"success": True, "data": data, "memories": data}
 
 
 @router.post("/brain")

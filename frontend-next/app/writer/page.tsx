@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
+import { createSSE } from "@/lib/api";
 
 interface Website {
   id: string;
@@ -20,34 +21,26 @@ interface ContentItem {
   content?: string;
   status: string;
   pipeline_status?: string;
+  error_message?: string | null;
   created_at: string;
   wp_post_id?: number | string;
   wp_draft_url?: string;
 }
 
-interface PipelineLog {
-  step_number: number;
-  step_name: string;
-  phase: string;
-  status: string;
-  thought?: string;
-  created_at: string;
+// Live sections rendered progressively from the SSE stream
+interface StreamSection {
+  name: string;
+  content: string;
 }
 
-const PHASES = [
-  "1. Brain Context & Brand Voice",
-  "2. Audience Demand & Search Intent",
-  "3. SERP & Competitor Intelligence",
-  "4. Outline & Semantic Architecture",
-  "5. NVIDIA NIM Autonomous Content Writing",
-  "6. Multi-Expert SEO & EEAT Review",
-  "7. Humanizer & Tone Verification",
-  "8. Fact-Checking & Knowledge Verification",
-  "9. Internal Linking Optimization",
-  "10. Citation & Reference Audit",
-  "11. Final Quality Gate Scoring",
-  "12. Brain Memory Learning",
-];
+const SECTION_ORDER = ["h1", "meta_description", "introduction", "faq", "conclusion"];
+
+function sectionSortKey(name: string): number {
+  const idx = SECTION_ORDER.indexOf(name);
+  if (idx >= 0) return idx;
+  if (name.startsWith("h2_")) return 2.5 + parseInt(name.split("_")[1] || "0", 10);
+  return 99;
+}
 
 export default function WriterPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
@@ -56,24 +49,31 @@ export default function WriterPage() {
   const [keywordsInput, setKeywordsInput] = useState("");
   const [suggestedTitles, setSuggestedTitles] = useState<string[]>([]);
   const [loadingKeywords, setLoadingKeywords] = useState<boolean>(false);
-  const [tone, setTone] = useState("authoritative, engaging and SEO-optimized");
-  
+
   const [contentList, setContentList] = useState<ContentItem[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<ContentItem | null>(null);
-  
+
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
-  const [activeContentId, setActiveContentId] = useState<string | null>(null);
-  const [currentPhaseIndex, setCurrentPhaseIndex] = useState<number>(0);
-  const [pipelineLogs, setPipelineLogs] = useState<PipelineLog[]>([]);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [streamSections, setStreamSections] = useState<StreamSection[]>([]);
+  const [streamPhase, setStreamPhase] = useState<string>("");
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamDone, setStreamDone] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isApproving, setIsApproving] = useState<boolean>(false);
-  const [isPublishing, setIsPublishing] = useState<boolean>(false);
 
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
+  const previewBottomRef = useRef<HTMLDivElement | null>(null);
 
-  // 1. Fetch real websites from API
+  // Cleanup SSE on unmount
+  useEffect(() => {
+    return () => {
+      if (sseRef.current) sseRef.current.close();
+    };
+  }, []);
+
+  // 1. Fetch real websites
   useEffect(() => {
     fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/websites`)
       .then((r) => r.json())
@@ -87,24 +87,20 @@ export default function WriterPage() {
           setCurrentWebsiteId(validWid);
         }
       })
-      .catch((err) => {
-        console.error("Failed to load websites:", err);
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  // 2. Fetch keyword opportunities & auto-suggest titles when website is selected
+  // 2. Keyword suggestions from GSC
   useEffect(() => {
     if (!selectedWebsiteId) return;
 
     setLoadingKeywords(true);
-
     fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/gsc/${selectedWebsiteId}/keywords`)
       .then((r) => r.json())
       .then((data) => {
         const keywords = Array.isArray(data?.keywords) ? data.keywords : Array.isArray(data) ? data : [];
         if (keywords.length > 0) {
-          // Auto-fill top 3 keywords
           const topKeywords = keywords
             .slice(0, 3)
             .map((k: any) => k.keyword || k)
@@ -112,79 +108,46 @@ export default function WriterPage() {
             .join(", ");
           setKeywordsInput(topKeywords);
 
-          // Auto-suggest title based on top keyword
           const topKeyword = (keywords[0]?.keyword || keywords[0] || "").toString();
           if (topKeyword) {
-            // Clean keyword from any domain artifacts
             let cleanKw = topKeyword
               .replace(/https?:\/\/\S+/gi, "")
-              .replace(/\b(www|\.com|\.net|\.org|\.io|\.co|innovatcs)\b/gi, "")
+              .replace(/\b(www|\.com|\.net|\.org|\.io|\.co)\b/gi, "")
               .replace(/[^\w\s-]/g, "")
               .trim();
 
-            if (!cleanKw) cleanKw = "Car Accident Compensation Claims";
-
-            // Capitalize appropriately
-            const formatTitleCase = (s: string) => {
-              const minor = new Set(["a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", "by", "in", "of", "with"]);
-              return s.split(/\s+/).map((w, idx) => {
-                const l = w.toLowerCase();
-                return (idx === 0 || !minor.has(l)) ? (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()) : l;
-              }).join(" ");
-            };
-
-            const cleanTitleCased = formatTitleCase(cleanKw);
-            const lower = cleanKw.toLowerCase();
-
-            let generated: string[] = [];
-            if (lower.startsWith("how to")) {
-              const action = formatTitleCase(cleanKw.substring(6).trim());
-              generated = [
-                `How to ${action}: Complete Step-by-Step Guide (2026)`,
-                `The Ultimate Guide: How to ${action}`,
-                `${action}: Everything You Need to Know`,
-                `7 Essential Steps: How to ${action}`,
-              ];
-            } else {
-              generated = [
+            if (cleanKw && cleanKw.length > 3) {
+              const formatTitleCase = (s: string) => {
+                const minor = new Set(["a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", "by", "in", "of", "with"]);
+                return s.split(/\s+/).map((w, idx) => {
+                  const l = w.toLowerCase();
+                  return idx === 0 || !minor.has(l) ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : l;
+                }).join(" ");
+              };
+              const cleanTitleCased = formatTitleCase(cleanKw);
+              setSuggestedTitles([
                 `Complete Guide to ${cleanTitleCased} in 2026`,
-                `How to Handle ${cleanTitleCased}: Step-by-Step Guide`,
                 `${cleanTitleCased}: Everything You Need to Know`,
-                `7 Critical Facts About ${cleanTitleCased}`,
-                `Understanding ${cleanTitleCased}: Process, Timeline & Legal Rights`,
-              ];
+                `Understanding ${cleanTitleCased}: Process, Timeline & Options`,
+              ]);
+              setTitle(`Complete Guide to ${cleanTitleCased} in 2026`);
             }
-
-            setSuggestedTitles(generated);
-            setTitle(generated[0]);
           }
-        } else {
-          setSuggestedTitles([
-            "Complete Guide to Personal Injury Claims in 2026",
-            "How to Maximize Your Accident Settlement: Step-by-Step",
-            "Car Accident Compensation: Everything You Need to Know",
-          ]);
         }
       })
-      .catch(() => {
-        setSuggestedTitles([
-          "Complete Guide to Personal Injury Claims in 2026",
-          "How to Maximize Your Accident Settlement: Step-by-Step",
-          "Car Accident Compensation: Everything You Need to Know",
-        ]);
-      })
+      .catch(() => {})
       .finally(() => setLoadingKeywords(false));
   }, [selectedWebsiteId]);
 
-  // 3. Load content for selected website
+  // 3. Load articles for website
   const loadArticlesForWebsite = useCallback(async (wid: string) => {
     if (!wid) return;
     try {
       const contentRes = await get(`/api/writer/${wid}/content`);
       const items = Array.isArray(contentRes) ? contentRes : contentRes?.data || [];
       setContentList(items);
-      if (items.length > 0 && !selectedArticle) {
-        setSelectedArticle(items[0]);
+      if (items.length > 0) {
+        setSelectedArticle((prev) => prev ?? items[0]);
       }
     } catch {
       try {
@@ -192,12 +155,10 @@ export default function WriterPage() {
         setContentList(Array.isArray(blogsRes) ? blogsRes : []);
       } catch {}
     }
-  }, [selectedArticle]);
+  }, []);
 
   useEffect(() => {
-    if (selectedWebsiteId) {
-      loadArticlesForWebsite(selectedWebsiteId);
-    }
+    if (selectedWebsiteId) loadArticlesForWebsite(selectedWebsiteId);
   }, [selectedWebsiteId, loadArticlesForWebsite]);
 
   const handleWebsiteChange = (id: string) => {
@@ -206,57 +167,112 @@ export default function WriterPage() {
     setSelectedArticle(null);
   };
 
-  // Poll pipeline progress
-  const startPollingPipeline = (wid: string, contentId: string) => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+  // 4. SSE streaming for a generation job
+  const startStreaming = (jobId: string, wid: string) => {
+    if (sseRef.current) sseRef.current.close();
+    setActiveJobId(jobId);
+    setStreamSections([]);
+    setStreamError(null);
+    setStreamDone(false);
+    setStreamPhase("Connecting to generation stream...");
 
-    let phase = 0;
-    pollIntervalRef.current = setInterval(async () => {
+    const source = createSSE(`/api/writer/job/${jobId}/stream`, () => {});
+    if (!source) {
+      setStreamError("Could not establish live stream connection.");
+      return;
+    }
+    sseRef.current = source;
+
+    source.onmessage = (event: MessageEvent) => {
       try {
-        const pipelineData = await get(`/api/writer/${wid}/pipeline/${contentId}`);
-        if (pipelineData) {
-          if (pipelineData.logs) setPipelineLogs(pipelineData.logs);
-          phase = Math.min(11, phase + 1);
-          setCurrentPhaseIndex(phase);
-
-          // Check if finished
-          const contentData = await get(`/api/writer/${wid}/content/${contentId}`);
-          if (contentData && contentData.content && contentData.content.length > 100) {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        const data = JSON.parse(event.data);
+        switch (data.event) {
+          case "phase_started":
+          case "phase_completed":
+            setStreamPhase(data.phase || "");
+            break;
+          case "section":
+            setStreamSections((prev) => {
+              const next = [
+                ...prev.filter((s) => s.name !== data.section),
+                { name: data.section, content: data.content },
+              ];
+              return next.sort((a, b) => sectionSortKey(a.name) - sectionSortKey(b.name));
+            });
+            break;
+          case "pipeline_completed":
+            setStreamDone(true);
             setGenerating(false);
-            setCurrentPhaseIndex(11);
-            setSelectedArticle(contentData);
-            setStatusMessage("✅ Article generated successfully with NVIDIA NIM LLM!");
+            setStatusMessage(`✅ "${data.title}" generated (${data.word_count} words, SEO ${data.seo_score}) and queued for your approval.`);
             loadArticlesForWebsite(wid);
-          }
+            source.close();
+            break;
+          case "pipeline_failed":
+          case "pipeline_blocked":
+            setStreamError(
+              data.error
+                ? `Generation failed: ${data.error}`
+                : `Pipeline blocked at phase '${data.phase}'${data.reason ? ` — ${data.reason}` : ""}.`
+            );
+            setGenerating(false);
+            source.close();
+            break;
+          default:
+            break;
         }
-      } catch (e) {
-        phase = Math.min(11, phase + 1);
-        setCurrentPhaseIndex(phase);
-      }
-    }, 3000);
+      } catch {}
+    };
+    source.onerror = () => {
+      // Stream ended; if we never got completion, surface it honestly
+      setTimeout(() => {
+        if (!streamDone) {
+          // Check final state via REST before declaring an error
+          fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/writer/${wid}/content/${jobId}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((detail) => {
+              if (detail && detail.content && detail.content.length > 100) {
+                setStreamDone(true);
+                setGenerating(false);
+                setStatusMessage("✅ Article generated successfully!");
+                loadArticlesForWebsite(wid);
+              } else if (detail && detail.pipeline_status === "failed") {
+                setStreamError(detail.error_message || "Generation failed on the backend.");
+                setGenerating(false);
+              }
+            })
+            .catch(() => {});
+        }
+      }, 2000);
+      source.close();
+    };
   };
+
+  // Auto-scroll preview while streaming
+  useEffect(() => {
+    if (generating && previewBottomRef.current) {
+      previewBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [streamSections, generating]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. VALIDATION — stop if placeholder text or empty
     const trimmedTitle = title.trim();
+    const lowerTitle = trimmedTitle.toLowerCase();
     if (
       !trimmedTitle ||
-      trimmedTitle === "Or let AI suggest one based on your site" ||
-      trimmedTitle === "Enter your blog title above" ||
-      trimmedTitle.toLowerCase().includes("or let ai suggest") ||
-      trimmedTitle.toLowerCase().includes("enter your blog title")
+      lowerTitle.includes("or let ai suggest") ||
+      lowerTitle.includes("e.g.") ||
+      trimmedTitle.length < 8
     ) {
-      setError("Please enter a real blog title or click a suggested title first.");
+      setError("Please enter a real blog title (click a suggestion or type one).");
       return;
     }
 
     const keywords = keywordsInput
       .split(",")
       .map((k) => k.trim())
-      .filter((k) => Boolean(k) && !k.toLowerCase().includes("or let ai") && !k.toLowerCase().includes("enter your"));
+      .filter((k) => Boolean(k));
 
     if (keywords.length === 0) {
       setError("Please enter at least one target keyword.");
@@ -271,66 +287,37 @@ export default function WriterPage() {
     try {
       setGenerating(true);
       setError(null);
-      setStatusMessage("Starting 12-phase autonomous generation pipeline...");
-      setCurrentPhaseIndex(0);
-      setPipelineLogs([]);
+      setStatusMessage("Generation started — article appears below as each section is written...");
+      setStreamSections([]);
 
       const payload = {
         title: trimmedTitle,
         topic: trimmedTitle,
-        keywords: keywords,
-        primary_keyword: keywords[0] || trimmedTitle,
-        tone,
+        keywords,
+        primary_keyword: keywords[0],
       };
 
       const res = await post(`/api/writer/${selectedWebsiteId}/generate`, payload);
-      const contentId = res.content_id || res.id;
-      setActiveContentId(contentId);
-
-      if (res.content) {
-        setSelectedArticle(res);
-        setGenerating(false);
-        setStatusMessage("✅ Autonomous blog generated successfully!");
-        loadArticlesForWebsite(selectedWebsiteId);
-      } else {
-        startPollingPipeline(selectedWebsiteId, contentId);
+      const jobId = res.job_id || res.content_id;
+      if (res.success === false) {
+        throw new Error(res.message || "Failed to start");
       }
+      startStreaming(jobId, selectedWebsiteId);
+      loadArticlesForWebsite(selectedWebsiteId);
     } catch (err: any) {
       setGenerating(false);
       setError(err.message || "Failed to start blog generation");
     }
   };
 
-  const handleApproveDraft = async () => {
-    if (!selectedArticle || !selectedWebsiteId) return;
-    try {
-      setIsApproving(true);
-      setError(null);
-      const res = await post(`/api/writer/${selectedWebsiteId}/content/${selectedArticle.id}/approve-draft`, {});
-      setStatusMessage("Draft created in WordPress ✅ (Status: Draft in WordPress)");
-      setSelectedArticle({ ...selectedArticle, status: "draft", wp_post_id: res.wp_post_id, wp_draft_url: res.edit_url });
-      loadArticlesForWebsite(selectedWebsiteId);
-    } catch (err: any) {
-      setError(err.message || "Failed to create WordPress draft");
-    } finally {
-      setIsApproving(false);
-    }
-  };
-
-  const handlePublishNow = async () => {
-    if (!selectedArticle || !selectedWebsiteId) return;
-    try {
-      setIsPublishing(true);
-      setError(null);
-      await post(`/api/writer/${selectedWebsiteId}/content/${selectedArticle.id}/publish`, {});
-      setStatusMessage("🚀 Post published live to WordPress successfully!");
-      setSelectedArticle({ ...selectedArticle, status: "published" });
-      loadArticlesForWebsite(selectedWebsiteId);
-    } catch (err: any) {
-      setError(err.message || "Failed to publish post to WordPress");
-    } finally {
-      setIsPublishing(false);
-    }
+  const renderSectionLabel = (name: string) => {
+    if (name === "h1") return "H1 Headline";
+    if (name === "meta_description") return "Meta Description";
+    if (name === "introduction") return "Introduction";
+    if (name === "faq") return "FAQ Block";
+    if (name === "conclusion") return "Conclusion";
+    if (name.startsWith("h2_")) return `Section ${name.split("_")[1]}`;
+    return name;
   };
 
   return (
@@ -339,10 +326,9 @@ export default function WriterPage() {
       <div className="page-heading">Autonomous SEO Writer</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
-        12-Phase Multi-Agent Content Pipeline · NVIDIA NIM Llama-3.1-70B · WordPress Draft & Publish
+        12-Phase Multi-Agent Pipeline · NVIDIA NIM Llama-3.1-70B · Live Streaming Output
       </div>
 
-      {/* NOTICES */}
       {error && (
         <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
@@ -350,7 +336,7 @@ export default function WriterPage() {
         </div>
       )}
 
-      {statusMessage && (
+      {statusMessage && !error && (
         <div className="notice ok" style={{ marginBottom: "16px" }}>
           <span className="notice-sq"></span>
           <span>{statusMessage}</span>
@@ -361,7 +347,8 @@ export default function WriterPage() {
         <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)", marginBottom: "16px" }}>
           <span className="notice-sq"></span>
           <div>
-            <strong>No data yet — add a website first.</strong> Connect your website to begin autonomous blog generation.
+            <strong>No websites connected yet.</strong> Connect your website first — the system will then generate
+            its first article automatically within the hour.
             <div style={{ marginTop: "8px" }}>
               <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
                 + Add Website
@@ -371,13 +358,17 @@ export default function WriterPage() {
         </div>
       )}
 
-      {/* STEP 1: GENERATION FORM */}
+      {/* MANUAL OVERRIDE GENERATOR */}
       <div className="panel" style={{ marginBottom: "20px" }}>
         <div className="panel-head">
-          <span className="panel-label">Step 1 — Create New Autonomous Blog Post</span>
-          {loadingKeywords && <span className="badge badge-accent">⚡ Mining Keywords...</span>}
+          <span className="panel-label">Manual Override — Force Generate Now</span>
+          {loadingKeywords && <span className="badge badge-accent">Mining Keywords...</span>}
         </div>
         <div className="panel-body">
+          <p style={{ fontSize: "10px", color: "var(--muted)", marginBottom: "12px" }}>
+            The system generates articles automatically every day at 11:00 IST from your top-priority keyword.
+            This form is only for forcing an immediate generation.
+          </p>
           <form onSubmit={handleGenerate} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
               <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
@@ -387,11 +378,11 @@ export default function WriterPage() {
                 value={selectedWebsiteId}
                 onChange={(e) => handleWebsiteChange(e.target.value)}
                 className="field"
-                style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                style={{ width: "100%", padding: "8px" }}
                 disabled={generating}
               >
                 {websites.length === 0 ? (
-                  <option value="">No websites added yet — go to Settings first</option>
+                  <option value="">No websites added yet</option>
                 ) : (
                   websites.map((site) => (
                     <option key={site.id} value={site.id}>
@@ -404,15 +395,15 @@ export default function WriterPage() {
 
             <div>
               <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                Target Keywords (Auto-Suggested or Custom)
+                Target Keywords
               </label>
               <input
                 type="text"
                 value={keywordsInput}
                 onChange={(e) => setKeywordsInput(e.target.value)}
-                placeholder={loadingKeywords ? "Mining keywords from site..." : "e.g. accident settlement, personal injury lawyer"}
+                placeholder={loadingKeywords ? "Mining keywords from GSC..." : "keyword one, keyword two"}
                 className="field"
-                style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                style={{ width: "100%", padding: "8px" }}
                 disabled={generating}
               />
             </div>
@@ -425,14 +416,13 @@ export default function WriterPage() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Complete Guide to Georgia Car Accident Settlements in 2026"
+                placeholder="Type a real article title"
                 className="field"
-                style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
+                style={{ width: "100%", padding: "8px" }}
                 disabled={generating}
                 required
               />
 
-              {/* Clickable Suggested Title Chips */}
               {suggestedTitles.length > 0 && (
                 <div style={{ marginTop: "10px" }}>
                   <span style={{ fontSize: "11px", color: "var(--muted)", marginRight: "8px" }}>Suggested titles:</span>
@@ -450,7 +440,6 @@ export default function WriterPage() {
                           fontSize: "11px",
                           borderRadius: "4px",
                           cursor: "pointer",
-                          transition: "all 0.2s ease",
                         }}
                       >
                         {t}
@@ -466,51 +455,69 @@ export default function WriterPage() {
                 type="submit"
                 className="btn btn-accent"
                 disabled={generating || !selectedWebsiteId}
-                style={{ padding: "10px 24px", fontSize: "12px", cursor: generating ? "not-allowed" : "pointer" }}
+                style={{ padding: "10px 24px", fontSize: "12px" }}
               >
-                {generating ? "⚡ Generating via NVIDIA NIM..." : "⚡ Generate 1500+ Word Blog Post"}
+                {generating ? "⚡ Generating & Streaming..." : "Manual Override — Force Generate Now"}
               </button>
             </div>
           </form>
         </div>
       </div>
 
-      {/* STEP 2: REAL-TIME PIPELINE PROGRESS */}
-      {generating && (
-        <div className="panel" style={{ marginBottom: "20px", borderLeft: "4px solid var(--accent)" }}>
+      {/* LIVE STREAMING PANEL */}
+      {(generating || streamSections.length > 0 || streamError) && (
+        <div className="panel" style={{ marginBottom: "20px", borderLeft: generating ? "4px solid var(--accent)" : streamError ? "4px solid var(--red)" : "4px solid var(--green)" }}>
           <div className="panel-head">
-            <span className="panel-label">Step 2 — 12-Phase Real-Time Agent Pipeline</span>
-            <span className="badge badge-accent">Processing Phase {currentPhaseIndex + 1}/12</span>
+            <span className="panel-label">Live Generation Stream</span>
+            {generating ? (
+              <span className="badge badge-accent">
+                Writing{streamPhase ? ` — ${streamPhase.replace(/_/g, " ")}` : "..."}
+              </span>
+            ) : streamDone ? (
+              <span className="badge badge-green">Completed</span>
+            ) : streamError ? (
+              <span className="badge badge-red">Failed</span>
+            ) : null}
           </div>
           <div className="panel-body">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
-              {PHASES.map((p, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    padding: "10px 12px",
-                    border: "1px solid var(--line)",
-                    background: idx < currentPhaseIndex ? "rgba(34, 197, 94, 0.08)" : idx === currentPhaseIndex ? "rgba(255, 77, 18, 0.08)" : "var(--surface)",
-                    fontSize: "11px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  <span>{idx < currentPhaseIndex ? "✅" : idx === currentPhaseIndex ? "⏳" : "⚪"}</span>
-                  <span style={{ fontWeight: idx === currentPhaseIndex ? 600 : 400, color: idx === currentPhaseIndex ? "var(--accent)" : "var(--ink)" }}>
-                    {p}
-                  </span>
+            {streamError && (
+              <div style={{ color: "var(--red)", fontSize: "12px", marginBottom: "12px", padding: "10px", border: "1px solid var(--red)", background: "rgba(239,68,68,.06)" }}>
+                {streamError}
+              </div>
+            )}
+            <div
+              style={{
+                maxHeight: "520px",
+                overflowY: "auto",
+                padding: "16px",
+                background: "var(--surface)",
+                border: "1px solid var(--line)",
+                fontSize: "13px",
+                lineHeight: "1.7",
+              }}
+            >
+              {streamSections.length === 0 && generating && !streamError && (
+                <div style={{ color: "var(--muted)" }}>
+                  Waiting for NVIDIA NIM to produce the first section... This typically takes under a minute.
+                  If NIM is unavailable you will see the exact error here instead of a spinner.
+                </div>
+              )}
+              {streamSections.map((section) => (
+                <div key={section.name} style={{ marginBottom: "18px" }}>
+                  <div style={{ fontSize: "9.5px", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--accent)", marginBottom: "4px" }}>
+                    {renderSectionLabel(section.name)} ✓
+                  </div>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{section.content}</div>
                 </div>
               ))}
+              {generating && <div ref={previewBottomRef} style={{ height: "2px" }} />}
             </div>
           </div>
         </div>
       )}
 
-      {/* STEP 3 & 4 & 5: ARTICLE PREVIEW & WORDPRESS DISPATCH */}
+      {/* ARTICLES LIST + PREVIEW */}
       <div className="dash-grid">
-        {/* LEFT COLUMN: ARTICLES LIST */}
         <div>
           <div className="panel">
             <div className="panel-head">
@@ -522,7 +529,7 @@ export default function WriterPage() {
             <div className="panel-body" style={{ maxHeight: "600px", overflowY: "auto" }}>
               {contentList.length === 0 ? (
                 <div style={{ padding: "20px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-                  No articles generated yet. Fill the form above and click Generate.
+                  No articles yet. Articles appear here automatically after the daily 11:00 IST run — or force one above.
                 </div>
               ) : (
                 contentList.map((item) => (
@@ -536,9 +543,14 @@ export default function WriterPage() {
                       background: selectedArticle?.id === item.id ? "rgba(255, 77, 18, 0.08)" : "transparent",
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--ink)" }}>{item.title}</div>
+                    <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--ink)" }}>
+                      {item.title}
+                      {item.pipeline_status === "failed" && (
+                        <span className="badge badge-red" style={{ marginLeft: "8px" }}>failed</span>
+                      )}
+                    </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-                      <span className={`badge ${item.status === "published" ? "badge-green" : "badge-accent"}`}>
+                      <span className={`badge ${item.status === "published" ? "badge-green" : item.status === "failed" ? "badge-red" : "badge-accent"}`}>
                         {item.status}
                       </span>
                       <span style={{ fontSize: "10px", color: "var(--muted)" }}>
@@ -552,48 +564,21 @@ export default function WriterPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: PREVIEW & WORDPRESS ACTIONS */}
         <div>
           {selectedArticle ? (
             <div className="panel">
               <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="panel-label">Full Article Preview & WordPress Dispatch</span>
-                <span className={`badge ${selectedArticle.status === "published" ? "badge-green" : "badge-accent"}`}>
+                <span className="panel-label">Full Article Preview</span>
+                <span className={`badge ${selectedArticle.status === "published" ? "badge-green" : selectedArticle.status === "failed" ? "badge-red" : "badge-accent"}`}>
                   Status: {selectedArticle.status}
                 </span>
               </div>
               <div className="panel-body">
-                {/* ACTION BUTTONS */}
-                <div style={{ display: "flex", gap: "10px", marginBottom: "16px", paddingBottom: "16px", borderBottom: "1px solid var(--line)" }}>
-                  <button
-                    onClick={handleApproveDraft}
-                    disabled={isApproving || selectedArticle.status === "published"}
-                    className="btn btn-accent"
-                    style={{ padding: "8px 16px", fontSize: "11px" }}
-                  >
-                    {isApproving ? "Creating WordPress Draft..." : "📝 Approve & Send to WordPress Draft"}
-                  </button>
-
-                  <button
-                    onClick={handlePublishNow}
-                    disabled={isPublishing || selectedArticle.status === "published"}
-                    className="btn btn-primary"
-                    style={{ padding: "8px 16px", fontSize: "11px" }}
-                  >
-                    {isPublishing ? "Publishing..." : "🚀 Publish Live Now (Human Approved)"}
-                  </button>
-                </div>
-
-                {selectedArticle.wp_draft_url && (
-                  <div style={{ marginBottom: "12px", fontSize: "11px" }}>
-                    WordPress Link:{" "}
-                    <a href={selectedArticle.wp_draft_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
-                      {selectedArticle.wp_draft_url}
-                    </a>
+                {selectedArticle.pipeline_status === "failed" && (
+                  <div style={{ color: "var(--red)", fontSize: "12px", marginBottom: "12px", padding: "10px", border: "1px solid var(--red)" }}>
+                    This generation failed: {selectedArticle.error_message || "unknown backend error"}
                   </div>
                 )}
-
-                {/* ARTICLE CONTENT PREVIEW */}
                 <div
                   style={{
                     maxHeight: "500px",
@@ -606,18 +591,80 @@ export default function WriterPage() {
                     whiteSpace: "pre-wrap",
                   }}
                 >
-                  <h1 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "12px" }}>{selectedArticle.title}</h1>
-                  {selectedArticle.content || "Generating full article text..."}
+                  {selectedArticle.content || (
+                    selectedArticle.pipeline_status === "in_progress" || selectedArticle.status === "in_progress" ? (
+                      <span style={{ color: "var(--muted)" }}>
+                        Still generating — click this row again in a minute, or watch the live stream panel above.
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--red)" }}>
+                        No article body stored for this row.
+                        {selectedArticle.error_message ? ` Error: ${selectedArticle.error_message}` : ""}
+                      </span>
+                    )
+                  )}
                 </div>
+                <ApproveControls article={selectedArticle} wid={selectedWebsiteId} onRefresh={() => loadArticlesForWebsite(selectedWebsiteId)} />
               </div>
             </div>
           ) : (
             <div className="panel" style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-              Select an article from the left or generate a new one to view preview and dispatch to WordPress.
+              Select an article from the left to preview it here.
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ApproveControls({ article, wid, onRefresh }: { article: ContentItem; wid: string; onRefresh: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (article.status === "published") {
+    return <p style={{ fontSize: "11px", color: "var(--green)", marginTop: "12px" }}>✓ Published live on WordPress.</p>;
+  }
+  if (article.status === "failed") return null;
+
+  const approve = async () => {
+    setBusy("draft");
+    setMsg(null);
+    try {
+      await post(`/api/writer/${wid}/content/${article.id}/approve-draft`, {});
+      setMsg("Draft created in WordPress.");
+      onRefresh();
+    } catch (e: any) {
+      setMsg(e.message || "Draft creation failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const publish = async () => {
+    setBusy("publish");
+    setMsg(null);
+    try {
+      await post(`/api/writer/${wid}/content/${article.id}/publish`, {});
+      setMsg("Published live to WordPress.");
+      onRefresh();
+    } catch (e: any) {
+      setMsg(e.message || "Publish failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "14px" }}>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <button onClick={approve} disabled={!!busy} className="btn btn-accent" style={{ padding: "8px 16px", fontSize: "11px" }}>
+          {busy === "draft" ? "Creating WordPress Draft..." : "📝 Send to WordPress Draft"}
+        </button>
+        <button onClick={publish} disabled={!!busy} className="btn btn-primary" style={{ padding: "8px 16px", fontSize: "11px" }}>
+          {busy === "publish" ? "Publishing..." : "🚀 Publish Live Now"}
+        </button>
+      </div>
+      {msg && <p style={{ fontSize: "11px", marginTop: "8px", color: msg.startsWith("Published") ? "var(--green)" : "var(--ink)" }}>{msg}</p>}
     </div>
   );
 }

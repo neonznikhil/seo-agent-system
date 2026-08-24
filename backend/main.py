@@ -28,6 +28,8 @@ from .routers.knowledge import router as knowledge_router
 from .routers.content import router as content_router
 from .routers.settings import router as settings_router
 from .routers.connectors import router as connectors_router
+from .routers.connectors_slack import router as connectors_slack_router
+from .routers.dashboard import router as dashboard_router
 from .routers.brain import router as brain_router
 from .routers.autonomy import router as autonomy_router
 from .routers.approvals import router as approvals_router
@@ -46,6 +48,7 @@ from .routers.analytics import router as analytics_router
 from .routers.serp import router as serp_router
 from .routers.report import router as report_router
 from .routers.links import router as links_router
+from .routers.auth import router as auth_router
 from .scripts.migrate import run_migrations
 from .agents.seo_agent_group import seo_agent_group
 
@@ -58,35 +61,101 @@ logger = logging.getLogger("backend.main")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("RANKFORGE starting up...")
-    
-    # 1. Run database migrations
-    try:
-        run_migrations()
-    except Exception as e:
-        logger.warning(f"[Migrations] Startup migration warning: {e}")
 
-    # 2. Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
+    # 1. Run database migrations in background
+    def _run_migrations_bg():
+        try:
+            run_migrations()
+        except Exception as e:
+            logger.warning(f"[Migrations] Startup migration warning: {e}")
+
+    asyncio.get_event_loop().run_in_executor(None, _run_migrations_bg)
+
+    # 2. NVIDIA NIM startup validation with real error classification (in background so server binds immediately)
+    async def _validate_nim_bg():
+        try:
+            from .database import validate_nim_connection
+            nim_state = await validate_nim_connection(force=True)
+            if nim_state.get("available"):
+                logger.info(f"[NIM] {nim_state.get('diagnostic')}")
+            else:
+                logger.error(f"[NIM] UNAVAILABLE: {nim_state.get('diagnostic')} "
+                             f"(HTTP {nim_state.get('http_status')})")
+        except Exception as e:
+            logger.error(f"[NIM] Startup validation crashed: {e}")
+
+    asyncio.create_task(_validate_nim_bg())
+
+    # 3. Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
     try:
-        from .agents.scheduler import setup_scheduler, get_scheduler_status
+        from .agents.scheduler import (
+            setup_scheduler, get_scheduler_status,
+            run_pending_daily_jobs, job_cleanup_stuck_content,
+        )
         sched = setup_scheduler()
         if not sched.running:
             sched.start()
         status = get_scheduler_status()
-        logger.info(f"[Scheduler] Started ✅ ({len(status.get('jobs', []))} daily jobs registered in Asia/Kolkata):")
+        logger.info(f"[Scheduler] Started ({len(status.get('jobs', []))} jobs registered in Asia/Kolkata):")
         for j in status.get('jobs', []):
-            logger.info(f"  📅 {j['name']} -> Next run: {j['next_run']}")
+            logger.info(f"  {j['name']} -> Next run: {j['next_run']}")
+
+        # 4. Job persistence: run missed daily jobs in the background so server binds immediately
+        async def _run_catchup():
+            try:
+                await asyncio.sleep(2)
+                catchup = await run_pending_daily_jobs()
+                if catchup.get("ran"):
+                    logger.info(f"[Startup] Catch-up executed missed daily jobs: {catchup['ran']}")
+            except Exception as e:
+                logger.warning(f"[Startup] Daily job catch-up failed: {e}")
+
+        asyncio.create_task(_run_catchup())
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
 
-    # 3. Backlink autopilot keeps its own independent daily cadence.
+    # 5. Autonomous backfill: any active website with zero backlink opportunities
+    #    gets an immediate OpportunityScoutAgent background run (no Monday wait).
+    async def _backfill_opportunities():
+        await asyncio.sleep(10)
+        try:
+            sites = get_supabase().table("websites").select("id").eq("status", "active").execute().data or []
+            for site in sites:
+                wid = site["id"]
+                count_res = (
+                    get_supabase().table("backlink_opportunities")
+                    .select("id", count="exact").eq("website_id", wid).execute()
+                )
+                existing = getattr(count_res, "count", None) or len(count_res.data or [])
+                if existing == 0:
+                    logger.info(f"[Startup] No backlink opportunities for {wid} — queueing OpportunityScoutAgent")
+                    from .agents.opportunity_scout_agent import OpportunityScoutAgent
+
+                    async def _run_scout(website_id=wid):
+                        try:
+                            agent = OpportunityScoutAgent(website_id=website_id)
+                            await agent.run()
+                        except TypeError:
+                            agent = OpportunityScoutAgent()
+                            await agent.run()
+                        except Exception as e:
+                            logger.warning(f"[Startup] Scout run failed for {website_id}: {e}")
+
+                    asyncio.create_task(_run_scout())
+        except Exception as e:
+            logger.warning(f"[Startup] Backfill scan failed: {e}")
+
+    asyncio.create_task(_backfill_opportunities())
+
+    # 6. Backlink autopilot keeps its own independent daily cadence.
     try:
         asyncio.create_task(run_backlink_daily_jobs())
-        logger.info("[Startup] Backlink autopilot loop started ✅")
+        logger.info("[Startup] Backlink autopilot loop started")
     except Exception as e:
         logger.error(f"[Startup] Backlink autopilot init failed (non-fatal): {e}")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("RankForge shutdown complete")
     try:
@@ -468,7 +537,7 @@ async def get_dashboard_stats(website_id: Optional[str] = None):
                 return round(float(audits[0]["health_score"]))
         except Exception:
             pass
-        return 94
+        return None
 
     content_data, memories_count, knowledge_count, wp_connected, backlinks_count, health_score = await asyncio.gather(
         fetch_content(),
@@ -491,7 +560,7 @@ async def get_dashboard_stats(website_id: Optional[str] = None):
     if isinstance(backlinks_count, Exception):
         backlinks_count = 0
     if isinstance(health_score, Exception):
-        health_score = 94
+        health_score = None
 
     return {
         "total_articles": content_data.get("total", 0),
@@ -503,12 +572,6 @@ async def get_dashboard_stats(website_id: Optional[str] = None):
         "wp_connected": wp_connected,
         "recent_blogs": content_data.get("recent_blogs", []),
         "ai_engine": "Llama-3.1-70B (NVIDIA NIM Live)",
-        "active_agents": [
-            {"name": "writer_agent", "role": "10-phase autonomous writer & SERP analyzer", "status": "Ready"},
-            {"name": "brain_autopilot", "role": "Daily clustering, pattern learning, and decay monitoring", "status": "Running"},
-            {"name": "backlink_autopilot", "role": "Continuous backlink verification and prospect crawler", "status": "Running"},
-            {"name": "continuous_monitor", "role": "Real-time rank movement, SERP shifts, and tech SEO audits", "status": "Running"},
-        ]
     }
 
 
@@ -523,7 +586,25 @@ async def get_blogs(limit: int = 50, website_id: Optional[str] = None):
     return q.order("created_at", desc=True).limit(limit).execute().data or []
 
 
+@app.delete("/api/blogs/{blog_id}")
+@app.delete("/blogs/{blog_id}")
+async def delete_blog(blog_id: str):
+    """1-click delete a blog draft or article from content_log and blog_approvals."""
+    supabase = get_supabase()
+    try:
+        supabase.table("blog_approvals").delete().eq("blog_id", blog_id).execute()
+    except Exception:
+        pass
+    try:
+        res = supabase.table("content_log").delete().eq("id", blog_id).execute()
+        return {"success": True, "deleted_id": blog_id, "detail": "Article deleted successfully."}
+    except Exception as e:
+        logger.error(f"Error deleting blog {blog_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete blog: {str(e)}")
+
+
 # Mount all core routers with /api prefix
+app.include_router(auth_router, prefix="/api")
 app.include_router(websites, prefix="/api")
 app.include_router(proposals, prefix="/api")
 app.include_router(memory, prefix="/api")
@@ -547,6 +628,8 @@ app.include_router(content_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
 app.include_router(connectors_serper_router, prefix="/api")
+app.include_router(connectors_slack_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 app.include_router(brain_router, prefix="/api")
 app.include_router(setup_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
@@ -564,6 +647,7 @@ app.include_router(phase3_router, prefix="/api")
 app.include_router(oauth_connectors_router, prefix="/api")
 
 # Direct alias mounts
+app.include_router(auth_router)
 app.include_router(websites)
 app.include_router(backlinks)
 app.include_router(wordpress_router)

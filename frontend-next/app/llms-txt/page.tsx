@@ -2,16 +2,22 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 export default function LlmsTxtPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
+  const [deploying, setDeploying] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 4500);
+  };
 
   const fetchLlmsTxt = useCallback(async (wid: string) => {
     if (!wid) {
@@ -21,18 +27,14 @@ export default function LlmsTxtPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${apiUrl}/llms-txt/${wid}`);
-      if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
-      }
-      const json = await res.json();
+      const json = await get(`/api/llms-txt/${wid}/generate`);
       setData(json);
     } catch (err: any) {
       setError(err.message || "Failed to load LLMs.txt");
     } finally {
       setLoading(false);
     }
-  }, [apiUrl]);
+  }, []);
 
   useEffect(() => {
     const wid = getCurrentWebsiteId();
@@ -58,19 +60,27 @@ export default function LlmsTxtPage() {
     try {
       setGenerating(true);
       setError(null);
-      const res = await fetch(`${apiUrl}/llms-txt/${websiteId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok) {
-        throw new Error(`Generation failed with HTTP ${res.status}`);
-      }
-      const json = await res.json();
+      const json = await get(`/api/llms-txt/${websiteId}/generate`);
       setData(json);
+      showToast("LLMs.txt regenerated from published articles.");
     } catch (err: any) {
       setError(err.message || "Failed to generate LLMs.txt");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // One-click deployment straight to WordPress
+  const handleDeployToWordPress = async () => {
+    if (!websiteId) return;
+    try {
+      setDeploying(true);
+      const res = await post(`/api/llms-txt/${websiteId}/deploy-wordpress`, {});
+      showToast(res.message || "Deployed to WordPress.");
+    } catch (err: any) {
+      showToast(`Deployment failed: ${err.message}`);
+    } finally {
+      setDeploying(false);
     }
   };
 
@@ -81,10 +91,11 @@ export default function LlmsTxtPage() {
         <div className="notice" style={{ borderColor: "var(--accent)", background: "rgba(255, 77, 18, 0.08)", marginTop: "16px" }}>
           <span className="notice-sq"></span>
           <div>
-            <strong>No website selected.</strong> Please select or add a website in Settings first to generate machine-readable guidelines for AI search models (ChatGPT, Perplexity, Claude).
+            <strong>No website selected.</strong> Select or add a website first to generate machine-readable
+            guidelines for AI search models (ChatGPT, Perplexity, Claude).
             <div style={{ marginTop: "12px" }}>
-              <Link href="/settings" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "6px 12px" }}>
-                Go to Settings
+              <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "6px 12px" }}>
+                Go to Websites
               </Link>
             </div>
           </div>
@@ -93,46 +104,62 @@ export default function LlmsTxtPage() {
     );
   }
 
-  if (loading && !data) {
-    return (
-      <div className="page-container active" style={{ padding: "40px", textAlign: "center" }}>
-        <div style={{ width: "32px", height: "32px", border: "3px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px auto" }} />
-        <p className="mono-font" style={{ fontSize: "12px", color: "var(--muted)", textTransform: "uppercase" }}>
-          Loading LLMs.txt manifest...
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      {toastMsg && (
+        <div style={{
+          position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+          background: "var(--ink)", color: "var(--bg)", padding: "10px 22px", fontSize: "10.5px",
+          textTransform: "uppercase", letterSpacing: ".07em", zIndex: 9999,
+          fontFamily: "'IBM Plex Mono', monospace", border: "1px solid var(--accent)",
+        }}>
+          {toastMsg}
+        </div>
+      )}
+
       <div className="page-heading">LLMs.txt Generator</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
-        AI Crawler Protocols · Machine-Readable Site Architecture · Perplexity & ChatGPT Optimization
+        Built exclusively from genuinely published articles · One-click WordPress deployment
       </div>
 
-      <div style={{ marginBottom: "16px" }}>
+      <div style={{ marginBottom: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
         <button
           onClick={handleGenerate}
           disabled={generating}
           className="btn btn-accent"
-          style={{ padding: "8px 18px", fontSize: "12px", cursor: "pointer" }}
+          style={{ padding: "8px 18px", fontSize: "12px" }}
         >
-          {generating ? "Generating with AI..." : "⚡ Generate LLMs.txt"}
+          {generating ? "Generating..." : "Regenerate LLMs.txt"}
         </button>
+        <button
+          onClick={handleDeployToWordPress}
+          disabled={deploying || !data?.content}
+          className="btn btn-primary"
+          style={{ padding: "8px 18px", fontSize: "12px" }}
+        >
+          {deploying ? "Deploying to WordPress..." : "🚀 Deploy to WordPress (one click)"}
+        </button>
+        {data?.article_count !== undefined && (
+          <span className="badge badge-green" style={{ alignSelf: "center" }}>
+            {data.article_count} published article(s) included
+          </span>
+        )}
       </div>
 
       {error && (
         <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
-          <span style={{ color: "var(--red)" }}>Error: {error} — Make sure backend is running on port 8000</span>
+          <span style={{ color: "var(--red)" }}>Error: {error}</span>
         </div>
       )}
 
       <div className="panel">
         <div className="panel-head">
           <span className="panel-label">Manifest Content (/llms.txt)</span>
+          {data?.character_count && (
+            <span style={{ fontSize: "9px", color: "var(--muted)" }}>{data.character_count} chars</span>
+          )}
         </div>
         <div className="panel-body">
           {data?.content ? (
@@ -150,9 +177,12 @@ export default function LlmsTxtPage() {
             >
               {data.content}
             </pre>
+          ) : loading ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)" }}>Loading manifest...</div>
           ) : (
             <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-              No llms.txt generated yet. Click the button above to generate.
+              No LLMs.txt yet — only websites with genuinely published articles produce a manifest.
+              Approve & publish an article first, then regenerate.
             </div>
           )}
         </div>

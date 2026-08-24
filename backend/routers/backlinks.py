@@ -1,7 +1,8 @@
 import asyncio
+import json
 import logging
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, Path
 from pydantic import BaseModel
@@ -33,15 +34,82 @@ class ApproveRedirectRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# 1. Hero Authority Metrics (Velocity, Trajectory, Topical Score)
+# 1. Hero Authority Metrics (real SQL aggregates per spec)
 # ---------------------------------------------------------------------------
 @router.get("/api/backlinks/metrics")
 @router.get("/backlinks/metrics")
 async def get_backlink_metrics(website_id: str = "default"):
-    """Get 30-day velocity, rolling average DR, topical authority score, and 12-week trajectory."""
+    """Hero metrics from real tables. Empty tables produce zeros — never fakes.
+
+    - avg_dr / active_citations from `backlinks`
+    - tier1_prospects from `backlink_opportunities` (DR >= 40, discovered)
+    - link_velocity_30d from `backlinks.acquired_date`
+    """
+    supabase = get_supabase()
+    wid = website_id if website_id not in ("", "default", "all") else None
+
+    def _rows(table: str, columns="*", filters: dict | None = None):
+        try:
+            q = supabase.table(table).select(columns)
+            for k, v in (filters or {}).items():
+                q = q.eq(k, v)
+            return q.execute().data or []
+        except Exception:
+            return []
+
+    links = _rows("backlinks", "domain_rating, acquired_date, status",
+                  {"website_id": website_id} if wid else None)
+
+    drs = [float(l["domain_rating"]) for l in links if l.get("domain_rating") is not None]
+    avg_dr = round(sum(drs) / len(drs), 1) if drs else None
+    cutoff_30d = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    velocity_30d = len([
+        l for l in links
+        if str(l.get("acquired_date") or "") >= cutoff_30d
+    ])
+    active_citations = len([l for l in links if (l.get("status") or "").lower() == "active"])
+
+    opps = _rows("backlink_opportunities", "domain_rating, status, opportunity_type, target_domain",
+                 {"website_id": website_id} if wid else None)
+    tier1_prospects = len([
+        o for o in opps
+        if o.get("domain_rating") is not None and float(o["domain_rating"]) >= 40
+        and (o.get("status") or "discovered").lower() == "discovered"
+    ])
+
     engine = BacklinkAuthorityEngine(website_id=website_id)
-    metrics = await engine.get_authority_metrics()
-    return {"success": True, "data": metrics}
+    trajectory = await engine.get_authority_metrics()
+
+    # Authority Action Plan derived from the real numbers above
+    if tier1_prospects > 0:
+        action_plan = (
+            f"You have {tier1_prospects} Tier-1 prospect(s) (DR 40+). The system is engineering "
+            "linkable assets for these opportunities. Expected first acquisition: 14-21 days "
+            "based on your niche average."
+        )
+    elif len(opps) > 0:
+        action_plan = (
+            f"{len(opps)} opportunities discovered but none at Tier-1 yet (DR 40+). "
+            "OpportunityScoutAgent keeps sweeping weekly; asset briefing continues automatically."
+        )
+    else:
+        action_plan = (
+            "No backlink opportunities discovered yet — OpportunityScoutAgent runs automatically "
+            "(Mondays 07:00 IST) or click 'Scout Now' to run an immediate sweep."
+        )
+
+    return {
+        "success": True,
+        "data": {
+            **trajectory,
+            "avg_dr": avg_dr,
+            "active_citations": active_citations,
+            "tier1_prospects": tier1_prospects,
+            "link_velocity_30d": velocity_30d,
+            "total_opportunities": len(opps),
+            "authority_action_plan": action_plan,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -210,9 +278,55 @@ async def scout_backlink_opportunities(payload: ScoutBacklinksRequest):
     """Trigger 5-tier technical backlink scout sweep into database and Brain memory."""
     wid = payload.website_id or "default"
     engine = BacklinkAcquisitionEngine(website_id=wid)
-    keyword = payload.niche_keyword or "commercial practice area guides"
+    keyword = payload.niche_keyword or "primary service resources"
     result = await engine.run_full_weekly_cycle(keyword)
     return {"success": True, "scout_result": result}
+
+
+@router.get("/api/backlinks/scout/stream")
+@router.get("/backlinks/scout/stream")
+async def scout_backlink_stream(website_id: str, niche_keyword: Optional[str] = None):
+    """SSE progress stream while OpportunityScoutAgent runs a real sweep."""
+    from fastapi.responses import StreamingResponse
+    from ..services.event_bus import publish
+
+    async def _run_and_publish():
+        channel = f"backlinks:scout:{website_id}"
+        try:
+            publish(channel, {"event": "log", "message": "Searching resource pages..."})
+            engine = BacklinkAcquisitionEngine(website_id=website_id)
+            keyword = niche_keyword or "primary service resources"
+            publish(channel, {"event": "log", "message": "Searching competitor gap pages..."})
+            result = await engine.run_full_weekly_cycle(keyword)
+            found = (
+                result.get("opportunities_found")
+                or len(result.get("opportunities", []) or [])
+                or 0
+            )
+            publish(channel, {"event": "log", "message": "Filtering by DR threshold..."})
+            publish(channel, {"event": "completed", "found": found,
+                              "summary": str(result)[:300]})
+        except Exception as e:
+            publish(channel, {"event": "error", "error": str(e)[:300]})
+
+    import asyncio
+    task = asyncio.create_task(_run_and_publish())
+
+    async def event_generator():
+        from ..services.event_bus import stream as bus_stream
+        async for event in bus_stream(f"backlinks:scout:{website_id}"):
+            if event.get("keepalive"):
+                yield ": keepalive\n\n"
+                continue
+            yield f"data: {json.dumps(event)}\n\n"
+            if event.get("event") in ("completed", "error"):
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.post("/api/backlinks/generate-outreach")

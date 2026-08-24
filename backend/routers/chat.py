@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import asyncio
 from typing import Optional
 from fastapi import APIRouter, HTTPException
@@ -16,6 +16,8 @@ class ChatMessageIn(BaseModel):
 
 
 @router.post("/chat")
+@router.post("/chat/message")
+@router.post("/api/chat/message")
 async def handle_chat(body: ChatMessageIn):
     msg = body.message.strip()
     website_id = body.website_id

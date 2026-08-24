@@ -32,8 +32,17 @@ class WordPressService:
 
     def _get_auth_tuple(self) -> tuple:
         user = self.site.get("wordpress_user") or self.site.get("cms_user") or ""
-        password = self.site.get("wordpress_password") or self.site.get("app_password") or ""
-        return (user, password)
+        stored = (
+            self.site.get("wordpress_password_encrypted")
+            or self.site.get("app_password")
+            or self.site.get("wordpress_password")
+            or ""
+        )
+        if not stored:
+            return (user, "")
+        # Stored values are Fernet-encrypted; legacy plaintext migrates lazily.
+        from ..security import decrypt_secret
+        return (user, decrypt_secret(stored))
 
     def _get_request_headers(self, additional: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers = {

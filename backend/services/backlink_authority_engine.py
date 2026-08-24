@@ -343,33 +343,66 @@ class BacklinkAuthorityEngine:
     # Subsystem 6: Backlink Velocity & Authority Trajectory Metrics
     # -------------------------------------------------------------------------
     async def get_authority_metrics(self) -> Dict[str, Any]:
-        """Compute Backlink Velocity (30d), Domain Authority Trajectory (90d average DR), and Topical Authority Score %."""
+        """Compute Backlink Velocity (30d), Domain Authority Trajectory (90d average DR), and Topical Authority Score %.
+
+        Zero fabrication: empty tables produce honest zeros — never invented links.
+        """
         supabase = get_supabase()
         cutoff_30d = (datetime.utcnow() - timedelta(days=30)).isoformat()
-        
-        # 1. Total & 30-day velocity
+
         try:
-            res_all = supabase.table("backlinks").select("id, domain_rating, acquired_date, relevance_score").eq("website_id", self.website_id).execute()
+            res_all = (
+                supabase.table("backlinks")
+                .select("id, domain_rating, acquired_date, relevance_score")
+                .eq("website_id", self.website_id)
+                .execute()
+            )
             links = res_all.data or []
         except Exception:
             links = []
 
-        total_acquired = len(links) if links else 18
-        recent_30d = len([l for l in links if l.get("acquired_date", "") >= cutoff_30d]) if links else 4
-        
-        # 2. Average DR
-        drs = [l.get("domain_rating", 45) for l in links if l.get("domain_rating")]
-        avg_dr = round(sum(drs) / max(1, len(drs)), 1) if drs else 48.5
-        
-        # 3. Topical Authority Score %
-        topical_links = [l for l in links if (l.get("relevance_score") or 0.8) >= 0.75]
-        topical_authority_score = round((len(topical_links) / max(1, len(links))) * 100, 1) if links else 88.0
+        total_acquired = len(links)
+        recent_30d = len([l for l in links if str(l.get("acquired_date") or "") >= cutoff_30d])
 
-        # Weekly trend for D3 chart (12 weeks)
-        weekly_history = [
-            {"week": f"W{i}", "acquired": round(1 + (i * 0.4) + (i % 2)), "avg_dr": 42 + (i * 0.8), "topical_score": 75 + (i * 1.2)}
-            for i in range(1, 13)
+        # Average DR from real rows only
+        drs = [float(l["domain_rating"]) for l in links if l.get("domain_rating") is not None]
+        avg_dr = round(sum(drs) / len(drs), 1) if drs else None
+
+        # Topical Authority Score %
+        topical_links = [
+            l for l in links
+            if l.get("relevance_score") is not None and float(l["relevance_score"]) >= 0.75
         ]
+        topical_authority_score = round((len(topical_links) / len(links)) * 100, 1) if links else None
+
+        # Weekly trajectory built strictly from actual acquisition dates
+        weekly_buckets: Dict[str, dict] = {}
+        for l in links:
+            acquired = str(l.get("acquired_date") or "")[:10]
+            if not acquired:
+                continue
+            try:
+                dt = datetime.fromisoformat(acquired)
+            except Exception:
+                continue
+            week_start = (dt - timedelta(days=dt.weekday())).strftime("%Y-%m-%d")
+            bucket = weekly_buckets.setdefault(week_start, {"acquired": 0, "dr_sum": 0.0, "dr_count": 0})
+            bucket["acquired"] += 1
+            if l.get("domain_rating") is not None:
+                bucket["dr_sum"] += float(l["domain_rating"])
+                bucket["dr_count"] += 1
+
+        weekly_trajectory = []
+        for i in range(11, -1, -1):
+            week_start = (datetime.utcnow() - timedelta(weeks=i, days=datetime.utcnow().weekday()))
+            key = week_start.strftime("%Y-%m-%d")
+            b = weekly_buckets.get(key)
+            weekly_trajectory.append({
+                "week": f"W-{i}" if i else "W0",
+                "acquired": b["acquired"] if b else 0,
+                "avg_dr": round(b["dr_sum"] / b["dr_count"], 1) if b and b["dr_count"] else None,
+                "topical_score": None,
+            })
 
         return {
             "total_acquired_this_month": recent_30d,
@@ -377,5 +410,5 @@ class BacklinkAuthorityEngine:
             "backlink_velocity_30d": recent_30d,
             "authority_trajectory_dr": avg_dr,
             "topical_authority_score": topical_authority_score,
-            "weekly_trajectory": weekly_history
+            "weekly_trajectory": weekly_trajectory,
         }

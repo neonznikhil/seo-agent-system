@@ -141,7 +141,10 @@ export default function SetupPage() {
                 Anon Key
               </label>
               <input
-                type="text"
+                type="password"
+                autoComplete="new-password"
+                autoCorrect="off"
+                spellCheck={false}
                 value={anonKey}
                 onChange={(e) => setAnonKey(e.target.value)}
                 placeholder="eyJ..."
@@ -154,7 +157,10 @@ export default function SetupPage() {
                 Service Role Key
               </label>
               <input
-                type="text"
+                type="password"
+                autoComplete="new-password"
+                autoCorrect="off"
+                spellCheck={false}
                 value={serviceKey}
                 onChange={(e) => setServiceKey(e.target.value)}
                 placeholder="eyJ..."
@@ -168,6 +174,9 @@ export default function SetupPage() {
               </label>
               <input
                 type="password"
+                autoComplete="new-password"
+                autoCorrect="off"
+                spellCheck={false}
                 value={dbPassword}
                 onChange={(e) => setDbPassword(e.target.value)}
                 placeholder="from Supabase > Database"

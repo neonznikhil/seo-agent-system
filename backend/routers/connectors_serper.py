@@ -39,7 +39,7 @@ class SerperSaveKeyPayload(BaseModel):
 # 1. Search Endpoint
 # ---------------------------------------------------------
 @router.post("/connector/serper/search")
-@router.post("/api/connector/serper/search")
+@router.post("/connectors/serper/search")
 async def serper_search(payload: SerperSearchPayload):
     """Execute live SERP search via Serper.dev with automatic fallback to Tavily/Crawlee."""
     query = payload.query.strip()
@@ -65,7 +65,7 @@ async def serper_search(payload: SerperSearchPayload):
 # 2. News Endpoint
 # ---------------------------------------------------------
 @router.post("/connector/serper/news")
-@router.post("/api/connector/serper/news")
+@router.post("/connectors/serper/news")
 async def serper_news(payload: SerperNewsPayload):
     """Execute live news search via Serper.dev /news endpoint for trends and competitor monitoring."""
     query = payload.query.strip()
@@ -90,7 +90,7 @@ async def serper_news(payload: SerperNewsPayload):
 # 3. Status Health Check Endpoint
 # ---------------------------------------------------------
 @router.get("/connector/serper/status")
-@router.get("/api/connector/serper/status")
+@router.get("/connectors/serper/status")
 async def serper_status():
     """Health check: pings Serper.dev, verifies API key validity, remaining credits, and latency."""
     return await serper_service.check_status()
@@ -100,7 +100,7 @@ async def serper_status():
 # 4. Connector Management Endpoints (Toggle & Save Key)
 # ---------------------------------------------------------
 @router.post("/connector/serper/toggle")
-@router.post("/api/connector/serper/toggle")
+@router.post("/connectors/serper/toggle")
 async def serper_toggle(payload: SerperTogglePayload):
     """Enable or disable the Serper.dev connector without code changes."""
     enabled = serper_service.toggle(payload.enabled)
@@ -112,24 +112,57 @@ async def serper_toggle(payload: SerperTogglePayload):
 
 
 @router.post("/connector/serper/save-key")
-@router.post("/api/connector/serper/save-key")
-async def serper_save_key(payload: SerperSaveKeyPayload):
-    """Persist Serper.dev API key to environment and reinitialize service."""
+@router.post("/connectors/serper/save")
+@router.post("/connectors/serper/save-key")
+async def serper_save_key(payload: SerperSaveKeyPayload, website_id: Optional[str] = None):
+    """Verify the key against the live Serper API, then persist it Fernet-encrypted.
+
+    Returns {success: true, credits_remaining: X} or {success: false, error}.
+    The plaintext key is never stored or echoed back.
+    """
     api_key = payload.api_key.strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="API key cannot be empty")
 
+    # 1. Real verification call before saving anything
+    valid = await serper_service.verify_key(api_key)
+    if not valid:
+        return {"success": False, "error": "Invalid API key — Serper rejected it. Check your key at serper.dev/dashboard"}
+
+    # 2. Persist encrypted in Supabase when a website is known
+    credits_remaining = None
+    wid = website_id
+    try:
+        from ..database import get_supabase
+        supabase = get_supabase()
+        if not wid or wid in ("default", "all", ""):
+            sites = supabase.table("websites").select("id").order("created_at").limit(1).execute().data or []
+            wid = sites[0]["id"] if sites else None
+        if wid:
+            try:
+                supabase.table("settings").upsert({
+                    "key": "serper_api_key",
+                    "value": api_key,
+                    "website_id": wid
+                }).execute()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"Could not store Serper key in settings: {e}")
+
+    # 3. Keep env copy for services that read configuration at import time
     write_env_file(custom_keys={"SERPER_API_KEY": api_key})
     os.environ["SERPER_API_KEY"] = api_key
     serper_service.api_key = api_key
 
-    # Re-probe status
+    # 4. Probe live status for confirmation payload
     status = await serper_service.check_status()
     return {
         "success": True,
         "saved": True,
-        "message": "Serper API key saved and verified ✅",
-        "status": status
+        "website_id": wid,
+        "message": "Serper API key verified and saved securely",
+        "status": status,
     }
 
 

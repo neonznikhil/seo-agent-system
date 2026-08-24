@@ -8,29 +8,92 @@ from .slack_app_service import slack_app_service, SLACK_CHANNELS
 logger = logging.getLogger("backend.services.slack_intelligence_service")
 
 
+def _fmt(n) -> str:
+    try:
+        return f"{int(n):,}"
+    except Exception:
+        return "0"
+
+
 class SlackIntelligenceService:
-    """Intelligent Slack reporting system delivering 6 rich Block Kit reports to the team."""
+    """Slack reporting built ONLY from real Supabase rows. If a source table is
+    empty the report says so — fabricated metrics are never sent."""
 
     def __init__(self):
         self.app = slack_app_service
+
+    # ------------------------------------------------------------------
+    # Helpers: real aggregates
+    # ------------------------------------------------------------------
+    def _count(self, table: str, filters: Optional[dict] = None, gte_field=None, gte_value=None) -> int:
+        try:
+            q = get_supabase().table(table).select("id", count="exact")
+            for k, v in (filters or {}).items():
+                q = q.eq(k, v)
+            if gte_field and gte_value:
+                q = q.gte(gte_field, gte_value)
+            res = q.execute()
+            return getattr(res, "count", None) or len(res.data or [])
+        except Exception:
+            return 0
+
+    def _recent_rows(self, table: str, columns: str, filters: Optional[dict] = None,
+                     order: str = "created_at", limit: int = 5) -> List[dict]:
+        try:
+            q = get_supabase().table(table).select(columns)
+            for k, v in (filters or {}).items():
+                q = q.eq(k, v)
+            return q.order(order, desc=True).limit(limit).execute().data or []
+        except Exception:
+            return []
+
+    def _resolve_domain(self, website_id: str) -> str:
+        try:
+            row = (
+                get_supabase().table("websites")
+                .select("domain")
+                .eq("id", website_id)
+                .single()
+                .execute()
+                .data or {}
+            )
+            return row.get("domain") or "connected website"
+        except Exception:
+            return "connected website"
 
     # -------------------------------------------------------------------------
     # Report 1: Morning Brief (Daily at 08:00 IST) -> #rankforge-daily
     # -------------------------------------------------------------------------
     async def send_morning_brief(self, website_id: str = "default") -> bool:
-        """Daily 08:00 IST briefing: Yesterday's wins, today's schedule, pending human approvals, key metric."""
+        """Real data briefing: pending approvals, yesterday's published posts, next scheduled run."""
         logger.info("[SlackIntelligence] Generating Daily Morning Brief...")
-        supabase = get_supabase()
-        domain = "accident.innovatcs.com"
-        
-        # Pull pending approvals
-        try:
-            p_res = supabase.table("blog_approvals").select("id, title").eq("status", "pending").execute()
-            pending = p_res.data or []
-        except Exception:
-            pending = []
+        domain = self._resolve_domain(website_id)
+        today = datetime.utcnow().date().isoformat()
 
-        pending_text = f"⚠️ *{len(pending)} articles waiting for your approval*" if pending else "✅ *All draft queues clear — zero pending approvals*"
+        pending_count = self._count("blog_approvals", {"status": "pending"})
+        published_yesterday = self._recent_rows(
+            "blog_approvals", "title, approved_at",
+            {"status": "published"}, order="approved_at", limit=5,
+        )
+        published_yesterday = [
+            r for r in published_yesterday
+            if (r.get("approved_at") or "")[:10] >= (datetime.utcnow() - timedelta(days=1)).date().isoformat()
+        ]
+        recent_audits = self._recent_rows("technical_audits", "health_score, created_at", None, limit=1)
+        health_score = recent_audits[0].get("health_score") if recent_audits else None
+
+        wins_lines = []
+        for p in published_yesterday[:3]:
+            wins_lines.append(f"• ✅ Published: _{p.get('title', 'Untitled')}_")
+        if health_score is not None:
+            wins_lines.append(f"• 🩺 Latest technical audit health score: *{health_score}/100*")
+        if not wins_lines:
+            wins_lines.append("• No completed actions in the last 24h yet — autonomous jobs will fill this in.")
+
+        pending_text = (
+            f"⚠️ *{pending_count} article(s) waiting for your approval*" if pending_count
+            else "✅ *Approval queue clear*"
+        )
 
         blocks = [
             {
@@ -40,45 +103,56 @@ class SlackIntelligenceService:
             {"type": "divider"},
             {
                 "type": "section",
+                "text": {"type": "mrkdwn", "text": "*Last 24 Hours:*\n" + "\n".join(wins_lines)}
+            },
+            {
+                "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Yesterday's Wins:*\n• ✅ New article drafted: _Texas Commercial Truck Accident Statutes 2026_ (2,840 words, 92/100 Quality Score)\n• ✅ 2 new high-DR backlinks verified from Texas Legal portals (Avg DR 58)\n• ✅ Technical SEO: Injected Speakable & FAQPage JSON-LD schemas into 4 practice areas"
+                    "text": ("*Today's Autonomous Schedule (Asia/Kolkata):*\n"
+                             "• 📝 *11:00 IST* — WriterPipeline generates today's highest-priority article\n"
+                             "• 🔗 *11:30 IST* — BacklinkAgent prospecting sweep via Serper.dev\n"
+                             "• 🛠 *12:00 IST* — TechSEOAgent full technical audit")
                 }
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Today's Autonomous Schedule (Asia/Kolkata):*\n• 📝 *11:00 IST* — Writing new high-intent article targeting _'Texas comparative fault insurance claims'_\n• 🔗 *11:30 IST* — Scanning 20 resource pages for new link acquisition gaps in Houston litigation"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Needs Your Attention:*\n{pending_text}\n• Direct Link: <http://localhost:3000/approvals|Open Approvals Queue →>"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*📈 Key Metric of the Day:*\n_'Texas personal injury settlement timeline'_ jumped from *#14 to #8* yesterday — pushing our 30-day organic value +$420/mo."
+                    "text": f"*Needs Your Attention:*\n{pending_text}\n• Direct Link: <{self._frontend_url()}/approvals|Open Approvals Queue →>"
                 }
             },
             {"type": "divider"}
         ]
 
-        fallback = f"🌅 RankForge Morning Brief: Yesterday's wins, today's schedule, and approvals queue ready."
+        fallback = f"🌅 RankForge Morning Brief: {pending_count} pending approvals."
         return await self.app.post_block_message(SLACK_CHANNELS["daily"], blocks, fallback, "morning_brief", website_id)
+
+    @staticmethod
+    def _frontend_url() -> str:
+        import os
+        return os.getenv("FRONTEND_URL", "http://localhost:3000")
 
     # -------------------------------------------------------------------------
     # Report 2: Evening Summary (Daily at 20:00 IST) -> #rankforge-daily
     # -------------------------------------------------------------------------
     async def send_evening_summary(self, website_id: str = "default") -> bool:
-        """Daily 20:00 IST wrap-up: Completed tasks by category, new learnings, SEO/AEO/GEO scores, preview."""
+        """Real evening wrap-up from tasks + content_log + brain_memory."""
         logger.info("[SlackIntelligence] Generating Daily Evening Summary...")
-        
+        day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+        generated_today = self._count("content_log", {}, gte_field="created_at", gte_value=day_start)
+        published_today = self._count("blog_approvals", {"status": "published"}, gte_field="approved_at", gte_value=day_start)
+        opportunities_total = self._count("backlink_opportunities")
+        memories_count = self._count("brain_memory")
+
+        accomplishment_lines = [
+            f"• *Content*: {_fmt(generated_today)} article(s) entered the pipeline today",
+            f"• *Publishing*: {_fmt(published_today)} post(s) approved & published today",
+            f"• *Backlinks*: {_fmt(opportunities_total)} total opportunities discovered so far",
+            f"• *Brain*: {_fmt(memories_count)} memories learned and stored",
+        ]
+
         blocks = [
             {
                 "type": "header",
@@ -87,38 +161,42 @@ class SlackIntelligenceService:
             {"type": "divider"},
             {
                 "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*What We Accomplished Today:*\n• *Content*: 2 long-form guides drafted, passed 12-expert review with 0 template markers\n• *Backlinks*: 6 new high-DR resource page opportunities discovered & queued for asset briefing\n• *Technical*: Live sitemap auto-synced, llms.txt diff verified clean with 0 crawl errors\n• *Monitoring*: 24/7 keep-alive completed 96 checks with 100% monitor uptime"
-                }
+                "text": {"type": "mrkdwn", "text": "*What We Accomplished Today:*\n" + "\n".join(accomplishment_lines)}
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*🧠 What the System Learned Today:*\n_The system learned today that comparison guides in your niche achieve a 94% human approval rate and rank 40% faster than generic how-tos — adjusting default writer format for tomorrow._"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*📊 SEO / AEO / GEO Visibility Telemetry:*\n• *Top 10 Rankings*: `48 keywords` (+3 today 🟢)\n• *AEO AI Citation Rate*: `74.2% citation rate` across ChatGPT & Perplexity 🟢\n• *GEO Local Visibility*: `91.0 score` across Texas metro clusters 🟢"
+                    "text": f"*📊 Live System Telemetry:*\n• Pending approvals: `{_fmt(self._count('blog_approvals', {'status': 'pending'}))}`\n• Published all-time: `{_fmt(self._count('blog_approvals', {'status': 'published'}))}`\n• Knowledge base chunks: `{_fmt(self._count('knowledge_base'))}`"
                 }
             },
             {"type": "divider"}
         ]
 
-        fallback = "🌙 RankForge Evening Summary: Today's tasks, system learnings, and visibility metrics."
+        fallback = f"🌙 RankForge Evening Summary: {generated_today} articles generated, {published_today} published today."
         return await self.app.post_block_message(SLACK_CHANNELS["daily"], blocks, fallback, "evening_summary", website_id)
 
     # -------------------------------------------------------------------------
-    # Report 3: Backlink Intelligence Report (Thursdays post-acquisition) -> #rankforge-backlinks
+    # Report 3: Backlink Intelligence Report -> #rankforge-backlinks
     # -------------------------------------------------------------------------
     async def send_backlink_intelligence_report(self, website_id: str = "default") -> bool:
-        """Weekly Backlink report: Acquired links, pipeline conversion rate, top opportunity, authority trajectory."""
+        """Weekly backlink report from real backlinks/backlink_opportunities tables."""
         logger.info("[SlackIntelligence] Generating Weekly Backlink Intelligence Report...")
-        
+
+        discovered = self._count("backlink_opportunities", {"status": "discovered"})
+        briefed = self._count("backlink_opportunities", {"status": "asset_briefed"})
+        published_assets = self._count("backlink_opportunities", {"status": "asset_published"})
+        acquired_links = self._count("backlinks")
+
+        top_opps = self._recent_rows(
+            "backlink_opportunities", "target_domain, domain_rating, opportunity_type",
+            {"status": "discovered"}, order="priority_score", limit=3,
+        )
+        opp_lines = "\n".join(
+            f"• *{o.get('target_domain', 'unknown')}* (DR {o.get('domain_rating', '?')}) — {o.get('opportunity_type', 'type').replace('_', ' ')}"
+            for o in top_opps
+        ) or "• No tier-1 opportunities discovered yet — OpportunityScoutAgent runs automatically."
+
         blocks = [
             {
                 "type": "header",
@@ -129,43 +207,34 @@ class SlackIntelligenceService:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Links Acquired This Week:*\n• *texaslawreview.org* (DR 58) → linked to _/texas-truck-accident-lawyer-settlement-guide_ (Anchor: 'commercial vehicle statutory breakdown')\n• *houstonlegalresource.org* (DR 51) → linked to _/texas-car-accident-claims-guide_\n_Both earned passively via our Digital PR statistics & guide assets (Zero Outreach)._"
+                    "text": (f"*Pipeline Status:*\n"
+                             f"• {_fmt(discovered)} Opportunities Discovered • {_fmt(briefed)} Assets Briefed\n"
+                             f"• {_fmt(published_assets)} Assets Published • {_fmt(acquired_links)} Links Acquired All-Time")
                 }
             },
             {
                 "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*Pipeline Status:*\n• *18* Opportunities Discovered • *6* Assets Briefed • *4* Assets Published • *2* Converted to Links\n• Weekly Conversion Rate: *33.3%* (+8.2% vs last week 🟢)"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*🎯 Best Opportunity in Monitoring:*\n*injurylawportal.org* (DR 62, Statistics Citation). Our matched asset has been live 12 days. Page updates quarterly; next crawl pickup estimated within 14 days."
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*Authority Trajectory:*\n• Topical Authority Score: *88.0%* • Rolling Average DR: *54.5* (Rising authority trend 🟢)"
-                }
+                "text": {"type": "mrkdwn", "text": f"*🎯 Top Tier-1 Opportunities:*\n{opp_lines}"}
             },
             {"type": "divider"}
         ]
 
-        fallback = "🔗 Weekly Backlink Intelligence: 2 new high-DR backlinks acquired passively via Digital PR assets."
+        fallback = f"🔗 Weekly Backlink Intelligence: {acquired_links} acquired links, {discovered} open opportunities."
         return await self.app.post_block_message(SLACK_CHANNELS["backlinks"], blocks, fallback, "backlink_report", website_id)
 
     # -------------------------------------------------------------------------
-    # Report 4: Weekly Intelligence Report (Sundays 22:00 IST) -> #rankforge-weekly
+    # Report 4: Weekly Intelligence Report -> #rankforge-weekly
     # -------------------------------------------------------------------------
     async def send_weekly_intelligence_report(self, website_id: str = "default") -> bool:
-        """Weekly Founder Intelligence: 7 key metrics vs last week, biggest win, strategic adaptations."""
+        """Weekly founder report from real tables only."""
         logger.info("[SlackIntelligence] Generating Weekly Founder Intelligence Report...")
-        
+        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+
+        published_week = self._count("blog_approvals", {"status": "published"}, gte_field="approved_at", gte_value=week_ago)
+        generated_week = self._count("content_log", {}, gte_field="created_at", gte_value=week_ago)
+        links_week = self._count("backlinks", {}, gte_field="acquired_date", gte_value=week_ago)
+        failed_tasks = self._count("tasks", {"status": "failed"}, gte_field="created_at", gte_value=week_ago)
+
         blocks = [
             {
                 "type": "header",
@@ -176,42 +245,26 @@ class SlackIntelligenceService:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*This Week in Numbers (vs Last Week):*\n• *Organic Sessions (GA4)*: `38,400` (+14.2% 🟢)\n• *Keywords in Top 10 (GSC)*: `48` (+6 🟢)\n• *New Backlinks Acquired*: `4` (Avg DR 56 🟢)\n• *Articles Published*: `5` (100% Quality Gate Pass Rate)\n• *AEO Citation Rate*: `74.2%` (+5.1% 🟢)"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*🏆 Biggest Win This Week:*\n_Texas Commercial Truck Accident Claims Guide_ reached *Position #4* on Google for 'Texas commercial truck settlements' — generating an estimated *$3,850/mo in attributed traffic value*."
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*🔄 System Strategy Adaptations for Next Week:*\n• Allocate *60% of link engineering* to Statistics & Data assets (3x conversion over guides)\n• Prioritize *Commercial Intent keywords* (ranked 40% faster in your legal niche)\n• Target *2 new articles* in the competitor content gap identified against toplawyers.com"
+                    "text": (f"*This Week in Numbers:*\n"
+                             f"• *Articles Generated*: `{_fmt(generated_week)}`\n"
+                             f"• *Articles Published*: `{_fmt(published_week)}`\n"
+                             f"• *New Backlinks Acquired*: `{_fmt(links_week)}`\n"
+                             f"• *Failed Agent Tasks*: `{_fmt(failed_tasks)}`")
                 }
             },
             {"type": "divider"}
         ]
 
-        fallback = "📊 RankForge Weekly Intelligence Report: +14.2% traffic growth, 4 new backlinks, and next week's calibrated strategy."
+        fallback = f"📊 RankForge Weekly Intelligence: {generated_week} articles, {links_week} links this week."
         return await self.app.post_block_message(SLACK_CHANNELS["weekly"], blocks, fallback, "weekly_report", website_id)
 
     # -------------------------------------------------------------------------
     # Report 5: Crisis Alert (Immediate) -> #rankforge-alerts
     # -------------------------------------------------------------------------
-    async def send_crisis_alert(
-        self,
-        website_id: str,
-        crisis_type: str,
-        description: str,
-        action_taken: str
-    ) -> bool:
-        """Instant crisis alert readable in 10 seconds on mobile with action button."""
+    async def send_crisis_alert(self, website_id: str, crisis_type: str,
+                                description: str, action_taken: str) -> bool:
         logger.warning(f"[SlackIntelligence] Dispatching Immediate Crisis Alert: '{crisis_type}'...")
-        
+
         blocks = [
             {
                 "type": "header",
@@ -222,7 +275,7 @@ class SlackIntelligenceService:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Event*: {description}\n\n*System Automated Action*: {action_taken}\n\n*Action Required*: Review diagnostic report on mission control."
+                    "text": f"*Event*: {description}\n\n*System Automated Action*: {action_taken}"
                 }
             },
             {"type": "divider"}
@@ -232,19 +285,11 @@ class SlackIntelligenceService:
         return await self.app.post_block_message(SLACK_CHANNELS["alerts"], blocks, fallback, "crisis_alert", website_id)
 
     # -------------------------------------------------------------------------
-    # Report 6: New Learning Alert (Confidence > 0.85) -> #rankforge-daily
+    # Report 6: New Learning Alert -> #rankforge-daily
     # -------------------------------------------------------------------------
-    async def send_new_learning_alert(
-        self,
-        website_id: str,
-        pattern_name: str,
-        behavior_change: str,
-        confidence: float,
-        samples_count: int
-    ) -> bool:
-        """Transparent insight alert when Pattern Recognition Engine achieves high confidence."""
-        logger.info(f"[SlackIntelligence] Dispatching New Learning Alert: '{pattern_name}'...")
-        
+    async def send_new_learning_alert(self, website_id: str, pattern_name: str,
+                                      behavior_change: str, confidence: float,
+                                      samples_count: int) -> bool:
         blocks = [
             {
                 "type": "header",
@@ -255,7 +300,9 @@ class SlackIntelligenceService:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Insight*: The system has learned with *{(confidence*100):.0f}% confidence* (based on {samples_count} sampled data points) that *{pattern_name}*.\n\n*Action*: Starting today, *{behavior_change}*."
+                    "text": (f"*Insight*: The system has learned with *{(confidence*100):.0f}% confidence* "
+                             f"(based on {samples_count} sampled data points) that *{pattern_name}*.\n\n"
+                             f"*Action*: Starting today, *{behavior_change}*.")
                 }
             },
             {"type": "divider"}
@@ -263,6 +310,85 @@ class SlackIntelligenceService:
 
         fallback = f"🧠 Brain Learning Alert: {pattern_name} (Confidence: {(confidence*100):.0f}%)"
         return await self.app.post_block_message(SLACK_CHANNELS["daily"], blocks, fallback, "new_learning", website_id)
+
+    # -------------------------------------------------------------------------
+    # Event notifications used by agents/pipelines
+    # -------------------------------------------------------------------------
+    async def notify_agent_completion(self, website_id: str, agent_name: str,
+                                      summary: str, items_processed: int) -> bool:
+        """[AgentName] completed task: [summary] — [N] items processed."""
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"✅ *{agent_name}* completed task: {summary} — *{items_processed}* item(s) processed."
+                }
+            }
+        ]
+        fallback = f"✅ {agent_name} completed: {summary} — {items_processed} items processed."
+        return await self.app.post_block_message(SLACK_CHANNELS["daily"], blocks, fallback, "agent_completion", website_id)
+
+    async def notify_agent_failure(self, website_id: str, agent_name: str, error: str) -> bool:
+        """⚠️ [AgentName] failed: [error message]."""
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"⚠️ *{agent_name}* failed: {error[:500]}"
+                }
+            }
+        ]
+        fallback = f"⚠️ {agent_name} failed: {error[:120]}"
+        return await self.app.post_block_message(SLACK_CHANNELS["alerts"], blocks, fallback, "agent_failure", website_id)
+
+    async def notify_content_generated(self, website_id: str, title: str,
+                                       word_count: int, seo_score: float) -> bool:
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (f"📝 *New draft ready for your approval*\n"
+                             f"*{title}*\n"
+                             f"{word_count:,} words · SEO score {seo_score}/100\n"
+                             f"<{self._frontend_url()}/approvals|Review & Approve →>")
+                }
+            }
+        ]
+        fallback = f"📝 New draft ready: {title} ({word_count} words)."
+        return await self.app.post_block_message(SLACK_CHANNELS["daily"], blocks, fallback, "content_generated", website_id)
+
+    async def notify_content_published(self, website_id: str, title: str,
+                                       wordpress_url: Optional[str]) -> bool:
+        url_line = f"\n<{wordpress_url}|View live post →>" if wordpress_url else ""
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"🚀 *Published to WordPress*\n*{title}*{url_line}"
+                }
+            }
+        ]
+        fallback = f"🚀 Published: {title}"
+        return await self.app.post_block_message(SLACK_CHANNELS["daily"], blocks, fallback, "content_published", website_id)
+
+    async def notify_backlink_discovered(self, website_id: str, domain: str,
+                                         domain_rating, opportunity_type: str) -> bool:
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (f"🔗 *New backlink opportunity discovered*\n"
+                             f"*{domain}* (DR {domain_rating}) — {opportunity_type.replace('_', ' ')}")
+                }
+            }
+        ]
+        fallback = f"🔗 New opportunity: {domain} (DR {domain_rating})"
+        return await self.app.post_block_message(SLACK_CHANNELS["backlinks"], blocks, fallback, "backlink_discovered", website_id)
 
 
 # Global Singleton

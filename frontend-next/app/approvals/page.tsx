@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { get, post, put } from "@/lib/api";
+import { get, post, put, del } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface Approval {
@@ -76,6 +76,9 @@ export default function ApprovalsPage() {
     setWebsiteId(wid);
     try {
       setError(null);
+      try {
+        await post(`/api/approvals/sync${wid ? `?website_id=${wid}` : ""}`, {});
+      } catch {}
       const qs = wid ? `&website_id=${wid}` : "";
       const [list, stats] = await Promise.allSettled([
         get(`/api/approvals?status=${tab}${qs}`),
@@ -137,6 +140,20 @@ export default function ApprovalsPage() {
       await load();
     } catch (e: any) {
       setNotice(`Reject failed: ${e.message}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteApproval = async (id: string, title: string) => {
+    if (!confirm(`Permanently delete "${title}"?`)) return;
+    setBusyId(id);
+    try {
+      await del(`/api/approvals/${id}`);
+      setNotice("Draft deleted.");
+      await load();
+    } catch (e: any) {
+      setNotice(`Delete failed: ${e.message}`);
     } finally {
       setBusyId(null);
     }
@@ -274,6 +291,14 @@ export default function ApprovalsPage() {
                   )}
                   <button className="btn" onClick={() => setExpanded(isExpanded ? null : a.id)}>
                     {isExpanded ? "Hide Preview" : "Preview"}
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ color: "var(--red)", borderColor: "rgba(255,85,85,0.4)" }}
+                    disabled={busyId === a.id}
+                    onClick={() => deleteApproval(a.id, a.title)}
+                  >
+                    🗑️ Delete
                   </button>
                 </div>
 

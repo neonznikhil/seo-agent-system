@@ -21,7 +21,7 @@ def test_is_homepage_variants():
 @pytest.mark.asyncio
 async def test_generate_learning_from_rejection():
     from backend.agents.tools.shared_utils import generate_learning_from_rejection
-    with patch("backend.agents.tools.shared_utils.call_nim_llm") as mock_llm:
+    with patch("backend.database.call_nim_llm") as mock_llm:
         mock_llm.return_value = "Human rejected blog: 'X' reason 'Y' -> Avoid topic X in future."
         learning = await generate_learning_from_rejection("blog", "X", "Y", "wid-1")
         assert learning is not None

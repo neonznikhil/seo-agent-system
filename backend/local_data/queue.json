@@ -88,5 +88,107 @@
     "error": "Simulated Network Timeout",
     "retry_count": 0,
     "queued_at": "2026-08-24T07:50:05.074033"
+  },
+  {
+    "id": "c56b0810-3191-4c12-bba6-7767876af120",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T08:11:56.773073"
+  },
+  {
+    "id": "d06a5c85-4b7c-4a74-a531-1282ba8ef9e7",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T08:14:41.174532"
+  },
+  {
+    "id": "2c769b5a-bb3e-43a6-a3a0-bc315ab7923c",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T08:16:53.597886"
+  },
+  {
+    "id": "09261f06-9232-4afd-a67a-d3338e468c5c",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T10:47:08.311421"
+  },
+  {
+    "id": "58e8ec85-14de-4051-8956-bfa51a3a29db",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T13:06:29.538847"
+  },
+  {
+    "id": "ca85cfc4-2906-49cb-8c4e-cd18239236cc",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "Houston car accident lawyer settlement rules"
+    },
+    "error": "{'message': \"Could not find the 'error_message' column of 'content_log' in the schema cache\", 'code': 'PGRST204', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T13:13:53.505331"
+  },
+  {
+    "id": "2fdafcee-7fb0-41c6-a8c1-5591c4a4466a",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T13:43:02.784004"
+  },
+  {
+    "id": "1a8ce2b5-1787-4d26-b94f-068f69d2ca9f",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "Houston commercial truck accident settlements"
+    },
+    "error": "{'message': 'insert or update on table \"content_log\" violates foreign key constraint \"content_log_website_id_fkey\"', 'code': '23503', 'hint': None, 'details': 'Key (website_id)=(916180a7-0b43-5c08-b3c8-c738826880bb) is not present in table \"websites\".'}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T13:43:41.115538"
+  },
+  {
+    "id": "79e45876-00e0-43b0-86d3-af6d3b035bd5",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T14:04:40.256239"
+  },
+  {
+    "id": "88c55b44-f2a5-457d-9015-eac6e89288a1",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T14:15:10.247251"
+  },
+  {
+    "id": "cd517a3e-8a87-4869-b7f4-48a885c8c325",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "Houston commercial truck accident settlements"
+    },
+    "error": "{'message': \"Could not find the 'error_message' column of 'content_log' in the schema cache\", 'code': 'PGRST204', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T14:21:35.426893"
   }
 ]

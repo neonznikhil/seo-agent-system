@@ -16,15 +16,11 @@ const seoNav = [
   { label: "Backlinks", href: "/backlinks" },
   { label: "Tech SEO", href: "/tech-seo" },
   { label: "Monitoring", href: "/monitoring" },
-  { label: "Calendar", href: "/calendar" },
-  { label: "ROI Attribution", href: "/roi" },
 ];
 
 const aiNav = [
   { label: "Workforce", href: "/workforce" },
   { label: "Brain", href: "/brain" },
-  { label: "Knowledge", href: "/knowledge" },
-  { label: "Memory", href: "/memory" },
   { label: "AEO / Schema", href: "/aeo" },
   { label: "LLMs.txt", href: "/llms-txt" },
 ];

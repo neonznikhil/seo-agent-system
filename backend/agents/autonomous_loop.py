@@ -273,3 +273,22 @@ async def process_unread_alerts(website_id: Optional[str] = None):
             logger.warning(f"[AlertDispatcher] Error handling alert {alert.get('id')}: {e}")
 
     return {"processed": processed_count}
+
+
+class AutonomousLoop:
+    """Class wrapper for Autonomous Loop services."""
+    def __init__(self, website_id: str = "default"):
+        self.website_id = website_id
+
+    async def run_goals(self):
+        return await run_monthly_goal_setting(self.website_id)
+
+    async def run_audit(self):
+        return await run_weekly_self_audit(self.website_id)
+
+    async def run_budget(self):
+        return await run_autonomous_budget_manager(self.website_id)
+
+    async def run_reactive(self):
+        return await process_unread_alerts(self.website_id)
+

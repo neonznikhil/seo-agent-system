@@ -52,6 +52,128 @@ NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")  # 102
 NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "meta/llama-3.1-70b-instruct")
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 
+# ---------------------------------------------------------------------------
+# NIM availability tracking (startup validation + live diagnostics)
+# ---------------------------------------------------------------------------
+
+_nim_state: dict = {
+    "available": None,          # None = not validated yet, True/False after check
+    "last_check": None,
+    "http_status": None,
+    "error": None,
+    "diagnostic": None,
+}
+
+
+def reset_nim_availability() -> None:
+    """Clear the cached availability flag so the next call re-validates."""
+    _nim_state.update({
+        "available": None,
+        "last_check": None,
+        "http_status": None,
+        "error": None,
+        "diagnostic": None,
+    })
+
+
+async def validate_nim_connection(force: bool = False) -> dict:
+    """Make one real NVIDIA NIM call and classify the exact failure.
+
+    401 -> invalid API key. 404 -> wrong model id. 429 -> rate limited.
+    Stores a global flag consumed by the workforce page so users cannot
+    trigger agents when NIM is down.
+    """
+    if _nim_state["available"] is not None and not force:
+        return dict(_nim_state)
+
+    api_key = os.getenv("NVIDIA_API_KEY") or NIM_API_KEY
+    if not api_key:
+        _nim_state.update({
+            "available": False,
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "http_status": None,
+            "error": "NVIDIA_API_KEY missing",
+            "diagnostic": "NVIDIA NIM: API key not configured — add it in Connectors.",
+        })
+        logger.error("[NIM] NVIDIA_API_KEY is not set. All LLM features disabled until configured.")
+        return dict(_nim_state)
+
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": NIM_LLM_MODEL,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 5,
+        "temperature": 0,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
+    except httpx.RequestError as e:
+        _nim_state.update({
+            "available": False,
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "http_status": None,
+            "error": str(e)[:300],
+            "diagnostic": "NVIDIA NIM unreachable (network error).",
+        })
+        logger.error(f"[NIM] Network error during validation: {e}")
+        return dict(_nim_state)
+
+    status = resp.status_code
+    if status == 200:
+        _nim_state.update({
+            "available": True,
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "http_status": 200,
+            "error": None,
+            "diagnostic": f"NVIDIA NIM healthy — model {NIM_LLM_MODEL} responded.",
+        })
+        logger.info("[NIM] Startup validation passed ✅")
+    elif status == 401:
+        _nim_state.update({
+            "available": False, "http_status": 401, "error": "HTTP 401 Unauthorized",
+            "diagnostic": "NVIDIA NIM: Invalid API key — update it in Connectors.",
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+        logger.error("[NIM] Invalid API key (401).")
+    elif status == 404:
+        _nim_state.update({
+            "available": False, "http_status": 404, "error": "HTTP 404 Not Found",
+            "diagnostic": "NVIDIA NIM: Model not found — check model ID "
+                          f"'{NIM_LLM_MODEL}'.",
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+        logger.error(f"[NIM] Model not found (404): {NIM_LLM_MODEL}")
+    elif status == 429:
+        # Rate limited but the key WORKS — treat as available with backoff note.
+        _nim_state.update({
+            "available": True, "http_status": 429, "error": "HTTP 429 rate limited",
+            "diagnostic": "NVIDIA NIM rate limited — backing off automatically.",
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+        logger.warning("[NIM] Rate limited (429) — backing off.")
+    else:
+        _nim_state.update({
+            "available": False, "http_status": status,
+            "error": f"HTTP {status}: {resp.text[:200]}",
+            "diagnostic": f"NVIDIA NIM returned unexpected HTTP {status}.",
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+        logger.error(f"[NIM] Unexpected status {status}: {resp.text[:200]}")
+
+    return dict(_nim_state)
+
+
+async def is_nim_available() -> bool:
+    """Boolean gate used by routers to refuse agent triggers when NIM is down."""
+    state = await validate_nim_connection()
+    return bool(state.get("available"))
+
+
+def get_nim_state() -> dict:
+    """Current diagnostic snapshot for the workforce page."""
+    return dict(_nim_state)
+
 
 def _log_task_fail(website_id, action, error: str) -> None:
     try:
@@ -195,17 +317,39 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
     last_error: Optional[Exception] = None
     for model_name in candidate_models:
         try:
-            return await _nim_chat_with_retry(
+            result = await _nim_chat_with_retry(
                 model_name, messages, headers, max_tokens, temperature
             )
+            if not _nim_state.get("available"):
+                _nim_state.update({"available": True, "error": None,
+                                   "diagnostic": f"NVIDIA NIM healthy — model {model_name} responded."})
+            return result
         except Exception as e:
             last_error = e
+            msg = str(e)
             logger.warning(f"NIM LLM model {model_name} failed after retries: {e}")
+            if "401" in msg:
+                _nim_state.update({"available": False, "http_status": 401,
+                                   "diagnostic": "NVIDIA NIM: Invalid API key — update it in Connectors.",
+                                   "error": msg[:300]})
+                break  # Wrong key will never succeed on other models
+            if "404" in msg:
+                _nim_state.update({"available": False, "http_status": 404,
+                                   "diagnostic": f"NVIDIA NIM: Model not found — check model ID '{model_name}'.",
+                                   "error": msg[:300]})
+                continue
 
     logger.error(
         "NIM LLM call failed for all models (prompt starting '%s')",
         prompt[:60].replace("\n", " "),
     )
+    if _nim_state.get("available") is not False and last_error is not None:
+        _nim_state.update({
+            "available": False,
+            "error": str(last_error)[:300],
+            "diagnostic": "NVIDIA NIM unavailable after retries.",
+            "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
     if website_id:
         _log_task_fail(website_id, "call_nim_llm", str(last_error)[:500])
     if not fail_silently:

@@ -18,6 +18,7 @@ async def rank_monitor_loop():
     while True:
         start_time = time.time()
         iteration = 0
+        issues_found = 0
         last_website_id = "unknown"
         
         try:
@@ -62,7 +63,7 @@ async def rank_monitor_loop():
                                             website_id=website_id,
                                             alert_type="rank_drop",
                                             severity=severity,
-                                            title=f"Rank Drop: {keyword} {old_pos}→{new_pos} in {market}",
+                                            title=f"Rank Drop: {keyword} {old_pos}â†’{new_pos} in {market}",
                                             description=f"Keyword dropped from position {old_pos} to {new_pos} in {market} market",
                                             data={
                                                 "keyword": keyword,
@@ -81,7 +82,7 @@ async def rank_monitor_loop():
                                             website_id=website_id,
                                             alert_type="rank_opportunity",
                                             severity="high",
-                                            title=f"Opportunity: {keyword} jumped {old_pos}→{new_pos}",
+                                            title=f"Opportunity: {keyword} jumped {old_pos}â†’{new_pos}",
                                             description=f"Keyword improved from {old_pos} to {new_pos} - create content cluster",
                                             data={
                                                 "keyword": keyword,
@@ -144,6 +145,7 @@ async def serp_monitor_loop():
     while True:
         start_time = time.time()
         iteration = 0
+        issues_found = 0
         last_website_id = "unknown"
         
         try:
@@ -248,7 +250,7 @@ async def competitor_monitor_loop():
                                     alert_type="competitor_price",
                                     severity="high",
                                     title=f"Competitor {comp['competitor_domain']} price change",
-                                    description=f"Price changed: {changes.get('old_price')} → {changes.get('new_price')}",
+                                    description=f"Price changed: {changes.get('old_price')} â†’ {changes.get('new_price')}",
                                     data={
                                         "competitor_domain": comp["competitor_domain"],
                                         "old_pricing": changes.get("old_price"),
@@ -266,7 +268,7 @@ async def competitor_monitor_loop():
                                     asyncio.create_task(sa.handle_alert({
                                         "website_id": website_id,
                                         "alert_type": "competitor_content_gap",
-                                        "title": f"Competitor {comp.get('competitor_domain', comp.get('domain', 'competitor.com'))} published new content",
+                                        "title": f"Competitor {comp.get('competitor_domain') or comp.get('domain') or 'unknown-competitor'} published new content",
                                         "description": f"New content detected: {changes.get('new_urls', [])[:3]}. Evaluated counter-article vs acceleration.",
                                         "data": changes
                                     }))
@@ -277,7 +279,7 @@ async def competitor_monitor_loop():
                                     website_id=website_id,
                                     alert_type="competitor_content_gap",
                                     severity="high",
-                                    title=f"Competitor {comp.get('competitor_domain', comp.get('domain', 'competitor.com'))} content gap",
+                                    title=f"Competitor {comp.get('competitor_domain') or comp.get('domain') or 'unknown-competitor'} content gap",
                                     description=f"{changes.get('new_pages', 1)} new pages detected targeting competitive keywords",
                                     data={
                                         "competitor_domain": comp.get("competitor_domain", comp.get("domain")),
@@ -288,25 +290,15 @@ async def competitor_monitor_loop():
                                 )
 
                             # Update or insert competitor_profiles record
-                            comp_domain = comp.get("competitor_domain") or comp.get("domain") or "competitor.com"
+                            comp_domain = comp.get("competitor_domain") or comp.get("domain") or "unknown-competitor"
                             try:
+                                # Persist only what was actually observed during monitoring
                                 get_supabase().table("competitor_profiles").upsert({
                                     "website_id": website_id,
                                     "domain": comp_domain,
-                                    "tracked_keywords": ["car accident lawyer", "personal injury settlement", "auto collision claims"],
-                                    "estimated_monthly_traffic": 24500,
-                                    "publish_frequency": 2.5,
-                                    "avg_content_length": 1850,
-                                    "backlink_velocity": 4.2,
-                                    "schema_types": ["Article", "LegalService", "FAQPage"],
-                                    "top_pages": [
-                                        {"url": f"https://{comp_domain}/car-accidents", "traffic": 8400},
-                                        {"url": f"https://{comp_domain}/settlement-guide", "traffic": 6200}
-                                    ],
-                                    "last_5_articles": [
-                                        {"title": "2026 Legal Compensation Guide", "date": datetime.utcnow().strftime("%Y-%m-%d")},
-                                        {"title": "How Settlements are Calculated", "date": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")}
-                                    ],
+                                    "tracked_keywords": [k for k in (comp.get("keywords") or [])][:10],
+                                    "new_pages_count": changes.get("new_pages", 1),
+                                    "new_urls": (changes.get("new_urls") or [])[:10],
                                     "updated_at": datetime.utcnow().isoformat()
                                 }).execute()
                             except Exception as cp_err:
@@ -393,7 +385,7 @@ async def tech_monitor_loop():
                                     alert_type="tech_speed",
                                     severity="high",
                                     title=f"Speed degraded on {page_url}",
-                                    description=f"LCP {checks.get('old_lcp')}s → {checks.get('new_lcp')}s",
+                                    description=f"LCP {checks.get('old_lcp')}s â†’ {checks.get('new_lcp')}s",
                                     data={
                                         "page_url": page_url,
                                         "old_lcp": checks.get("old_lcp"),

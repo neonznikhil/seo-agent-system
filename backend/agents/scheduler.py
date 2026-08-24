@@ -532,6 +532,27 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
+    # Every 10 Minutes - Stuck generation cleanup (in_progress > 15 min -> failed)
+    scheduler.add_job(
+        job_cleanup_stuck_content,
+        IntervalTrigger(minutes=10, timezone=IST),
+        id="job_cleanup_stuck_content",
+        name="Every 10m Stuck Generation Cleanup",
+        replace_existing=True
+    )
+
+    # Hourly - Junk draft removal ("Draft: a blog", failed rows >24h, <100 char content)
+    async def _job_junk_cleanup():
+        await job_cleanup_junk_drafts()
+
+    scheduler.add_job(
+        _job_junk_cleanup,
+        IntervalTrigger(minutes=60, timezone=IST),
+        id="job_cleanup_junk_drafts",
+        name="Hourly Junk Draft Cleanup",
+        replace_existing=True
+    )
+
     # Every 6 Hours - SerpVolatilityService
     async def _job_serp_volatility():
         from ..services.serp_volatility_service import SerpVolatilityService
@@ -653,6 +674,233 @@ def get_scheduler_logs(limit: int = 20) -> List[Dict[str, Any]]:
     return list(reversed(SCHEDULER_LOGS[-limit:]))
 
 
+# ---------------------------------------------------------
+# Job persistence: skip jobs that already ran today
+# ---------------------------------------------------------
+
+def _has_run_today(job_name: str) -> bool:
+    """Check brain_daily_jobs for a successful run of this job today."""
+    try:
+        from ..database import get_supabase
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        res = (
+            get_supabase().table("brain_daily_jobs")
+            .select("id")
+            .eq("job_name", job_name)
+            .gte("run_at", f"{today}T00:00:00")
+            .limit(1)
+            .execute()
+        )
+        return bool(res.data)
+    except Exception:
+        return False
+
+
+def _record_job_run(job_name: str, website_id: Optional[str], status: str = "completed") -> None:
+    try:
+        from ..database import get_supabase
+        get_supabase().table("brain_daily_jobs").insert({
+            "website_id": website_id or "default",
+            "job_name": job_name,
+            "status": status,
+            "run_at": datetime.utcnow().isoformat(),
+        }).execute()
+    except Exception as e:
+        logger.debug(f"[Scheduler] Could not record job run: {e}")
+
+
+async def run_pending_daily_jobs() -> Dict[str, Any]:
+    """On startup: immediately run any scheduled daily job that has not run yet today.
+
+    This guarantees the system is never waiting until 'tomorrow 11:00' after a
+    restart and prevents double-execution thanks to brain_daily_jobs records.
+    """
+    pending_map = {
+        "business_website_watch": job_business_website_watch,
+        "daily_search": job_daily_search,
+        "knowledge_sync": job_knowledge_sync,
+        "brain_learn": job_brain_learn,
+        "content_refresh": job_content_refresh,
+        "auto_new_page": job_auto_new_page,
+        "backlink_prospecting": job_backlink_prospecting,
+        "tech_seo_audit": job_tech_seo_audit,
+    }
+    ran = []
+    skipped = []
+    for name, func in pending_map.items():
+        if _has_run_today(name):
+            skipped.append(name)
+            continue
+        try:
+            _add_log(name, "running", f"Startup catch-up: running missed daily job {name}")
+            await func()
+            _record_job_run(name, None)
+            ran.append(name)
+        except Exception as e:
+            logger.warning(f"[Scheduler] Startup catch-up for {name} failed: {e}")
+            _add_log(name, "error", f"Startup catch-up failed: {str(e)[:150]}")
+    return {"ran": ran, "skipped_already_ran": skipped}
+
+
+async def run_first_time_setup(website_id: str) -> Dict[str, Any]:
+    """First-hour onboarding pipeline fired right after a website connects:
+
+    KnowledgeAgent crawl -> keyword research -> first article -> tech audit ->
+    backlink opportunity discovery. All queued as background tasks so the API
+    responds immediately while the system populates itself.
+    """
+    results: Dict[str, Any] = {"steps_started": []}
+    loop = asyncio.get_event_loop()
+
+    # Step 1: Knowledge ingestion (runs inline-ish first — everything else depends on it)
+    async def _knowledge():
+        from ..services.knowledge_service import KnowledgeService
+        ks = KnowledgeService(website_id=website_id)
+        site_row = None
+        try:
+            from ..database import get_supabase
+            site_row = (
+                get_supabase().table("websites").select("cms_url, url, domain")
+                .eq("id", website_id).single().execute().data or {}
+            )
+        except Exception:
+            pass
+        url = (site_row or {}).get("cms_url") or (site_row or {}).get("url") or \
+              f"https://{(site_row or {}).get('domain', '')}"
+        if url and url != "https://":
+            await ks.watch_business_website()
+            _add_log("first_time_setup", "completed", f"Knowledge crawled for {website_id}")
+
+    async def _research():
+        from .research_agent import ResearchAgent
+        agent = ResearchAgent(website_id=website_id)
+        await agent.run(topic="primary services and customer questions")
+
+    async def _writer():
+        from .autonomous_decision_engine import AutonomousDecisionEngine
+        engine = AutonomousDecisionEngine(website_id=website_id)
+        kw = await engine.get_next_target_keyword()
+        if not kw:
+            _add_log("first_time_setup", "warning", "No target keyword available yet for first article")
+            return
+        writer = WriterPipelineLocal(website_id=website_id)
+        await writer.generate(topic=f"{kw.title()}: Complete Guide", primary_keyword=kw)
+
+    async def _audit():
+        from .tech_seo_agent import TechSEOAgent
+        agent = TechSEOAgent(website_id=website_id)
+        await agent.run_audit(website_id)
+
+    async def _scout():
+        from .opportunity_scout_agent import OpportunityScoutAgent
+        agent = OpportunityScoutAgent(website_id=website_id)
+        await agent.run()
+
+    steps = [
+        ("knowledge_crawl", _knowledge, 0),
+        ("keyword_research", _research, 5),
+        ("first_article", _writer, 300),
+        ("tech_audit", _audit, 60),
+        ("backlink_scout", _scout, 120),
+    ]
+    for name, coro_fn, delay in steps:
+        async def _runner(fn=coro_fn, step=name, wait=delay):
+            await asyncio.sleep(wait)
+            try:
+                await fn()
+                _record_job_run(f"first_setup_{step}", website_id)
+                _add_log("first_time_setup", "completed", f"Step '{step}' finished for {website_id}")
+            except Exception as e:
+                _add_log("first_time_setup", "error", f"Step '{step}' failed: {str(e)[:150]}")
+                logger.warning(f"[FirstTimeSetup] {step} failed: {e}")
+
+        task = loop.create_task(_runner())
+        results["steps_started"].append({"step": name, "task": task})
+        results[name] = "queued"
+
+    return results
+
+
+# Local import indirection to avoid circulars at module load
+async def WriterPipelineLocalFactory():
+    from .writer_agent import WriterPipeline
+    return WriterPipeline
+
+
+class WriterPipelineLocal:
+    def __init__(self, website_id: str):
+        self.website_id = website_id
+
+    async def generate(self, topic: str, primary_keyword: str):
+        from .writer_agent import WriterPipeline
+        writer = WriterPipeline(website_id=self.website_id)
+        return await writer.generate(topic=topic, primary_keyword=primary_keyword)
+
+
+# ---------------------------------------------------------
+# Cleanup jobs
+# ---------------------------------------------------------
+
+async def job_cleanup_stuck_content():
+    """Every 10 minutes: mark content_log rows stuck in_progress >15min as failed."""
+    try:
+        from ..database import get_supabase
+        cutoff = (datetime.utcnow().timestamp() - 15 * 60)
+        cutoff_iso = datetime.utcfromtimestamp(cutoff).isoformat()
+        supabase = get_supabase()
+        stuck = (
+            supabase.table("content_log")
+            .select("id")
+            .eq("status", "in_progress")
+            .lt("created_at", cutoff_iso)
+            .execute()
+            .data or []
+        )
+        for row in stuck:
+            supabase.table("content_log").update({
+                "status": "failed",
+                "pipeline_status": "failed",
+                "error_message": "Generation timed out (>15 minutes in progress). Auto-failed by cleanup job.",
+            }).eq("id", row["id"]).execute()
+        if stuck:
+            _add_log("cleanup_stuck", "completed", f"Marked {len(stuck)} stuck generations as failed")
+    except Exception as e:
+        logger.debug(f"[Cleanup] stuck content sweep note: {e}")
+
+
+async def job_cleanup_junk_drafts():
+    """Hourly: delete failed/junk drafts and their approval rows."""
+    try:
+        from ..database import get_supabase
+        supabase = get_supabase()
+        deleted = 0
+        try:
+            res = supabase.rpc("cleanup_junk_drafts").execute()
+            data = res.data if hasattr(res, "data") else res
+            if isinstance(data, list) and data:
+                deleted = int(data[0]) if data[0] is not None else 0
+            elif isinstance(data, int):
+                deleted = data
+        except Exception:
+            pass
+        if deleted == 0:
+            # Fallback manual cleanup when the RPC is unavailable
+            cutoff_24h = (datetime.utcnow().timestamp() - 24 * 3600)
+            rows = (
+                supabase.table("content_log").select("id, blog_approvals(id)")
+                .ilike("title", "%Draft: a blog%")
+                .lt("created_at", datetime.utcfromtimestamp(cutoff_24h).isoformat())
+                .execute().data or []
+            )
+            for row in rows:
+                supabase.table("content_log").delete().eq("id", row["id"]).execute()
+                deleted += 1
+        if deleted:
+            _add_log("cleanup_drafts", "completed", f"Removed {deleted} junk drafts")
+    except Exception as e:
+        logger.debug(f"[Cleanup] junk drafts sweep note: {e}")
+
+
 async def run_job_now(job_name: str) -> Dict[str, Any]:
     """Manually trigger any scheduled job immediately."""
     job_map = {
@@ -665,6 +913,8 @@ async def run_job_now(job_name: str) -> Dict[str, Any]:
         "backlink_prospecting": job_backlink_prospecting,
         "tech_seo_audit": job_tech_seo_audit,
         "seo_report_aeo_tracking": job_tech_seo_audit,
+        "cleanup_stuck_content": job_cleanup_stuck_content,
+        "cleanup_junk_drafts": job_cleanup_junk_drafts,
     }
     
     clean_name = job_name.replace("job_", "")

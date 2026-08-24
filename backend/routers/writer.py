@@ -16,6 +16,24 @@ from ..services.wordpress_service import WordPressService
 logger = logging.getLogger("backend.routers.writer")
 router = APIRouter()
 
+# Frontend placeholder strings that must never reach the database.
+FORBIDDEN_TITLE_FRAGMENTS = [
+    "or let ai suggest", "e.g.", "example", "placeholder",
+    "lorem ipsum", "your content here", "enter your blog title", "a blog",
+]
+
+
+def validate_title(title: str) -> Optional[str]:
+    t = (title or "").strip().lower()
+    if not t:
+        return "Title is required"
+    for frag in FORBIDDEN_TITLE_FRAGMENTS:
+        if frag in t:
+            return f"Invalid title: appears to contain placeholder text ('{frag}')"
+    if len(t) < 8:
+        return "Title is too short to be a real article title"
+    return None
+
 
 class GenerateContentIn(BaseModel):
     title: Optional[str] = None
@@ -32,145 +50,100 @@ async def generate_content_endpoint(
     background_tasks: BackgroundTasks,
     request: Request = None,
 ):
-    """Generate high-quality 1500-2000 word blog content using NVIDIA NIM LLM and log pipeline steps."""
-    title = (body.title or body.topic or "Autonomous SEO Strategy").strip()
-    keywords = body.keywords or ([body.primary_keyword] if body.primary_keyword else [title])
-    primary_kw = body.primary_keyword or (keywords[0] if keywords else title)
-    tone = body.tone or "authoritative, engaging and SEO-optimized"
+    """Manual override generation entry point.
 
-    content_id = str(uuid.uuid4())
-    supabase = get_supabase()
+    Runs the full autonomous WriterPipeline in the background and returns the
+    job id immediately. Clients subscribe to GET /api/writer/{job_id}/stream
+    to watch sections appear in real time.
+    """
+    raw_title = (body.title or body.topic or "").strip()
 
-    # Initial log entry in content_log
+    # 1. Placeholder validation — UI suggestion chips must never become articles.
+    validation_error = validate_title(raw_title)
+    if validation_error:
+        raise HTTPException(status_code=400, detail=validation_error)
+
+    # 2. NIM availability gate
     try:
-        supabase.table("content_log").insert({
-            "id": content_id,
-            "website_id": website_id,
-            "title": title,
-            "keyword": primary_kw,
-            "content": "",
-            "status": "pending_approval",
-            "pipeline_status": "generating",
-            "created_at": datetime.utcnow().isoformat(),
-        }).execute()
+        from ..database import is_nim_available, get_nim_state
+        if not await is_nim_available():
+            state = get_nim_state()
+            raise HTTPException(
+                status_code=503,
+                detail=f"NVIDIA NIM unavailable — {state.get('diagnostic') or 'check your API key in Connectors'}",
+            )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Could not initialize content_log row: {e}")
+        logger.warning(f"NIM availability check error: {e}")
 
-    # Build 12-phase pipeline logs
-    phases = [
-        ("brain_recall", "Brain Context & Brand Voice Recalled"),
-        ("audience_demand", "Audience Demand & Search Intent Mined"),
-        ("serp_intelligence", "SERP Competitor Intelligence Analyzed"),
-        ("outline_strategy", "Outline & Semantic Architecture Built"),
-        ("nim_writing", "NVIDIA NIM Autonomous Content Writing"),
-        ("expert_review", "Multi-Expert SEO & EEAT Review"),
-        ("humanizer_gate", "Humanizer & Tone Verification Passed"),
-        ("fact_check", "Fact-Checking & Knowledge Verification Checked"),
-        ("internal_linking", "Internal Linking Optimization Structured"),
-        ("citation_audit", "Citation & Reference Audit Completed"),
-        ("quality_gate", "Final Quality Gate Scored (95/100)"),
-        ("brain_learn", "Brain Memory Learning Updated"),
-    ]
+    topic = raw_title
+    keywords = body.keywords or ([body.primary_keyword] if body.primary_keyword else [topic])
+    primary_kw = body.primary_keyword or (keywords[0] if keywords else topic)
 
-    for step_num, (phase_key, phase_name) in enumerate(phases, 1):
+    pipeline = WriterPipeline(website_id)
+
+    async def _run():
         try:
-            supabase.table("content_pipeline_logs").insert({
-                "content_id": content_id,
-                "website_id": website_id,
-                "step_number": step_num,
-                "step_name": phase_name,
-                "phase": phase_key,
-                "status": "completed",
-                "thought": f"Phase {step_num}/12: {phase_name}",
-                "created_at": datetime.utcnow().isoformat(),
-            }).execute()
-        except Exception:
-            pass
+            result = await pipeline.generate(topic=topic, primary_keyword=primary_kw)
+            logger.info(f"[WriterAPI] Pipeline finished for {result.get('content_id')}: {result.get('status')}")
+        except Exception as e:
+            logger.exception(f"[WriterAPI] Background pipeline crashed: {e}")
+            from ..services.event_bus import publish
+            channel = getattr(pipeline, "sse_channel", None)
+            if channel:
+                publish(channel, {"event": "pipeline_failed", "error": str(e)[:300]})
 
-    # Generate complete 1500-2000 word blog using NVIDIA NIM
-    human_writer = HumanWriterAgent(website_id)
-    human_writer.setup_profile()
-    
-    outline = {
-        "title": title,
-        "primary_keyword": primary_kw,
-        "keywords": keywords,
-        "h2_sections": [
-            f"Why {primary_kw} Matters for Search Performance",
-            f"Core Framework: Proven Strategies for {title}",
-            "Step-by-Step Implementation Guide",
-            "Comparative Benchmarks & Actionable Takeaways",
-            "Frequently Asked Questions"
-        ],
-        "h3_subsections": {
-            "Step-by-Step Implementation Guide": ["Phase 1 Setup", "Phase 2 Optimization", "Phase 3 Measurement"]
-        }
-    }
-
-    try:
-        content_text = await human_writer.write_blog(
-            title=title,
-            outline=outline,
-            keywords=keywords,
-            tone=tone,
-        )
-    except Exception as e:
-        logger.error(f"NIM generation failed: {e}")
-        # Fallback to direct prompt
-        prompt = f"""Write a comprehensive, publication-ready 1500+ word SEO blog post.
-Title: {title}
-Target Keywords: {', '.join(keywords)}
-Tone: {tone}
-Structure:
-- 50-word direct answer / featured snippet summary
-- 4-5 H2 sections with actionable insights
-- Data comparison table
-- 5 FAQ questions and concise answers
-- Conclusion with key takeaways"""
-        content_text = await call_nim_llm(prompt, max_tokens=3000, website_id=website_id)
-
-    # Update content_log
-    try:
-        supabase.table("content_log").update({
-            "content": content_text,
-            "status": "pending_approval",
-            "pipeline_status": "completed",
-            "quality_checked": True,
-            "created_at": datetime.utcnow().isoformat(),
-        }).eq("id", content_id).execute()
-    except Exception as e:
-        logger.warning(f"Failed to update content_log after generation: {e}")
-
-    # Add expert review entry
-    try:
-        supabase.table("content_expert_reviews").insert({
-            "content_id": content_id,
-            "website_id": website_id,
-            "expert_name": "SEO & EEAT Expert",
-            "score": 94,
-            "passed": True,
-            "issues": [],
-            "reviewed_at": datetime.utcnow().isoformat(),
-        }).execute()
-    except Exception:
-        pass
+    background_tasks.add_task(_run)
 
     return {
-        "id": content_id,
-        "content_id": content_id,
-        "title": title,
-        "keyword": primary_kw,
-        "content": content_text,
-        "status": "pending_approval",
-        "pipeline_status": "completed",
-        "word_count": len(content_text.split()),
-        "created_at": datetime.utcnow().isoformat(),
+        "success": True,
+        "job_id": getattr(pipeline, "content_id", None),
+        "content_id": getattr(pipeline, "content_id", None),
+        "status": "started",
+        "message": "Generation started — subscribe to the stream endpoint for live progress.",
+        "stream_url": f"/api/writer/job/{getattr(pipeline, 'content_id', '')}/stream",
     }
+
+
+@router.get("/writer/job/{job_id}/stream")
+@router.get("/api/writer/job/{job_id}/stream")
+async def stream_writer_job(job_id: str):
+    """Server-Sent Events stream of live article generation progress."""
+    from ..services.event_bus import stream as bus_stream, get_history
+
+    async def event_generator():
+        async for event in bus_stream(f"writer:{job_id}"):
+            if event.get("keepalive"):
+                yield ": keepalive\n\n"
+                continue
+            payload = json.dumps(event, default=str)
+            yield f"data: {payload}\n\n"
+            if event.get("event") in ("pipeline_completed", "pipeline_failed",
+                                      "pipeline_blocked", "pipeline_needs_revision"):
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/writer/{website_id}/stream/{content_id}")
+@router.get("/api/writer/{website_id}/stream/{content_id}")
+async def stream_writer_content(website_id: str, content_id: str):
+    """SSE stream alias scoped by website (used by the writer page right panel)."""
+    return await stream_writer_job(content_id)
 
 
 @router.get("/writer/{website_id}/pipeline/{content_id}")
 async def get_pipeline_logs(website_id: str, content_id: str):
-    """Fetch real-time pipeline step logs for polling."""
+    """Fetch real-time pipeline step logs for polling clients."""
     supabase = get_supabase()
     try:
         logs = supabase.table("content_pipeline_logs").select("*").eq("content_id", content_id).order("step_number").execute().data or []
@@ -274,7 +247,7 @@ async def approve_draft_endpoint(
         "status": "draft",
         "wp_post_id": wp_post_id,
         "edit_url": wp_draft_url,
-        "message": "Draft created in WordPress ✅" if wp_post_id else "Article saved as local draft ✅",
+        "message": "Draft created in WordPress" if wp_post_id else "Article saved as local draft",
     }
 
 
@@ -286,8 +259,6 @@ async def publish_content_endpoint(
 ):
     """Publishes the post live to WordPress upon human approval."""
     user_id = request.headers.get("X-User-Id", "admin") if request else "admin"
-    if not user_id:
-        raise HTTPException(400, "Human approval required (X-User-Id header missing)")
 
     supabase = get_supabase()
     content = supabase.table("content_log").select("*").eq("id", content_id).single().execute().data
@@ -296,6 +267,19 @@ async def publish_content_endpoint(
 
     wp_post_id = content.get("wp_post_id")
     wp_service = WordPressService(website_id)
+
+    if not wp_post_id:
+        # Draft-first then publish — one click for the human.
+        try:
+            draft = await wp_service.create_draft(
+                website_id, content.get("title", ""), content.get("content", ""),
+                [content.get("keyword")] if content.get("keyword") else [],
+            )
+            wp_post_id = draft.get("wp_post_id")
+            if wp_post_id:
+                supabase.table("content_log").update({"wp_post_id": wp_post_id}).eq("id", content_id).execute()
+        except Exception as e:
+            logger.warning(f"WordPress draft-before-publish failed: {e}")
 
     if wp_post_id:
         try:
@@ -308,14 +292,29 @@ async def publish_content_endpoint(
             "status": "published",
             "approved_by": user_id,
         }).eq("id", content_id).execute()
+        supabase.table("blog_approvals").update({
+            "status": "published",
+            "wordpress_post_id": wp_post_id,
+            "approved_at": datetime.utcnow().isoformat(),
+        }).eq("blog_id", content_id).execute()
     except Exception as e:
         logger.warning(f"Could not mark content as published: {e}")
+
+    try:
+        from ..services.slack_intelligence_service import notify_content_published
+        await notify_content_published(
+            website_id=website_id,
+            title=content.get("title", ""),
+            wordpress_url=None,
+        )
+    except Exception:
+        pass
 
     return {
         "status": "published",
         "published": True,
         "wp_post_id": wp_post_id,
-        "message": "Post published live to WordPress 🚀",
+        "message": "Post published live to WordPress",
     }
 
 
@@ -327,12 +326,15 @@ async def expert_reviews(website_id: str, content_id: str):
     except Exception:
         reviews = []
 
+    scores = [r.get("score") for r in reviews if isinstance(r.get("score"), (int, float))]
+    average_score = round(sum(scores) / len(scores), 1) if scores else None
+
     return {
         "summary": {
             "total": len(reviews),
             "passed": len([r for r in reviews if r.get("passed")]),
             "failed": len([r for r in reviews if not r.get("passed")]),
-            "average_score": 94,
+            "average_score": average_score,
         },
         "reviews": reviews,
     }

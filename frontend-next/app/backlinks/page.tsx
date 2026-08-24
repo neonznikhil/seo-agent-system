@@ -18,25 +18,32 @@ interface BacklinkItem {
 }
 
 interface BacklinkMetrics {
-  total_monitored: number;
-  prospects_found: number;
-  avg_dr: number;
+  total_backlinks_acquired: number;
+  avg_dr: number | null;
   velocity_30d: number;
-  authority_trajectory_dr: number;
+  authority_trajectory_dr: number | null;
+  active_citations: number;
+  tier1_prospects: number;
+  total_opportunities: number;
+  authority_action_plan?: string;
 }
 
 export default function BacklinksPage() {
   const [websiteId, setWebsiteId] = useState<string>("");
   const [backlinks, setBacklinks] = useState<BacklinkItem[]>([]);
   const [metrics, setMetrics] = useState<BacklinkMetrics>({
-    total_monitored: 18,
-    prospects_found: 12,
-    avg_dr: 54,
-    velocity_30d: 4,
-    authority_trajectory_dr: 54.5,
+    total_backlinks_acquired: 0,
+    avg_dr: null,
+    velocity_30d: 0,
+    authority_trajectory_dr: null,
+    active_citations: 0,
+    tier1_prospects: 0,
+    total_opportunities: 0,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [isScouting, setIsScouting] = useState<boolean>(false);
+  const [scoutLogs, setScoutLogs] = useState<string[]>([]);
+  const [briefingId, setBriefingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -62,13 +69,16 @@ export default function BacklinksPage() {
       }
 
       if (metRes.status === "fulfilled" && metRes.value) {
-        const m = metRes.value?.data || metRes.value;
+        const m = metRes.value?.data || metRes.value || {};
         setMetrics({
-          total_monitored: m.total_backlinks_acquired || m.total_monitored || 18,
-          prospects_found: m.total_acquired_this_month || m.prospects_found || 12,
-          avg_dr: Math.round(m.authority_trajectory_dr || m.avg_dr || 54),
-          velocity_30d: m.backlink_velocity_30d || 4,
-          authority_trajectory_dr: m.authority_trajectory_dr || 54.5,
+          total_backlinks_acquired: m.total_backlinks_acquired ?? 0,
+          avg_dr: m.avg_dr ?? null,
+          velocity_30d: m.link_velocity_30d ?? m.backlink_velocity_30d ?? 0,
+          authority_trajectory_dr: m.authority_trajectory_dr ?? null,
+          active_citations: m.active_citations ?? 0,
+          tier1_prospects: m.tier1_prospects ?? 0,
+          total_opportunities: m.total_opportunities ?? 0,
+          authority_action_plan: m.authority_action_plan,
         });
       }
     } catch (e: any) {
@@ -82,25 +92,71 @@ export default function BacklinksPage() {
     loadBacklinks();
   }, [loadBacklinks]);
 
+  // Scout sweep with live SSE progress log
   const handleRunScoutSweep = async () => {
-    const wid = getCurrentWebsiteId() || "default";
+    const wid = getCurrentWebsiteId() || websiteId || "default";
     try {
       setIsScouting(true);
-      showToast("🚀 OpportunityScoutAgent commenced 5-tier technical sweep...");
-      
-      try {
-        await post(`/api/backlinks/scout`, { website_id: wid, niche_keyword: "Texas commercial truck accident lawyer" });
-      } catch {
-        await post(`/api/backlinks/generate-outreach`, { website_id: wid });
-      }
+      setScoutLogs(["Connecting to scout agent..."]);
+      showToast("OpportunityScoutAgent sweeping 5 tiers of link targets...");
 
-      showToast("✓ 5-Tier opportunity sweep complete! Database updated.");
+      await new Promise<void>((resolve, reject) => {
+        const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+        const url = `${apiBase}/api/backlinks/scout/stream?website_id=${encodeURIComponent(wid)}`;
+        const source = new EventSource(url);
+
+        source.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "log") {
+              setScoutLogs((prev) => [...prev, data.message]);
+            } else if (data.event === "completed") {
+              setScoutLogs((prev) => [...prev, `Done — ${data.found} opportunities found.`]);
+              source.close();
+              resolve();
+            } else if (data.event === "error") {
+              setScoutLogs((prev) => [...prev, `Error: ${data.error}`]);
+              source.close();
+              reject(new Error(data.error));
+            }
+          } catch {}
+        };
+        source.onerror = () => {
+          source.close();
+          reject(new Error("Stream connection lost"));
+        };
+
+        // Hard timeout safety
+        setTimeout(() => {
+          source.close();
+          resolve();
+        }, 180000);
+      });
+
+      showToast("✓ Scout sweep complete!");
       loadBacklinks();
     } catch (err: any) {
-      showToast(`Scout notice: ${err.message || "Sweep completed"}`);
+      showToast(`Scout sweep issue: ${err.message}`);
       loadBacklinks();
     } finally {
       setIsScouting(false);
+    }
+  };
+
+  // Generate a real linkable asset brief for an opportunity
+  const handleBriefAsset = async (item: BacklinkItem) => {
+    try {
+      setBriefingId(item.id);
+      const res = await post(`/api/backlinks/generate-outreach`, {
+        website_id: getCurrentWebsiteId() || websiteId || "default",
+        niche_keyword: item.anchor_text || item.category || "primary service resources",
+      });
+      showToast(`Asset brief queued for ${item.source_url}${res?.scout_result ? ` — ${JSON.stringify(res.scout_result).slice(0, 80)}` : ""}`);
+      loadBacklinks();
+    } catch (e: any) {
+      showToast(`Brief generation failed: ${e.message}`);
+    } finally {
+      setBriefingId(null);
     }
   };
 
@@ -147,13 +203,13 @@ export default function BacklinksPage() {
         <div className="panel-body" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
             <div className="da-ring">
-              <span className="da-num">{metrics.avg_dr || 54}</span>
+              <span className="da-num">{metrics.avg_dr ?? "—"}</span>
               <span className="da-lbl">Avg DR</span>
             </div>
             <div style={{ display: "flex", gap: "28px" }}>
               <div>
                 <div style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "22px", color: "var(--ink)" }}>
-                  {metrics.total_monitored}
+                  {metrics.active_citations}
                 </div>
                 <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: ".06em" }}>
                   Active Citations
@@ -161,7 +217,7 @@ export default function BacklinksPage() {
               </div>
               <div>
                 <div style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "22px", color: "var(--accent)" }}>
-                  {metrics.prospects_found}
+                  {metrics.tier1_prospects}
                 </div>
                 <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: ".06em" }}>
                   Tier-1 Prospects
@@ -188,6 +244,25 @@ export default function BacklinksPage() {
             {isScouting ? "⚡ Scouting 5-Tier Targets..." : "⚡ Run 5-Tier Opportunity Scout"}
           </button>
         </div>
+
+        {isScouting && scoutLogs.length > 0 && (
+          <pre style={{
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: "10.5px",
+            background: "var(--panel-inner)", border: "1px solid var(--border)",
+            padding: "10px 14px", margin: "0 14px 14px", whiteSpace: "pre-wrap",
+          }}>
+            {scoutLogs.join("\n")}
+          </pre>
+        )}
+
+        {metrics.authority_action_plan && (
+          <div style={{ margin: "0 14px 14px", padding: "12px 16px", border: "1px solid var(--accent)", background: "rgba(255,77,18,.04)" }}>
+            <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: ".08em", color: "var(--accent)", marginBottom: "4px" }}>
+              Authority Action Plan
+            </div>
+            <div style={{ fontSize: "11.5px", lineHeight: "1.6" }}>{metrics.authority_action_plan}</div>
+          </div>
+        )}
       </div>
 
       {/* 5-TIER CATEGORY SELECTOR */}
@@ -248,17 +323,17 @@ export default function BacklinksPage() {
                     </td>
                     <td>
                       <span style={{ color: "var(--muted)", fontSize: "10.5px" }}>
-                        {item.anchor_text || item.target_url || "Texas Legal Guide Citation"}
+                        {item.anchor_text || item.target_url || "—"}
                       </span>
                     </td>
                     <td>
                       <span className="badge badge-ink">
-                        {item.category || item.opportunity_type || "Resource Hub"}
+                        {item.category || item.opportunity_type || "Uncategorized"}
                       </span>
                     </td>
                     <td>
                       <span style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "16px" }}>
-                        {item.domain_rating || 64}
+                        {item.domain_rating ?? "—"}
                       </span>
                     </td>
                     <td>
@@ -271,9 +346,10 @@ export default function BacklinksPage() {
                         type="button"
                         className="btn"
                         style={{ fontSize: "8.5px", padding: "2px 7px", borderColor: "var(--line)" }}
-                        onClick={() => showToast(`Technical brief prepared for ${item.source_url}`)}
+                        disabled={briefingId === item.id}
+                        onClick={() => handleBriefAsset(item)}
                       >
-                        Technical Brief
+                        {briefingId === item.id ? "Briefing..." : "Technical Brief"}
                       </button>
                     </td>
                   </tr>
@@ -281,7 +357,9 @@ export default function BacklinksPage() {
               ) : (
                 <tr>
                   <td colSpan={6} style={{ textAlign: "center", padding: "28px", color: "var(--muted)" }}>
-                    No backlink records found for this category. Click "⚡ Run 5-Tier Opportunity Scout" above to discover targets!
+                    No backlink opportunities found yet — OpportunityScoutAgent will discover opportunities
+                    automatically (Mondays 07:00 IST), or click "Run 5-Tier Opportunity Scout" above for an
+                    immediate sweep.
                   </td>
                 </tr>
               )}

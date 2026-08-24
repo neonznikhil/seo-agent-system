@@ -2,6 +2,7 @@ import logging
 import re
 import time
 import math
+import os
 from typing import Optional, Dict, List, Any
 import json
 from datetime import datetime
@@ -148,7 +149,7 @@ class HumanWriterAgent:
                     self.tone_profile.get("company_name")
                     or site_row.get("domain")
                     or site_row.get("niche")
-                    or "Innovatcs Legal Advisors"
+                    or "our editorial team"
                 )
         except Exception:
             self.business_info = {}
@@ -197,39 +198,44 @@ class HumanWriterAgent:
     # 2. Pre-flight Competitive Intelligence Sweep
     # ------------------------------------------------------------------
     async def preflight_competitive_benchmark(self, keyword: str) -> Dict[str, Any]:
-        """Crawl top 5 ranking URLs from Serper.dev to extract exact benchmarks."""
+        """Crawl top 5 ranking URLs from Serper.dev to extract exact benchmarks.
+
+        Zero fabrication: if SERP/crawls fail, benchmarks stay empty and targets
+        fall back to configured editorial minimums (never invented competitor rows).
+        """
         supabase = get_supabase()
         brain = BrainService(website_id=self.website_id)
-        
+
         # 1. Fetch top 5 organic results from Serper
         serp_data = await serper_service.search(query=keyword, num=5, auto_fallback=True)
-        organic_results = serp_data.get("organic", [])[:5]
+        organic_results = [
+            r for r in serp_data.get("organic", [])[:5]
+            if isinstance(r, dict) and r.get("link")
+        ]
 
         benchmark_items = []
         timeout = aiohttp.ClientTimeout(total=8)
-        
+
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for idx, res in enumerate(organic_results, start=1):
                 url = res.get("link", "")
-                if not url:
-                    continue
                 try:
                     async with session.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; RankForge/2.0)"}) as resp:
                         if resp.status == 200:
                             html = await resp.text()
                             soup = BeautifulSoup(html, "html.parser")
-                            
+
                             # Clean scripts and styles
                             for tag in soup(["script", "style", "nav", "footer"]):
                                 tag.decompose()
-                                
+
                             text = soup.get_text(separator=" ", strip=True)
                             words = text.split()
                             word_count = len(words)
                             h2s = [h.get_text(strip=True) for h in soup.find_all("h2")]
                             images_count = len(soup.find_all("img"))
                             has_faq = bool("faq" in html.lower() or soup.find(id=re.compile("faq", re.I)))
-                            
+
                             # Extract JSON-LD schema types
                             schemas = []
                             for s_tag in soup.find_all("script", type="application/ld+json"):
@@ -248,13 +254,13 @@ class HumanWriterAgent:
                             sentences = re.split(r'[.!?]+', text)
                             valid_sentences = [s for s in sentences if len(s.split()) > 2]
                             avg_sentence_len = round(len(words) / max(1, len(valid_sentences)), 1)
-                            
+
                             benchmark_items.append({
                                 "rank": idx,
                                 "url": url,
                                 "title": res.get("title", ""),
-                                "word_count": max(800, word_count),
-                                "h2_count": max(3, len(h2s)),
+                                "word_count": word_count,
+                                "h2_count": len(h2s),
                                 "h2_samples": h2s[:5],
                                 "image_count": images_count,
                                 "has_faq": has_faq,
@@ -263,59 +269,60 @@ class HumanWriterAgent:
                                 "internal_links_count": len(soup.find_all("a", href=re.compile(r"^/|^#")))
                             })
                 except Exception as e:
-                    logger.debug(f"[CompetitiveSweep] URL crawl fallback for {url}: {e}")
-                    # Estimate based on snippet
-                    snip = res.get("snippet", "")
+                    logger.debug(f"[CompetitiveSweep] URL crawl failed for {url}: {e}")
+                    # Record only what Serper actually told us — no invented metrics.
                     benchmark_items.append({
                         "rank": idx,
                         "url": url,
                         "title": res.get("title", ""),
-                        "word_count": 1650,
-                        "h2_count": 6,
-                        "h2_samples": [f"Overview of {keyword}", f"How {keyword} Works", "Key Timelines & Factors"],
-                        "image_count": 3,
-                        "has_faq": True,
-                        "schema_types": ["Article", "FAQPage"],
-                        "avg_sentence_length": 16.5,
-                        "internal_links_count": 8
+                        "word_count": None,
+                        "h2_count": None,
+                        "h2_samples": [],
+                        "image_count": None,
+                        "has_faq": None,
+                        "schema_types": [],
+                        "avg_sentence_length": None,
+                        "internal_links_count": None,
+                        "crawl_failed": True,
                     })
 
-        if not benchmark_items:
-            benchmark_items = [{
-                "rank": 1,
-                "url": "https://competitor.com/guide",
-                "title": f"Top Guide: {keyword}",
-                "word_count": 1800,
-                "h2_count": 6,
-                "h2_samples": [f"Understanding {keyword}", f"{keyword} Process", "Frequently Asked Questions"],
-                "image_count": 4,
-                "has_faq": True,
-                "schema_types": ["Article", "FAQPage"],
-                "avg_sentence_length": 15.8,
-                "internal_links_count": 10
-            }]
+        # Editorial minimums used only when real competitor data is unavailable.
+        DEFAULT_MIN_WORDS = int(os.getenv("WRITER_MIN_WORD_COUNT", "1500"))
+        DEFAULT_MIN_H2S = 6
 
-        pos1 = benchmark_items[0]
-        pos1_word_count = pos1["word_count"]
-        target_min_word_count = max(1850, int(pos1_word_count * 1.15))
-        target_h2_count = max(6, pos1["h2_count"] + 1)
+        measured = [b for b in benchmark_items if b.get("word_count")]
+        if measured:
+            pos1 = max(measured, key=lambda b: -b["rank"]) if False else measured[0]
+            pos1_word_count = pos1["word_count"]
+            pos1_h2 = pos1["h2_count"] or DEFAULT_MIN_H2S
+            target_min_word_count = max(DEFAULT_MIN_WORDS, int(pos1_word_count * 1.15))
+            target_h2_count = max(DEFAULT_MIN_H2S, pos1_h2 + 1)
+        else:
+            pos1_word_count = None
+            target_min_word_count = DEFAULT_MIN_WORDS
+            target_h2_count = DEFAULT_MIN_H2S
 
         benchmark_summary = {
             "keyword": keyword,
-            "position_1": pos1,
+            "position_1": benchmark_items[0] if benchmark_items else None,
             "target_min_word_count": target_min_word_count,
             "target_h2_count": target_h2_count,
             "competitors_analyzed": len(benchmark_items),
             "benchmarks": benchmark_items,
+            "data_source": "serp_crawl" if measured else "editorial_defaults",
             "created_at": datetime.utcnow().isoformat()
         }
 
-        # Store in brain_memory as experience
+        # Store observed reality (or its absence) in brain_memory as experience
         await brain.remember(
             website_id=self.website_id,
             memory_type="experience",
             title=f"Competitive Benchmark: {keyword}",
-            content=f"Position 1 ({pos1['url']}) has {pos1_word_count} words, {pos1['h2_count']} H2s. Target set to >= {target_min_word_count} words.",
+            content=(
+                f"Position 1 ({benchmark_items[0]['url']}) measured at {pos1_word_count} words."
+                if measured else
+                f"No crawlable competitor data for '{keyword}'. Using {target_min_word_count}-word editorial minimum."
+            ),
             source_type="competitive_sweep",
             confidence=0.95
         )
@@ -358,13 +365,16 @@ class HumanWriterAgent:
         if self.internal_pages:
             link_block = "\n".join(f"- [{p['title']}]({p['url']})" for p in self.internal_pages[:6])
         else:
-            domain = self.business_info.get("domain") or "accident.innovatcs.com"
-            link_block = f"- [Our Core Practice Guide](https://{domain}/services)\n- [Schedule a Consultation](https://{domain}/contact)"
+            domain = (self.business_info.get("domain") or "").replace("https://", "").replace("http://", "").split("/")[0]
+            if domain:
+                link_block = f"- [Our Core Service Guide](https://{domain}/services)\n- [Contact Our Team](https://{domain}/contact)"
+            else:
+                link_block = "- No internal page inventory available yet; omit internal links rather than inventing URLs."
 
         keyword_list = ", ".join(k for k in keywords if k) or title
 
         return f"""=== UNRANKED-BEATER WRITING BRIEF ===
-BUSINESS: {self.company_name} | Founder: {self.founder_name} | Website: {self.business_info.get('url') or self.business_info.get('domain') or 'https://accident.innovatcs.com'}
+BUSINESS: {self.company_name} | Founder: {self.founder_name} | Website: {self.business_info.get('url') or self.business_info.get('domain') or '(not configured)'}
 TARGET KEYWORDS: {keyword_list}
 
 COMPETITIVE BENCHMARK & TARGETS (MANDATORY):
@@ -473,6 +483,169 @@ Output ONLY the full article Markdown — no introductory commentary, no convers
             duration = time.time() - start_t
             self._log_task("write_blog", "failed", duration, {"topic": title, "keyword": primary_keyword}, {"error": str(e)})
             raise
+
+    # ------------------------------------------------------------------
+    # 4b. Sectioned Generation (one NIM call per section, streamed live)
+    # ------------------------------------------------------------------
+    async def generate_blog_sections(
+        self,
+        topic: str,
+        title: str,
+        primary_keyword: str,
+        secondary_keywords: List[str] = None,
+        outline: Optional[dict] = None,
+        progress_callback=None,
+    ) -> Dict[str, str]:
+        """Write the article section by section.
+
+        Each section is a separate NVIDIA NIM call that receives all previously
+        written sections as context. This prevents timeouts on a single massive
+        call and lets the frontend render content progressively via SSE.
+        Returns an ordered dict of {section_name: markdown_text}.
+        Raises on failure of the first two sections; later failures degrade
+        gracefully by dropping that section rather than aborting everything.
+        """
+        benchmark = await self.preflight_competitive_benchmark(primary_keyword)
+        target_words = benchmark.get("target_min_word_count", 1500)
+
+        try:
+            serp_brief = await self._get_serp_brief(primary_keyword)
+        except Exception:
+            serp_brief = {"organic": [], "peopleAlsoAsk": []}
+
+        outline = outline or {}
+        h2_candidates = (
+            outline.get("h2_sections")
+            or [h.get("h2") for h in (outline.get("h2s") or []) if isinstance(h, dict) and h.get("h2")]
+            or [
+                f"Understanding {primary_keyword}",
+                f"How {primary_keyword} Works Step by Step",
+                f"Key Factors and Common Mistakes with {primary_keyword}",
+                f"Comparative Benchmarks for {primary_keyword}",
+                f"Strategic Recommendations",
+            ]
+        )
+        h2_list = [h for h in h2_candidates if h][:7]
+
+        system = (
+            f"You are the Senior Principal SEO Content Architect for {self.company_name}. "
+            "Hard rules: NEVER use these words/phrases: " + ", ".join(self.banned_phrases[:12]) + ". "
+            "NEVER emit placeholder markers such as [LINK], [INSERT], [TOPIC], [KEYWORD], "
+            "**TODO**, [URL], or bracketed instructions. Every sentence must be final, real "
+            "Markdown content written in a natural human voice."
+        )
+
+        sections: Dict[str, str] = {}
+        assembled_context = ""
+
+        def _emit(name: str, text: str):
+            if progress_callback:
+                try:
+                    progress_callback(name, text)
+                except Exception:
+                    pass
+
+        # --- Section 1: H1 ---
+        sections["h1"] = f"# {title}"
+        assembled_context = sections["h1"]
+        _emit("h1", sections["h1"])
+
+        # --- Section 2: Meta description ---
+        meta_prompt = (
+            f"Write ONE SEO meta description (max 155 characters) for the article titled '{title}' "
+            f"targeting keyword '{primary_keyword}'. Return ONLY the meta description text."
+        )
+        meta_desc = await call_nim_llm(meta_prompt, system, website_id=self.website_id,
+                                       max_tokens=120, temperature=0.6, fail_silently=False)
+        meta_desc = self._strip_template_markers(meta_desc or "").strip()
+        if not meta_desc:
+            raise RuntimeError("Meta description generation returned empty output")
+        sections["meta_description"] = meta_desc
+        _emit("meta_description", meta_desc)
+
+        # --- Section 3: Introduction (BLUF answer-first) ---
+        intro_prompt = (
+            f"{self._build_brief(title, outline, [primary_keyword], benchmark, serp_brief)}\n\n"
+            f"TASK: Write ONLY the introduction (130-170 words) for an article titled '{title}'. "
+            f"It must open with a direct 1-2 sentence answer to the searcher's question about "
+            f"'{primary_keyword}' (BLUF format), include the keyword within the first 80 words, "
+            "and preview what the reader will learn. Return ONLY the introduction paragraphs in Markdown."
+        )
+        intro = await call_nim_llm(intro_prompt, system, website_id=self.website_id,
+                                   max_tokens=600, temperature=0.7, fail_silently=False)
+        intro = self._strip_template_markers(intro or "")
+        if not intro:
+            raise RuntimeError("Introduction generation returned empty output")
+        sections["introduction"] = intro
+        assembled_context += "\n\n" + intro
+        _emit("introduction", intro)
+
+        # --- Section 4+: Each H2 ---
+        per_section_target = max(180, int(target_words / max(1, len(h2_list) + 2)) + 60)
+        for idx, h2 in enumerate(h2_list, start=1):
+            memory_hints = "\n".join(
+                f"- {m.get('title', '')}: {(m.get('content') or '')[:140]}"
+                for m in self.topic_memories[:2]
+            )
+            section_prompt = (
+                f"ARTICLE SO FAR:\n{assembled_context[-3000:]}\n\n"
+                f"TASK: Write ONLY the content under the H2 heading '{h2}' "
+                f"(aim for {per_section_target} words). Include specific examples, concrete numbers "
+                f"or timelines where relevant, and natural use of '{primary_keyword}' "
+                f"({'with' if idx == 1 else 'without'} repeating earlier wording). "
+                + (f"Past lessons from previous articles:\n{memory_hints}\n" if memory_hints else "")
+                + "Return ONLY this section's Markdown body WITHOUT the '## ' heading line itself."
+            )
+            try:
+                section_text = await call_nim_llm(section_prompt, system, website_id=self.website_id,
+                                                  max_tokens=900, temperature=0.7, fail_silently=False)
+                section_text = self._strip_template_markers(section_text or "")
+                if section_text:
+                    full = f"## {h2}\n\n{section_text}"
+                    sections[f"h2_{idx}"] = full
+                    assembled_context += "\n\n" + full
+                    _emit(f"h2_{idx}", full)
+            except Exception as e:
+                logger.warning(f"[HumanWriter] H2 section '{h2}' failed ({e}) — continuing without it")
+
+        # --- FAQ block ---
+        faq_prompt = (
+            f"ARTICLE SO FAR:\n{assembled_context[-2500:]}\n\n"
+            "TASK: Write a '## Frequently Asked Questions' section with 5 questions real searchers "
+            "ask about '" + primary_keyword + "'. Format EXACTLY as Markdown:\n"
+            "**Q1:** question?\nanswer paragraph (45-65 words).\n\n**Q2:** ... \n"
+            "Return ONLY the FAQ section starting with the heading."
+        )
+        try:
+            faq = await call_nim_llm(faq_prompt, system, website_id=self.website_id,
+                                     max_tokens=800, temperature=0.7, fail_silently=True)
+            faq = self._strip_template_markers(faq or "")
+            if faq:
+                sections["faq"] = faq
+                assembled_context += "\n\n" + faq
+                _emit("faq", faq)
+        except Exception as e:
+            logger.warning(f"[HumanWriter] FAQ generation failed: {e}")
+
+        # --- Conclusion ---
+        conclusion_prompt = (
+            f"ARTICLE SO FAR:\n{assembled_context[-2500:]}\n\n"
+            f"TASK: Write ONLY the conclusion (100-140 words) for this article. Summarize the key "
+            f"takeaways and end with one direct call-to-action referencing {self.company_name}. "
+            "Do NOT start with 'In conclusion'. Return ONLY the conclusion in Markdown."
+        )
+        try:
+            conclusion = await call_nim_llm(conclusion_prompt, system, website_id=self.website_id,
+                                            max_tokens=400, temperature=0.7, fail_silently=False)
+            conclusion = self._strip_template_markers(conclusion or "")
+            if conclusion:
+                sections["conclusion"] = conclusion
+                _emit("conclusion", conclusion)
+        except Exception as e:
+            logger.warning(f"[HumanWriter] Conclusion generation failed: {e}")
+            raise RuntimeError(f"Conclusion generation failed: {e}")
+
+        return sections
 
     # ------------------------------------------------------------------
     # 5. E-E-A-T Signal Injection (Mandatory Step)

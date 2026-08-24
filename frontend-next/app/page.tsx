@@ -1,89 +1,90 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { get, post } from "@/lib/api";
+import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
 
-interface DashboardStats {
+interface DashboardMetrics {
+  website_id: string;
   total_articles: number;
+  published_articles: number;
   pending_articles: number;
-  health_score: number | null;
+  seo_health_score: number | null;
+  last_audit_date: string | null;
+  monitored_alerts: number;
   memories_count: number;
-  alerts_count: number;
+  knowledge_count: number;
   backlinks_count: number;
-  wp_connected: boolean;
-  recent_blogs: Array<{
+  backlink_opportunities: number;
+  recent_content: Array<{
     id: string;
     title: string;
     keyword?: string;
-    topic?: string;
     status: string;
-    content?: string;
     pipeline_status?: string;
+    approval_id?: string | null;
+    wordpress_url?: string | null;
+    approval_status?: string | null;
     created_at?: string;
-    word_count?: number;
+    content?: string;
+    html_content?: string;
   }>;
-  ai_engine: string;
+  agents: Array<{
+    name: string;
+    state: "ACTIVE" | "IDLE" | "ERROR";
+    last_run: string | null;
+    summary: string | null;
+    error: string | null;
+  }>;
+  publishing_schedule: Array<{
+    id: string;
+    title: string;
+    date: string;
+    status: string;
+    keyword?: string | null;
+  }>;
 }
 
-interface PipelinePhase {
-  name: string;
-  label: string;
-  status: "idle" | "running" | "completed" | "error";
+interface Website {
+  id: string;
+  domain?: string;
 }
 
-const PIPELINE_PHASES: PipelinePhase[] = [
-  { name: "brain_context", label: "1. Brain Voice", status: "idle" },
-  { name: "demand_analysis", label: "2. Search Intent", status: "idle" },
-  { name: "serp_sweep", label: "3. SERP Sweep", status: "idle" },
-  { name: "outline_strategy", label: "4. Outline", status: "idle" },
-  { name: "nim_writing", label: "5. NIM Writing", status: "idle" },
-  { name: "expert_review", label: "6. EEAT Review", status: "idle" },
-  { name: "humanizer", label: "7. Humanizer", status: "idle" },
-  { name: "fact_check", label: "8. Fact Check", status: "idle" },
-  { name: "internal_links", label: "9. Linking", status: "idle" },
-  { name: "quality_gate", label: "10. Quality Gate", status: "idle" },
-];
+const AGENT_ROLES: Record<string, string> = {
+  WriterPipeline: "10-Phase Unranked-Beater Generator",
+  BrainAutopilot: "Winning Heuristics & Pattern Learner",
+  ContinuousMonitor: "24/7 SERP Shifts & Uptime Telemetry",
+  BacklinkScout: "5-Tier Technical Link Engineer",
+  TechSEOAgent: "Core Web Vitals & Schema Injector",
+  AuthorityCalibration: "90-Day Strategy Calibration",
+};
 
 export default function HomePage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [domain, setDomain] = useState<string>("");
   const [websiteId, setWebsiteId] = useState<string>("");
-  const [websites, setWebsites] = useState<any[]>([]);
+  const [websites, setWebsites] = useState<Website[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
-  // Quick Generator State
+  // Quick generator state
   const [genTopic, setGenTopic] = useState("");
   const [genKeyword, setGenKeyword] = useState("");
-  const [genIntent, setGenIntent] = useState("commercial");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [genStep, setGenStep] = useState(0);
-  const [genPhaseText, setGenPhaseText] = useState("");
-  const [phases, setPhases] = useState<PipelinePhase[]>(PIPELINE_PHASES);
-
-  // Modals
-  const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
-  const [isAddSiteOpen, setIsAddSiteOpen] = useState(false);
-  const [newSiteDomain, setNewSiteDomain] = useState("");
-  const [newSiteCmsUrl, setNewSiteCmsUrl] = useState("");
-  const [isSavingSite, setIsSavingSite] = useState(false);
-
-  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToastMsg(null), 3500);
+    setTimeout(() => setToastMsg(null), 3500);
   };
 
   useEffect(() => {
     const id = getCurrentWebsiteId();
-    if (id) {
-      setWebsiteId(id);
-    }
+    if (id) setWebsiteId(id);
     const handleChanged = (e: any) => {
       if (e?.detail) setWebsiteId(e.detail);
     };
@@ -93,106 +94,31 @@ export default function HomePage() {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
 
-      // 1. Fetch websites list
-      let sites: any[] = [];
+      let sites: Website[] = [];
       try {
         const res = await get("/api/websites");
         sites = Array.isArray(res) ? res : res?.websites || [];
-        setWebsites(sites);
-      } catch {
-        try {
-          const res = await get("/websites");
-          sites = Array.isArray(res) ? res : [];
-          setWebsites(sites);
-        } catch {}
-      }
+      } catch {}
+      setWebsites(sites);
 
-      let activeId = websiteId;
-      if (!activeId && sites.length > 0) {
-        activeId = sites[0].id;
-        setWebsiteId(activeId);
-        setCurrentWebsiteId(activeId);
-      }
-
-      const activeSite = sites.find((s) => s.id === activeId) || sites[0];
-      if (activeSite?.domain) {
-        setDomain(activeSite.domain);
-      } else {
-        setDomain(activeId ? "Selected Website" : "No Website Connected");
-      }
-
+      let activeId = websiteId || getCurrentWebsiteId();
+      if (!activeId && sites.length > 0) activeId = sites[0].id;
       if (!activeId) {
-        setStats(null);
+        setMetrics(null);
         setLoading(false);
         return;
       }
+      setWebsiteId(activeId);
+      setCurrentWebsiteId(activeId);
 
-      // 2. Fetch Content
-      let contentList: any[] = [];
-      try {
-        const cRes = await get(`/api/content?website_id=${activeId}`);
-        contentList = Array.isArray(cRes) ? cRes : cRes?.data || [];
-      } catch {
-        try {
-          const cRes = await get(`/api/writer/${activeId}/content`);
-          contentList = Array.isArray(cRes) ? cRes : [];
-        } catch {}
-      }
+      const activeSite = sites.find((s) => s.id === activeId);
+      setDomain(activeSite?.domain || "");
 
-      // 3. Fetch Alerts
-      let alertsCount = 0;
-      try {
-        const aRes = await get(`/api/monitoring/${activeId}/alerts`);
-        alertsCount = Array.isArray(aRes) ? aRes.length : 0;
-      } catch {}
-
-      // 4. Fetch Brain Memories
-      let memoriesCount = 0;
-      try {
-        const mRes = await get(`/api/brain/${activeId}/memories`);
-        memoriesCount = Array.isArray(mRes) ? mRes.length : 0;
-      } catch {}
-
-      // 5. Fetch Tech SEO / Health
-      let healthScore = 94;
-      try {
-        const tRes = await get(`/api/tech-seo/${activeId}`);
-        if (tRes && tRes.health_score !== undefined && tRes.health_score !== null) {
-          healthScore = Math.round(tRes.health_score);
-        }
-      } catch {}
-
-      // 6. Fetch Backlinks Count
-      let backlinksCount = 0;
-      try {
-        const bRes = await get(`/api/backlinks/${activeId}`);
-        backlinksCount = bRes?.opportunities?.length || bRes?.monitor?.length || 0;
-      } catch {}
-
-      const pendingCount = contentList.filter(
-        (c) =>
-          c.status === "in_progress" ||
-          c.status === "pending_approval" ||
-          c.status === "needs_revision" ||
-          c.status === "draft"
-      ).length;
-
-      setStats({
-        total_articles: contentList.length,
-        pending_articles: pendingCount,
-        health_score: healthScore,
-        memories_count: memoriesCount,
-        alerts_count: alertsCount,
-        backlinks_count: backlinksCount,
-        wp_connected: true,
-        recent_blogs: contentList.slice(0, 8),
-        ai_engine: "Llama-3.1-70B",
-      });
+      const data = await get(`/api/dashboard/${activeId}/metrics`);
+      setMetrics(data);
     } catch (e: any) {
-      console.warn("Dashboard fetch notice:", e);
       setError(e.message || "Failed to load dashboard data");
     } finally {
       setLoading(false);
@@ -205,138 +131,88 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
 
-  // Run 10-Phase Pipeline
+  // Manual override generation
   const handleRunPipeline = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!genTopic.trim()) {
-      showToast("Please enter an article topic");
+    setGenError(null);
+    const trimmed = genTopic.trim();
+    if (
+      !trimmed ||
+      trimmed.toLowerCase().includes("e.g.") ||
+      trimmed.length < 8
+    ) {
+      setGenError("Enter a real article topic (at least 8 characters).");
       return;
     }
-
     const activeId = getCurrentWebsiteId() || websiteId;
     if (!activeId) {
-      showToast("Please connect or select a website first");
+      showToast("Connect a website first");
       return;
     }
 
     try {
       setIsGenerating(true);
-      setGenStep(1);
-      setGenPhaseText("Phase 1/10: Ingesting Brand Brain & Context...");
-
-      const updatedPhases = PIPELINE_PHASES.map((p, idx) => ({
-        ...p,
-        status: (idx === 0 ? "running" : "idle") as "idle" | "running" | "completed" | "error",
-      }));
-      setPhases(updatedPhases);
-
-      showToast(`⚡ Started 10-Phase Autonomous Pipeline for "${genTopic}"`);
-
-      // Simulated real-time phase animation while background completes
-      const phaseInterval = setInterval(() => {
-        setGenStep((prev) => {
-          const next = prev + 1;
-          if (next <= 10) {
-            setGenPhaseText(`Phase ${next}/10: ${PIPELINE_PHASES[next - 1]?.label || "Executing..."}`);
-            setPhases((curr) =>
-              curr.map((p, i) => ({
-                ...p,
-                status: (i < next - 1 ? "completed" : i === next - 1 ? "running" : "idle") as any,
-              }))
-            );
-          }
-          return next;
-        });
-      }, 1400);
-
-      const payload = {
-        topic: genTopic.trim(),
-        primary_keyword: genKeyword.trim() || genTopic.trim(),
-        search_intent: genIntent,
-        website_id: activeId,
-      };
-
-      const res = await post(`/api/writer/${activeId}/generate`, payload);
-
-      clearInterval(phaseInterval);
-      setGenStep(10);
-      setPhases(PIPELINE_PHASES.map((p) => ({ ...p, status: "completed" })));
-      setGenPhaseText("✓ 10-Phase Pipeline Completed & Draft Registered!");
-      showToast(`✓ Article "${genTopic}" ready for human approval!`);
-
+      await post(`/api/writer/${activeId}/generate`, {
+        topic: trimmed,
+        title: trimmed,
+        primary_keyword: genKeyword.trim() || trimmed,
+      });
+      showToast(`Generation started for "${trimmed}" — watch it stream on the Writer page.`);
       setGenTopic("");
       setGenKeyword("");
-      fetchDashboardData();
+      setTimeout(fetchDashboardData, 4000);
     } catch (err: any) {
-      console.error("Pipeline generation error:", err);
-      showToast(`Notice: ${err.message || "Draft queued in database"}`);
-      fetchDashboardData();
+      setGenError(err.message || "Generation failed to start");
     } finally {
-      setTimeout(() => {
-        setIsGenerating(false);
-        setGenStep(0);
-        setGenPhaseText("");
-        setPhases(PIPELINE_PHASES);
-      }, 2500);
+      setIsGenerating(false);
     }
   };
 
-  // 1-Click Approve Draft
-  const handleApproveDraft = async (articleId: string) => {
+  // Approve uses the SAME endpoint as the approvals page (blog_approvals id)
+  const handleApproveDraft = async (item: any) => {
+    if (!item.approval_id) {
+      showToast("No approval record exists yet for this draft.");
+      return;
+    }
     try {
-      showToast("Approving draft & dispatching to WordPress...");
+      setApprovingId(item.approval_id);
+      const res = await post(`/api/approvals/${item.approval_id}/approve`, {});
+      showToast(`✓ Published to WordPress${res.wordpress_url ? `: ${res.wordpress_url}` : ""}`);
+      setSelectedArticle(null);
+      fetchDashboardData();
+    } catch (err: any) {
+      showToast(`Approval failed: ${err.message}`);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const openDraftPreview = async (item: any) => {
+    setSelectedArticle(item);
+    if (!item.content && !item.html_content) {
       try {
-        await post(`/api/approvals/${articleId}/approve`, {});
-      } catch {
-        await post(`/api/blogs/approve/${articleId}`, {});
-      }
-      showToast("✓ Draft approved and logged to publishing pipeline!");
-      if (selectedArticle?.id === articleId) {
-        setSelectedArticle(null);
-      }
-      fetchDashboardData();
-    } catch (err: any) {
-      showToast(`Approval notice: ${err.message}`);
-      fetchDashboardData();
+        const detail = await get(`/api/writer/${websiteId}/content/${item.id}`);
+        setSelectedArticle((prev: any) => ({ ...(prev || {}), ...detail }));
+      } catch {}
     }
   };
 
-  // Quick Add Website
-  const handleAddWebsite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSiteDomain.trim()) return;
-
+  const handleDeleteDraft = async (item: any) => {
+    if (!confirm(`Delete draft: "${item.title}"?`)) return;
     try {
-      setIsSavingSite(true);
-      const cleanDomain = newSiteDomain.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
-      const res = await post("/api/websites", {
-        domain: cleanDomain,
-        url: newSiteCmsUrl.trim() || `https://${cleanDomain}`,
-        cms_url: newSiteCmsUrl.trim() || `https://${cleanDomain}`,
-        status: "active",
-      });
-
-      const newId = res?.id || res?.data?.[0]?.id;
-      if (newId) {
-        setWebsiteId(newId);
-        setCurrentWebsiteId(newId);
-      }
-
-      setNewSiteDomain("");
-      setNewSiteCmsUrl("");
-      setIsAddSiteOpen(false);
-      showToast("✓ Website registered and activated!");
+      await del(`/api/blogs/${item.id}`);
+      showToast("Draft deleted.");
       fetchDashboardData();
     } catch (err: any) {
-      showToast(`Failed to add website: ${err.message}`);
-    } finally {
-      setIsSavingSite(false);
+      showToast(`Delete failed: ${err.message}`);
     }
   };
+
+  const stateBadge = (state: string) =>
+    state === "ACTIVE" ? "badge-green" : state === "ERROR" ? "badge-red" : "badge-amber";
 
   return (
     <div className="page-container active">
-      {/* TOAST NOTIFICATION */}
       {toastMsg && (
         <div
           style={{
@@ -360,7 +236,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* PAGE HEADING & SUBTITLE */}
+      {/* PAGE HEADING */}
       <div className="page-heading">Dashboard</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
@@ -373,189 +249,132 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* KPI STRIP (6 CELLS) */}
+      {/* KPI STRIP */}
       <div className="kpi-strip">
-        <div className="kpi-cell">
+        <Link href="/content" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Articles Generated</div>
-          <div className="kpi-val">{stats?.total_articles ?? 0}</div>
-          <div className="kpi-delta">↑ Live from database</div>
-        </div>
-        <div className="kpi-cell">
+          <div className="kpi-val">{metrics?.total_articles ?? 0}</div>
+          <div className="kpi-delta">View all in Content →</div>
+        </Link>
+        <Link href="/approvals" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Pending Approval</div>
           <div className="kpi-val" style={{ color: "var(--accent)" }}>
-            {stats?.pending_articles ?? 0}
+            {metrics?.pending_articles ?? 0}
           </div>
-          <div className="kpi-delta" style={{ color: "var(--accent)" }}>
-            Review queue
-          </div>
-        </div>
-        <div className="kpi-cell">
+          <div className="kpi-delta" style={{ color: "var(--accent)" }}>Open approvals queue →</div>
+        </Link>
+        <Link href="/tech-seo" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">SEO Health Score</div>
-          <div className="kpi-val">{stats?.health_score ? `${stats.health_score}/100` : "—"}</div>
-          <div className="kpi-delta">Real audit score</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-label">Monitored Alerts</div>
-          <div className="kpi-val">{stats?.alerts_count ?? 0}</div>
-          <div className="kpi-delta">24/7 continuous scanner</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-label">Brain Memories</div>
-          <div className="kpi-val">{stats?.memories_count ?? 0}</div>
-          <div className="kpi-delta">Learned winning patterns</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-label">AI Engine</div>
-          <div className="kpi-val" style={{ fontSize: "16px", paddingTop: "4px", color: "var(--green)" }}>
-            Llama-3.1-70B
+          <div className="kpi-val">
+            {metrics?.seo_health_score != null ? `${metrics.seo_health_score}/100` : "No audit yet"}
           </div>
-          <div className="kpi-delta">NVIDIA NIM Live</div>
-        </div>
+          <div className="kpi-delta">Latest technical audit →</div>
+        </Link>
+        <Link href="/monitoring" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Monitored Alerts</div>
+          <div className="kpi-val">{metrics?.monitored_alerts ?? 0}</div>
+          <div className="kpi-delta">Open monitoring →</div>
+        </Link>
+        <Link href="/brain" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Brain Memories</div>
+          <div className="kpi-val">{metrics?.memories_count ?? 0}</div>
+          <div className="kpi-delta">Learned patterns →</div>
+        </Link>
+        <Link href="/backlinks" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Backlinks / Prospects</div>
+          <div className="kpi-val">
+            {metrics?.backlinks_count ?? 0} / {metrics?.backlink_opportunities ?? 0}
+          </div>
+          <div className="kpi-delta">Authority engine →</div>
+        </Link>
       </div>
 
-      {/* MAIN DASHBOARD GRID */}
+      {/* MAIN GRID */}
       <div className="dash-grid">
-        {/* LEFT COLUMN: QUICK GENERATOR + RECENT ARTICLES */}
+        {/* LEFT COLUMN */}
         <div>
-          {/* QUICK AUTONOMOUS WRITER PANEL */}
+          {/* MANUAL OVERRIDE GENERATOR */}
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-label">⚡ Autonomous 10-Phase Content Generator</span>
-              <span className="badge badge-accent">Unranked-Beater</span>
+              <span className="panel-label">Manual Override — Force Generate Now</span>
+              <span className="badge badge-accent">Optional</span>
             </div>
             <div className="panel-body">
+              <p style={{ fontSize: "10px", color: "var(--muted)", marginBottom: "10px" }}>
+                Articles normally generate automatically every day at 11:00 IST from your highest-priority keyword.
+                Use this only when you want to force one right now.
+              </p>
               <form onSubmit={handleRunPipeline}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr", gap: "12px", marginBottom: "12px" }}>
-                  <div>
-                    <label style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--muted)", display: "block", marginBottom: "4px" }}>
-                      Target Topic / Title
-                    </label>
-                    <input
-                      type="text"
-                      className="field"
-                      placeholder="e.g. Texas Commercial Truck Accident Settlements"
-                      value={genTopic}
-                      onChange={(e) => setGenTopic(e.target.value)}
-                      disabled={isGenerating}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--muted)", display: "block", marginBottom: "4px" }}>
-                      Primary Keyword
-                    </label>
-                    <input
-                      type="text"
-                      className="field"
-                      placeholder="e.g. truck accident lawyer"
-                      value={genKeyword}
-                      onChange={(e) => setGenKeyword(e.target.value)}
-                      disabled={isGenerating}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--muted)", display: "block", marginBottom: "4px" }}>
-                      Intent
-                    </label>
-                    <select
-                      className="field"
-                      value={genIntent}
-                      onChange={(e) => setGenIntent(e.target.value)}
-                      disabled={isGenerating}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <option value="commercial">Commercial</option>
-                      <option value="informational">Informational</option>
-                      <option value="transactional">Transactional</option>
-                      <option value="navigational">Navigational</option>
-                    </select>
-                  </div>
-                </div>
-
-                {isGenerating && (
-                  <div style={{ marginBottom: "14px", padding: "12px", border: "1px solid var(--border)", background: "var(--panel-inner)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                      <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--accent)" }}>
-                        {genPhaseText}
-                      </span>
-                      <span className="badge badge-accent">Phase {genStep}/10</span>
-                    </div>
-                    <div className="pipeline-phases">
-                      {phases.map((p, idx) => (
-                        <div
-                          key={p.name}
-                          className={`phase ${p.status === "completed" ? "done" : p.status === "running" ? "running" : ""}`}
-                          title={p.label}
-                        >
-                          {idx + 1}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "9.5px", color: "var(--muted)" }}>
-                    NVIDIA Llama-70b · 12-Expert Review · Humanizer Filter · 100% Grounded
-                  </span>
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr auto", gap: "12px", marginBottom: "8px" }}>
+                  <input
+                    type="text"
+                    className="field"
+                    placeholder="Article topic"
+                    value={genTopic}
+                    onChange={(e) => setGenTopic(e.target.value)}
+                    disabled={isGenerating}
+                  />
+                  <input
+                    type="text"
+                    className="field"
+                    placeholder="Primary keyword (optional)"
+                    value={genKeyword}
+                    onChange={(e) => setGenKeyword(e.target.value)}
+                    disabled={isGenerating}
+                  />
                   <button
                     type="submit"
                     className="btn btn-accent"
                     disabled={isGenerating || !genTopic.trim()}
                     style={{ padding: "8px 18px", fontWeight: 600 }}
                   >
-                    {isGenerating ? "⚡ Generating Article..." : "⚡ Run 10-Phase Pipeline"}
+                    {isGenerating ? "Starting..." : "Force Generate"}
                   </button>
                 </div>
+                {genError && <span style={{ fontSize: "10px", color: "var(--red)" }}>{genError}</span>}
               </form>
             </div>
           </div>
 
-          {/* RECENT CONTENT & PROPOSALS TABLE */}
+          {/* RECENT CONTENT STREAM */}
           <div className="panel">
             <div className="panel-head">
               <span className="panel-label">Recent Content Stream</span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <Link href="/writer" className="panel-action" style={{ textDecoration: "none" }}>
-                  + Full Studio
-                </Link>
-                <button className="panel-action" onClick={fetchDashboardData}>
-                  Refresh
-                </button>
-              </div>
+              <button className="panel-action" onClick={fetchDashboardData}>
+                Refresh
+              </button>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table className="data-table">
                 <thead>
                   <tr>
                     <th>Article Title</th>
-                    <th>Keyword / Intent</th>
+                    <th>Keyword</th>
                     <th>Status</th>
-                    <th>Words</th>
                     <th>Date</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stats?.recent_blogs && stats.recent_blogs.length > 0 ? (
-                    stats.recent_blogs.map((item) => {
-                      const isApproved = item.status === "approved" || item.status === "published";
-                      const words = item.content ? item.content.split(/\s+/).length : (item.word_count || "—");
-                      const badgeClass = isApproved ? "badge-green" : item.status === "in_progress" ? "badge-amber" : "badge-ink";
-
+                  {metrics?.recent_content && metrics.recent_content.length > 0 ? (
+                    metrics.recent_content.map((item) => {
+                      const isPublished =
+                        item.status === "published" || item.approval_status === "published";
                       return (
                         <tr key={item.id}>
                           <td style={{ fontWeight: 600, maxWidth: "240px" }}>{item.title}</td>
                           <td>
                             <span style={{ color: "var(--muted)", fontSize: "10px" }}>
-                              {item.keyword || item.topic || "—"}
+                              {item.keyword || "—"}
                             </span>
                           </td>
                           <td>
-                            <span className={`badge ${badgeClass}`}>{item.status}</span>
+                            <span className={`badge ${isPublished ? "badge-green" : item.status === "failed" ? "badge-red" : "badge-amber"}`}>
+                              {item.approval_status === "published" ? "published" : item.status}
+                            </span>
                           </td>
-                          <td>{words}</td>
                           <td style={{ fontSize: "9.5px", color: "var(--muted)" }}>
-                            {item.created_at ? new Date(item.created_at).toLocaleDateString() : "Today"}
+                            {item.created_at ? new Date(item.created_at).toLocaleDateString() : "—"}
                           </td>
                           <td>
                             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -563,21 +382,40 @@ export default function HomePage() {
                                 type="button"
                                 className="btn"
                                 style={{ fontSize: "8.5px", padding: "2px 7px", color: "var(--accent)", borderColor: "var(--accent)" }}
-                                onClick={() => setSelectedArticle(item)}
+                                onClick={() => openDraftPreview(item)}
                               >
                                 View Draft
                               </button>
-                              {!isApproved ? (
+                              {!isPublished && item.approval_id ? (
                                 <button
                                   type="button"
                                   className="btn btn-accent"
                                   style={{ fontSize: "8.5px", padding: "2px 7px" }}
-                                  onClick={() => handleApproveDraft(item.id)}
+                                  disabled={approvingId === item.approval_id}
+                                  onClick={() => handleApproveDraft(item)}
                                 >
-                                  Approve ✓
+                                  {approvingId === item.approval_id ? "Publishing..." : "Approve ✓"}
                                 </button>
-                              ) : (
-                                <span style={{ color: "var(--green)", fontSize: "9px" }}>Live</span>
+                              ) : isPublished ? (
+                                <a
+                                  href={item.wordpress_url || "#"}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ color: "var(--green)", fontSize: "9px", textDecoration: "none" }}
+                                >
+                                  Live ↗
+                                </a>
+                              ) : null}
+                              {!isPublished && (
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  style={{ fontSize: "8.5px", padding: "2px 7px", color: "var(--red)", borderColor: "rgba(255,85,85,0.4)" }}
+                                  title="Delete Draft"
+                                  onClick={() => handleDeleteDraft(item)}
+                                >
+                                  🗑️
+                                </button>
                               )}
                             </div>
                           </td>
@@ -586,8 +424,9 @@ export default function HomePage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "var(--muted)" }}>
-                        No articles generated yet. Use the quick generator above to draft your first article!
+                      <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "var(--muted)" }}>
+                        No articles yet. The system generates its first article automatically within an hour of
+                        connecting a website — or use Manual Override above.
                       </td>
                     </tr>
                   )}
@@ -597,132 +436,144 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: AGENTS + ACTIONS + SEO HEALTH */}
+        {/* RIGHT COLUMN */}
         <div>
-          {/* QUICK SHORTCUT ACTIONS */}
+          {/* PUBLISHING SCHEDULE (replaces standalone calendar nav) */}
+          <div className="panel">
+            <div className="panel-head">
+              <span className="panel-label">Publishing Schedule — Next 7 Days</span>
+              {metrics?.publishing_schedule?.length ? (
+                <span className="badge badge-green">{metrics.publishing_schedule.length} planned</span>
+              ) : null}
+            </div>
+            <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {metrics?.publishing_schedule?.length ? (
+                metrics.publishing_schedule.slice(0, 6).map((s) => (
+                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                    <span style={{ maxWidth: "65%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.title}
+                    </span>
+                    <span style={{ color: "var(--muted)" }}>{s.date}</span>
+                  </div>
+                ))
+              ) : (
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  Nothing scheduled yet. Each generated article gets a publish slot 48 hours out automatically.
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* ACTIVE AUTONOMOUS AGENTS — REAL STATUS FROM TASKS TABLE */}
+          <div className="panel">
+            <div className="panel-head">
+              <span className="panel-label">Autonomous Agents</span>
+              <span className={`badge ${metrics?.agents?.some((a) => a.state === "ACTIVE") ? "badge-green" : "badge-amber"}`}>
+                {metrics?.agents?.filter((a) => a.state === "ACTIVE").length ?? 0}/6 Active
+              </span>
+            </div>
+            <div style={{ padding: "8px 12px" }}>
+              {(metrics?.agents || AGENT_ROLES as any).length !== undefined &&
+                (metrics?.agents || []).map((agent) => (
+                  <div className="agent-row" key={agent.name} title={agent.error || agent.summary || undefined}>
+                    <div>
+                      <div className="agent-name" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span
+                          className="live-dot"
+                          style={{
+                            width: "5px",
+                            height: "5px",
+                            background:
+                              agent.state === "ACTIVE" ? "var(--green)" :
+                              agent.state === "ERROR" ? "var(--red)" : "#f59e0b",
+                          }}
+                        ></span>
+                        {agent.name}
+                      </div>
+                      <div className="agent-meta">
+                        {AGENT_ROLES[agent.name] || ""}
+                        {agent.last_run
+                          ? ` · last run ${new Date(agent.last_run).toLocaleString()}`
+                          : " · never run"}
+                      </div>
+                    </div>
+                    <span className={`badge ${stateBadge(agent.state)}`}>{agent.state}</span>
+                  </div>
+                ))}
+              {!metrics?.agents?.length && (
+                <div style={{ fontSize: "11px", color: "var(--muted)", padding: "8px 0" }}>
+                  Agent statuses appear once autonomous jobs start running (immediately after setup).
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* QUICK ACTIONS */}
           <div className="panel">
             <div className="panel-head">
               <span className="panel-label">Quick Actions</span>
-              <button
-                type="button"
-                className="panel-action"
-                onClick={() => setIsAddSiteOpen(true)}
-              >
-                + Add Site
-              </button>
             </div>
             <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <Link
-                href="/writer"
-                className="btn btn-accent"
-                style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block", fontWeight: 600 }}
-              >
+              <Link href="/writer" className="btn btn-accent" style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block", fontWeight: 600 }}>
                 ⚡ Open Full Writer Studio
               </Link>
-              <Link
-                href="/approvals"
-                className="btn btn-primary"
-                style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block" }}
-              >
-                📋 Review Pending Approvals ({stats?.pending_articles ?? 0})
+              <Link href="/approvals" className="btn btn-primary" style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block" }}>
+                📋 Review Pending Approvals ({metrics?.pending_articles ?? 0})
               </Link>
-              <Link
-                href="/backlinks"
-                className="btn"
-                style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block" }}
-              >
-                🔗 5-Tier Technical Backlink Scout
-              </Link>
-              <Link
-                href="/connectors"
-                className="btn"
-                style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block" }}
-              >
-                🔌 1-Click Connectors (Slack/WP/GSC)
+              <Link href="/connectors" className="btn" style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block" }}>
+                🔌 Connectors (Slack/WP/Serper)
               </Link>
             </div>
           </div>
 
-          {/* ACTIVE AUTONOMOUS SEO AGENTS */}
-          <div className="panel">
-            <div className="panel-head">
-              <span className="panel-label">Active Autonomous Agents</span>
-              <span className="badge badge-green">6 Active</span>
-            </div>
-            <div style={{ padding: "8px 12px" }}>
-              {[
-                { name: "WriterPipeline", role: "10-Phase Unranked-Beater Generator", status: "Active", pulse: true },
-                { name: "BrainAutopilot", role: "Winning Heuristics & Pattern Learner", status: "Active", pulse: true },
-                { name: "ContinuousMonitor", role: "24/7 SERP Shifts & Uptime Telemetry", status: "Active", pulse: true },
-                { name: "BacklinkScout", role: "5-Tier Technical Link Engineer", status: "Active", pulse: true },
-                { name: "TechSEOAgent", role: "Core Web Vitals & Schema Injector", status: "Active", pulse: true },
-                { name: "AuthorityCalibration", role: "90-Day Strategy Calibration", status: "Active", pulse: true },
-              ].map((agent) => (
-                <div className="agent-row" key={agent.name}>
-                  <div>
-                    <div className="agent-name" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span className="live-dot" style={{ width: "5px", height: "5px" }}></span>
-                      {agent.name}
-                    </div>
-                    <div className="agent-meta">{agent.role}</div>
-                  </div>
-                  <span className="badge badge-green">{agent.status}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* SEO HEALTH BREAKDOWN */}
+          {/* SEO HEALTH BREAKDOWN — from real audit only */}
           <div className="panel">
             <div className="panel-head">
               <span className="panel-label">SEO Health Breakdown</span>
               <span style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "18px", color: "var(--accent)" }}>
-                {stats?.health_score !== null && stats?.health_score !== undefined ? `${stats.health_score}/100` : "—"}
+                {metrics?.seo_health_score != null ? `${metrics.seo_health_score}/100` : "—"}
               </span>
             </div>
             <div className="panel-body">
-              <div className="prog-row">
-                <div className="prog-label">
-                  <span>Technical Health</span>
-                  <span>{stats?.health_score ?? 94}%</span>
+              {metrics?.seo_health_score != null ? (
+                <>
+                  <div className="prog-row">
+                    <div className="prog-label">
+                      <span>Technical Health (last audit)</span>
+                      <span>{metrics.seo_health_score}%</span>
+                    </div>
+                    <div className="prog-track">
+                      <div className="prog-fill" style={{ width: `${metrics.seo_health_score}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="prog-row">
+                    <div className="prog-label">
+                      <span>Knowledge Coverage</span>
+                      <span>{Math.min(100, (metrics.knowledge_count || 0) * 2)}%</span>
+                    </div>
+                    <div className="prog-track">
+                      <div className="prog-fill" style={{ width: `${Math.min(100, (metrics.knowledge_count || 0) * 2)}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="prog-row">
+                    <div className="prog-label">
+                      <span>Audit Date</span>
+                      <span>{metrics.last_audit_date ? new Date(metrics.last_audit_date).toLocaleDateString() : "—"}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  No technical audit has run yet. TechSEOAgent runs automatically at 12:00 IST daily,
+                  or trigger it now from the Workforce page.
                 </div>
-                <div className="prog-track">
-                  <div className="prog-fill" style={{ width: `${stats?.health_score ?? 94}%` }}></div>
-                </div>
-              </div>
-              <div className="prog-row">
-                <div className="prog-label">
-                  <span>Content Knowledge Coverage</span>
-                  <span>{stats?.memories_count ? Math.min(100, stats.memories_count * 10) : 80}%</span>
-                </div>
-                <div className="prog-track">
-                  <div className="prog-fill" style={{ width: `${stats?.memories_count ? Math.min(100, stats.memories_count * 10) : 80}%` }}></div>
-                </div>
-              </div>
-              <div className="prog-row">
-                <div className="prog-label">
-                  <span>Backlink Tracking</span>
-                  <span>{stats?.backlinks_count ? Math.min(100, stats.backlinks_count * 15) : 75}%</span>
-                </div>
-                <div className="prog-track">
-                  <div className="prog-fill" style={{ width: `${stats?.backlinks_count ? Math.min(100, stats.backlinks_count * 15) : 75}%` }}></div>
-                </div>
-              </div>
-              <div className="prog-row">
-                <div className="prog-label">
-                  <span>Structured Schema Markup</span>
-                  <span>100%</span>
-                </div>
-                <div className="prog-track">
-                  <div className="prog-fill green" style={{ width: "100%" }}></div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* DRAFT PREVIEW MODAL */}
+      {/* DRAFT PREVIEW MODAL — rendered HTML like WordPress */}
       {selectedArticle && (
         <div
           style={{
@@ -763,7 +614,7 @@ export default function HomePage() {
                   {selectedArticle.title}
                 </div>
                 <div style={{ fontSize: "9.5px", color: "var(--muted)", textTransform: "uppercase" }}>
-                  Status: {selectedArticle.status} · Keyword: {selectedArticle.keyword || selectedArticle.topic || "—"}
+                  Status: {selectedArticle.approval_status || selectedArticle.status} · Keyword: {selectedArticle.keyword || "—"}
                 </div>
               </div>
               <button
@@ -777,18 +628,17 @@ export default function HomePage() {
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "18px", fontSize: "12px", lineHeight: "1.6" }}>
-              <pre
-                style={{
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  whiteSpace: "pre-wrap",
-                  color: "var(--ink)",
-                  background: "var(--panel-inner)",
-                  padding: "14px",
-                  border: "1px solid var(--line)",
-                }}
-              >
-                {selectedArticle.content || "(Draft text is generating or awaiting compilation step)"}
-              </pre>
+              {selectedArticle.html_content ? (
+                <div dangerouslySetInnerHTML={{ __html: selectedArticle.html_content }} />
+              ) : selectedArticle.content ? (
+                <pre style={{ fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "pre-wrap", color: "var(--ink)", background: "var(--panel-inner)", padding: "14px", border: "1px solid var(--line)" }}>
+                  {selectedArticle.content}
+                </pre>
+              ) : (
+                <div style={{ color: "var(--muted)" }}>
+                  Article body not generated yet — this row was created before content finished writing.
+                </div>
+              )}
             </div>
 
             <div
@@ -805,27 +655,24 @@ export default function HomePage() {
                 type="button"
                 className="btn"
                 onClick={() => {
-                  navigator.clipboard.writeText(selectedArticle.content || selectedArticle.title);
-                  showToast("✓ Copied markdown to clipboard!");
+                  navigator.clipboard.writeText(selectedArticle.content || selectedArticle.html_content || "");
+                  showToast("✓ Copied to clipboard!");
                 }}
               >
                 📋 Copy Text
               </button>
               <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setSelectedArticle(null)}
-                >
+                <button type="button" className="btn" onClick={() => setSelectedArticle(null)}>
                   Close
                 </button>
-                {selectedArticle.status !== "approved" && selectedArticle.status !== "published" && (
+                {selectedArticle.approval_status !== "published" && selectedArticle.status !== "published" && selectedArticle.approval_id && (
                   <button
                     type="button"
                     className="btn btn-accent"
-                    onClick={() => handleApproveDraft(selectedArticle.id)}
+                    disabled={approvingId === selectedArticle.approval_id}
+                    onClick={() => handleApproveDraft(selectedArticle)}
                   >
-                    Approve & Publish ✓
+                    {approvingId === selectedArticle.approval_id ? "Publishing..." : "Approve & Publish ✓"}
                   </button>
                 )}
               </div>
@@ -834,113 +681,17 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ADD WEBSITE MODAL */}
-      {isAddSiteOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,.6)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
-        >
-          <div
-            style={{
-              background: "var(--bg)",
-              border: "1px solid var(--border)",
-              width: "100%",
-              maxWidth: "500px",
-              boxShadow: "0 8px 32px rgba(0,0,0,.5)",
-            }}
-          >
-            <div
-              style={{
-                padding: "12px 18px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: "var(--panel-bg)",
-              }}
-            >
-              <div style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "16px", textTransform: "uppercase" }}>
-                + Add Website Target
-              </div>
-              <button
-                type="button"
-                className="btn"
-                style={{ fontSize: "11px", padding: "4px 8px" }}
-                onClick={() => setIsAddSiteOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddWebsite} style={{ padding: "18px" }}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--muted)", display: "block", marginBottom: "4px" }}>
-                  Domain (e.g. accident.innovatcs.com)
-                </label>
-                <input
-                  type="text"
-                  className="field"
-                  placeholder="accident.innovatcs.com"
-                  value={newSiteDomain}
-                  onChange={(e) => setNewSiteDomain(e.target.value)}
-                  required
-                />
-              </div>
-              <div style={{ marginBottom: "16px" }}>
-                <label style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: ".06em", color: "var(--muted)", display: "block", marginBottom: "4px" }}>
-                  CMS / Website URL
-                </label>
-                <input
-                  type="url"
-                  className="field"
-                  placeholder="https://accident.innovatcs.com"
-                  value={newSiteCmsUrl}
-                  onChange={(e) => setNewSiteCmsUrl(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setIsAddSiteOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-accent"
-                  disabled={isSavingSite || !newSiteDomain.trim()}
-                >
-                  {isSavingSite ? "Saving..." : "Save Website"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* BOTTOM TICKER */}
       <div className="bticker">
         <span className="bticker-inner">
           <span className="bt-sq"></span>RANKFORGE <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>SUPABASE PGVECTOR LIVE <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>SINGLE SOURCE METRICS <span className="bt-sep">/</span>
           <span className="bt-sq"></span>NVIDIA NIM LLAMA-70B CONNECTED <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO PLACEHOLDERS <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>AUTONOMOUS SEO AGENTS ACTIVE &nbsp;&nbsp;&nbsp;&nbsp;
+          <span className="bt-sq"></span>AUTONOMOUS DAILY CADENCE &nbsp;&nbsp;&nbsp;&nbsp;
           <span className="bt-sq"></span>RANKFORGE <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>SUPABASE PGVECTOR LIVE <span className="bt-sep">/</span>
+          <span className="bt-sq"></span>SINGLE SOURCE METRICS <span className="bt-sep">/</span>
           <span className="bt-sq"></span>NVIDIA NIM LLAMA-70B CONNECTED <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO PLACEHOLDERS <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>AUTONOMOUS SEO AGENTS ACTIVE
+          <span className="bt-sq"></span>AUTONOMOUS DAILY CADENCE
         </span>
       </div>
     </div>

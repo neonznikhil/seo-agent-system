@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
-import GlobalCommandBar from "@/components/GlobalCommandBar";
 
 export const metadata: Metadata = {
   title: "RANKFORGE - Autonomous SEO Agent System",
@@ -28,7 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="page-wrap">{children}</div>
           </div>
         </div>
-        <GlobalCommandBar />
       </body>
     </html>
   );

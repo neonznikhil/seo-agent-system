@@ -249,8 +249,26 @@ async def approve_blog(blog_id: str, user_id: str = Depends(_get_current_user)):
         raise HTTPException(status_code=400, detail=f"Blog status is {blog.get('status')}, cannot approve")
     
     website_id = blog["website_id"]
-    wp_user = blog.get("cms_user") or ""
-    wp_pass = blog.get("app_password") or ""
+    # Fetch credentials from the websites table (Fernet-encrypted at rest)
+    try:
+        site_row = (
+            get_supabase().table("websites")
+            .select("cms_user, wordpress_user, app_password, wordpress_password")
+            .eq("id", website_id)
+            .single()
+            .execute()
+            .data or {}
+        )
+    except Exception:
+        site_row = {}
+    wp_user = site_row.get("cms_user") or site_row.get("wordpress_user") or ""
+    stored_secret = (
+        site_row.get("app_password")
+        or site_row.get("wordpress_password")
+        or ""
+    )
+    from ..security import decrypt_secret
+    wp_pass = decrypt_secret(stored_secret) if stored_secret else ""
     
     updated = get_supabase().table("content_log").update({
         "status": "approved",

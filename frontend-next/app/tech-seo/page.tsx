@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId, getWebsiteId } from "@/lib/website";
 
 export default function TechSEOPage() {
@@ -10,8 +11,6 @@ export default function TechSEOPage() {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState<boolean>(false);
   const [websiteId, setWebsiteId] = useState<string>("");
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     const wid = getCurrentWebsiteId() || getWebsiteId();
@@ -26,8 +25,9 @@ export default function TechSEOPage() {
     return () => window.removeEventListener("website-changed", handleChanged);
   }, []);
 
-  const fetchAuditData = useCallback(() => {
-    if (!websiteId) {
+  const fetchAuditData = useCallback(async () => {
+    const wid = getCurrentWebsiteId() || websiteId || getWebsiteId();
+    if (!wid) {
       setLoading(false);
       return;
     }
@@ -35,27 +35,22 @@ export default function TechSEOPage() {
     setLoading(true);
     setError(null);
 
-    fetch(`${apiUrl}/tech-seo/${websiteId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data || !data.last_run) {
-          // No audit exists — auto-run one
-          console.log("[TechSEO] No audit found, auto-running...");
-          setRunning(true);
-          fetch(`${apiUrl}/tech-seo/${websiteId}/audit`, {
-            method: "POST",
-          })
-            .then((r) => r.json())
-            .then((auditData) => setAuditData(auditData))
-            .catch(console.error)
-            .finally(() => setRunning(false));
-        } else {
-          setAuditData(data);
-        }
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [websiteId, apiUrl]);
+    try {
+      let data = await get(`/api/tech-seo/${wid}`);
+      if (!data || !data.last_run || data.status === "not_run") {
+        setRunning(true);
+        const freshAudit = await post(`/api/tech-seo/${wid}/audit`, {});
+        setAuditData(freshAudit?.data || freshAudit);
+      } else {
+        setAuditData(data?.data || data);
+      }
+    } catch (e: any) {
+      setError(e.message || "Failed to load audit data");
+    } finally {
+      setLoading(false);
+      setRunning(false);
+    }
+  }, [websiteId]);
 
   useEffect(() => {
     fetchAuditData();
@@ -68,17 +63,8 @@ export default function TechSEOPage() {
     setRunning(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/tech-seo/${wid}/audit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-      const data = await response.json();
-      setAuditData(data);
+      const data = await post(`/api/tech-seo/${wid}/audit`, {});
+      setAuditData(data?.data || data);
     } catch (err: any) {
       setError(`Audit failed: ${err.message}`);
     } finally {

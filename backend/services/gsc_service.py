@@ -240,3 +240,18 @@ async def get_top_pages(website_url: str = None, limit: int = 100) -> Dict:
     """Standalone function for top pages."""
     service = GSCService(website_url)
     return await service.get_top_pages(limit)
+
+
+async def list_verified_sites(website_url: str = None) -> List[str]:
+    """Return the list of verified Search Console properties for the configured account."""
+    svc = GSCService(website_url)
+    if not svc.is_connected():
+        raise ValueError("GSC not configured — set GSC_CREDENTIALS_PATH in Connectors")
+    service = svc._get_service()
+    sites = service.sites().list().execute()
+    verified = [
+        s.get("siteUrl")
+        for s in (sites.get("siteEntry") or [])
+        if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
+    ]
+    return [v for v in verified if v]

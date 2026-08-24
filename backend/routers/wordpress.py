@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, Dict, List, Any
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -29,11 +29,22 @@ class OAuthStatusResponse(BaseModel):
     expires_at: Optional[str] = None
 class WordPressCredentialsIn(BaseModel):
     url: Optional[str] = None
+    site_url: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    app_password: Optional[str] = None
     wordpress_url: Optional[str] = None
     wordpress_user: Optional[str] = None
     wordpress_password: Optional[str] = None
+
+    def get_url(self) -> str:
+        return self.site_url or self.url or self.wordpress_url or ""
+
+    def get_username(self) -> str:
+        return self.username or self.wordpress_user or ""
+
+    def get_password(self) -> str:
+        return self.app_password or self.password or self.wordpress_password or ""
 
 
 class CreateDraftIn(BaseModel):
@@ -79,10 +90,15 @@ async def connect_wordpress(website_id: str, request: Request):
             
             # Save to Supabase
             supabase = get_supabase()
+            from ..security import encrypt_secret
+            encrypted_pass = encrypt_secret(wp_pass)
             supabase.table("websites").update({
                 "wordpress_url": wp_url,
+                "cms_url": wp_url,
                 "wordpress_user": wp_user,
-                "wordpress_password": wp_pass
+                "cms_user": wp_user,
+                "wordpress_password": encrypted_pass,
+                "app_password": encrypted_pass,
             }).eq("id", website_id).execute()
             
             return {
@@ -183,19 +199,24 @@ async def create_wp_draft(website_id: str, request: Request):
 async def save_wordpress_connection(body: WordPressCredentialsIn):
     """Save and verify WordPress REST connection credentials."""
     from ..services.wordpress_service import WordPressService
+    site_url = body.get_url()
+    username = body.get_username()
+    password = body.get_password()
+
     wp_svc = WordPressService("default")
-    diag = await wp_svc.test_connection(body.site_url, body.username, body.app_password)
+    diag = await wp_svc.test_connection(site_url, username, password)
     
-    clean_url = body.site_url.rstrip("/")
+    clean_url = site_url.rstrip("/")
     if clean_url and not clean_url.startswith("http"):
         clean_url = f"https://{clean_url}"
 
     try:
         supabase = get_supabase()
+        from ..security import encrypt_secret
         supabase.table("wordpress_connections").upsert({
             "site_url": clean_url,
-            "username": body.username,
-            "app_password": body.app_password,
+            "username": username,
+            "app_password_encrypted": encrypt_secret(password),
             "status": "connected" if diag.get("connected") else "configured",
             "last_verified_at": datetime.utcnow().isoformat()
         }, on_conflict="site_url").execute()
@@ -206,7 +227,7 @@ async def save_wordpress_connection(body: WordPressCredentialsIn):
         "success": True,
         "connected": diag.get("connected", False),
         "site_url": clean_url,
-        "username": body.username,
+        "username": username,
         "diagnostics": diag
     }
 
@@ -270,23 +291,65 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
     diag = await ws.test_connection(url, username, password)
     is_connected = diag.get("connected", False)
 
-    # If successfully connected and website exists, persist credentials
-    if is_connected and website_id and website_id != "default":
+    domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+    wid = website_id
+
+    # If successfully connected, persist credentials (encrypted) and ensure website exists
+    if is_connected:
         try:
             supabase = get_supabase()
-            supabase.table("websites").update({
-                "cms_url": url,
-                "url": url,
-                "cms_user": username,
-                "app_password": password,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("id", website_id).execute()
-        except Exception:
-            pass
+            from ..security import encrypt_secret
+            encrypted = encrypt_secret(password)
+            if wid and wid not in ("default", "all", ""):
+                supabase.table("websites").update({
+                    "cms_url": url,
+                    "url": url,
+                    "cms_user": username,
+                    "wordpress_url": url,
+                    "wordpress_user": username,
+                    "app_password": encrypted,
+                    "wordpress_password": encrypted,
+                    "status": "active",
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).eq("id", wid).execute()
+            else:
+                existing_site = supabase.table("websites").select("id").eq("domain", domain).limit(1).execute().data
+                if existing_site:
+                    wid = existing_site[0]["id"]
+                    supabase.table("websites").update({
+                        "cms_url": url,
+                        "url": url,
+                        "cms_user": username,
+                        "wordpress_url": url,
+                        "wordpress_user": username,
+                        "app_password": encrypted,
+                        "wordpress_password": encrypted,
+                        "status": "active",
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }).eq("id", wid).execute()
+                else:
+                    new_site_res = supabase.table("websites").insert({
+                        "domain": domain,
+                        "cms_url": url,
+                        "url": url,
+                        "cms_user": username,
+                        "wordpress_url": url,
+                        "wordpress_user": username,
+                        "app_password": encrypted,
+                        "wordpress_password": encrypted,
+                        "status": "active",
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }).execute().data
+                    if new_site_res:
+                        wid = new_site_res[0]["id"]
+        except Exception as e:
+            logger.warning(f"Note persisting credentials in test: {e}")
 
     return {
         "success": is_connected,
         "connected": is_connected,
+        "website_id": wid if wid and wid != "default" else None,
         "url": url,
         "status_code": diag.get("status_code"),
         "error_type": diag.get("error_type"),
@@ -306,24 +369,48 @@ async def save_wordpress_credentials(website_id: str, body: WordPressCredentials
     username = (body.username or body.wordpress_user or "").strip()
     password = (body.password or body.wordpress_password or "").strip()
 
+    if not url:
+        raise HTTPException(400, "WordPress URL is required")
+
+    domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+    wid = website_id
+
     update_data = {
         "updated_at": datetime.utcnow().isoformat(),
+        "status": "active",
     }
     if url:
         update_data["cms_url"] = url
         update_data["url"] = url
+        update_data["wordpress_url"] = url
     if username:
         update_data["cms_user"] = username
+        update_data["wordpress_user"] = username
     if password:
-        update_data["app_password"] = password
+        from ..security import encrypt_secret
+        encrypted = encrypt_secret(password)
+        update_data["app_password"] = encrypted
+        update_data["wordpress_password"] = encrypted
 
     try:
-        supabase.table("websites").update(update_data).eq("id", website_id).execute()
+        if wid and wid not in ("default", "all", ""):
+            supabase.table("websites").update(update_data).eq("id", wid).execute()
+        else:
+            existing = supabase.table("websites").select("id").eq("domain", domain).limit(1).execute().data
+            if existing:
+                wid = existing[0]["id"]
+                supabase.table("websites").update(update_data).eq("id", wid).execute()
+            else:
+                update_data["domain"] = domain
+                update_data["created_at"] = datetime.utcnow().isoformat()
+                new_site = supabase.table("websites").insert(update_data).execute().data
+                if new_site:
+                    wid = new_site[0]["id"]
     except Exception as e:
         logger.error(f"Error updating website credentials: {e}")
         raise HTTPException(500, f"Failed to save credentials: {str(e)}")
 
-    return {"status": "saved", "website_id": website_id}
+    return {"status": "saved", "website_id": wid}
 
 
 @router.post("/wordpress/{website_id}/draft")
