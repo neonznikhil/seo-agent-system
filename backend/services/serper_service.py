@@ -449,6 +449,128 @@ class SerperService:
             logger.debug(f"Crawlee SERP fallback failed: {e}")
         return None
 
+    # ---------------------------------------------------------
+    # 4. Specialized Serper.dev API Types (Upgrade 8)
+    # ---------------------------------------------------------
+    async def scholar(self, query: str, num: int = 5) -> Dict[str, Any]:
+        """Academic search via Serper Scholar API for fact-checking statistical claims."""
+        if not self.is_configured():
+            return {
+                "source": "mock_scholar",
+                "organic": [
+                    {
+                        "title": f"Empirical Analysis of {query}",
+                        "link": "https://scholar.google.com/citations?view_op=view_citation",
+                        "snippet": f"A comprehensive empirical analysis establishing quantitative benchmarks for {query}.",
+                        "year": 2024,
+                        "cited_by": 42
+                    }
+                ]
+            }
+
+        url = f"{self.base_url}/scholar"
+        headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
+        payload = {"q": query, "num": max(1, min(num, 20))}
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception as e:
+            logger.warning(f"Serper Scholar error: {e}")
+
+        # Fallback to search with scholar site restriction
+        return await self.search(f"{query} site:edu OR site:gov OR site:nih.gov", num=num)
+
+    async def images(self, query: str, num: int = 6) -> Dict[str, Any]:
+        """Search relevant images via Serper Images API."""
+        if not self.is_configured():
+            return {
+                "source": "fallback_images",
+                "images": [
+                    {
+                        "title": f"{query} Diagram",
+                        "imageUrl": "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800",
+                        "link": "https://unsplash.com",
+                        "alt": f"Strategic diagram illustrating {query}"
+                    }
+                ]
+            }
+
+        url = f"{self.base_url}/images"
+        headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
+        payload = {"q": query, "num": max(1, min(num, 20))}
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception as e:
+            logger.warning(f"Serper Images error: {e}")
+
+        return {"images": []}
+
+    async def maps(self, query: str, location: Optional[str] = None) -> Dict[str, Any]:
+        """Local search via Serper Places/Maps API for GEO visibility."""
+        if not self.is_configured():
+            return {
+                "source": "fallback_places",
+                "places": [
+                    {
+                        "title": f"{query} Official Office",
+                        "address": "1000 Main St, Houston, TX 77002",
+                        "rating": 4.9,
+                        "ratingCount": 128
+                    }
+                ]
+            }
+
+        url = f"{self.base_url}/places"
+        headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
+        payload = {"q": query}
+        if location:
+            payload["location"] = location
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception as e:
+            logger.warning(f"Serper Places error: {e}")
+
+        return {"places": []}
+
+    async def autocomplete(self, query: str) -> Dict[str, Any]:
+        """Google Autocomplete expansions for seed keyword expansion."""
+        if not self.is_configured():
+            return {
+                "suggestions": [
+                    {"value": f"{query} 2026"},
+                    {"value": f"{query} cost calculator"},
+                    {"value": f"how does {query} work"},
+                    {"value": f"{query} near me"},
+                    {"value": f"best {query} guide"}
+                ]
+            }
+
+        url = f"{self.base_url}/autocomplete"
+        headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
+        payload = {"q": query}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception as e:
+            logger.warning(f"Serper Autocomplete error: {e}")
+
+        return {"suggestions": []}
+
 
 # Global singleton instance
 serper_service = SerperService()
+

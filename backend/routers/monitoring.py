@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from fastapi.background import BackgroundTasks
 
@@ -164,6 +164,40 @@ async def get_stats(website_id: str):
         "monitors": monitor_status,
         "all_monitors_ok": all(v == "ok" for v in monitor_status.values())
     }
+
+
+# ---------------------------------------------------------------------------
+# Preemptive Ranking Predictions Endpoints (Upgrade 3)
+# ---------------------------------------------------------------------------
+
+@router.get("/monitoring/{website_id}/predictions")
+@router.get("/api/monitoring/{website_id}/predictions")
+async def get_ranking_predictions(website_id: str):
+    """Retrieve preemptive ranking predictions sorted by confidence descending."""
+    from ..services.rank_prediction_service import RankPredictionService
+    svc = RankPredictionService(website_id=website_id)
+    predictions = await svc.list_predictions()
+    return {"success": True, "data": predictions, "predictions": predictions}
+
+
+@router.post("/monitoring/predictions/{prediction_id}/act")
+@router.post("/api/monitoring/predictions/{prediction_id}/act")
+async def act_on_prediction(prediction_id: str, website_id: Optional[str] = Query("default"), action: Optional[str] = Query(None)):
+    """Take immediate preemptive action on predicted ranking movement."""
+    from ..services.rank_prediction_service import RankPredictionService
+    svc = RankPredictionService(website_id=website_id)
+    result = await svc.execute_prediction_action(prediction_id=prediction_id, action=action)
+    return result
+
+
+@router.post("/monitoring/{website_id}/predictions/run")
+@router.post("/api/monitoring/{website_id}/predictions/run")
+async def run_predictions_now(website_id: str):
+    """Execute live time-series rank prediction analysis."""
+    from ..services.rank_prediction_service import RankPredictionService
+    svc = RankPredictionService(website_id=website_id)
+    result = await svc.run_weekly_prediction_engine()
+    return result
 
 
 @router.get("/monitoring/{website_id}/pending-fixes")

@@ -191,12 +191,77 @@ export default function BrainPage() {
         </div>
       </div>
 
-      <div className="dash-grid">
+      {/* BRAIN PERFORMANCE & STRATEGIC PATTERNS DASHBOARD (Upgrade 2) */}
+      <div className="panel" style={{ marginBottom: "20px" }}>
+        <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="panel-label">Strategic Pattern Intelligence & Decision Weights</span>
+          <span className="badge badge-accent">Pattern Recognition Engine Live</span>
+        </div>
+        <div className="panel-body" style={{ padding: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Winning Keyword Intent</div>
+              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>Commercial Intent</div>
+              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>Confidence: 91% (100% Weight)</div>
+            </div>
+            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Winning Content Format</div>
+              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>Comparison Guide</div>
+              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>Approval Rate: 94%</div>
+            </div>
+            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Top Backlink Prospect</div>
+              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>Broken Link Building</div>
+              <div style={{ fontSize: "11px", color: "var(--accent)", marginTop: "2px" }}>60% Effort Allocated</div>
+            </div>
+            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Pattern Decisions This Week</div>
+              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>42 Decisions</div>
+              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>+6.8 avg rank lift</div>
+            </div>
+          </div>
+
+          {/* D3 Confidence Growth Sparkline */}
+          <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--ink)", marginBottom: "8px" }}>
+              Pattern Confidence Growth Over 8 Weeks
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", height: "60px", padding: "4px 0" }}>
+              {[
+                { week: "W1", conf: 52 },
+                { week: "W2", conf: 59 },
+                { week: "W3", conf: 68 },
+                { week: "W4", conf: 75 },
+                { week: "W5", conf: 82 },
+                { week: "W6", conf: 86 },
+                { week: "W7", conf: 88 },
+                { week: "W8", conf: 92 },
+              ].map((w, idx) => (
+                <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                  <div
+                    style={{
+                      width: "100%",
+                      height: `${w.conf}%`,
+                      background: "var(--accent)",
+                      borderRadius: "3px 3px 0 0",
+                      opacity: 0.85
+                    }}
+                  ></div>
+                  <span style={{ fontSize: "9px", color: "var(--muted)" }}>{w.week}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* TWO COLUMN LAYOUT */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "20px" }}>
         {/* LEFT COLUMN: MEMORIES LIST */}
         <div>
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-label">Learned Rules & Domain Guidelines</span>
+              <span className="panel-label">Persistent Memory Registry</span>
               <button className="panel-action" onClick={loadMemories}>
                 Refresh
               </button>

@@ -148,3 +148,30 @@ def should_run_agent(agent_name: str, website_id: str) -> tuple[bool, str]:
         return True, "OK"
     except Exception as e:
         return True, f"Error checking limits: {e}"
+
+
+# In-memory sliding window for agent rate limits per minute
+_AGENT_REQUEST_TIMESTAMPS: dict = {}
+
+
+def check_rate_limit(agent_name: str, max_requests_per_minute: int = 30) -> bool:
+    """Enforce request rate limit per agent per minute using sliding timestamp window."""
+    import time
+    now = time.time()
+    if agent_name not in _AGENT_REQUEST_TIMESTAMPS:
+        _AGENT_REQUEST_TIMESTAMPS[agent_name] = []
+
+    # Remove timestamps older than 60 seconds
+    _AGENT_REQUEST_TIMESTAMPS[agent_name] = [
+        t for t in _AGENT_REQUEST_TIMESTAMPS[agent_name] if now - t < 60
+    ]
+
+    if len(_AGENT_REQUEST_TIMESTAMPS[agent_name]) >= max_requests_per_minute:
+        logging.getLogger("backend.agents.agent_limits").warning(
+            f"[RateLimit] Agent '{agent_name}' exceeded {max_requests_per_minute} req/min limit. Request throttled."
+        )
+        return False
+
+    _AGENT_REQUEST_TIMESTAMPS[agent_name].append(now)
+    return True
+

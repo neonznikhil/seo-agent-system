@@ -131,3 +131,59 @@ async def serper_save_key(payload: SerperSaveKeyPayload):
         "message": "Serper API key saved and verified ✅",
         "status": status
     }
+
+
+# ---------------------------------------------------------
+# 5. Specialized Intelligence Endpoints (Upgrade 8)
+# ---------------------------------------------------------
+
+class ScholarPayload(BaseModel):
+    query: str
+    num: Optional[int] = 5
+
+
+class ImagesPayload(BaseModel):
+    query: str
+    num: Optional[int] = 6
+
+
+class MapsPayload(BaseModel):
+    query: str
+    location: Optional[str] = None
+
+
+class AutocompletePayload(BaseModel):
+    query: str
+
+
+@router.post("/connector/serper/scholar")
+@router.post("/api/connector/serper/scholar")
+async def serper_scholar(payload: ScholarPayload):
+    """Academic search via Serper Scholar API for fact-checking claims."""
+    res = await serper_service.scholar(query=payload.query, num=payload.num or 5)
+    return {"success": True, "data": res}
+
+
+@router.post("/connector/serper/images")
+@router.post("/api/connector/serper/images")
+async def serper_images(payload: ImagesPayload):
+    """Image search via Serper Images API."""
+    res = await serper_service.images(query=payload.query, num=payload.num or 6)
+    return {"success": True, "data": res}
+
+
+@router.post("/connector/serper/maps")
+@router.post("/api/connector/serper/maps")
+async def serper_maps(payload: MapsPayload):
+    """Local places search for GEO features."""
+    res = await serper_service.maps(query=payload.query, location=payload.location)
+    return {"success": True, "data": res}
+
+
+@router.post("/connector/serper/autocomplete")
+@router.post("/api/connector/serper/autocomplete")
+async def serper_autocomplete(payload: AutocompletePayload):
+    """Google autocomplete expansions for seed keyword expansion."""
+    res = await serper_service.autocomplete(query=payload.query)
+    return {"success": True, "data": res}
+

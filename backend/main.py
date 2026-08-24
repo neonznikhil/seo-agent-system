@@ -37,6 +37,7 @@ from .routers.chat import router as chat_router
 from .routers.workforce import router as workforce_router
 from .routers.rag import router as rag_router
 from .routers.connectors_serper import router as connectors_serper_router
+from .routers.health import router as health_router
 from .agents.seo_agent_group import seo_agent_group
 
 validate_env()
@@ -476,6 +477,8 @@ app.include_router(llms_txt)
 app.include_router(workforce_router)
 app.include_router(connectors_router)
 app.include_router(rag_router)
+app.include_router(health_router, prefix="/api")
+app.include_router(health_router)
 
 
 # ---------------------------------------------------------

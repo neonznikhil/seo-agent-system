@@ -659,3 +659,8 @@ Output ONLY the full article Markdown — no introductory commentary, no convers
             "eeat_injected": True,
             "nlp_optimized": True
         }
+
+
+# Backwards compatibility alias
+HumanWriter = HumanWriterAgent
+

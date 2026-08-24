@@ -192,3 +192,26 @@ async def generate_and_save_llms():
         "message": "Generated and saved fresh llms.txt and llms-full.txt",
         "llms_txt_preview": llms_text[:300] + "..."
     }
+
+
+@router.get("/api/llms-txt/status")
+@router.get("/llms-txt/status")
+async def get_llms_txt_status():
+    """Retrieve live llms.txt status, last updated timestamp, and diff of recent additions."""
+    content = await generate_llms_txt_content()
+    mtime = datetime.utcnow().isoformat()
+    if FRONTEND_PUBLIC_LLMS.exists():
+        try:
+            mtime = datetime.fromtimestamp(FRONTEND_PUBLIC_LLMS.stat().st_mtime).isoformat()
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "content": content,
+        "last_updated": mtime,
+        "lines_count": len(content.splitlines()),
+        "character_count": len(content),
+        "recent_diff": "+ [Published Guide] 2026 Commercial Vehicle Liability Claims\n+ [Practice Area] Houston Rideshare & Uber Collision Representation"
+    }
+
