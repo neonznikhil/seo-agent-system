@@ -104,6 +104,15 @@ class WordPressService:
             logger.warning(f"WordPress connection test failed: {e}")
             return {"connected": False, "status_code": 0, "message": str(e)}
 
+    async def draft_post(self, title: str, content: str, seo_keyword: Optional[str] = None, tags: Optional[list] = None) -> dict:
+        """Create draft post in WordPress."""
+        return await self.create_draft(
+            website_id=self.website_id,
+            title=title,
+            content=content,
+            keywords=[seo_keyword] if seo_keyword else (tags or [])
+        )
+
     async def create_draft(self, website_id: str, title: str, content: str, keywords: Optional[list] = None) -> dict:
         """Create WordPress draft — agents and UI human approval call this."""
         site = self._get_site_config()

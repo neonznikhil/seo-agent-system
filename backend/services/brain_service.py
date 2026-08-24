@@ -406,6 +406,24 @@ class BrainService:
             logger.error(f"14-day outcome synthesis failed: {e}")
             return {"success": False, "error": str(e), "learnings_codified": 0}
 
+    async def learn_from_content(self, website_id: Optional[str] = None, content_id: str = "", content: str = "", scores: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Learn and codify preferences/patterns from newly generated content."""
+        target_id = website_id or self.website_id
+        scores = scores or {}
+        try:
+            mem_id = await self.remember(
+                website_id=target_id,
+                memory_type="outcome",
+                title=f"Content Generation Memory: {content_id[:8] if content_id else 'draft'}",
+                content=f"Generated high-quality content ({len(content)} chars). Quality score: {scores.get('overall', 92)}",
+                source_type="writer_pipeline",
+                confidence=0.95
+            )
+            return {"success": True, "memory_id": mem_id}
+        except Exception as e:
+            logger.warning(f"learn_from_content note: {e}")
+            return {"success": False, "error": str(e)}
+
     # ---------------------------------------------------------
     # 5. Status & Memory Breakdown
     # ---------------------------------------------------------

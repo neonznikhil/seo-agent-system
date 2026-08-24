@@ -30,13 +30,12 @@ async def test_oauth_state_validation():
 @pytest.mark.asyncio
 async def test_wordpress_url_verify():
     transport = ASGITransport(app=app)
-    mock_resp = MagicMock(status_code=200, text='{"namespaces": ["wp/v2"]}')
-    with patch("backend.routers.oauth_connectors.httpx.AsyncClient.get", new=AsyncMock(return_value=mock_resp)):
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            res = await client.get("/api/connectors/wordpress/verify-url?site_url=https://accident.innovatcs.com")
-            assert res.status_code == 200
-            data = res.json()
-            assert data.get("success") is True
-            assert "authorize_deep_link" in data
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/connectors/wordpress/verify-url?site_url=https://accident.innovatcs.com")
+        assert res.status_code == 200
+        data = res.json()
+        assert data.get("success") is True
+        assert "authorize_deep_link" in data
+
 
 

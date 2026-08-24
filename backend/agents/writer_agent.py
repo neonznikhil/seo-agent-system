@@ -55,7 +55,11 @@ class WriterPipeline:
     ]
 
     def __init__(self, website_id: str):
-        self.website_id = website_id
+        try:
+            uuid.UUID(str(website_id))
+            self.website_id = str(website_id)
+        except Exception:
+            self.website_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(website_id or "default")))
         self.supabase = None
         self.content_id = None
         self.topic = None

@@ -49,7 +49,7 @@ async def check_supabase_connection() -> bool:
 NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 NIM_LLM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")  # 1024d embedding model
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "meta/llama-3.1-70b-instruct")
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 
 

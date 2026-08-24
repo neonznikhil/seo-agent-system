@@ -9,7 +9,7 @@ async def test_monitoring_endpoints():
     transport = ASGITransport(app=app)
     with patch("backend.database.get_supabase") as mock_sup:
         mock_sup.return_value.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
-        with patch("backend.services.serp_volatility_service.serp_volatility_service.calculate_volatility_index", new=AsyncMock(return_value={"niche_volatility_index": 34.5, "status": "stable"})):
+        with patch("backend.services.serp_volatility_service.SerpVolatilityService.check_serp_volatility", new=AsyncMock(return_value={"niche_volatility_index": 34.5, "status": "stable"})):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 # 1. Monitoring alerts
                 res = await client.get("/api/monitoring/default/alerts")
@@ -21,6 +21,7 @@ async def test_monitoring_endpoints():
                 v_data = v_res.json()
                 assert v_data.get("success") is True
                 assert "niche_volatility_index" in v_data["data"]
+
 
 
 

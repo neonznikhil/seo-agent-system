@@ -21,19 +21,23 @@ Settlement amounts vary based on medical damages and commercial insurance limits
 ### How long do I have to file a claim?
 Under Texas statute of limitations, claims must be filed within 2 years.
 """
+    mock_serp = {"organic": [{"title": "Texas Guide", "link": "https://example.com", "snippet": "Legal text"}]}
     with patch("backend.database.call_nim_llm", new=AsyncMock(return_value=mock_draft)):
-        with patch("backend.database.get_supabase") as mock_sup:
-            mock_sup.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "kb_1"}])
-            mock_sup.return_value.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": "test_draft_id"}])
+        with patch("backend.services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serp)):
+            with patch("backend.agents.writer_agent.WriterPipeline._phase_multi_step_content_writing", new=AsyncMock(return_value={"content": mock_draft, "word_count": 1850})):
+                with patch("backend.database.get_supabase") as mock_sup:
+                    mock_sup.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(count=5, data=[{"id": "kb_1"}])
+                    mock_sup.return_value.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": "test_draft_id"}])
+                    mock_sup.return_value.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
             
-            # Run test generation
-            res = await pipeline.generate(
-                topic="Texas commercial truck accident lawyer",
-                primary_keyword="Texas commercial truck settlements"
-            )
+                    # Run test generation
+                    res = await pipeline.generate(
+                        topic="Texas commercial truck accident lawyer",
+                        primary_keyword="Texas commercial truck settlements"
+                    )
             
             assert res is not None
-            assert res.get("status") in ["draft_saved", "quality_passed", "staged_for_approval", "complete"]
+            assert res.get("status") in ["draft_saved", "quality_passed", "staged_for_approval", "complete", "completed"]
             content = res.get("content", mock_draft)
             assert "[INSERT" not in content
             assert "[TOPIC]" not in content

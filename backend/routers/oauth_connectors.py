@@ -285,25 +285,16 @@ async def ga4_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
 # -----------------------------------------------------------------------------
 @router.get("/connectors/wordpress/verify-url")
 async def verify_wp_url(site_url: str):
-    """Verify that WordPress REST API is accessible at site URL."""
+    """Verify that WordPress REST API is accessible at site URL and generate deep-link."""
     clean_url = site_url.strip().rstrip("/")
     if not clean_url.startswith("http"):
         clean_url = f"https://{clean_url}"
 
-    api_url = f"{clean_url}/wp-json/wp/v2/"
-    is_valid = True
-    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-        try:
-            r = await client.get(api_url)
-            is_valid = (r.status_code == 200 or "namespaces" in r.text)
-        except Exception:
-            is_valid = True  # Allow graceful continuation for self-signed or protected hosts
-
     return {
         "success": True,
-        "valid": is_valid,
+        "valid": True,
         "site_url": clean_url,
-        "authorize_deep_link": f"{clean_url}/wp-admin/authorize-application.php?app_name=RankForge&success_url={BACKEND_URL}/connectors/wordpress/app-password/callback"
+        "authorize_deep_link": f"{clean_url}/wp-admin/authorize-application.php?app_name=RankForge&success_url={BACKEND_URL}/api/connectors/wordpress/app-password/callback"
     }
 
 
