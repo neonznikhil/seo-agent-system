@@ -1443,10 +1443,10 @@ WRITING RULES:
 5. H3 sections: Add under the correct parent H2
 6. Internal links: Place per point_9_internal_links placement instructions
 7. External links: Place per point_10_external_links placement
-8. Expert insights: Add blockquotes per point_12_expert_insights
+8. Expert insights: If point_12_expert_insights is non-empty, add blockquotes using ONLY the real quotes provided. If empty, do NOT add any blockquote elements anywhere. NEVER invent fictional attorneys, doctors, or experts. NEVER use names like "James Chen", "Maria Gonzalez", or any name not found in point_12_expert_insights.
 9. CTAs: Add per point_13_ctas — must feel natural, not salesy
 10. FAQs: Use EXACTLY the answer_draft from point_14_faqs — 
-    do not rewrite these
+     do not rewrite these
 11. Conclusion: Follow point_15_conclusion exactly
 
 KEYWORD RULES & GRAMMATICAL INTEGRATION:
@@ -3956,8 +3956,23 @@ async def _direct_nim_crew_fallback(topic: str, website_id: str, business_name: 
         business_name=business_name
     )
     
+    # FIX 4: Extract real website facts
+    website_facts = {}
+    if website_id and website_id != "default":
+        try:
+            website_facts = await extract_website_facts(website_id)
+        except Exception as e:
+            logger.debug(f"[Writer] Website facts extraction note: {e}")
+    
     # 2. Writer
     brand_facts = " ".join([h.get("content", "") for h in knowledge_hits if isinstance(h, dict)])
+    
+    # Inject website facts into brand_facts
+    if website_facts:
+        facts_str = "\n".join([f"{k}: {v}" for k, v in website_facts.items() if v])
+        if facts_str:
+            brand_facts = f"REAL WEBSITE FACTS (use these in the article, do not invent):\n{facts_str}\n\n{brand_facts}"
+    
     writer_html = await run_writer(
         outline=planner_outline,
         target_keyword=topic,
@@ -4758,6 +4773,21 @@ async def run_planner(target_keyword: str, website_id: str = "default", business
         business_name=business_name
     )
     outline = planner_res.get("outline", planner_res)
+    
+    # FIX 1: Find real quotes from knowledge base
+    real_quotes = []
+    if website_id and website_id != "default":
+        try:
+            real_quotes = await find_real_quotes_from_kb(website_id)
+        except Exception as e:
+            logger.debug(f"[Planner] Real quotes search note: {e}")
+    
+    # Update point_12 with real quotes or empty
+    if real_quotes:
+        outline["point_12_expert_insights"] = real_quotes
+    else:
+        outline["point_12_expert_insights"] = []
+    
     validated_outline = await validate_outline_for_audience(outline, target_reader="car accident victim")
     return validated_outline
 
@@ -4890,6 +4920,298 @@ def ensure_each_section_minimum_length(html_content: str) -> str:
                 
     return str(soup)
 
+
+# ============================================================
+# FIX 1: FAKE QUOTE DETECTION AND REMOVAL
+# ============================================================
+
+async def find_real_quotes_from_kb(website_id: str) -> list:
+    """Searches knowledge base for real quotes, testimonials, attorney bios."""
+    supabase = get_supabase()
+    result = supabase.table("knowledge_base") \
+        .select("fact, source_url") \
+        .eq("website_id", website_id) \
+        .or_("fact.ilike.%attorney%,fact.ilike.%founder%,fact.ilike.%partner%,fact.ilike.%said%,fact.ilike.%according to%,fact.ilike.%our team%,fact.ilike.%about us%") \
+        .limit(10) \
+        .execute()
+
+    import re
+    real_quotes = []
+    for chunk in (result.data or []):
+        content = chunk["fact"]
+        quote_patterns = [
+            r'"([^"]{20,200})"[,\s]*[-—]\s*([A-Z][a-z]+ [A-Z][a-z]+)',
+            r'"([^"]{20,200})"\s*[-—]\s*([A-Z][a-z]+ [A-Z][a-z]+)',
+        ]
+        for pattern in quote_patterns:
+            matches = re.findall(pattern, content)
+            for quote_text, person_name in matches:
+                real_quotes.append({
+                    "quote": quote_text,
+                    "person": person_name,
+                    "source_url": chunk["source_url"],
+                    "is_real": True
+                })
+    return real_quotes
+
+
+def remove_fake_quotes(html_content: str, real_people: list) -> str:
+    """Removes blockquotes with names not in the real_people list."""
+    from bs4 import BeautifulSoup
+    import re
+    soup = BeautifulSoup(html_content, 'html.parser')
+    for blockquote in soup.find_all('blockquote'):
+        quote_text = blockquote.get_text()
+        attribution = re.search(r'[-—]\s*([A-Z][a-z]+ [A-Z][a-z]+)', quote_text)
+        if attribution:
+            attributed_name = attribution.group(1)
+            is_real = any(attributed_name.lower() in person.lower() for person in real_people)
+            if not is_real:
+                blockquote.decompose()
+    return str(soup)
+
+
+# ============================================================
+# FIX 2: DUPLICATE PARAGRAPH AND TABLE REMOVAL
+# ============================================================
+
+def remove_duplicate_paragraphs(html_content: str) -> str:
+    """Removes duplicate and placeholder paragraphs."""
+    from bs4 import BeautifulSoup
+    import re
+    soup = BeautifulSoup(html_content, 'html.parser')
+    seen_paragraphs = {}
+    placeholder_phrases = [
+        "to establish strong evidentiary backing when addressing",
+        "meticulous chronological documentation prevents insurance",
+        "furthermore, promptly securing witness statements",
+        "consulting with seasoned legal advocates helps align",
+        "essential details and actionable guidance about this aspect",
+    ]
+    for p in soup.find_all('p'):
+        text = p.get_text().strip().lower()
+        if not text:
+            continue
+        is_placeholder = any(phrase in text for phrase in placeholder_phrases)
+        if is_placeholder:
+            p.decompose()
+            continue
+        normalized = re.sub(r'\s+', ' ', text)[:150]
+        if normalized in seen_paragraphs:
+            p.decompose()
+        else:
+            seen_paragraphs[normalized] = True
+    return str(soup)
+
+
+def remove_duplicate_tables(html_content: str) -> str:
+    """Removes tables that appear more than once with the same content."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html_content, 'html.parser')
+    seen_tables = set()
+    for table in soup.find_all('table'):
+        table_text = table.get_text().strip().lower()
+        table_text = ' '.join(table_text.split())[:200]
+        if table_text in seen_tables:
+            table.decompose()
+        else:
+            seen_tables.add(table_text)
+    return str(soup)
+
+
+def fix_broken_sentences(html_content: str) -> str:
+    """Removes paragraphs ending mid-sentence."""
+    from bs4 import BeautifulSoup
+    import re
+    soup = BeautifulSoup(html_content, 'html.parser')
+    broken_endings = [
+        r'\bof$', r'\bthe$', r'\band$', r'\bto$', r'\ba$',
+        r'\bfor$', r'\bwith$', r'\bthat$', r'\bin$', r'\bon\s+a$',
+        r'\d+%-\d+%\s+of$',
+    ]
+    for p in soup.find_all('p'):
+        text = p.get_text().strip()
+        if not text:
+            continue
+        for pattern in broken_endings:
+            if re.search(pattern, text, re.IGNORECASE):
+                p.decompose()
+                break
+    return str(soup)
+
+
+# ============================================================
+# FIX 3: DYNAMIC CLICKABLE FAQ ACCORDION
+# ============================================================
+
+def build_faq_accordion(faq_items: list) -> str:
+    """Converts FAQ list into a clickable accordion with SEO schema."""
+    import json
+
+    accordion_css = """
+<style>
+.rf-faq-container { margin: 32px 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.rf-faq-item { border-bottom: 1px solid #e5e7eb; }
+.rf-faq-item:last-child { border-bottom: none; }
+.rf-faq-question { width: 100%; background: #ffffff; border: none; padding: 18px 20px; text-align: left; font-size: 16px; font-weight: 600; color: #111827; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; font-family: inherit; }
+.rf-faq-question:hover { background: #f9fafb; }
+.rf-faq-question.active { background: #f0fdf4; color: #15803d; }
+.rf-faq-icon { font-size: 20px; font-weight: 300; transition: transform 0.3s; flex-shrink: 0; margin-left: 12px; }
+.rf-faq-question.active .rf-faq-icon { transform: rotate(45deg); }
+.rf-faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; background: #ffffff; }
+.rf-faq-answer.open { max-height: 500px; padding: 0 20px 20px 20px; }
+.rf-faq-answer p { margin: 0; color: #374151; font-size: 15px; line-height: 1.7; }
+.rf-faq-title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 20px; }
+</style>
+"""
+    accordion_js = """
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var questions = document.querySelectorAll('.rf-faq-question');
+    questions.forEach(function(question) {
+        question.addEventListener('click', function() {
+            var answer = this.nextElementSibling;
+            var isOpen = answer.classList.contains('open');
+            document.querySelectorAll('.rf-faq-answer').forEach(function(a) { a.classList.remove('open'); });
+            document.querySelectorAll('.rf-faq-question').forEach(function(q) { q.classList.remove('active'); });
+            if (!isOpen) { answer.classList.add('open'); this.classList.add('active'); }
+        });
+    });
+    var firstQ = document.querySelector('.rf-faq-question');
+    var firstA = document.querySelector('.rf-faq-answer');
+    if (firstQ && firstA) { firstQ.classList.add('active'); firstA.classList.add('open'); }
+});
+</script>
+"""
+    items_html = ""
+    for i, faq in enumerate(faq_items):
+        question = faq.get("question", "").strip()
+        answer = faq.get("answer_draft", "").strip()
+        if not question or not answer:
+            continue
+        items_html += f"""
+<div class="rf-faq-item">
+    <button class="rf-faq-question" aria-expanded="false" aria-controls="rf-faq-answer-{i}">
+        {question}
+        <span class="rf-faq-icon">+</span>
+    </button>
+    <div class="rf-faq-answer" id="rf-faq-answer-{i}" role="region">
+        <p>{answer}</p>
+    </div>
+</div>
+"""
+    schema_items = []
+    for faq in faq_items:
+        question = faq.get("question", "")
+        answer = faq.get("answer_draft", "")
+        if question and answer:
+            schema_items.append({
+                "@type": "Question",
+                "name": question,
+                "acceptedAnswer": {"@type": "Answer", "text": answer}
+            })
+    faq_schema = json.dumps({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": schema_items
+    }, indent=2)
+
+    return f"""{accordion_css}
+<h2 class="rf-faq-title">Frequently Asked Questions</h2>
+<div class="rf-faq-container" role="list">
+{items_html}
+</div>
+<script type="application/ld+json">
+{faq_schema}
+</script>
+{accordion_js}"""
+
+
+def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
+    """Replaces static FAQ section with dynamic accordion."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html_content, 'html.parser')
+    faq_h2 = None
+    for h2 in soup.find_all('h2'):
+        if 'frequently asked' in h2.get_text().lower() or 'faq' in h2.get_text().lower():
+            faq_h2 = h2
+            break
+    if not faq_h2:
+        return html_content
+    faq_items = outline.get("point_14_faqs", [])
+    if not faq_items:
+        return html_content
+    accordion = build_faq_accordion(faq_items)
+    to_remove = [faq_h2]
+    sibling = faq_h2.next_sibling
+    while sibling:
+        if hasattr(sibling, 'name') and sibling.name == 'h2':
+            break
+        if sibling.name in ['h3', 'p', 'ul', 'ol', 'div']:
+            to_remove.append(sibling)
+        sibling = sibling.next_sibling
+    from bs4 import BeautifulSoup as BS
+    accordion_soup = BS(accordion, 'html.parser')
+    faq_h2.insert_before(accordion_soup)
+    for el in to_remove:
+        try:
+            el.decompose()
+        except Exception:
+            pass
+    return str(soup)
+
+
+# ============================================================
+# FIX 4: EXTRACT REAL WEBSITE FACTS FROM KNOWLEDGE BASE
+# ============================================================
+
+async def extract_website_facts(website_id: str) -> dict:
+    """Extracts key facts from knowledge base for article context."""
+    supabase = get_supabase()
+    kb = supabase.table("knowledge_base") \
+        .select("fact, source_url") \
+        .eq("website_id", website_id) \
+        .order("credibility_score", desc=True) \
+        .limit(20) \
+        .execute()
+
+    if not kb.data:
+        return {}
+
+    all_content = " ".join([c["fact"] for c in kb.data])
+
+    from datetime import datetime
+    current_year = datetime.utcnow().year
+
+    from ..services.nim_client import nim_generate_with_feedback
+    facts_response = await nim_generate_with_feedback(
+        system_prompt="You respond only with valid JSON. No other text.",
+        prompt=f"""
+Extract key facts from this website content. Today: {datetime.utcnow().strftime("%B %d, %Y")}
+
+Website content:
+{all_content[:3000]}
+
+Return ONLY facts explicitly stated in the content. Do not invent.
+
+Return this JSON:
+{{"business_name": "exact name or null", "location_city": "city or null", "location_state": "state or null", "primary_services": ["service 1"], "phone_number": "phone or null", "years_experience": "number or null", "real_attorney_names": ["name 1"], "real_case_types": ["type 1"], "real_statistics": ["stat 1"], "real_testimonials": ["quote 1"], "certifications": ["cert 1"], "service_areas": ["area 1"]}}
+
+Set fields to null if not found. Do not guess.
+""",
+        max_tokens=800,
+        timeout_seconds=30,
+        job_label="Website facts extraction"
+    )
+
+    import json
+    try:
+        facts = json.loads(facts_response.strip())
+        return facts
+    except Exception:
+        return {}
+
+
 async def process_blog_output(raw_html: str, website_id: str = "default", target_keyword: str = "", outline: Optional[dict] = None, primary_keyword: Optional[str] = None) -> str:
     """
     Complete 15-Point Quality Pipeline with Year Fixing and Word Count Enforcement:
@@ -4912,6 +5234,13 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     pk = primary_keyword or target_keyword
     pk = sanitize_keyword(pk, current_year)
     target_keyword = sanitize_keyword(target_keyword, current_year)
+    
+    # FIX 1: Find real quotes from knowledge base
+    real_quotes = await find_real_quotes_from_kb(website_id) if website_id and website_id != "default" else []
+    real_people_names = [q["person"] for q in real_quotes]
+    
+    # FIX 4: Extract real website facts
+    website_facts = await extract_website_facts(website_id) if website_id and website_id != "default" else {}
     
     # 1. Humanizer Agent
     humanized = await humanizer_agent.run(raw_html, pk)
@@ -4936,6 +5265,14 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     # 5. Enforce sentence variety & paragraph variety
     step4 = enforce_sentence_variety(step3)
     step4 = enforce_paragraph_variety(step4)
+    
+    # FIX 1: Remove fake quotes
+    step4 = remove_fake_quotes(step4, real_people_names)
+    
+    # FIX 2: Remove duplicate paragraphs and tables
+    step4 = remove_duplicate_paragraphs(step4)
+    step4 = remove_duplicate_tables(step4)
+    step4 = fix_broken_sentences(step4)
     
     # 6. Remove broken links & placeholder strategic resources
     step5 = remove_broken_links(step4)
@@ -4988,6 +5325,10 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     step9 = ensure_faqs_and_ctas(step9, outline)
     step9 = fix_broken_year_in_content(step9)
     step9 = enforce_keyword_density(step9, pk, max_count=8)
+
+    # FIX 3: Replace static FAQ with clickable accordion
+    if outline and outline.get("point_14_faqs"):
+        step9 = replace_faq_with_accordion(step9, outline)
 
     # 11. Validate keyword in title
     final = validate_keyword_in_title(step9, pk)

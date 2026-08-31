@@ -18,14 +18,15 @@
   {
     "url": "https://accident.innovatcs.com",
     "cms_url": "https://accident.innovatcs.com",
-    "cms_user": "nikhiladwaan@gmail.com",
+    "cms_user": "nikhil_d",
     "wordpress_url": "https://accident.innovatcs.com",
-    "wordpress_user": "nikhiladwaan@gmail.com",
-    "wordpress_password": "gAAAAABqlTiLP7wpppcu0F1_DH7w1svEye0yYpIKHLAllWt6uQWC_r34dy812WGg4THkrTPQ9Z59ThZL3x1u4hb_UPm0yIJ7CA==",
-    "app_password": "gAAAAABqlTiLP7wpppcu0F1_DH7w1svEye0yYpIKHLAllWt6uQWC_r34dy812WGg4THkrTPQ9Z59ThZL3x1u4hb_UPm0yIJ7CA==",
-    "wordpress_password_encrypted": "gAAAAABqlTiLP7wpppcu0F1_DH7w1svEye0yYpIKHLAllWt6uQWC_r34dy812WGg4THkrTPQ9Z59ThZL3x1u4hb_UPm0yIJ7CA==",
+    "wordpress_user": "nikhil_d",
+    "wordpress_password": "gAAAAABqlTi3MsvUMOh4OYc3n7lm-RWfeJKMkbQJ9sQeJZkJjz8vT6ZwqDGMdbR27MRUd1GjH85YODOIm1f-lgSWaAFgDFVhqO0YBJS47vzNiB8I5X7baks=",
+    "app_password": "gAAAAABqlTi3MsvUMOh4OYc3n7lm-RWfeJKMkbQJ9sQeJZkJjz8vT6ZwqDGMdbR27MRUd1GjH85YODOIm1f-lgSWaAFgDFVhqO0YBJS47vzNiB8I5X7baks=",
+    "wordpress_password_encrypted": "gAAAAABqlTi3MsvUMOh4OYc3n7lm-RWfeJKMkbQJ9sQeJZkJjz8vT6ZwqDGMdbR27MRUd1GjH85YODOIm1f-lgSWaAFgDFVhqO0YBJS47vzNiB8I5X7baks=",
     "updated_at": "2026-08-31T08:17:15.234353",
     "id": "44666e81-1d83-4801-be22-1cb72f39801a",
-    "created_at": "2026-08-31T08:17:15.457126"
+    "created_at": "2026-08-31T08:17:15.457126",
+    "status": "active"
   }
 ]

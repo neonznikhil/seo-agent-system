@@ -15,9 +15,15 @@
   "5a0c3532-f98e-4951-a9e3-8d8bd7c13322": {
     "daily_blog_target": 10,
     "generation_interval_minutes": 144,
-    "auto_topic_selection": true,
-    "updated_at": "2026-08-31T13:48:01.317513",
-    "blogs_generated_today": 0,
+    "auto_topic_selection": false,
+    "updated_at": "2026-08-31T15:46:38.579506",
+    "blogs_generated_today": 1,
+    "last_reset_date": "2026-08-31"
+  },
+  "44666e81-1d83-4801-be22-1cb72f39801a": {
+    "blogs_generated_today": 1,
+    "daily_blog_target": 5,
+    "generation_interval_minutes": 288,
     "last_reset_date": "2026-08-31"
   }
 }

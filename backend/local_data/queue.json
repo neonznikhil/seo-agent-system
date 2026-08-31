@@ -610,5 +610,13 @@
     "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
     "retry_count": 0,
     "queued_at": "2026-08-31T14:01:48.861203"
+  },
+  {
+    "id": "520ab492-973d-4e4e-9ea2-b98ca5e2e6b5",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-31T15:33:18.531706"
   }
 ]
