@@ -172,38 +172,26 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
     supabase = get_supabase()
     set_account_context(supabase, account_id)
     try:
-        try:
-            supabase.table("websites").update({
-                "status": "crawling",
-                "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", website_id).execute()
-        except Exception:
-            pass
+        # Get website URL
+        site_data = supabase.table("websites").select("url, domain, cms_url, wordpress_url").eq("id", website_id).single().execute().data
+        site_url = ""
+        if site_data:
+            site_url = site_data.get("url") or site_data.get("cms_url") or site_data.get("wordpress_url") or f"https://{site_data.get('domain', '')}"
+        
+        if not site_url or site_url in ("https://", "http://"):
+            logger.error(f"[AutoCrawl] No URL for website {website_id}")
+            return
 
-        from ..services.knowledge_service import KnowledgeService
-        ks = KnowledgeService(website_id=website_id, account_id=account_id)
-        res = await ks.watch_business_website()
+        # Use the new robust crawl function
+        from ..services.knowledge_service import crawl_and_index_website
+        res = await crawl_and_index_website(website_id, site_url)
 
-        kb_rows = []
-        try:
-            kb_rows = supabase.table("knowledge_base").select("id", count="exact").eq("website_id", website_id).execute()
-        except Exception:
-            pass
-        count = getattr(kb_rows, "count", 0) or len(getattr(kb_rows, "data", []) or [])
-
-        try:
-            supabase.table("websites").update({
-                "status": "active",
-                "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", website_id).execute()
-        except Exception:
-            pass
-
+        count = res.get("chunks_saved", 0)
         try:
             supabase.table("content_log").insert({
                 "website_id": website_id,
                 "account_id": account_id,
-                "title": f"Knowledge Crawl: {res.get('urls_scanned', 0)} pages scanned, {count} chunks indexed",
+                "title": f"Knowledge Crawl: {res.get('pages_found', 0)} pages found, {count} chunks indexed",
                 "status": "completed",
                 "pipeline_status": "knowledge_indexed",
                 "created_at": datetime.utcnow().isoformat()

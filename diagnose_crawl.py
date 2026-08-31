@@ -110,7 +110,11 @@ async def generate_embedding(text):
             )
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get("data", [{}])[0].get("embedding")
+                embedding = data.get("data", [{}])[0].get("embedding")
+                # Truncate to 1024 dims to match DB column
+                if embedding and len(embedding) > 1024:
+                    embedding = embedding[:1024]
+                return embedding
     except Exception as e:
         print(f"  [WARN] Embedding failed: {e}")
     return None

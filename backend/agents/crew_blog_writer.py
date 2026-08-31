@@ -4023,6 +4023,24 @@ async def generate_blog_autonomous(
     blog_id = str(uuid.uuid4())
     start_ts = datetime.utcnow()
 
+    # Event bus helper for real-time frontend updates
+    async def publish_phase(phase: str, status: str, message: str, data: dict = None):
+        try:
+            from ..services.event_bus import publish
+            publish(f"crew:{blog_id}", {
+                "event": "phase_update",
+                "phase": phase,
+                "status": status,
+                "message": message,
+                "blog_id": blog_id,
+                "website_id": website_id,
+                "content_id": content_id,
+                "data": data or {},
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception:
+            pass
+
     from ..services.website_service import get_default_website_id
     from ..services.local_store import list_local_knowledge
     if not website_id or website_id in ("default", "default-website-id", "all", "", "null", "undefined"):
@@ -4034,8 +4052,10 @@ async def generate_blog_autonomous(
     _validate_keyword_input(topic)
     topic = topic.strip()
     print(f"[WRITER] Starting blog generation for keyword: '{topic}'")
+    await publish_phase("init", "running", f"Starting blog generation for '{topic}'")
 
     # 1. Knowledge base count check (<5 auto-trigger crawl and fallback)
+    await publish_phase("knowledge", "running", "Checking knowledge base...")
     kb_count = 0
     try:
         kb_count_res = supabase.table("knowledge_base").select("id", count="exact").eq("website_id", website_id).execute()
@@ -4050,12 +4070,14 @@ async def generate_blog_autonomous(
     kb_count = max(kb_count, len(local_kb))
 
     if kb_count < 5:
+        await publish_phase("knowledge", "running", f"Knowledge base has {kb_count} entries — crawling website...")
         logger.info(f"[Crew] Knowledge base count is {kb_count}/5 for site {website_id} — triggering automated knowledge crawl fallback...")
         try:
             from ..services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=website_id)
             crawl_res = await asyncio.wait_for(ks.watch_business_website(), timeout=30.0)
             logger.info(f"[Crew] Auto-crawl completed: {crawl_res}")
+            await publish_phase("knowledge", "running", f"Website crawl complete — indexing content...")
             
             # Re-query knowledge_base
             alt = supabase.table("knowledge_base").select("id").eq("website_id", website_id).limit(10).execute().data or []
@@ -4095,8 +4117,11 @@ async def generate_blog_autonomous(
                 status_code=400,
                 detail=f"Could not extract sufficient knowledge from {site_url}. Please check the website is accessible."
             )
+    
+    await publish_phase("knowledge", "completed", f"Knowledge base ready ({kb_count} entries)")
 
     # 2. brain_memory recall topic top3 + analytics_data top performing
+    await publish_phase("research", "running", "Researching SERP competitors & brand knowledge...")
     brain_hits = []
     tone = "authoritative, professional, helpful"
     analytics_learnings = []
@@ -4150,9 +4175,12 @@ async def generate_blog_autonomous(
     except Exception as e:
         logger.warning(f"[Crew] knowledge hits failed: {e}")
         knowledge_hits = []
+    
+    await publish_phase("research", "completed", f"Research complete — {len(knowledge_hits)} knowledge sources found")
 
     # 3. Crew kickoff (or fallback)
     await _log_phase(website_id, content_id, "crew_init", 0, "running", None, {"topic": topic, "website_id": website_id, "kb_count": kb_count})
+    await publish_phase("planner", "running", "Planner agent creating 15-point outline...")
     crew_result = None
     seo_score = 0
     val_score = 0.0
@@ -4181,6 +4209,8 @@ async def generate_blog_autonomous(
                 "analytics": json.dumps(analytics_learnings[:2], default=str),
             }
             try:
+                await publish_phase("planner", "completed", "Outline ready — Writer agent drafting sections...")
+                await publish_phase("writer", "running", "Writer drafting grounded H2 sections & FAQ...")
                 crew_output = await asyncio.wait_for(asyncio.to_thread(crew.kickoff, inputs), timeout=75.0)
                 # crew_output is CrewOutput; get final task output
                 raw_output = str(crew_output)
@@ -4216,35 +4246,43 @@ async def generate_blog_autonomous(
                     val_score = 0.82
                     ground_score = 0.78
                 crew_result = {"planner_outline": {}, "writer_html": final_html, "final_html": final_html, "seo_score": seo_score, "validation_score": val_score, "grounding_score": ground_score, "feedback": "CrewAI sequential output", "knowledge_used": knowledge_hits}
+                await publish_phase("writer", "completed", f"Draft complete ({len(final_html)} chars) — Editor reviewing...")
                 await _log_phase(website_id, content_id, "crew_kickoff", 4, "completed", {"html_length": len(final_html), "seo_score": seo_score}, inputs)
             except Exception as e:
                 logger.error(f"[Crew] kickoff failed, falling back to direct NIM: {e}")
+                await publish_phase("writer", "running", "CrewAI unavailable — using direct NIM fallback...")
                 crew_result = await _direct_nim_crew_fallback(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, content_id)
                 final_html = crew_result["final_html"]
                 planner_outline = crew_result["planner_outline"]
                 seo_score = crew_result["seo_score"]
                 val_score = crew_result["validation_score"]
                 ground_score = crew_result["grounding_score"]
+                await publish_phase("writer", "completed", f"Draft complete ({len(final_html)} chars) — Editor reviewing...")
         else:
             # No crewai installed -> direct NIM fallback
+            await publish_phase("writer", "running", "Writing article with NVIDIA NIM...")
             crew_result = await _direct_nim_crew_fallback(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, content_id)
             final_html = crew_result["final_html"]
             planner_outline = crew_result["planner_outline"]
             seo_score = crew_result["seo_score"]
             val_score = crew_result["validation_score"]
             ground_score = crew_result["grounding_score"]
+            await publish_phase("writer", "completed", f"Draft complete ({len(final_html)} chars) — Editor reviewing...")
     except Exception as e:
         logger.error(f"[Crew] crew generation failed: {e}")
         # Ultimate fallback
         try:
+            await publish_phase("writer", "running", "Using fallback writer...")
             crew_result = await _direct_nim_crew_fallback(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, content_id)
             final_html = crew_result["final_html"]
             seo_score = crew_result["seo_score"]
             val_score = crew_result["validation_score"]
             ground_score = crew_result["grounding_score"]
             planner_outline = crew_result.get("planner_outline", {})
+            await publish_phase("writer", "completed", f"Draft complete ({len(final_html)} chars) — Editor reviewing...")
         except Exception as e2:
             await _log_phase(website_id, content_id, "crew_kickoff", 4, "failed", str(e2), {"topic": topic})
+            await publish_phase("writer", "failed", f"Generation failed: {str(e2)[:100]}")
             raise Exception(f"Crew generation failed after fallback: {e2}") from e
 
     final_html = crew_result["final_html"]
@@ -4289,6 +4327,7 @@ async def generate_blog_autonomous(
         raise ValueError("Article contains wrong audience content — regenerating")
 
     # 5. Quality gate: seo_score via seo_agent, validation via rag hallucination, grounding avg similarity
+    await publish_phase("editor", "running", "Editor quality gate: SEO, validation, grounding checks...")
     # If crew already produced scores, verify with independent checks
     try:
         from ..services.seo_quality_gate import SEOQualityGate
@@ -4300,8 +4339,10 @@ async def generate_blog_autonomous(
         # If independent gate lower, take min
         if seo_gate_res and seo_gate_res.get("seo_score"):
             seo_score = min(seo_score, int(seo_gate_res["seo_score"])) if seo_score else int(seo_gate_res["seo_score"])
+        await publish_phase("editor", "completed", f"Quality gate passed — SEO {seo_score}/100")
     except Exception as e:
         logger.debug(f"[Crew] seo gate independent check note: {e}")
+        await publish_phase("editor", "completed", f"Quality gate complete — SEO {seo_score}/100")
 
     # grounding avg similarity already computed; refine
     try:
@@ -4630,6 +4671,12 @@ async def generate_blog_autonomous(
     # 8. Return
     duration = (datetime.utcnow() - start_ts).total_seconds()
     logger.info(f"[Crew] generate_blog_autonomous done topic='{topic}' blog_id={blog_id} seo={seo_score} status={status} duration={duration:.1f}s")
+    await publish_phase("complete", "completed", f"Article ready! SEO {seo_score}/100 · {words_total} words · {status}", {
+        "seo_score": seo_score,
+        "word_count": words_total,
+        "status": status,
+        "wordpress_url": wordpress_url
+    })
     return {
         "success": True,
         "title": blog_row["title"],

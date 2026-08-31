@@ -80,15 +80,23 @@ async def check_supabase_connection() -> bool:
 
 NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 NIM_LLM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+# OpenRouter endpoints
+OPENROUTER_LLM_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
+NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-ultra-550b-a55b")
+# Provider selection
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Fallback lists for central client (used by call_nim_llm)
 _LLM_MODELS = [NIM_LLM_MODEL, NIM_LLM_FALLBACK, "nvidia/nemotron-3-super-120b-a12b"]
 _EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nvidia-embed-qa-4", "nvidia/nv-embedqa-e5-v5"]
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
+if LLM_PROVIDER == "openrouter":
+    NIM_API_KEY = OPENROUTER_API_KEY or NIM_API_KEY
 
 # ---------------------------------------------------------------------------
 # NIM availability tracking (startup validation + live diagnostics)
@@ -124,7 +132,7 @@ async def validate_nim_connection(force: bool = False) -> dict:
     if _nim_state["available"] is not None and not force:
         return dict(_nim_state)
 
-    api_key = os.getenv("NVIDIA_API_KEY") or NIM_API_KEY
+    api_key = NIM_API_KEY
     if not api_key:
         _nim_state.update({
             "available": False,
@@ -137,6 +145,11 @@ async def validate_nim_connection(force: bool = False) -> dict:
         return dict(_nim_state)
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    url = NIM_LLM_URL
+    if LLM_PROVIDER == "openrouter":
+        url = OPENROUTER_LLM_URL
+        headers["HTTP-Referer"] = "https://rankforge.ai"
+        headers["X-Title"] = "RankForge"
     payload = {
         "model": NIM_LLM_MODEL,
         "messages": [{"role": "user", "content": "ping"}],
@@ -145,7 +158,7 @@ async def validate_nim_connection(force: bool = False) -> dict:
     }
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
+            resp = await client.post(url, json=payload, headers=headers)
     except httpx.RequestError as e:
         _nim_state.update({
             "available": False,
@@ -258,7 +271,12 @@ def _get_nim_http_client() -> httpx.AsyncClient:
 )
 async def _embed_request(payload: dict, headers: dict) -> List[float]:
     client = _get_nim_http_client()
-    resp = await client.post(NIM_EMBED_URL, json=payload, headers=headers)
+    url = NIM_EMBED_URL
+    if LLM_PROVIDER == "openrouter":
+        url = OPENROUTER_EMBED_URL
+        headers["HTTP-Referer"] = "https://rankforge.ai"
+        headers["X-Title"] = "RankForge"
+    resp = await client.post(url, json=payload, headers=headers)
     if resp.status_code == 410:
         # EOL model - log and let caller try next fallback
         logger.warning(f"[NIM Embed] Model EOL 410 {payload.get('model')} - switching to fallback")
@@ -304,7 +322,12 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
         "temperature": temperature,
     }
     client = _get_nim_http_client()
-    resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
+    url = NIM_LLM_URL
+    if LLM_PROVIDER == "openrouter":
+        url = OPENROUTER_LLM_URL
+        headers["HTTP-Referer"] = "https://rankforge.ai"
+        headers["X-Title"] = "RankForge"
+    resp = await client.post(url, json=payload, headers=headers)
     if resp.status_code == 429:
         raise httpx.HTTPStatusError("rate_limited", request=resp.request, response=resp)
     if resp.status_code != 200:
@@ -335,7 +358,7 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
                        max_tokens: int = 8192, temperature: float = 0.7,
                        fail_silently: bool = True, **kwargs) -> str:
     """Call NVIDIA NIM chat completions with 3x retry and model fallbacks."""
-    api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY") or NIM_API_KEY
+    api_key = NIM_API_KEY
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -345,6 +368,9 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    if LLM_PROVIDER == "openrouter":
+        headers["HTTP-Referer"] = "https://rankforge.ai"
+        headers["X-Title"] = "RankForge"
 
     candidate_models = []
     env_model = os.getenv("NIM_LLM_MODEL")

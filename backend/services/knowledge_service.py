@@ -217,8 +217,15 @@ class KnowledgeService:
 
         api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY", "")
         url = "https://integrate.api.nvidia.com/v1/embeddings"
+        provider = os.getenv("LLM_PROVIDER", "nvidia")
+        if provider == "openrouter":
+            api_key = os.getenv("OPENROUTER_API_KEY", api_key)
+            url = "https://openrouter.ai/api/v1/embeddings"
         if api_key:
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            if provider == "openrouter":
+                headers["HTTP-Referer"] = "https://rankforge.ai"
+                headers["X-Title"] = "RankForge"
             # Try ordered models via env or central
             try:
                 from .nim_client import get_embedding_models
@@ -1412,6 +1419,10 @@ async def crawl_and_index_website(website_id: str, site_url: str) -> dict:
                         if not embedding or len(embedding) == 0:
                             print(f"[CRAWL] Embedding empty for chunk from {chunk['source_url']}")
                             embedding = None
+                        elif len(embedding) > 1024:
+                            # Truncate to match DB column dimension (1024)
+                            embedding = embedding[:1024]
+                            print(f"[CRAWL] Truncated embedding from {len(embedding)} to 1024 dims")
                     except Exception as emb_err:
                         print(f"[CRAWL] Embedding API error: {emb_err}")
                         logger.warning(f"[CRAWL] Embedding failed for chunk: {emb_err}")

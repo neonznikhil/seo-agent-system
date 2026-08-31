@@ -1,15 +1,25 @@
 {
   "320133b7-192c-4f99-a90f-cd3f188d9140": {
     "daily_blog_target": 10,
-    "generation_interval_minutes": 144,
+    "generation_interval_minutes": 3,
     "auto_topic_selection": true,
-    "updated_at": "2026-08-29T18:42:14.539622",
-    "blogs_generated_today": 78,
-    "last_reset_date": "2026-08-29",
+    "updated_at": "2026-08-31T07:17:49.183698",
+    "blogs_generated_today": 0,
+    "last_reset_date": "2026-08-31",
     "interval_minutes": 3,
     "schedule_label": "Every 3 min",
     "label": "Every 3 min",
     "daily_target": 10,
     "auto_generate_enabled": true
+  },
+  "5a0c3532-f98e-4951-a9e3-8d8bd7c13322": {
+    "generation_interval_minutes": 3,
+    "interval_minutes": 3,
+    "schedule_label": "Every 3 min",
+    "label": "Every 3 min",
+    "daily_blog_target": 10,
+    "daily_target": 10,
+    "auto_generate_enabled": true,
+    "updated_at": "2026-08-31T08:18:30.372434"
   }
 }

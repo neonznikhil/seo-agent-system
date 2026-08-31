@@ -554,5 +554,45 @@
     "error": "Simulated Network Timeout",
     "retry_count": 0,
     "queued_at": "2026-08-29T16:58:49.007521"
+  },
+  {
+    "id": "e3f38a3a-a88a-4186-bbfa-6f55119975ab",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-31T07:37:51.685574"
+  },
+  {
+    "id": "8438d70d-b70b-4b28-88e3-67f80e47e764",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-31T08:18:51.630877"
+  },
+  {
+    "id": "25d80974-e18a-4e63-9f76-4df496f3487b",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-31T08:20:24.810206"
+  },
+  {
+    "id": "e1928b06-2991-4173-8fdc-7263f71942b5",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-31T08:44:14.220059"
+  },
+  {
+    "id": "f687ef68-e993-41e9-bf0a-7fc8c28a63e7",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-31T08:45:23.779177"
   }
 ]

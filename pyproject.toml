@@ -67,6 +67,7 @@ testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 where = ["."]

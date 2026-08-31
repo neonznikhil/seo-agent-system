@@ -301,6 +301,8 @@ export default function WriterPage() {
     }
   };
 
+  const [phaseHistory, setPhaseHistory] = useState<Array<{phase: string, status: string, message: string, ts: string}>>([]);
+
   const doGenerate = async (kwOverride?: string, titleOverride?: string) => {
     const kw = (kwOverride || keywordsInput || title).trim();
     const targetTitle = (titleOverride || title || kw).trim();
@@ -312,7 +314,6 @@ export default function WriterPage() {
       setError("Please select a website first.");
       return;
     }
-    // Warn if WP not connected but allow generation (will still queue as local draft)
     if (autoDraft && wpStatus && !wpStatus.connected) {
       setStatusMessage("⚠️ WordPress not connected — article will still generate and queue as local draft. Connect WordPress in /websites to auto-push drafts.");
     }
@@ -322,81 +323,96 @@ export default function WriterPage() {
       setError(null);
       setCompletedResult(null);
       setWpDraftMsg(null);
-      setActiveStage("Planner researching SERP competitors & brand knowledge...");
+      setActiveStage("Starting generation...");
+      setPhaseHistory([]);
       setStatusMessage(null);
 
-      const t1 = setTimeout(() => setActiveStage("Writer drafting grounded H2 sections & FAQ (pure HTML)..."), 3200);
-      const t2 = setTimeout(() => setActiveStage("Editor quality gate (SEO 85+ · jargon purge · citations)..."), 8500);
+      // Generate client-side blog_id for SSE tracking
+      const blogId = crypto.randomUUID();
 
       const payload = {
         topic: kw,
         website_id: selectedWebsiteId,
         tone,
         word_count: wordCountTarget,
+        blog_id: blogId,
       };
 
+      // Start SSE connection for real-time progress
+      const sseUrl = `/api/crew/status/${blogId}/stream`;
+      const eventSource = new EventSource(sseUrl);
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === "phase_update") {
+            const entry = { phase: data.phase, status: data.status, message: data.message, ts: data.timestamp };
+            setPhaseHistory(prev => [...prev, entry]);
+            setActiveStage(data.message);
+          }
+        } catch {}
+      };
+
+      // Start generation (returns immediately)
       const res = await post(`/api/crew/generate`, payload);
-      clearTimeout(t1);
-      clearTimeout(t2);
+      
+      // Wait for SSE to complete (eventSource closes on "complete" phase)
+      await new Promise<void>((resolve) => {
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "phase_update") {
+              const entry = { phase: data.phase, status: data.status, message: data.message, ts: data.timestamp };
+              setPhaseHistory(prev => [...prev, entry]);
+              setActiveStage(data.message);
+              if (data.phase === "complete") {
+                eventSource.close();
+                resolve();
+              }
+            }
+          } catch {}
+        };
+        // Timeout after 5 minutes
+        setTimeout(() => { eventSource.close(); resolve(); }, 300000);
+      });
 
       if (res.success === false) {
         throw new Error(res.detail || res.message || "Generation failed");
       }
 
+      // Fetch final result
+      const statusRes = await get(`/api/crew/status/${blogId}`);
+      const blog = statusRes?.blog || {};
+      
       setActiveStage("✅ Generated — creating WordPress draft...");
-      setCompletedResult(res);
-      // Show WordPress draft info immediately if backend already created draft
-      if (res.wordpress_url || res.edit_url) {
-        setWpDraftMsg(`WordPress draft ready: ${res.wordpress_url || res.edit_url} (Post #${res.wordpress_post_id || ""})`);
+      setCompletedResult({ ...res, ...blog, blog_id: blogId });
+      
+      if (blog.wordpress_url || res.wordpress_url) {
+        setWpDraftMsg(`WordPress draft ready: ${blog.wordpress_url || res.wordpress_url}`);
       }
       setStatusMessage(
-        `✅ "${res.title || targetTitle || kw}" generated — SEO ${res.seo_score || 88}/100 · ${res.word_count || wordCountTarget} words · ${res.status === "published" ? "Published live ✅" : "Draft in WordPress + Approval queue"}`
+        `✅ "${blog.title || targetTitle || kw}" generated — SEO ${blog.seo_score || 88}/100 · ${blog.word_count || wordCountTarget} words`
       );
 
-      // Autonomous auto-draft step: if backend did not already create WP draft and autoDraft checked, create via writer approve-draft
-      const blogId = res.blog_id || res.content_id || res.approval_id;
-      const hasWpDraft = !!res.wordpress_url || !!res.wordpress_post_id;
-      if (autoDraft && !hasWpDraft && blogId && wpStatus?.connected) {
+      // Auto-draft to WordPress if needed
+      const hasWpDraft = !!blog.wordpress_url || !!res.wordpress_url;
+      if (autoDraft && !hasWpDraft && wpStatus?.connected) {
         try {
           setWpDrafting(true);
-          // Try writer approve-draft using content_id or blog_id
-          const wid = selectedWebsiteId;
-          const draftCandidates = [res.content_id, res.blog_id, res.approval_id].filter(Boolean);
-          let drafted = false;
-          for (const cid of draftCandidates) {
-            try {
-              const dres: any = await post(`/api/writer/${wid}/content/${cid}/approve-draft`, {});
-              if (dres?.wp_post_id || dres?.edit_url) {
-                setWpDraftMsg(dres.message || `Draft created in WordPress #${dres.wp_post_id} — ${dres.edit_url || ""}`);
-                drafted = true;
-                break;
-              }
-            } catch {}
+          const dres: any = await post(`/api/writer/${selectedWebsiteId}/content/${blogId}/approve-draft`, {});
+          if (dres?.wp_post_id || dres?.edit_url) {
+            setWpDraftMsg(dres.message || `Draft created in WordPress #${dres.wp_post_id}`);
           }
-          if (!drafted) {
-            // Fallback direct wordpress draft endpoint
-            try {
-              const direct: any = await post(`/api/wordpress/${wid}/create-draft`, { title: res.title || targetTitle || kw, content: res.html || res.final_html || "", keywords: [kw] });
-              if (direct?.wp_post_id) {
-                setWpDraftMsg(`Draft created in WordPress #${direct.wp_post_id}`);
-                drafted = true;
-              }
-            } catch {}
-          }
-          if (!drafted) setWpDraftMsg("Queued to approvals — WordPress draft will appear once WP credentials are verified.");
-        } catch (e: any) {
-          setWpDraftMsg(e.message || "Draft queued locally — check WordPress connection in /websites");
+        } catch {
+          setWpDraftMsg("Queued to approvals — WordPress draft will appear once WP credentials are verified.");
         } finally {
           setWpDrafting(false);
         }
       } else if (autoDraft && !wpStatus?.connected) {
         setWpDraftMsg("WordPress not connected — draft saved to approval queue. Connect WP in /websites to see it in WP Drafts.");
-      } else if (hasWpDraft) {
-        // already drafted, nothing extra
       }
 
       loadArticlesForWebsite(selectedWebsiteId);
-      // refresh suggestions to drop the used keyword
       setTimeout(() => loadSuggestions(selectedWebsiteId), 800);
     } catch (err: any) {
       setActiveStage("");
@@ -410,7 +426,6 @@ export default function WriterPage() {
       setError(msg);
     } finally {
       setGenerating(false);
-      setActiveStage((prev) => (prev.includes("Draft") ? "" : prev));
       setTimeout(() => setActiveStage(""), 2500);
     }
   };
@@ -693,7 +708,19 @@ export default function WriterPage() {
                   <div style={{ width: "16px", height: "16px", border: "2px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" } as any} />
                   <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--accent)" }}>{activeStage}</span>
                 </div>
-                <div style={{ fontSize: "10.5px", color: "var(--muted)", marginTop: "6px" }}>This may take 40–90s (Planner→Writer→Editor via NVIDIA NIM). Button stays disabled until done — check /approvals when complete.</div>
+                {phaseHistory.length > 0 && (
+                  <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                    {phaseHistory.map((p, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px" }}>
+                        <span style={{ color: p.status === "completed" ? "var(--green)" : p.status === "failed" ? "var(--red)" : "var(--muted)", width: "12px", textAlign: "center" }}>
+                          {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : "○"}
+                        </span>
+                        <span style={{ fontWeight: 500, minWidth: "70px", textTransform: "capitalize" }}>{p.phase}</span>
+                        <span style={{ color: "var(--muted)" }}>{p.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

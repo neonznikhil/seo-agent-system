@@ -1,5 +1,7 @@
 import os
 import logging
+import uuid
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends, Request
 from pydantic import BaseModel, Field
@@ -187,38 +189,40 @@ async def consolidate_knowledge():
 @router.post("/knowledge/watch-business")
 async def watch_business_endpoint(payload: WatchBusinessRequest):
     """Autonomous watcher: parses sitemap, compares content hashes, auto-ingests new/updated pages."""
+    site = (payload.site_url or "").strip() or None
     service = KnowledgeService(website_id=payload.website_id)
-    res = await service.watch_business_website(target_site=payload.site_url, max_pages=payload.max_pages or 50)
+    res = await service.watch_business_website(target_site=site, max_pages=payload.max_pages or 50)
     return res
 
 
 @router.post("/api/knowledge/crawl")
 @router.post("/knowledge/crawl")
 async def crawl_full_site_endpoint(payload: CrawlSiteRequest):
-    """Full-site crawl: recursively crawls sitemap + BFS discovers ALL internal subpages (up to max_pages) and indexes into knowledge base.
-
-    FIX: Previously single-page scrape only; now crawls entire site to build comprehensive knowledge base.
-    """
+    """Full-site crawl: recursively crawls sitemap + BFS discovers ALL internal subpages and indexes into knowledge base."""
     site = (payload.site_url or payload.url or "").strip() or None
-    # Clamp max_pages 5..100
-    try:
-        max_pages = int(payload.max_pages or 50)
-    except Exception:
-        max_pages = 50
-    max_pages = max(5, min(100, max_pages))
-    try:
-        max_depth = int(payload.max_depth or 3)
-    except Exception:
-        max_depth = 3
-    max_depth = max(1, min(5, max_depth))
-    service = KnowledgeService(website_id=payload.website_id)
-    res = await service.watch_business_website(target_site=site, max_pages=max_pages, max_depth=max_depth)
-    # Enrich with human-readable message
-    if res.get("success"):
+    if not site:
+        raise HTTPException(status_code=400, detail="site_url or url required")
+    
+    website_id = payload.website_id
+    if not website_id:
+        # Create a website record if none provided
+        website_id = str(uuid.uuid4())
+        get_supabase().table("websites").insert({
+            "id": website_id,
+            "domain": site.replace("https://", "").replace("http://", "").split("/")[0],
+            "url": site,
+            "status": "crawling",
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
+    
+    res = await crawl_and_index_website(website_id, site)
+    
+    if res.get("chunks_saved", 0) > 0:
         res["message"] = (
-            f"Full-site crawl complete: {res.get('urls_scanned', 0)} pages scanned "
-            f"({res.get('new_pages_ingested', 0)} new + {res.get('updated_pages', 0)} updated), "
-            f"{res.get('total_chunks_indexed', 0)} chunks indexed across {res.get('urls_discovered', 0)} discovered URLs."
+            f"Full-site crawl complete: {res.get('pages_found', 0)} pages found, "
+            f"{res.get('pages_crawled', 0)} crawled, "
+            f"{res.get('chunks_saved', 0)} chunks indexed."
         )
     return res
 

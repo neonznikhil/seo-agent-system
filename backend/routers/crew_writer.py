@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -12,7 +12,6 @@ from ..database import get_supabase
 from ..middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.crew_writer")
-
 router = APIRouter(prefix="/crew", tags=["CrewAI 3-Agent"])
 
 class CrewGenerateRequest(BaseModel):
@@ -21,15 +20,30 @@ class CrewGenerateRequest(BaseModel):
     user_id: Optional[str] = None
     tone: Optional[str] = "professional"
     word_count: Optional[int] = 2500
+    blog_id: Optional[str] = None
 
 class CrewAutonomousRequest(BaseModel):
     website_id: str
     user_id: Optional[str] = None
 
+async def _run_generation(payload: CrewGenerateRequest):
+    """Background task for blog generation."""
+    from ..agents.crew_blog_writer import generate_blog_with_self_healing
+    try:
+        await generate_blog_with_self_healing(
+            topic=payload.topic,
+            website_id=payload.website_id or "",
+            user_id=payload.user_id,
+            tone=payload.tone,
+            word_count=payload.word_count
+        )
+    except Exception as e:
+        logger.error(f"[CrewAPI] Background generation failed: {e}")
+
 @router.post("/generate")
 @router.post("/api/crew/generate")
-async def crew_generate(payload: CrewGenerateRequest, request: Request):
-    """POST /api/crew/generate {topic, website_id, tone, word_count} -> generate_blog_autonomous."""
+async def crew_generate(payload: CrewGenerateRequest, request: Request, background_tasks: BackgroundTasks):
+    """POST /api/crew/generate {topic, website_id, tone, word_count} -> starts generation, returns blog_id for SSE."""
     topic = (payload.topic or "").strip()
     if not topic:
         raise HTTPException(status_code=400, detail="topic required")
@@ -39,23 +53,11 @@ async def crew_generate(payload: CrewGenerateRequest, request: Request):
         website_id = get_default_website_id()
     if not website_id:
         raise HTTPException(status_code=400, detail="No website connected — Go to /websites to connect your domain first.")
-    # Knowledge check and multi-agent generation
-    try:
-        from ..agents.crew_blog_writer import generate_blog_with_self_healing
-        result = await generate_blog_with_self_healing(
-            topic=topic,
-            website_id=website_id,
-            user_id=payload.user_id,
-            tone=payload.tone,
-            word_count=payload.word_count
-        )
-        return {"success": True, **result}
-    except Exception as e:
-        msg = str(e)
-        if "Knowledge empty" in msg:
-            raise HTTPException(status_code=400, detail=msg)
-        logger.error(f"[CrewAPI] generate failed: {e}")
-        raise HTTPException(status_code=500, detail=msg[:500])
+    
+    blog_id = payload.blog_id or str(uuid.uuid4())
+    background_tasks.add_task(_run_generation, payload)
+    
+    return {"success": True, "blog_id": blog_id, "message": "Generation started — connect to SSE for progress"}
 
 @router.post("/generate/autonomous")
 async def crew_generate_autonomous(payload: CrewAutonomousRequest, request: Request):
@@ -63,7 +65,6 @@ async def crew_generate_autonomous(payload: CrewAutonomousRequest, request: Requ
     website_id = payload.website_id
     if not website_id:
         raise HTTPException(status_code=400, detail="website_id required")
-    # Find gap keyword >800 not in blogs
     gap_keyword = None
     try:
         from ..services.analytics_service import AnalyticsService
@@ -105,7 +106,6 @@ async def crew_generate_autonomous(payload: CrewAutonomousRequest, request: Requ
 async def crew_status(blog_id: str):
     """GET /api/crew/status/{blog_id} -> pipeline logs + blog row."""
     supabase = get_supabase()
-    # Try blogs first, then content_log
     blog = None
     try:
         row = supabase.table("blogs").select("*").eq("id", blog_id).single().execute().data
@@ -121,7 +121,6 @@ async def crew_status(blog_id: str):
         except Exception:
             pass
     if not blog:
-        # also try blog_approvals blog_id
         try:
             row = supabase.table("blog_approvals").select("*").eq("blog_id", blog_id).single().execute().data
             if row:
@@ -136,11 +135,9 @@ async def crew_status(blog_id: str):
     if not blog:
         raise HTTPException(status_code=404, detail="blog_id not found")
 
-    # Pipeline logs
     logs = []
     try:
         content_id = blog.get("id") or blog_id
-        # content_pipeline_logs by content_id or blog_id
         rows = supabase.table("content_pipeline_logs").select("*").eq("content_id", content_id).order("step_number").limit(50).execute().data or []
         if not rows:
             rows = supabase.table("content_pipeline_logs").select("*").eq("content_id", blog.get("blog_id", blog_id)).order("step_number").limit(50).execute().data or []
@@ -162,27 +159,18 @@ async def crew_status(blog_id: str):
 
 @router.get("/status/{blog_id}/stream")
 async def crew_status_stream(blog_id: str):
-    """SSE streaming logs from content_pipeline_logs for live Planner->Writer->Editor view."""
+    """SSE streaming for real-time Planner->Writer->Editor progress."""
     from ..services.event_bus import stream as bus_stream
     import json as _json
 
     async def event_generator():
-        # Initial snapshot
-        try:
-            snap = await crew_status(blog_id)
-            yield f"data: {_json.dumps({'event': 'snapshot', 'payload': snap}, default=str)}\n\n"
-        except Exception:
-            pass
         async for event in bus_stream(f"crew:{blog_id}"):
             if event.get("keepalive"):
                 yield ": keepalive\n\n"
                 continue
             yield f"data: {_json.dumps(event, default=str)}\n\n"
-            if event.get("phase") == "brain_learn" and event.get("status") == "completed":
+            if event.get("phase") == "complete":
                 break
-        # also stream by content_id
-        async for event in bus_stream(f"crew:{blog_id}"):
-            yield f"data: {_json.dumps(event, default=str)}\n\n"
 
     return StreamingResponse(
         event_generator(),
