@@ -4987,6 +4987,16 @@ def remove_duplicate_paragraphs(html_content: str) -> str:
         "furthermore, promptly securing witness statements",
         "consulting with seasoned legal advocates helps align",
         "essential details and actionable guidance about this aspect",
+        "this comprehensive guide provides essential information",
+        "understanding the intricacies of",
+        "navigating the complexities of",
+        "it is crucial to understand",
+        "it is important to note that",
+        "when considering the various aspects of",
+        "this section provides an in-depth exploration",
+        "by understanding these key aspects",
+        "this information is particularly valuable for",
+        "the following information will help you understand",
     ]
     for p in soup.find_all('p'):
         text = p.get_text().strip().lower()
@@ -5027,7 +5037,8 @@ def fix_broken_sentences(html_content: str) -> str:
     broken_endings = [
         r'\bof$', r'\bthe$', r'\band$', r'\bto$', r'\ba$',
         r'\bfor$', r'\bwith$', r'\bthat$', r'\bin$', r'\bon\s+a$',
-        r'\d+%-\d+%\s+of$',
+        r'\d+%-\d+%\s+of$', r'\bby$', r'\bfrom$', r'\bthrough$',
+        r'\binto$', r'\bover$', r'\bunder$', r'\babout$',
     ]
     for p in soup.find_all('p'):
         text = p.get_text().strip()
@@ -5171,7 +5182,6 @@ async def extract_website_facts(website_id: str) -> dict:
     kb = supabase.table("knowledge_base") \
         .select("fact, source_url") \
         .eq("website_id", website_id) \
-        .order("credibility_score", desc=True) \
         .limit(20) \
         .execute()
 
