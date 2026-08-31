@@ -1,34 +1,36 @@
-# Python
+# Environment files
+backend/.env
+frontend-next/.env.local
+.env
+
+# Dependencies
+node_modules/
 __pycache__/
 *.pyc
-*.pyo
 .venv/
 venv/
-.env
-.env.local
 
-# Node
-node_modules/
-.next/
-out/
+# Local data (contains cached/fallback data)
+backend/local_data/
+data/
 
-# Installers
-get-pip.py
+# Test/diagnostic scripts
+check_*.py
+cleanup_*.py
+test_*.py
+blog_sample.html
+debug_*.py
+fix_*.py
+diagnose_crawl.py
 
 # IDE
 .vscode/
 .idea/
 
 # OS
-Thumbs.db
 .DS_Store
+Thumbs.db
 
-# Temp & Cache
-tmp/
-temp/
-scratch/
-storage/
-.pytest_cache/
-test_output/
-*.log
-logs/
+# Build
+.next/
+out/

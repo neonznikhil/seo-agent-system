@@ -887,7 +887,10 @@ def build_default_15point_outline(target_keyword: str, kb_chunks: list = None, s
         elif "how soon" in q_str.lower() or "when should" in q_str.lower():
             ans = "You should contact an attorney as early as possible following an accident. Early legal consultation allows your team to preserve perishable crash evidence, obtain police bodycam footage, track medical bills, and ensure all filings meet state statutory requirements well ahead of deadlines."
         else:
-            ans = f"Statutory limitation periods establish strict time limits within which accident victims must formalize their claims in court. In most states, deadlines range from one to four years from the collision date, making immediate case organization and legal consultation vital."
+            # Generate a unique answer based on the question content
+            # Extract key terms from the question to make a relevant answer
+            q_words = q_str.replace("?", "").replace("how much", "").replace("what is", "").replace("do", "").strip()
+            ans = f"Regarding {q_words.lower()}: The specific answer depends on the facts of your case, including the severity of injuries, available insurance coverage, and applicable state laws. Most accident victims recover significantly more compensation when they consult with an experienced attorney who can evaluate their specific situation and negotiate with insurers on their behalf."
         
         faqs.append({
             "question": q_str,
@@ -1443,7 +1446,7 @@ WRITING RULES:
 5. H3 sections: Add under the correct parent H2
 6. Internal links: Place per point_9_internal_links placement instructions
 7. External links: Place per point_10_external_links placement
-8. Expert insights: If point_12_expert_insights is non-empty, add blockquotes using ONLY the real quotes provided. If empty, do NOT add any blockquote elements anywhere. NEVER invent fictional attorneys, doctors, or experts. NEVER use names like "James Chen", "Maria Gonzalez", or any name not found in point_12_expert_insights.
+8. EXPERT QUOTES: Do NOT add any blockquote elements anywhere in the article. No quotes by anyone. Do not invent fictional attorneys, doctors, or experts.
 9. CTAs: Add per point_13_ctas — must feel natural, not salesy
 10. FAQs: Use EXACTLY the answer_draft from point_14_faqs — 
      do not rewrite these
@@ -1569,6 +1572,101 @@ def clean_llm_output(raw_output: str) -> str:
             result = result[first_tag:]
     
     return result
+
+
+def sanitize_blog_html(html_content: str) -> str:
+    """
+    Comprehensive post-processing to fix common blog HTML issues:
+    1. Remove <br /> tags from style/CSS blocks
+    2. Remove placeholder/template paragraphs
+    3. Fix duplicate FAQ answers
+    4. Remove internal monologue artifacts
+    """
+    import re
+    from bs4 import BeautifulSoup
+    
+    # 1. Remove <br /> tags from <style> blocks
+    def clean_style_blocks(match):
+        style_content = match.group(0)
+        # Remove <br> tags and variants from style blocks
+        style_content = re.sub(r'<br\s*/?\s*>', '', style_content, flags=re.IGNORECASE)
+        # Fix broken CSS properties (e.g., "border: px solid" -> "border: 1px solid")
+        style_content = re.sub(r':\s*px\s+', ': 1px ', style_content)
+        # Fix broken colors (e.g., "#15803 d" -> "#15803d")
+        style_content = re.sub(r'#([0-9a-fA-F]{6})\s+([0-9a-fA-F])', r'#\1\2', style_content)
+        return style_content
+    
+    html_content = re.sub(r'<style[^>]*>.*?</style>', clean_style_blocks, html_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 2. Parse with BeautifulSoup for deeper cleaning
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # 3. Remove placeholder/template paragraphs
+    placeholder_starts = [
+        "to establish strong evidentiary backing when addressing",
+        "meticulous chronological documentation prevents insurance",
+        "furthermore, promptly securing witness statements and preserving",
+        "furthermore, promptly securing witness statements",
+        "consulting with seasoned legal advocates helps align your evidence",
+        "consulting with seasoned legal advocates helps align",
+        "essential details and actionable guidance about this aspect",
+        "this comprehensive guide provides essential information",
+        "understanding the intricacies of",
+        "navigating the complexities of",
+        "it is crucial to understand that",
+        "it is important to note that",
+        "when considering the various aspects of",
+        "this section provides an in-depth exploration",
+        "by understanding these key aspects",
+        "this information is particularly valuable for",
+        "the following information will help you understand",
+    ]
+    
+    for p in soup.find_all('p'):
+        text = p.get_text().strip()
+        text_lower = text.lower()
+        # Remove paragraphs starting with placeholder phrases
+        for phrase in placeholder_starts:
+            if text_lower.startswith(phrase) or phrase in text_lower[:100]:
+                p.decompose()
+                break
+    
+    # 4. Fix duplicate FAQ answers (all same generic text)
+    faq_answers = []
+    for answer_div in soup.find_all('div', class_='rf-faq-answer'):
+        text = answer_div.get_text().strip()
+        faq_answers.append(text)
+    
+    # If all FAQ answers are the same, replace with question-specific answers
+    if len(faq_answers) > 1 and len(set(faq_answers)) == 1:
+        # Generic answer detected - replace with relevant content
+        for i, answer_div in enumerate(soup.find_all('div', class_='rf-faq-answer')):
+            question_btn = answer_div.find_previous('button', class_='rf-faq-question')
+            if question_btn:
+                question_text = question_btn.get_text().strip()
+                # Clear the answer and add a relevant placeholder
+                answer_div.clear()
+                p_tag = soup.new_tag('p')
+                p_tag.string = f"Answer for: {question_text}"
+                answer_div.append(p_tag)
+    
+    # 5. Remove internal monologue artifacts
+    monologue_phrases = [
+        "let me", "we need to", "now count", "i'll count", "let's count",
+        "let's craft", "let's aim", "let's recount", "let's rewrite",
+        "string:", "count:", "characters:", "paragraph 1", "paragraph 2",
+        "target:", "words.", "so total", "so we", "good.", "that's ",
+        "actually ", "continue counting", "we're at", "we are at",
+    ]
+    
+    for p in soup.find_all('p'):
+        text = p.get_text().strip().lower()
+        for phrase in monologue_phrases:
+            if text.startswith(phrase):
+                p.decompose()
+                break
+    
+    return str(soup)
 
 
 def clean_special_characters(html_content: str) -> str:
@@ -4387,50 +4485,154 @@ async def generate_blog_autonomous(
 
     gate_passed = (seo_score >= 85 and val_score >= 0.8 and ground_score >= 0.75)
 
-    # 6. Gate decision + WordPress — autonomous draft-first philosophy
-    # Always attempt to create a WP DRAFT (status draft) so user sees result in WP immediately,
-    # regardless of quality gate. Only quality-passed + auto_publish => status publish.
-    wordpress_url = None
-    wp_post_id = None
-    wp_draft_url = None
-    edit_url = None
-    status = "pending"
-    pending_reason = None
-    meta_desc_val = (planner_outline.get("meta_description") or f"{topic} — guide from {business_name}")[:160]
-    slug_val = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")[:80]
-    # Attempt WP draft creation for every generation (draft for WordPress)
-    # PROBLEM 4 FIX STEP 2 — wrap with TLDR CSS for WordPress
-    # Also compute cleaned title for WP draft from final_html H1
-    wp_title = planner_outline.get("h1_suggestion") or topic
+    # NICHE RELEVANCE CHECK: Skip if blog is off-topic for this website
+    # Get niche from website settings
+    niche_keywords = []
     try:
-        _h1m = re.search(r"<h1[^>]*>(.*?)</h1>", final_html, flags=re.I | re.S)
-        if _h1m:
-            _h1txt = re.sub(r"<[^>]+>", "", _h1m.group(1)).strip()
-            if _h1txt:
-                wp_title = enforce_title_rules(_h1txt, topic)
+        site_row = supabase.table("websites").select("niche,domain,business_name").eq("id", website_id).single().execute().data or {}
+        niche = site_row.get("niche", "") or ""
+        domain = site_row.get("domain", "") or ""
+        # Extract keywords from niche
+        niche_keywords = [w.lower() for w in niche.split() if len(w) > 3]
+        if domain:
+            domain_name = domain.split(".")[0] if "." in domain else domain
+            niche_keywords.append(domain_name.lower())
     except Exception:
-        pass
-    wp_content = wrap_tldr_css(final_html)
-    try:
-        from ..services.wordpress_service import WordPressService
-        _wp_svc = WordPressService(website_id)
-        _base = _wp_svc.get_base_url()
-        if _base:
+        niche = ""
+    
+    # Also check content for niche relevance
+    is_off_topic = False
+    content_lower = final_html.lower()
+    topic_lower = topic.lower()
+    
+    # Count niche keyword matches in content
+    niche_matches = sum(1 for kw in niche_keywords if kw in content_lower or kw in topic_lower)
+    
+    # If website has niche defined but no niche keywords found in content, it's off-topic
+    if niche_keywords and niche_matches == 0:
+        # Additional check: if topic contains general legal terms but NOT niche terms
+        general_legal_terms = ['lawyer', 'attorney', 'legal', 'law']
+        has_general_legal = any(term in topic_lower for term in general_legal_terms)
+        if has_general_legal:
+            is_off_topic = True
+            logger.warning(f"[Crew] OFF-TOPIC: Blog '{topic}' has legal term but no niche keywords ({niche_keywords}) — skipping WP draft")
+    
+    if not is_off_topic:
+        # 6. Gate decision + WordPress — autonomous draft-first philosophy
+        # Always attempt to create a WP DRAFT (status draft) so user sees result in WP immediately,
+        # regardless of quality gate. Only quality-passed + auto_publish => status publish.
+        wordpress_url = None
+        wp_post_id = None
+        wp_draft_url = None
+        edit_url = None
+        status = "pending"
+        pending_reason = None
+        meta_desc_val = (planner_outline.get("meta_description") or f"{topic} — guide from {business_name}")[:160]
+        slug_val = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")[:80]
+        # Attempt WP draft creation for every generation (draft for WordPress)
+        # PROBLEM 4 FIX STEP 2 — wrap with TLDR CSS for WordPress
+        # Also compute cleaned title for WP draft from final_html H1
+        wp_title = planner_outline.get("h1_suggestion") or topic
+        try:
+            _h1m = re.search(r"<h1[^>]*>(.*?)</h1>", final_html, flags=re.I | re.S)
+            if _h1m:
+                _h1txt = re.sub(r"<[^>]+>", "", _h1m.group(1)).strip()
+                if _h1txt:
+                    wp_title = enforce_title_rules(_h1txt, topic)
+        except Exception:
+            pass
+        wp_content = wrap_tldr_css(final_html)
+        
+        # DUPLICATE CHECK: Skip WP draft if post with same/similar title exists
+        duplicate_found = False
+        
+        # Normalize title for comparison (lowercase, remove extra spaces)
+        def normalize_title(t):
+            return ' '.join(t.lower().split()).strip()
+        
+        wp_title_norm = normalize_title(wp_title)
+        # Also create a slug-like version for fuzzy matching
+        wp_slug = re.sub(r"[^a-z0-9]+", "-", wp_title_norm).strip("-")
+        
+        try:
+            # Check Supabase blog_approvals table (exact + similar)
+            existing = supabase.table("blog_approvals").select("id,title,status").eq("website_id", website_id).execute()
+            for row in (existing.data or []):
+                row_title_norm = normalize_title(row.get("title", ""))
+                row_slug = re.sub(r"[^a-z0-9]+", "-", row_title_norm).strip("-")
+                if row_title_norm == wp_title_norm or row_slug == wp_slug:
+                    duplicate_found = True
+                    logger.warning(f"[Crew] DUPLICATE: '{wp_title}' matches existing '{row.get('title')}' in blog_approvals")
+                    break
+        except Exception:
+            pass
+        
+        if not duplicate_found:
             try:
-                draft_res = await _wp_svc.create_draft(website_id=website_id, title=wp_title, content=wp_content, keywords=[topic])
-                if draft_res.get("success"):
-                    wp_post_id = draft_res.get("wp_post_id")
-                    wordpress_url = draft_res.get("link") or draft_res.get("edit_url")
-                    wp_draft_url = draft_res.get("edit_url") or wordpress_url
-                    edit_url = wp_draft_url
-                    logger.info(f"[Crew] WP draft created #{wp_post_id} for '{topic}' -> {wordpress_url}")
-                else:
-                    logger.debug(f"[Crew] WP draft not created: {draft_res.get('message')}")
-            except Exception as _draft_e:
-                logger.debug(f"[Crew] WP draft attempt note: {_draft_e}")
-    except Exception as _wp_e:
-        logger.debug(f"[Crew] WP draft outer note: {_wp_e}")
-
+                # Check local store
+                from ..services.local_store import list_local_content
+                local_posts = list_local_content(website_id) or []
+                for post in local_posts:
+                    post_title_norm = normalize_title(post.get("title", ""))
+                    post_slug = re.sub(r"[^a-z0-9]+", "-", post_title_norm).strip("-")
+                    if post_title_norm == wp_title_norm or post_slug == wp_slug:
+                        duplicate_found = True
+                        logger.warning(f"[Crew] DUPLICATE: '{wp_title}' already in local store")
+                        break
+            except Exception:
+                pass
+        
+        if not duplicate_found:
+            try:
+                # Check WordPress directly via API - ALL statuses
+                from ..services.wordpress_service import WordPressService
+                _wp_check = WordPressService(website_id)
+                # Check multiple statuses
+                for wp_status in ['draft', 'publish', 'pending', 'future']:
+                    try:
+                        existing_posts = await _wp_check.get_posts(per_page=50, search=wp_title[:20], status=wp_status)
+                        for post in existing_posts:
+                            post_title_norm = normalize_title(post.get('title', {}).get('rendered', ''))
+                            post_slug = re.sub(r"[^a-z0-9]+", "-", post_title_norm).strip("-")
+                            if post_title_norm == wp_title_norm or post_slug == wp_slug:
+                                duplicate_found = True
+                                logger.warning(f"[Crew] DUPLICATE: '{wp_title}' already in WordPress #{post.get('id')} (status: {wp_status})")
+                                break
+                        if duplicate_found:
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+        
+        if not duplicate_found:
+            try:
+                from ..services.wordpress_service import WordPressService
+                _wp_svc = WordPressService(website_id)
+                _base = _wp_svc.get_base_url()
+                if _base:
+                    try:
+                        draft_res = await _wp_svc.create_draft(website_id=website_id, title=wp_title, content=wp_content, keywords=[topic])
+                        if draft_res.get("success"):
+                            wp_post_id = draft_res.get("wp_post_id")
+                            wordpress_url = draft_res.get("link") or draft_res.get("edit_url")
+                            wp_draft_url = draft_res.get("edit_url") or wordpress_url
+                            edit_url = wp_draft_url
+                            logger.info(f"[Crew] WP draft created #{wp_post_id} for '{topic}' -> {wordpress_url}")
+                        else:
+                            logger.debug(f"[Crew] WP draft not created: {draft_res.get('message')}")
+                    except Exception as _draft_e:
+                        logger.debug(f"[Crew] WP draft attempt note: {_draft_e}")
+            except Exception as _wp_e:
+                logger.debug(f"[Crew] WP draft outer note: {_wp_e}")
+        else:
+            logger.info(f"[Crew] Skipping WP draft for '{wp_title}' — duplicate detected")
+    else:
+        # Off-topic blog — set status and skip WordPress
+        status = "pending"
+        pending_reason = f"Blog '{topic}' is off-topic for this website niche — saved to approvals only"
+        logger.info(f"[Crew] {pending_reason}")
+    
     if not gate_passed:
         status = "pending"
         pending_reason = f"Quality gate needs review: SEO {seo_score} (need 85), validation {val_score:.2f} (need 0.8), grounding {ground_score:.2f} (need 0.75) — draft already in WordPress"
@@ -4774,19 +4976,8 @@ async def run_planner(target_keyword: str, website_id: str = "default", business
     )
     outline = planner_res.get("outline", planner_res)
     
-    # FIX 1: Find real quotes from knowledge base
-    real_quotes = []
-    if website_id and website_id != "default":
-        try:
-            real_quotes = await find_real_quotes_from_kb(website_id)
-        except Exception as e:
-            logger.debug(f"[Planner] Real quotes search note: {e}")
-    
-    # Update point_12 with real quotes or empty
-    if real_quotes:
-        outline["point_12_expert_insights"] = real_quotes
-    else:
-        outline["point_12_expert_insights"] = []
+    # No expert quotes in blog posts
+    outline["point_12_expert_insights"] = []
     
     validated_outline = await validate_outline_for_audience(outline, target_reader="car accident victim")
     return validated_outline
@@ -4955,19 +5146,41 @@ async def find_real_quotes_from_kb(website_id: str) -> list:
     return real_quotes
 
 
-def remove_fake_quotes(html_content: str, real_people: list) -> str:
-    """Removes blockquotes with names not in the real_people list."""
+def remove_fake_quotes(html_content: str, real_people: list = None) -> str:
+    """Removes ALL blockquotes and fake attributions. No quotes allowed in blog posts."""
     from bs4 import BeautifulSoup
     import re
     soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Remove ALL blockquotes
     for blockquote in soup.find_all('blockquote'):
-        quote_text = blockquote.get_text()
-        attribution = re.search(r'[-—]\s*([A-Z][a-z]+ [A-Z][a-z]+)', quote_text)
-        if attribution:
-            attributed_name = attribution.group(1)
-            is_real = any(attributed_name.lower() in person.lower() for person in real_people)
-            if not is_real:
-                blockquote.decompose()
+        blockquote.decompose()
+    
+    # Also remove paragraphs that end with fake attributions
+    fake_attribution_patterns = [
+        r'Senior\s+Trial\s+Attorney\s*$',
+        r'Experienced\s+Attorney\s*$',
+        r'Senior\s+Attorney\s*$',
+        r'Trial\s+Attorney\s*$',
+        r'Personal\s+Injury\s+Attorney\s*$',
+        r'Corporate\s+Attorney\s*$',
+        r'Managing\s+Partner\s*$',
+        r'Founding\s+Partner\s*$',
+        r'Lead\s+Attorney\s*$',
+        r'Certified\s+Specialist\s*$',
+        r'Esquire\s*$',
+        r'Esq\.?\s*$',
+        r'Attorney\s+at\s+Law\s*$',
+        r'Legal\s+Expert\s*$',
+    ]
+    
+    for p in soup.find_all('p'):
+        text = p.get_text().strip()
+        for pattern in fake_attribution_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                p.decompose()
+                break
+    
     return str(soup)
 
 
@@ -4984,29 +5197,44 @@ def remove_duplicate_paragraphs(html_content: str) -> str:
     placeholder_phrases = [
         "to establish strong evidentiary backing when addressing",
         "meticulous chronological documentation prevents insurance",
+        "furthermore, promptly securing witness statements and preserving",
         "furthermore, promptly securing witness statements",
+        "consulting with seasoned legal advocates helps align your evidence",
         "consulting with seasoned legal advocates helps align",
         "essential details and actionable guidance about this aspect",
         "this comprehensive guide provides essential information",
         "understanding the intricacies of",
         "navigating the complexities of",
-        "it is crucial to understand",
+        "it is crucial to understand that",
         "it is important to note that",
         "when considering the various aspects of",
         "this section provides an in-depth exploration",
         "by understanding these key aspects",
         "this information is particularly valuable for",
         "the following information will help you understand",
+        "understanding actionable steps you should take today is essential",
+        "understanding common mistakes to avoid and best practices is essential",
+        "understanding key requirements and guidelines for",
+        "core principles and definitions behind your",
+        "primary legal and practical rules governing this process",
     ]
     for p in soup.find_all('p'):
-        text = p.get_text().strip().lower()
+        text = p.get_text().strip()
         if not text:
             continue
-        is_placeholder = any(phrase in text for phrase in placeholder_phrases)
+        text_lower = text.lower()
+        # Remove paragraphs that start with placeholder phrases
+        is_placeholder = any(text_lower.startswith(phrase) for phrase in placeholder_phrases)
         if is_placeholder:
             p.decompose()
             continue
-        normalized = re.sub(r'\s+', ' ', text)[:150]
+        # Also remove paragraphs that contain placeholder phrases at the beginning (first 100 chars)
+        is_placeholder = any(phrase in text_lower[:100] for phrase in placeholder_phrases)
+        if is_placeholder:
+            p.decompose()
+            continue
+        # Normalize text for comparison
+        normalized = re.sub(r'\s+', ' ', text_lower)[:150]
         if normalized in seen_paragraphs:
             p.decompose()
         else:
@@ -5139,36 +5367,161 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
-    """Replaces static FAQ section with dynamic accordion."""
+    """Replaces static FAQ section with dynamic clickable accordion."""
     from bs4 import BeautifulSoup
+    import re
+    
     soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Find the FAQ H2
     faq_h2 = None
     for h2 in soup.find_all('h2'):
-        if 'frequently asked' in h2.get_text().lower() or 'faq' in h2.get_text().lower():
+        text = h2.get_text().lower()
+        if 'frequently asked' in text or 'faq' in text:
             faq_h2 = h2
             break
+    
     if not faq_h2:
         return html_content
+    
     faq_items = outline.get("point_14_faqs", [])
     if not faq_items:
         return html_content
-    accordion = build_faq_accordion(faq_items)
-    to_remove = [faq_h2]
-    sibling = faq_h2.next_sibling
-    while sibling:
-        if hasattr(sibling, 'name') and sibling.name == 'h2':
+    
+    # Build accordion HTML
+    accordion_html = build_faq_accordion(faq_items)
+    accordion_soup = BeautifulSoup(accordion_html, 'html.parser')
+    
+    # Find ALL elements in the FAQ section (H2 + following elements until next H2 or div.cta)
+    elements_to_remove = [faq_h2]
+    current = faq_h2.next_sibling
+    while current:
+        if hasattr(current, 'name'):
+            if current.name == 'h2':
+                break
+            if current.name == 'div' and ('cta' in str(current.get('class', [])).lower() or 'take action' in current.get_text().lower()):
+                break
+        elements_to_remove.append(current)
+        current = current.next_sibling
+    
+    # Insert accordion before the FAQ H2 position
+    # First, find where to insert (before CTA or at end)
+    cta_el = None
+    for div in soup.find_all('div'):
+        div_text = div.get_text().lower()
+        if 'take action' in div_text and 'schedule' in div_text:
+            cta_el = div
             break
-        if sibling.name in ['h3', 'p', 'ul', 'ol', 'div']:
-            to_remove.append(sibling)
-        sibling = sibling.next_sibling
-    from bs4 import BeautifulSoup as BS
-    accordion_soup = BS(accordion, 'html.parser')
-    faq_h2.insert_before(accordion_soup)
-    for el in to_remove:
+    
+    if cta_el:
+        cta_el.insert_before(accordion_soup)
+    else:
+        if soup.body:
+            soup.body.append(accordion_soup)
+        else:
+            soup.append(accordion_soup)
+    
+    # Remove old FAQ elements
+    for el in elements_to_remove:
         try:
             el.decompose()
         except Exception:
             pass
+    
+    return str(soup)
+
+
+def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
+    """
+    Fixes blog structure: adds H1 title, moves TL;DR to top,
+    ensures proper order: Title → TL;DR → Content → FAQ → CTA
+    """
+    from bs4 import BeautifulSoup
+    import re
+    
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # 1. Ensure H1 title exists at the top
+    h1 = soup.find('h1')
+    if not h1:
+        h1_tag = soup.new_tag('h1')
+        h1_tag.string = title
+        if soup.body:
+            soup.body.insert(0, h1_tag)
+        else:
+            soup.insert(0, h1_tag)
+    
+    # 2. Find and move TL;DR to top (after H1)
+    tldr = None
+    tldr_parent = None
+    for el in soup.find_all(['div', 'section', 'p']):
+        text = el.get_text().lower()
+        if 'tldr' in text or 'too long' in text:
+            tldr = el
+            break
+    
+    if tldr:
+        tldr.extract()
+        h1 = soup.find('h1')
+        if h1:
+            h1.insert_after(tldr)
+        else:
+            if soup.body:
+                soup.body.insert(0, tldr)
+            else:
+                soup.insert(0, tldr)
+    
+    # 3. Fix section headings that are questions (convert to statements)
+    for h2 in soup.find_all('h2'):
+        text = h2.get_text().strip()
+        # If heading ends with ? and is a question, convert to statement
+        if text.endswith('?') and 'what' in text.lower():
+            # Convert question to statement
+            new_text = text.replace('?', '').strip()
+            # Capitalize first letter
+            if new_text:
+                new_text = new_text[0].upper() + new_text[1:]
+                h2.string = new_text
+    
+    # 4. Ensure FAQ is at the end (before CTA if exists)
+    faq_h2 = None
+    for h2 in soup.find_all('h2'):
+        if 'frequently asked' in h2.get_text().lower():
+            faq_h2 = h2
+            break
+    
+    if faq_h2:
+        # Collect FAQ section elements
+        faq_elements = [faq_h2]
+        sibling = faq_h2.next_sibling
+        while sibling:
+            if hasattr(sibling, 'name') and sibling.name == 'h2':
+                break
+            faq_elements.append(sibling)
+            sibling = sibling.next_sibling
+        
+        # Extract all FAQ elements
+        for el in faq_elements:
+            el.extract()
+        
+        # Find CTA block
+        cta = None
+        for div in soup.find_all('div'):
+            div_text = div.get_text().lower()
+            if 'take action' in div_text or 'schedule' in div_text or 'cta' in ' '.join(div.get('class', [])):
+                cta = div
+                break
+        
+        # Insert FAQ before CTA (or at end)
+        if cta:
+            cta.insert_before(*faq_elements)
+        else:
+            if soup.body:
+                soup.body.extend(faq_elements)
+            else:
+                for el in faq_elements:
+                    soup.append(el)
+    
     return str(soup)
 
 
@@ -5258,6 +5611,9 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     # 2. Clean LLM output
     step1 = clean_llm_output(humanized)
     
+    # 2a. Sanitize HTML (remove <br> from style blocks, fix placeholders, fix FAQ)
+    step1 = sanitize_blog_html(step1)
+    
     # 2b. Fix broken year in content
     step1b = fix_broken_year_in_content(step1)
     
@@ -5276,8 +5632,8 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     step4 = enforce_sentence_variety(step3)
     step4 = enforce_paragraph_variety(step4)
     
-    # FIX 1: Remove fake quotes
-    step4 = remove_fake_quotes(step4, real_people_names)
+    # FIX 1: Remove ALL blockquotes (no expert quotes allowed)
+    step4 = remove_fake_quotes(step4)
     
     # FIX 2: Remove duplicate paragraphs and tables
     step4 = remove_duplicate_paragraphs(step4)
@@ -5346,6 +5702,9 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     final = fix_broken_year_in_content(final)
     final = enforce_keyword_density(final, pk, max_count=8)
     
+    # FIX: Ensure proper blog structure (Title → TL;DR → Content → FAQ → CTA)
+    final = fix_blog_structure(final, pk, outline or {})
+    
     # Final word count check
     is_valid, final_count = validate_word_count(final)
     if not is_valid and final_count < 2400:
@@ -5371,6 +5730,9 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
         print(f"[WORD COUNT] Article slightly over limit: {final_count} words. Acceptable.")
     
     print(f"[WORD COUNT] Final: {final_count} words [OK]")
+    
+    # Final sanitization pass (remove <br> from style, fix placeholders, fix FAQ)
+    final = sanitize_blog_html(final)
     
     # 12. Audience check
     if contains_wrong_audience_content(final):
