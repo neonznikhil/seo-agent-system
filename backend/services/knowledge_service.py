@@ -1155,3 +1155,321 @@ async def get_verified_facts(topic: str, website_id: Optional[str] = None) -> Li
     service = KnowledgeService(website_id=website_id)
     hits = await service.retrieve_relevant_hybrid(keyword=topic, top_k=5)
     return [h.get("content", "") for h in hits if h.get("content")]
+
+
+# ---------------------------------------------------------
+# NEW ROBUST CRAWL FUNCTION — cannot fail silently
+# ---------------------------------------------------------
+async def crawl_and_index_website(website_id: str, site_url: str) -> dict:
+    """
+    Crawls a website and indexes content into knowledge_base.
+    Cannot fail silently — every step logs result.
+    Returns a summary of what was indexed.
+    
+    Schema: knowledge_base(id, website_id, fact, fact_type, source_url, embedding, created_at, account_id)
+    """
+    from ..database import get_supabase
+    from .nim_client import embed as nim_embed
+    from ..agents.scheduler import log_autonomous_decision
+
+    supabase = get_supabase()
+    results = {
+        "website_id": website_id,
+        "site_url": site_url,
+        "pages_found": 0,
+        "pages_crawled": 0,
+        "chunks_created": 0,
+        "chunks_saved": 0,
+        "errors": []
+    }
+
+    print(f"[CRAWL] Starting crawl for {site_url}")
+    logger.info(f"[CRAWL] Starting crawl for {site_url} (website_id={website_id})")
+
+    # STEP 1: Update website status to crawling
+    try:
+        supabase.table("websites").update({
+            "status": "crawling",
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", website_id).execute()
+        print("[CRAWL] Website status set to crawling")
+    except Exception as e:
+        err = f"Failed to update website status: {e}"
+        results["errors"].append(err)
+        print(f"[CRAWL] {err}")
+        logger.error(f"[CRAWL] {err}")
+
+    # STEP 2: Discover pages
+    pages = []
+    sitemap_urls = [
+        f"{site_url.rstrip('/')}/sitemap.xml",
+        f"{site_url.rstrip('/')}/wp-sitemap.xml",
+        f"{site_url.rstrip('/')}/sitemap_index.xml",
+        f"{site_url.rstrip('/')}/page-sitemap.xml",
+        f"{site_url.rstrip('/')}/post-sitemap.xml",
+    ]
+
+    crawl_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    async with httpx.AsyncClient(
+        timeout=15,
+        follow_redirects=True,
+        headers=crawl_headers
+    ) as client:
+
+        # Helper: parse sitemap (handles both sitemap index and urlset)
+        async def fetch_sitemap_urls(s_url: str) -> list:
+            """Fetch a sitemap URL and return page URLs. Handles sitemap index recursion."""
+            page_urls = []
+            try:
+                r = await client.get(s_url)
+                if r.status_code != 200:
+                    return page_urls
+                soup = BeautifulSoup(r.text, 'xml')
+                
+                # Check if this is a sitemap index (contains <sitemap> tags)
+                sitemap_locs = [sm.find('loc').text.strip() for sm in soup.find_all('sitemap') if sm.find('loc')]
+                if sitemap_locs:
+                    # Recursively fetch sub-sitemaps
+                    for sub_url in sitemap_locs:
+                        sub_urls = await fetch_sitemap_urls(sub_url)
+                        page_urls.extend(sub_urls)
+                else:
+                    # This is a urlset — extract page URLs
+                    for loc in soup.find_all('loc'):
+                        txt = loc.text.strip() if loc.text else ""
+                        if txt and not txt.endswith('.xml'):
+                            page_urls.append(txt)
+            except Exception as e:
+                print(f"[CRAWL] Sitemap parse error {s_url}: {e}")
+                logger.warning(f"[CRAWL] Sitemap parse error {s_url}: {e}")
+            return page_urls
+
+        # Try each sitemap
+        for sitemap_url in sitemap_urls:
+            found = await fetch_sitemap_urls(sitemap_url)
+            if found:
+                domain = site_url.rstrip('/')
+                pages = [u for u in found
+                         if u.startswith(domain)
+                         and not any(skip in u.lower() for skip in
+                                   ['wp-content', 'wp-includes',
+                                    '.jpg', '.png', '.pdf',
+                                    'attachment', 'feed', 'tag/',
+                                    'author/', 'page/2', 'page/3'])]
+                print(f"[CRAWL] Found {len(pages)} pages in {sitemap_url}")
+                logger.info(f"[CRAWL] Found {len(pages)} pages in {sitemap_url}")
+                break
+
+        # If no sitemap worked, crawl homepage and find links
+        if not pages:
+            print("[CRAWL] No sitemap found. Crawling homepage for links.")
+            try:
+                r = await client.get(site_url)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    links = soup.find_all('a', href=True)
+                    domain = site_url.rstrip('/')
+                    seen = set()
+                    pages = [site_url]
+                    for link in links:
+                        href = link['href']
+                        if href.startswith('/'):
+                            href = domain + href
+                        if href.startswith(domain) and href not in seen:
+                            if not any(skip in href.lower() for skip in
+                                      ['.jpg', '.png', '.pdf', '.gif',
+                                       'wp-admin', 'wp-login', '#',
+                                       'mailto:', 'tel:']):
+                                seen.add(href)
+                                pages.append(href)
+                    pages = list(set(pages))[:30]
+                    print(f"[CRAWL] Found {len(pages)} pages from homepage links")
+                    logger.info(f"[CRAWL] Found {len(pages)} pages from homepage links")
+                else:
+                    print(f"[CRAWL] Homepage returned HTTP {r.status_code}")
+            except Exception as e:
+                err = f"Homepage crawl failed: {e}"
+                results["errors"].append(err)
+                print(f"[CRAWL] {err}")
+                logger.error(f"[CRAWL] {err}")
+
+        results["pages_found"] = len(pages)
+
+        if not pages:
+            pages = [site_url]
+            print("[CRAWL] Using homepage only as last resort")
+
+        # STEP 3: Crawl each page and extract content
+        all_chunks = []
+
+        for page_url in pages[:50]:
+            try:
+                r = await client.get(page_url)
+                if r.status_code != 200:
+                    print(f"[CRAWL] Skip {page_url} — HTTP {r.status_code}")
+                    continue
+
+                soup = BeautifulSoup(r.text, 'html.parser')
+
+                # Remove noise elements
+                for tag in soup.find_all([
+                    'script', 'style', 'nav', 'footer',
+                    'header', 'aside', 'form', 'noscript',
+                    'iframe', 'svg', 'button'
+                ]):
+                    tag.decompose()
+
+                # Extract main content
+                main_content = (
+                    soup.find('main') or
+                    soup.find('article') or
+                    soup.find(class_=re.compile(
+                        r'content|post|entry|article|main', re.I
+                    )) or
+                    soup.find('body')
+                )
+
+                if not main_content:
+                    continue
+
+                # Get page title
+                title = ""
+                title_tag = soup.find('h1') or soup.find('title')
+                if title_tag:
+                    title = title_tag.get_text().strip()[:200]
+
+                # Get clean text
+                text = main_content.get_text(separator=' ')
+                text = re.sub(r'\s+', ' ', text).strip()
+
+                if len(text) < 200:
+                    print(f"[CRAWL] Skip {page_url} — too little content ({len(text)} chars)")
+                    continue
+
+                results["pages_crawled"] += 1
+                print(f"[CRAWL] Crawled {page_url} — {len(text)} chars")
+
+                # STEP 4: Chunk the content
+                chunk_size = 1500
+                overlap = 200
+                chunks = []
+                start = 0
+
+                while start < len(text):
+                    end = start + chunk_size
+                    if end < len(text):
+                        last_period = text.rfind('.', start, end)
+                        if last_period > start + (chunk_size // 2):
+                            end = last_period + 1
+                    chunk_text = text[start:end].strip()
+                    if len(chunk_text) > 100:
+                        # Prepend title for context
+                        titled_chunk = f"Page: {title}\n\n{chunk_text}" if title else chunk_text
+                        chunks.append({
+                            "fact": titled_chunk,
+                            "source_url": page_url,
+                            "fact_type": "company_info"
+                        })
+                    start = end - overlap
+
+                all_chunks.extend(chunks)
+                results["chunks_created"] += len(chunks)
+                print(f"[CRAWL] Created {len(chunks)} chunks from {page_url}")
+
+            except Exception as e:
+                err = f"Failed to crawl {page_url}: {e}"
+                results["errors"].append(err)
+                print(f"[CRAWL] {err}")
+                logger.error(f"[CRAWL] {err}")
+                continue
+
+        print(f"[CRAWL] Total chunks created: {len(all_chunks)}")
+        logger.info(f"[CRAWL] Total chunks created: {len(all_chunks)}")
+
+        if not all_chunks:
+            supabase.table("websites").update({
+                "status": "error",
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", website_id).execute()
+            results["errors"].append("No content extracted from any page")
+            return results
+
+        # STEP 5: Generate embeddings and save to database
+        batch_size = 5
+        for i in range(0, len(all_chunks), batch_size):
+            batch = all_chunks[i:i + batch_size]
+
+            for chunk in batch:
+                try:
+                    # Generate embedding via NVIDIA NIM
+                    embedding = None
+                    try:
+                        embedding = await nim_embed(chunk["fact"])
+                        if not embedding or len(embedding) == 0:
+                            print(f"[CRAWL] Embedding empty for chunk from {chunk['source_url']}")
+                            embedding = None
+                    except Exception as emb_err:
+                        print(f"[CRAWL] Embedding API error: {emb_err}")
+                        logger.warning(f"[CRAWL] Embedding failed for chunk: {emb_err}")
+                        embedding = None
+
+                    # Save to knowledge_base (actual schema: website_id, fact, fact_type, source_url, embedding)
+                    row = {
+                        "website_id": website_id,
+                        "fact": chunk["fact"],
+                        "fact_type": chunk["fact_type"],
+                        "source_url": chunk["source_url"]
+                    }
+                    if embedding:
+                        row["embedding"] = embedding
+
+                    try:
+                        insert_result = supabase.table("knowledge_base").insert(row).execute()
+                        if insert_result.data:
+                            results["chunks_saved"] += 1
+                        else:
+                            print(f"[CRAWL] Insert returned no data for chunk from {chunk['source_url']}")
+                    except Exception as ins_err:
+                        err = f"DB insert failed for chunk from {chunk['source_url']}: {ins_err}"
+                        results["errors"].append(err)
+                        print(f"[CRAWL] {err}")
+                        logger.error(f"[CRAWL] {err}")
+
+                except Exception as e:
+                    err = f"Failed to save chunk from {chunk['source_url']}: {e}"
+                    results["errors"].append(err)
+                    print(f"[CRAWL] {err}")
+                    logger.error(f"[CRAWL] {err}")
+                    continue
+
+            print(f"[CRAWL] Saved batch {i//batch_size + 1}: {results['chunks_saved']} chunks saved so far")
+
+    # STEP 6: Update website status
+    final_status = "active" if results["chunks_saved"] >= 3 else "error"
+    try:
+        supabase.table("websites").update({
+            "status": final_status,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", website_id).execute()
+    except Exception as e:
+        print(f"[CRAWL] Failed to update final status: {e}")
+
+    # STEP 7: Log the decision
+    try:
+        await log_autonomous_decision(
+            website_id=website_id,
+            decision="CRAWL_COMPLETE" if final_status == "active" else "CRAWL_FAILED",
+            reason=f"Pages found: {results['pages_found']}, Crawled: {results['pages_crawled']}, Chunks saved: {results['chunks_saved']}, Errors: {len(results['errors'])}",
+            job="knowledge_crawl"
+        )
+    except Exception as e:
+        print(f"[CRAWL] log_autonomous_decision failed: {e}")
+
+    print(f"[CRAWL] Done. Status: {final_status}. Saved {results['chunks_saved']} chunks.")
+    logger.info(f"[CRAWL] Done. Status: {final_status}. Saved {results['chunks_saved']} chunks.")
+
+    return results

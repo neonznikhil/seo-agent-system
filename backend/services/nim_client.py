@@ -1,5 +1,5 @@
 """Central NVIDIA NIM client - handles EOL model fallback, 410 detection, retry with tenacity.
-Spec: LLM primary nemotron-3-nano-30b-a3b 200, embedding nemotron-3-embed-1b 200, no hardcoded EOL.
+Spec: LLM primary nemotron-3-ultra-550b-a55b 200, embedding nemotron-3-embed-1b 200, no hardcoded EOL.
 """
 import os
 import logging
@@ -14,8 +14,8 @@ NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
 LLM_MODELS: List[str] = [
-    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b"),
-    os.getenv("NIM_LLM_FALLBACK", "nvidia/llama-3.1-nemotron-70b-instruct"),
+    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
+    os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b"),
     "nvidia/nemotron-3-super-120b-a12b",
     "nvidia/meta/llama-3.1-70b-instruct",
 ]
@@ -192,7 +192,7 @@ def _log_nim_cost(agent_name: str, tokens: int, cost_usd: float):
         logger.debug(f"[NIM Client] Could not log daily cost: {e}")
 
 
-async def call_llm_central(prompt: str, system: str = "", max_tokens: int = 2048, temperature: float = 0.7) -> str:
+async def call_llm_central(prompt: str, system: str = "", max_tokens: int = 4096, temperature: float = 0.7) -> str:
     """Call NIM LLM via central client with circuit breaker, 410 fallback and 3 retries."""
     _check_circuit_breaker()
     api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY", "")
@@ -275,7 +275,7 @@ async def call_embedding_central(texts: list, truncate: str = "END") -> list:
     raise RuntimeError(f"NIM Embed unavailable after {len(EMBED_MODELS)} models: {last_error}")
 
 
-async def generate(prompt: str, system_prompt: str = "", max_tokens: int = 2048, temperature: float = 0.7) -> str:
+async def generate(prompt: str, system_prompt: str = "", max_tokens: int = 4096, temperature: float = 0.7) -> str:
     """Standard generate interface for NIM LLM."""
     return await call_llm_central(prompt=prompt, system=system_prompt, max_tokens=max_tokens, temperature=temperature)
 
@@ -283,7 +283,7 @@ async def generate(prompt: str, system_prompt: str = "", max_tokens: int = 2048,
 async def nim_generate_with_feedback(
     prompt: str,
     system_prompt: str = "",
-    max_tokens: int = 2000,
+    max_tokens: int = 4096,
     timeout_seconds: int = 120,
     job_label: str = "NIM call"
 ) -> str:

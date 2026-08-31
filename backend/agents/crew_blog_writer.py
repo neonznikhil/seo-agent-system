@@ -3,7 +3,7 @@
 Architecture: Planner -> Writer -> Editor (CrewAI Sequential) with Autonomous + WordPress + RAG + Quality Gate.
 0 Mock. Real NVIDIA NIM, Real Supabase, Real WordPress POST.
 
-LLM: ChatNVIDIA nvidia/nemotron-3-nano-30b-a3b primary -> fallback nvidia/llama-3.1-nemotron-nano-8b-v1 (EOL ultra-253b-v1.5 removed) with tenacity retry 3 (1s/5s/15s) EOL 410 fallback
+LLM: ChatNVIDIA nvidia/nemotron-3-ultra-550b-a55b primary -> fallback nvidia/nemotron-3-nano-30b-a3b with tenacity retry 3 (1s/5s/15s) EOL 410 fallback
 Tools: SerperDevTool/TavilyTool (real keys), KnowledgeRAGTool (hybrid 1536), WordPressTool (real publish)
 Crew: Process.sequential, memory=True, verbose=True, max_rpm=10
 """
@@ -47,22 +47,30 @@ def sanitize_keyword(keyword: str, current_year: int) -> str:
         
     keyword = str(keyword).strip()
     
-    # Fix: year number directly attached to word (e.g. "2026accident")
+    # Fix: year number directly attached to word (e.g. "2026accident" -> "2026 accident")
     keyword = re.sub(r'(\d{4})([a-zA-Z])', r'\1 \2', keyword)
+    
+    # Fix: word attached to year (e.g. "accident2026" -> "accident 2026")
+    keyword = re.sub(r'([a-zA-Z])(\d{4})', r'\1 \2', keyword)
+    
+    # Fix: number directly attached to word without year (e.g. "2accident" -> "accident")
+    # (?<!\d) ensures we don't match digits in the middle of a longer number like "2026"
+    # Preserves "2-year", "3-month", "1st", "2nd", "3rd"
+    keyword = re.sub(r'(?<!\d)(\d{1,3})(?!-|\s)(?!(?:st|nd|rd|th)\b|[0-9])([a-zA-Z]{2,})', r'\2', keyword)
     
     # Normalize durations like "2year", "2 year" -> "2-year"
     keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*years?\b', r'\1-year', keyword, flags=re.I)
     keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*months?\b', r'\1-month', keyword, flags=re.I)
     keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*days?\b', r'\1-day', keyword, flags=re.I)
     
-    # Fix: number directly attached to word without year (e.g. "2accident" -> "accident")
-    # Preserves "2-year", "3-month", "1st", "2nd"
-    keyword = re.sub(r'^(\d{1,3})(?!-|\s)(?!(?:st|nd|rd|th)\b|[0-9])([a-zA-Z]{2,})', r'\g<2>', keyword)
-    
     # Fix: duplicate year in keyword (e.g. "2026 2026 accident")
     year_str = str(current_year)
     while keyword.count(year_str) > 1:
         keyword = keyword.replace(year_str + ' ', '', 1)
+    
+    # Final pass: ensure year is always separated from words by space
+    keyword = re.sub(r'(\d{4})([a-zA-Z])', r'\1 \2', keyword)
+    keyword = re.sub(r'([a-zA-Z])(\d{4})', r'\1 \2', keyword)
     
     return keyword.strip()
 
@@ -70,20 +78,33 @@ def sanitize_keyword(keyword: str, current_year: int) -> str:
 def fix_broken_year_in_content(html_content: str) -> str:
     """
     Finds and fixes year-number merging in the actual article content.
+    Handles: "2026word", "2word", "2026word2026", etc.
     """
     import re
     
     if not html_content:
         return ""
-        
-    # Fix "2026word" -> "2026 word"
+    
+    # Fix "2026word" -> "2026 word" (year attached to word)
     html_content = re.sub(r'(\b20\d{2})([a-zA-Z])', r'\1 \2', html_content)
+    
+    # Fix "word2026" -> "word 2026" (word attached to year)
+    html_content = re.sub(r'([a-zA-Z])(\b20\d{2})', r'\1 \2', html_content)
     
     # Fix unspaced attached durations like "2year" -> "2-year" without affecting "2 years"
     html_content = re.sub(r'\b(\d+)(years?|months?|days?)\b', r'\1-\2', html_content, flags=re.I)
     
     # Fix "2word" stray digits attached to words (like 2accident, 2framework, 2liability)
-    html_content = re.sub(r'\b([1-9])(?!(?:st|nd|rd|th)\b|[0-9]|-)(?!year|month|day)([a-zA-Z]{2,})\b', r'\2', html_content)
+    # (?<!\d) ensures we don't match digits in the middle of a longer number like "2026"
+    html_content = re.sub(
+        r'(?<!\d)\b([1-9])(?!(?:st|nd|rd|th)\b|[0-9]|-)([a-zA-Z]{2,})\b',
+        r'\2',
+        html_content
+    )
+    
+    # Final pass: ensure year is always separated from words by space
+    html_content = re.sub(r'(\d{4})([a-zA-Z])', r'\1 \2', html_content)
+    html_content = re.sub(r'([a-zA-Z])(\d{4})', r'\1 \2', html_content)
     
     return html_content
 
@@ -133,14 +154,14 @@ async def ensure_minimum_word_count(
 ) -> str:
     """
     Guarantees article reaches 2500-3000 words total and ensures no H2 section
-    is under 200 words by expanding short sections and adding comprehensive modules.
+    is under 300 words by expanding short sections and adding comprehensive modules.
     """
     from bs4 import BeautifulSoup
     from datetime import datetime
     
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # 1. Expand all H2 sections that are under 220 words
+    # 1. Expand all H2 sections that are under 280 words
     h2_sections = soup.find_all('h2')
     section_lengths = []
     for h2 in h2_sections:
@@ -161,40 +182,49 @@ async def ensure_minimum_word_count(
             "word_count": wc
         })
     
+    # Sort by word count ascending - expand shortest sections first
+    section_lengths.sort(key=lambda x: x["word_count"])
+    
     for section in section_lengths:
-        if section["word_count"] < 220:
+        if section["word_count"] < 280:
             expansion_prompt = f"""
 Today: {datetime.utcnow().strftime("%B %d, %Y")}
 
 The section "{section['heading']}" in an article about 
-"{target_keyword}" is currently {section['word_count']} words.
+"{target_keyword}" is currently only {section['heading']} words.
 
-Write 2-3 additional detailed, actionable paragraphs (200-250 words total) that add 
+Write 3-4 additional detailed, actionable paragraphs (300-400 words total) that add 
 genuine depth to this section.
 
 Requirements:
 - Must be about "{section['heading']}"
 - Include specific details, timelines, dollar amounts, and real examples
-- Must be written for an accident victim
+- Must be written for an accident victim seeking guidance
 - Use contractions (you're, it's, don't, can't)
 - No AI buzzwords (furthermore, leverage, holistic, etc)
-- Output only HTML paragraphs: <p>...</p><p>...</p>
+- Output only HTML paragraphs: <p>...</p><p>...</p><p>...</p>
+- Each paragraph must be 80-120 words
+- Include at least one specific example with real numbers
 """
             expansion = ""
             try:
-                expansion = await call_nim_llm(
+                from ..services.nim_client import nim_generate_with_feedback
+                expansion = await nim_generate_with_feedback(
                     prompt=expansion_prompt,
-                    system="You write 2-3 HTML paragraphs only. Start directly with <p>.",
-                    website_id=website_id,
+                    system_prompt="You write 3-4 detailed HTML paragraphs only. Start directly with <p>. No other output.",
+                    max_tokens=600,
+                    timeout_seconds=90,
+                    job_label=f"Section expansion: {section['heading']}"
                 )
             except Exception as e:
                 logger.warning(f"[Expansion] LLM expansion note: {e}")
                 
             if not expansion or len(expansion.split()) < 100:
                 expansion = (
-                    f"<p>When navigating {section['heading'].lower()}, precise documentation and timely execution prevent common insurance valuation disputes. Adjusters frequently look for ambiguities in claim timelines to justify lower settlement offers, so keeping itemized records of all accident-related expenses and medical communications is critical.</p>"
-                    f"<p>For example, in a disputed injury claim involving $28,500 in medical procedures and $8,400 in lost earnings, providing immediate photographic proof and contemporaneous journal entries eliminated comparative fault arguments, securing a full policy limits settlement.</p>"
-                    f"<p>Always obtain certified copies of all diagnostic reports, physician treatment recommendations, and vehicle repair evaluations. Maintaining an organized physical and digital evidence binder ensures every compensable loss is fully substantiated during negotiations.</p>"
+                    f"<p>When dealing with {section['heading'].lower()}, understanding the specific procedural requirements and documentation standards is essential for building a strong case. Insurance adjusters and defense attorneys systematically review every piece of evidence to identify gaps or inconsistencies they can exploit to reduce or deny your claim. Maintaining organized, detailed records from the very beginning of your case creates a solid foundation that protects your legal rights and maximizes your potential compensation.</p>"
+                    f"<p>For example, consider a scenario where a claimant suffered injuries requiring $35,000 in medical treatment and missed 12 weeks of work earning $1,800 per week. By immediately obtaining the police report, photographing all visible injuries, securing witness contact information, and keeping a daily pain journal documenting mobility limitations and emotional distress, the claimant created an irrefutable record of damages. When the insurance company attempted to argue the injuries were pre-existing, the comprehensive documentation proved the direct causal link between the collision and all claimed damages.</p>"
+                    f"<p>A common mistake people make in these situations is waiting too long to gather evidence or failing to document the full extent of their injuries and losses. Scene conditions change, witnesses' memories fade, surveillance footage gets overwritten, and physical evidence disappears. Taking immediate action to preserve every available piece of evidence strengthens your position significantly during settlement negotiations or trial proceedings.</p>"
+                    f"<p>To protect your interests effectively, request certified copies of all medical records including diagnostic imaging results, surgical reports, and therapy notes. Additionally, obtain your complete employment records showing lost wages and benefits, document all out-of-pocket expenses related to your recovery, and consult with an experienced attorney who can help you understand the full value of your claim and navigate the complex legal process ahead.</p>"
                 )
             
             # Clean expansion
@@ -221,8 +251,17 @@ Requirements:
                 for tag in reversed(list(expansion_soup.find_all('p'))):
                     h2_el.insert_after(tag)
 
-    # 2. Add rich supplemental sections if total word count is still under min_words
-    supplemental_sections = [
+    # 2. Check total word count and add supplemental sections if still under min_words
+    text = soup.get_text(separator=' ')
+    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r'Meta Description:.*$', '', text, flags=re.MULTILINE)
+    current_total = len(text.split())
+    
+    if current_total < min_words:
+        words_needed = min_words - current_total
+        logger.info(f"[WORD COUNT] Adding supplemental sections. Current: {current_total}, need {words_needed} more words")
+        
+        supplemental_sections = [
         (
             "Preserving Digital Vehicle Telemetry and Crash Data",
             "<p>Modern accident investigations rely heavily on electronic data extracted directly from vehicle onboard computer networks. Nearly all passenger vehicles, commercial trucks, and rideshare automobiles manufactured within the past decade feature integrated Event Data Recorders (EDRs), commonly referred to as automotive black boxes. These sophisticated diagnostic modules continuously monitor vehicle operational parameters, automatically recording and locking a permanent snapshot of telemetry whenever an airbag deploys or severe deceleration occurs.</p>"
@@ -1238,11 +1277,11 @@ def _enforce_year_correctness(html: str, target_keyword: str) -> str:
 # Central NIM client - no hardcoded EOL models, use nim_client LLM_MODELS
 try:
     from ..services.nim_client import get_llm_model as _nim_get_llm_model, LLM_MODELS as _LLM_MODELS
-    NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", _LLM_MODELS[0] if _LLM_MODELS else "nvidia/nemotron-3-nano-30b-a3b")
-    NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", _LLM_MODELS[1] if len(_LLM_MODELS) > 1 else "nvidia/llama-3.1-nemotron-nano-8b-v1")
+    NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", _LLM_MODELS[0] if _LLM_MODELS else "nvidia/nemotron-3-ultra-550b-a55b")
+    NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", _LLM_MODELS[1] if len(_LLM_MODELS) > 1 else "nvidia/nemotron-3-nano-30b-a3b")
 except Exception:
-    NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
-    NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/llama-3.1-nemotron-nano-8b-v1")
+    NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
+    NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 def _get_nvidia_llm(primary: bool = True):
@@ -1285,7 +1324,7 @@ async def _call_nvidia_with_fallback(prompt: str, system: str = "", primary: boo
         from ..database import call_nim_llm as nim_call
         # call_nim_llm already has internal retry + fallback models; we add explicit model param via env
         os.environ["NIM_LLM_MODEL"] = model
-        result = await nim_call(prompt, system=system, max_tokens=4096, temperature=0.7, fail_silently=False)
+        result = await nim_call(prompt, system=system, max_tokens=8192, temperature=0.7, fail_silently=False)
         return result
     except Exception as e:
         msg = str(e)
@@ -1298,7 +1337,7 @@ async def _call_nvidia_with_fallback(prompt: str, system: str = "", primary: boo
         try:
             from ..services.nim_client import call_llm_central
             logger.warning(f"[Crew] Both primary/fallback failed, trying nim_client.call_llm_central")
-            return await call_llm_central(prompt, system=system, max_tokens=4096, temperature=0.7)
+            return await call_llm_central(prompt, system=system, max_tokens=8192, temperature=0.7)
         except Exception as e2:
             logger.error(f"[Crew] NIM failed after 3 retries + central fallback: {e2} - using heuristic fallback - check API key")
             raise
@@ -1360,31 +1399,36 @@ DO NOT use the primary keyword more than 8 times in the entire article.
 OUTLINE TO FOLLOW:
 {validated_outline_json}
 
-WORD COUNT REQUIREMENT — THIS IS MANDATORY:
+⚠️  WORD COUNT REQUIREMENT — THIS IS MANDATORY ⚠️:
 Target word count: {word_count_target} words (range: 2500-3000)
 Minimum acceptable: 2400 words
 Maximum acceptable: 3200 words
 
-Each H2 section must be minimum 300 words.
-Do not summarize — explain fully.
-Do not move on to the next section until the current one 
+EACH H2 SECTION MUST BE MINIMUM 300 WORDS.
+DO NOT write short, summarized sections.
+DO NOT move on to the next section until the current one 
 has at least 300 words of substantive content.
 
-How to write 300+ words per section without padding:
-1. Explain the concept (50-80 words)
-2. Give the specific details — numbers, steps, requirements (100 words)
-3. Give a concrete example with real numbers (80 words)
-4. Address a common mistake or misconception (60 words)  
-5. Give a practical next step the reader can take (40 words)
-Total per section: ~380 words
+IF YOUR ARTICLE IS UNDER 2400 WORDS, IT WILL BE REJECTED.
+Write fully — explain every concept, give multiple examples,
+provide specific numbers, address common mistakes.
 
-Never use filler phrases to pad word count:
+HOW TO WRITE 300+ WORDS PER SECTION WITHOUT PADDING:
+1. Explain the concept in depth (80-100 words)
+2. Give specific details — numbers, steps, requirements (120-150 words)
+3. Give a concrete example with real numbers (100-120 words)
+4. Address a common mistake or misconception (80-100 words)  
+5. Give a practical next step the reader can take (50-80 words)
+Total per section: ~450-550 words
+
+NEVER use filler phrases to pad word count:
 - "It is important to note that..."
 - "As mentioned above..."
 - "This is a crucial point to understand..."
 
 Instead, add genuine value — more specifics, more examples, 
-more practical detail.
+more practical detail. Every sentence must teach the reader
+something they did not know.
 
 WRITING RULES:
 1. Hook: Use exactly the hook_sentence from point_5_intro as your opener
@@ -4671,7 +4715,7 @@ async def run_planner(target_keyword: str, website_id: str = "default", business
     return validated_outline
 
 
-async def run_writer(outline: Dict[str, Any], target_keyword: str, brand_facts: str = "", tone: str = "Professional", word_count_target: int = 1200, website_id: str = "default", business_name: str = "the business") -> str:
+async def run_writer(outline: Dict[str, Any], target_keyword: str, brand_facts: str = "", tone: str = "Professional", word_count_target: int = 2500, website_id: str = "default", business_name: str = "the business") -> str:
     """Run writer agent with keyword lock and date context."""
     planner_data = {
         "outline": outline,
@@ -4907,7 +4951,27 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     # Final word count check
     is_valid, final_count = validate_word_count(final)
     if not is_valid and final_count < 2400:
-        print(f"[WORD COUNT] Notice: final count is {final_count} words")
+        print(f"[WORD COUNT] WARNING: Final count is {final_count} words — below minimum 2400")
+        # Try one more expansion pass
+        final = await ensure_minimum_word_count(
+            html_content=final,
+            outline=outline or {},
+            target_keyword=pk,
+            website_id=website_id,
+            current_word_count=final_count,
+            min_words=2450
+        )
+        _, final_count = validate_word_count(final)
+        print(f"[WORD COUNT] After final expansion: {final_count} words")
+        
+        if final_count < 2300:
+            raise ValueError(
+                f"Article too short: {final_count} words. "
+                f"Minimum is 2400. Regenerating."
+            )
+    elif final_count > 3200:
+        print(f"[WORD COUNT] Article slightly over limit: {final_count} words. Acceptable.")
+    
     print(f"[WORD COUNT] Final: {final_count} words ✓")
     
     # 12. Audience check

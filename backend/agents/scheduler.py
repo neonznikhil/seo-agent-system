@@ -1272,7 +1272,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
     return best_keyword["keyword"]
 
 
-async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str = "Professional", word_count_target: int = 1200) -> Dict[str, Any]:
+async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str = "Professional", word_count_target: int = 2500) -> Dict[str, Any]:
     """
     FIX Problem 2 — Spec exact implementation with keyword validation and off-topic checks.
     Delegates to crew_blog_writer.run_crew_blog_writer which already implements spec validation,
@@ -1338,7 +1338,7 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
     return result
 
 
-async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, tone: str = "Professional", word_count_target: int = 1200) -> Dict[str, Any]:
+async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, tone: str = "Professional", word_count_target: int = 2500) -> Dict[str, Any]:
     """
     FIX Problem 2 — STEP 3 Retry logic on off-topic detection.
     Wraps entire pipeline in retry loop, max 3 attempts, sleep 5s between ValueError retries.

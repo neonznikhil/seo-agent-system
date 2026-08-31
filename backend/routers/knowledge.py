@@ -1,11 +1,12 @@
 import os
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends, Request
 from pydantic import BaseModel, Field
 
 from ..database import get_supabase
 from ..services.knowledge_service import KnowledgeService
+from ..services.knowledge_service import crawl_and_index_website
 
 logger = logging.getLogger("backend.routers.knowledge")
 router = APIRouter(tags=["knowledge"])
@@ -373,3 +374,30 @@ async def reindex_knowledge():
         return {"success": True, "reindexed_count": reindexed}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/knowledge/test-crawl")
+@router.post("/knowledge/test-crawl")
+async def test_crawl(request: Request):
+    """
+    Test endpoint to run and debug the crawl.
+    Returns full results including errors.
+    """
+    body = await request.json()
+    website_id = body.get("website_id")
+    site_url = body.get("url")
+
+    if not website_id or not site_url:
+        raise HTTPException(status_code=400, detail="website_id and url required")
+
+    results = await crawl_and_index_website(website_id, site_url)
+
+    kb_count = 0
+    try:
+        kb_res = get_supabase().table("knowledge_base").select("id", count="exact").eq("website_id", website_id).execute()
+        kb_count = kb_res.count
+    except Exception:
+        pass
+
+    results["current_kb_count"] = kb_count
+    return results

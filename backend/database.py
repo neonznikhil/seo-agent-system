@@ -36,6 +36,8 @@ def get_supabase() -> Client:
                 key = "mock-key"
             else:
                 raise ValueError("SUPABASE_URL and SUPABASE_KEY/SUPABASE_SERVICE_ROLE_KEY must be set in environment")
+        # Log which key type is being used
+        key_source = "SERVICE_ROLE" if os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY") else "ANON"
         # Pooling: supabase-py uses httpx under the hood; configure limits via options if available
         try:
             from supabase.lib.client_options import ClientOptions
@@ -48,7 +50,7 @@ def get_supabase() -> Client:
         except Exception:
             # Fallback without options for older supabase-py
             supabase_client = create_client(url, key)
-        logger.info("[DB] Supabase singleton initialized with pooling")
+        logger.info(f"[DB] Supabase singleton initialized with pooling (key={key_source})")
     return supabase_client
 
 
@@ -81,8 +83,8 @@ NIM_LLM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 # Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
-NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/llama-3.1-nemotron-70b-instruct")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
+NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b")
 # Fallback lists for central client (used by call_nim_llm)
 _LLM_MODELS = [NIM_LLM_MODEL, NIM_LLM_FALLBACK, "nvidia/nemotron-3-super-120b-a12b"]
 _EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nvidia-embed-qa-4", "nvidia/nv-embedqa-e5-v5"]
@@ -330,7 +332,7 @@ async def _nim_chat_with_retry(model_name: str, messages: list, headers: dict,
 
 
 async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] = None,
-                       max_tokens: int = 2048, temperature: float = 0.7,
+                       max_tokens: int = 8192, temperature: float = 0.7,
                        fail_silently: bool = True, **kwargs) -> str:
     """Call NVIDIA NIM chat completions with 3x retry and model fallbacks."""
     api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY") or NIM_API_KEY
