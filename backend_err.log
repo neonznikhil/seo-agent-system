@@ -1,0 +1,698 @@
+[Security] ENCRYPTION_KEY not set — using local dev fallback (do not use in production)
+INFO:     Started server process [16040]
+INFO:     Waiting for application startup.
+Note recording migration auth_schema.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration autonomous_blog_settings.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration fix_missing_columns.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration fix_missing_tables.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration phase2_tables.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration phase3_tables.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[ai_pick] Keyword 'how to measure ROI of business consulting engagements' not grounded in KB — falling back
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Execution of job "Every 2m Autonomous Blog Writer (DEV bypasses limits) (trigger: interval[0:02:00], next run at: 2026-08-29 14:47:23 IST)" skipped: maximum number of running instances reached (1)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 1 seconds as it raised ReadError: .
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 2 seconds as it raised ReadError: .
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Run time of job "Every 5m Autonomous Cycle (Alerts + Auto-Publish) (trigger: interval[0:05:00], next run at: 2026-08-29 14:53:23 IST)" was missed by 0:00:01.457992
+Run time of job "Every 5m Reactive Realtime Alert Dispatcher & Router (trigger: interval[0:05:00], next run at: 2026-08-29 14:53:23 IST)" was missed by 0:00:01.457992
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\nikhil\AppData\Local\Python\pythoncore-3.11-64\Lib\asyncio\events.py", line 84, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nikhil\AppData\Local\Python\pythoncore-3.11-64\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\nikhil\AppData\Local\Python\pythoncore-3.11-64\Lib\asyncio\events.py", line 84, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nikhil\AppData\Local\Python\pythoncore-3.11-64\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Execution of job "Every 2m Autonomous Blog Writer (DEV bypasses limits) (trigger: interval[0:02:00], next run at: 2026-08-29 14:49:23 IST)" skipped: maximum number of running instances reached (1)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Execution of job "Auto Blog — Every 3 min — 320133b7 (trigger: interval[0:03:00], next run at: 2026-08-29 14:49:27 IST)" skipped: maximum number of running instances reached (1)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[Planner] NIM outline JSON parse note: Unterminated string starting at: line 73 column 18 (char 3250)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Queued job 'daily_search' in local_data/queue.json due to failure: {'message': "Could not find the table 'public.daily_searches' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.data_source_alerts'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Freshness decay calculation failed: {'message': 'column knowledge_base.credibility_score does not exist', 'code': '42703', 'hint': None, 'details': None}
+Auto-consolidation error: {'message': 'column knowledge_base.type does not exist', 'code': '42703', 'hint': None, 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 1 seconds as it raised ReadError: .
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Execution of job "Every 2m Autonomous Blog Writer (DEV bypasses limits) (trigger: interval[0:02:00], next run at: 2026-08-29 14:51:23 IST)" skipped: maximum number of running instances reached (1)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\nikhil\AppData\Local\Python\pythoncore-3.11-64\Lib\asyncio\events.py", line 84, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\nikhil\AppData\Local\Python\pythoncore-3.11-64\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Execution of job "Auto Blog — Every 3 min — 320133b7 (trigger: interval[0:03:00], next run at: 2026-08-29 14:52:27 IST)" skipped: maximum number of running instances reached (1)
+[Planner] NIM outline JSON parse note: Unterminated string starting at: line 4 column 3 (char 192)
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 1 seconds as it raised ReadError: .
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Execution of job "Every 2m Autonomous Blog Writer (DEV bypasses limits) (trigger: interval[0:02:00], next run at: 2026-08-29 14:53:23 IST)" skipped: maximum number of running instances reached (1)
+Run time of job "Every 5m Auto Publish Approval (Gate SEO\u226585) (trigger: interval[0:05:00], next run at: 2026-08-29 14:58:23 IST)" was missed by 0:00:04.333330
+Run time of job "Every 5m Autonomous Cycle (Alerts + Auto-Publish) (trigger: interval[0:05:00], next run at: 2026-08-29 14:58:23 IST)" was missed by 0:00:04.348960
+Run time of job "Every 10m Stuck Generation Cleanup (trigger: interval[0:10:00], next run at: 2026-08-29 15:03:23 IST)" was missed by 0:00:04.348960
+Run time of job "Every 5m Reactive Realtime Alert Dispatcher & Router (trigger: interval[0:05:00], next run at: 2026-08-29 14:58:23 IST)" was missed by 0:00:04.348960
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 1 seconds as it raised HTTPStatusError: Client error '400 Bad Request' for url 'https://google.serper.dev/search'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400.
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 2 seconds as it raised HTTPStatusError: Client error '400 Bad Request' for url 'https://google.serper.dev/search'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400.
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+Serper search failed for 'Legal and personal injury resources 2026 "page not found" OR "404" resource': Client error '400 Bad Request' for url 'https://google.serper.dev/search'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/realtime_alerts?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlinks?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=eq.published "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=eq.pending "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/technical_audits?select=health_score%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/realtime_alerts?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&severity=eq.critical "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id%2Ctitle%2Ckeyword%2Cstatus%2Cpipeline_status%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=8 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/tasks?select=agent_name%2Cstatus%2Cresult%2Cpayload%2Ccreated_at&created_at=gte.2026-08-22T09%3A24%3A24.797146&order=created_at.desc&limit=100 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=generation_interval_minutes%2Cschedule_label%2Cdaily_blog_target%2Cauto_generate_enabled%2Cauto_generate%2Cblogs_generated_today%2Clast_reset_date&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_pipeline_logs "HTTP/2 409 Conflict"
+[90m[backend.agents.scheduler][0m [32mINFO [0m [Scheduler] [auto_blog_scheduler] FAILED: [320133b7] FAILED: Blog generation failed for 'personal injury lawyer': Crew generated HTML too short (<500 chars) — aborting
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_decisions "HTTP/2 404 Not Found"
+[90m[apscheduler.executors.default][0m [32mINFO [0m Job "Every 2m Autonomous Blog Writer (DEV bypasses limits) (trigger: interval[0:02:00], next run at: 2026-08-29 14:55:23 IST)" executed successfully
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlinks?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/technical_audits?select=health_score%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/realtime_alerts?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&severity=eq.critical "HTTP/2 200 OK"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id%2Ctitle%2Ckeyword%2Cstatus%2Cpipeline_status%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=8 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/tasks?select=agent_name%2Cstatus%2Cresult%2Cpayload%2Ccreated_at&created_at=gte.2026-08-22T09%3A24%3A41.011028&order=created_at.desc&limit=100 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Current request statistics:
+\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2510
+\u2502 requests_finished             \u2502 0    \u2502
+\u2502 requests_failed               \u2502 0    \u2502
+\u2502 retry_histogram               \u2502 [0]  \u2502
+\u2502 request_avg_failed_duration   \u2502 None \u2502
+\u2502 request_avg_finished_duration \u2502 None \u2502
+\u2502 requests_finished_per_minute  \u2502 0    \u2502
+\u2502 requests_failed_per_minute    \u2502 0    \u2502
+\u2502 request_total_duration        \u2502 0s   \u2502
+\u2502 requests_total                \u2502 0    \u2502
+\u2502 crawler_runtime               \u2502 0s   \u2502
+\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: <ConnectionTerminated error_code:1, last_stream_id:249, additional_data:None>
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/realtime_alerts?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlinks?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[crawlee._autoscaling.autoscaled_pool][0m [32mINFO [0m current_concurrency = 0; desired_concurrency = 1; cpu = 0.0; mem = 0.0; event_loop = 1.0; client_info = 0.0
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=eq.pending "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/technical_audits?select=health_score%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: Server disconnected
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id%2Ctitle%2Ckeyword%2Cstatus%2Cpipeline_status%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=8 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/tasks?select=agent_name%2Cstatus%2Cresult%2Cpayload%2Ccreated_at&created_at=gte.2026-08-22T09%3A25%3A18.578377&order=created_at.desc&limit=100 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[apscheduler.executors.default][0m [32mINFO [0m Running job "Every 2m Autonomous Blog Writer (DEV bypasses limits) (trigger: interval[0:02:00], next run at: 2026-08-29 14:57:23 IST)" (scheduled at 2026-08-29 14:55:23.550442+05:30)
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&status=eq.active&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&date=eq.2026-08-29 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=daily_budget_usd%2Cgoals&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=target_keyword%2Cprimary_keyword%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=20 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=keyword%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=20 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=target_keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=20 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=content%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=fact%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[apscheduler.executors.default][0m [32mINFO [0m Running job "Auto Blog — Every 3 min — 320133b7 (trigger: interval[0:03:00], next run at: 2026-08-29 14:58:27 IST)" (scheduled at 2026-08-29 14:55:27.901347+05:30)
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&status=eq.active&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&date=eq.2026-08-29 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=daily_budget_usd%2Cgoals&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=target_keyword%2Cprimary_keyword%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=20 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=keyword%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=20 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=target_keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=20 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=content%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=fact%2Ctitle&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=generation_interval_minutes%2Cschedule_label%2Cdaily_blog_target%2Cauto_generate_enabled%2Cauto_generate%2Cblogs_generated_today%2Clast_reset_date&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=created_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Current request statistics:
+\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510
+\u2502 requests_finished             \u2502 0         \u2502
+\u2502 requests_failed               \u2502 0         \u2502
+\u2502 retry_histogram               \u2502 [0]       \u2502
+\u2502 request_avg_failed_duration   \u2502 None      \u2502
+\u2502 request_avg_finished_duration \u2502 None      \u2502
+\u2502 requests_finished_per_minute  \u2502 0         \u2502
+\u2502 requests_failed_per_minute    \u2502 0         \u2502
+\u2502 request_total_duration        \u2502 0s        \u2502
+\u2502 requests_total                \u2502 0         \u2502
+\u2502 crawler_runtime               \u2502 1min 1.7s \u2502
+\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=generation_interval_minutes%2Cschedule_label%2Cdaily_blog_target%2Cauto_generate_enabled%2Cauto_generate%2Cblogs_generated_today%2Clast_reset_date&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&order=created_at.asc "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=app_password%2Cwordpress_password%2Ccms_url%2Ccms_user%2Cwordpress_user&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/match_knowledge "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=%2A&limit=50 "HTTP/2 200 OK"
+[90m[backend.agents.scheduler][0m [33mWARN [0m [ai_pick] Keyword 'how to write a cease and desist letter' not grounded in KB — falling back
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=primary_keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=100 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/research?select=keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=eq.queued&order=priority_score.desc&limit=10 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/keyword_research?select=keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=in.%28queued%2Cpending%29&order=priority_score.desc&limit=10 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=content&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=credibility_score.desc&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=fact&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=credibility_score.desc&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=credibility_score.desc&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=content&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=fact&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=5 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/content_log?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/realtime_alerts?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlinks?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=eq.published "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blog_approvals?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&status=eq.pending "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=id&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=%2A&limit=1 "HTTP/2 404 Not Found"
+[90m[backend.routers.autonomy][0m [33mWARN [0m Could not read autonomous_settings table: {'message': "Could not find the table 'public.autonomous_settings' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.autonomous_health_log'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd%2Ctokens%2Cagent_name&created_at=gte.2026-08-29T00%3A00%3A00&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/technical_audits?select=health_score%2Ccreated_at&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/match_knowledge "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/knowledge_base?select=%2A&limit=50 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=target_keyword%2Cprimary_keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=50 "HTTP/2 404 Not Found"
+[90m[backend.agents.scheduler][0m [32mINFO [0m [Scheduler] [ai_topic_picker] KEYWORD_SELECTED: [320133b7] KEYWORD_SELECTED: AI selected: 'how to calculate pain and suffering damages after a car accident' — It targets a high-volume question that lacks comprehensive guidance, offering a unique step-by-step approach with state-specific examples.
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_decisions "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/blogs?select=target_keyword%2Cprimary_keyword&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&order=created_at.desc&limit=50 "HTTP/2 404 Not Found"
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks

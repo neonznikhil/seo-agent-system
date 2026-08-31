@@ -1,0 +1,26 @@
+npm notice run dev
+npm notice run next dev --port 3000
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 26.5s
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 2.5s (72 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 55.4s (515 modules)
+ GET / 200 in 4548ms
+ ○ Compiling /writer ...
+ ✓ Compiled /writer in 15.6s (521 modules)
+ GET /writer 200 in 120ms
+ ○ Compiling /tech-seo ...
+ ✓ Compiled /tech-seo in 1299ms (513 modules)
+ GET /tech-seo 200 in 1513ms
+ GET / 200 in 302ms
+ GET / 200 in 245ms
+ ○ Compiling /crew ...
+ ✓ Compiled /crew in 1623ms (525 modules)
+ ✓ Compiled in 557ms (270 modules)
+ ✓ Compiled /writer in 254ms (259 modules)
+ GET / 200 in 847ms

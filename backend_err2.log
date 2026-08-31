@@ -1,0 +1,170 @@
+[Security] ENCRYPTION_KEY not set — using local dev fallback (do not use in production)
+INFO:     Started server process [6908]
+INFO:     Waiting for application startup.
+Note recording migration auth_schema.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration fix_missing_columns.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration fix_missing_tables.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Note recording migration phase2_tables.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+Note recording migration phase3_tables.sql: {'message': "Could not find the table 'public.schema_migrations' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.internal_link_suggestions'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Queued job 'daily_search' in local_data/queue.json due to failure: {'message': "Could not find the table 'public.daily_searches' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.data_source_alerts'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Freshness decay calculation failed: {'message': 'column knowledge_base.credibility_score does not exist', 'code': '42703', 'hint': None, 'details': None}
+Auto-consolidation error: {'message': 'column knowledge_base.type does not exist', 'code': '42703', 'hint': None, 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+[Writer] Knowledge base is empty for this website — run ingestion on the /knowledge page first so the writer is grounded in real business facts.
+Queued job 'auto_new_page' in local_data/queue.json due to failure: {'message': 'new row violates row-level security policy for table "content_log"', 'code': '42501', 'hint': None, 'details': None}
+Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 1 seconds as it raised HTTPStatusError: Client error '400 Bad Request' for url 'https://google.serper.dev/search'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400.
+Retrying backend.services.serper_service.SerperService._call_serper_search_api in 2 seconds as it raised HTTPStatusError: Client error '400 Bad Request' for url 'https://google.serper.dev/search'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400.
+Serper search failed for 'Legal and personal injury resources 2026 "page not found" OR "404" resource': Client error '400 Bad Request' for url 'https://google.serper.dev/search'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Current request statistics:
+\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2510
+\u2502 requests_finished             \u2502 0    \u2502
+\u2502 requests_failed               \u2502 0    \u2502
+\u2502 retry_histogram               \u2502 [0]  \u2502
+\u2502 request_avg_failed_duration   \u2502 None \u2502
+\u2502 request_avg_finished_duration \u2502 None \u2502
+\u2502 requests_finished_per_minute  \u2502 0    \u2502
+\u2502 requests_failed_per_minute    \u2502 0    \u2502
+\u2502 request_total_duration        \u2502 0s   \u2502
+\u2502 requests_total                \u2502 0    \u2502
+\u2502 crawler_runtime               \u2502 0s   \u2502
+\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[crawlee._autoscaling.autoscaled_pool][0m [32mINFO [0m current_concurrency = 0; desired_concurrency = 1; cpu = 0.0; mem = 0.0; event_loop = 0.89; client_info = 0.0
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Crawled 0/1 pages, 0 failed requests, desired concurrency 1.
+[90m[backend.services.continuous_monitor][0m [32mINFO [0m [Monitor] Structure monitor started - runs every 6 hours
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A "HTTP/2 200 OK"
+[90m[backend.services.continuous_monitor][0m [32mINFO [0m [Monitor] Structure monitor started - runs every 6 hours
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A "HTTP/2 200 OK"
+[90m[crawlee._autoscaling.autoscaled_pool][0m [32mINFO [0m Waiting for remaining tasks to finish
+[90m[crawlee.crawlers._playwright._playwright_crawler][0m [32mINFO [0m Final request statistics:
+\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510
+\u2502 requests_finished             \u2502 1      \u2502
+\u2502 requests_failed               \u2502 0      \u2502
+\u2502 retry_histogram               \u2502 [1]    \u2502
+\u2502 request_avg_failed_duration   \u2502 None   \u2502
+\u2502 request_avg_finished_duration \u2502 9.61s  \u2502
+\u2502 requests_finished_per_minute  \u2502 4      \u2502
+\u2502 requests_failed_per_minute    \u2502 0      \u2502
+\u2502 request_total_duration        \u2502 9.61s  \u2502
+\u2502 requests_total                \u2502 1      \u2502
+\u2502 crawler_runtime               \u2502 16.01s \u2502
+\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://google.serper.dev/search "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://google.serper.dev/search "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=url%2Cdomain&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlink_opportunities "HTTP/2 404 Not Found"
+[90m[backend.agents.backlink_agent][0m [33mWARN [0m Could not insert backlink opportunity: {'message': "Could not find the table 'public.backlink_opportunities' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.backlink_monitor'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=url%2Cdomain&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlink_opportunities "HTTP/2 404 Not Found"
+[90m[backend.agents.backlink_agent][0m [33mWARN [0m Could not insert backlink opportunity: {'message': "Could not find the table 'public.backlink_opportunities' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.backlink_monitor'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=url%2Cdomain&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlink_opportunities "HTTP/2 404 Not Found"
+[90m[backend.agents.backlink_agent][0m [33mWARN [0m Could not insert backlink opportunity: {'message': "Could not find the table 'public.backlink_opportunities' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.backlink_monitor'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=url%2Cdomain&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlink_opportunities "HTTP/2 404 Not Found"
+[90m[backend.agents.backlink_agent][0m [33mWARN [0m Could not insert backlink opportunity: {'message': "Could not find the table 'public.backlink_opportunities' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.backlink_monitor'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=url%2Cdomain&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/chat/completions "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/backlink_opportunities "HTTP/2 404 Not Found"
+[90m[backend.agents.backlink_agent][0m [33mWARN [0m Could not insert backlink opportunity: {'message': "Could not find the table 'public.backlink_opportunities' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.backlink_monitor'", 'details': None}
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/agent_memory "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[backend.services.budget_manager][0m [33mWARN [0m Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/agent_memory "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: PATCH https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings "HTTP/2 404 Not Found"
+[90m[backend.agents.scheduler][0m [32mINFO [0m [Scheduler] [backlink_prospecting] COMPLETED: Backlink loop finished for 320133b7-192c-4f99-a90f-cd3f188d9140 (13 qualified leads staged)
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id%2Cdomain%2Ccreated_at&order=created_at.asc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_daily_jobs "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_daily_jobs?select=id&job_name=eq.tech_seo_audit&run_at=gte.2026-08-28T00%3A00%3A00&limit=1 "HTTP/2 400 Bad Request"
+[90m[backend.agents.scheduler][0m [32mINFO [0m [Scheduler] [tech_seo_audit] RUNNING: Startup catch-up: running missed daily job tech_seo_audit
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id "HTTP/2 200 OK"
+[90m[backend.agents.scheduler][0m [32mINFO [0m [Scheduler] [tech_seo_audit] RUNNING: TechSEOAgent executing full technical audit on 320133b7-192c-4f99-a90f-cd3f188d9140
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/match_brain_memory "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&memory_type=eq.failure&order=created_at.desc&limit=3 "HTTP/2 200 OK"
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/match_brain_memory "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory?select=%2A&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&memory_type=eq.fact&order=created_at.desc&limit=2 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=%2A&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 406 Not Acceptable"
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/agent_memory "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[backend.services.budget_manager][0m [33mWARN [0m Record spend error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+[90m[backend.services.knowledge_service][0m [32mINFO [0m [Knowledge] Trying central embedding nvidia/nemotron-3-embed-1b for 1 chunks
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://integrate.api.nvidia.com/v1/embeddings "HTTP/1.1 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_memory "HTTP/2 401 Unauthorized"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/agent_memory "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: PATCH https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings "HTTP/2 404 Not Found"
+[90m[backend.agents.scheduler][0m [32mINFO [0m [Scheduler] [tech_seo_audit] COMPLETED: Tech SEO audit complete for 320133b7-192c-4f99-a90f-cd3f188d9140. Health Score: None/100
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id%2Cdomain%2Ccreated_at&order=created_at.asc&limit=1 "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/brain_daily_jobs "HTTP/2 400 Bad Request"
+[90m[backend.main][0m [32mINFO [0m [Startup] Catch-up executed missed daily jobs: ['business_website_watch', 'daily_search', 'knowledge_sync', 'brain_learn', 'content_refresh', 'auto_new_page', 'backlink_prospecting', 'tech_seo_audit']
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[apscheduler.executors.default][0m [32mINFO [0m Running job "Every 5m Auto Publish Approval (Gate SEO\u226585) (trigger: interval[0:05:00], next run at: 2026-08-28 23:29:54 IST)" (scheduled at 2026-08-28 23:24:54.376442+05:30)
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=id "HTTP/2 200 OK"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/daily_costs?select=cost_usd&date=eq.2026-08-28&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 404 Not Found"
+[90m[backend.services.budget_manager][0m [33mWARN [0m Budget error: {'message': "Could not find the table 'public.daily_costs' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.brain_daily_jobs'", 'details': None}
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/websites?select=daily_budget_usd&id=eq.320133b7-192c-4f99-a90f-cd3f188d9140 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_settings?select=auto_publish&website_id=eq.320133b7-192c-4f99-a90f-cd3f188d9140&limit=1 "HTTP/2 404 Not Found"
+[90m[apscheduler.executors.default][0m [32mINFO [0m Job "Every 5m Auto Publish Approval (Gate SEO\u226585) (trigger: interval[0:05:00], next run at: 2026-08-28 23:29:54 IST)" executed successfully
+[90m[apscheduler.executors.default][0m [33mWARN [0m Run time of job "Every 5m Autonomous Cycle (Alerts + Auto-Publish) (trigger: interval[0:05:00], next run at: 2026-08-28 23:29:54 IST)" was missed by 0:00:01.180555
+[90m[apscheduler.executors.default][0m [33mWARN [0m Run time of job "Every 5m Reactive Realtime Alert Dispatcher & Router (trigger: interval[0:05:00], next run at: 2026-08-28 23:29:54 IST)" was missed by 0:00:01.180555
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/users?select=id&id=eq.a0000000-0000-0000-0000-000000000001&limit=1 "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: POST https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/rpc/set_account_context "HTTP/2 404 Not Found"
+[90m[httpx][0m [32mINFO [0m HTTP Request: GET https://evpgxcuvcpihpasptcjk.supabase.co/rest/v1/autonomous_health_log?select=%2A&account_id=eq.a0000000-0000-0000-0000-000000000001&order=created_at.desc&limit=1 "HTTP/2 400 Bad Request"

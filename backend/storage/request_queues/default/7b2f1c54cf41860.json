@@ -1,0 +1,16 @@
+{
+  "unique_key": "https://www.google.com/search?gl=in&hl=en&num=10&q=houston+accident+lawyer+resources+inurl:resources+or+inurl:links+%22useful+links%22",
+  "url": "https://www.google.com/search?q=Houston%20accident%20lawyer%20resources%20inurl%3Aresources%20OR%20inurl%3Alinks%20%22useful%20links%22&num=10&gl=IN&hl=en",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 4
+    }
+  },
+  "retry_count": 0,
+  "no_retry": false,
+  "loaded_url": "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3DHouston%2520accident%2520lawyer%2520resources%2520inurl%253Aresources%2520OR%2520inurl%253Alinks%2520%2522useful%2520links%2522%26num%3D10%26gl%3DIN%26hl%3Den%26sei%3Dx3eMatOoLOvgvr0Py6CF6A0&hl=en&q=EhAkCUDQABmc_lA8fcZ4fo6lGMjvsdQGIjBkZXfFSlBGRCU3gZF1PgfTLf5_n-JytR6qkHRSMHbkWODjOEWPN3xvE3PRKCsSWtUyAVJaAUM",
+  "handled_at": "2026-08-24 16:56:44.387682+00:00"
+}

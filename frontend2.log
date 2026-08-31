@@ -1,0 +1,342 @@
+npm notice run dev
+npm notice run next dev --port 3000
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 5.4s
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 1430ms (72 modules)
+ ○ Compiling /knowledge ...
+ ✓ Compiled /knowledge in 11.7s (515 modules)
+ GET /knowledge 200 in 12655ms
+ ○ Compiling /writer ...
+ ✓ Compiled /writer in 8.8s (521 modules)
+ GET /writer 200 in 80ms
+ ○ Compiling /websites ...
+ ✓ Compiled /websites in 2.8s (513 modules)
+ GET /websites 200 in 3555ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1336ms (515 modules)
+ GET /writer 200 in 650ms
+ ○ Compiling /websites ...
+ ✓ Compiled /websites in 723ms (263 modules)
+ ○ Compiling /content ...
+ ✓ Compiled /content in 1557ms (539 modules)
+ ✓ Compiled in 498ms (272 modules)
+ ○ Compiling /approvals ...
+ ✓ Compiled /approvals in 749ms (545 modules)
+ ○ Compiling /tech-seo ...
+ ✓ Compiled /tech-seo in 813ms (547 modules)
+ ○ Compiling /monitoring ...
+ ✓ Compiled /monitoring in 1158ms (549 modules)
+ ○ Compiling /backlinks ...
+ ✓ Compiled /backlinks in 893ms (551 modules)
+ ○ Compiling /crew ...
+ ✓ Compiled /crew in 977ms (553 modules)
+ ✓ Compiled /writer in 307ms (271 modules)
+ ✓ Compiled /content in 369ms (271 modules)
+ ✓ Compiled in 1262ms (549 modules)
+ ✓ Compiled in 1008ms (282 modules)
+ ✓ Compiled in 1572ms (282 modules)
+ ✓ Compiled in 1369ms (282 modules)
+ ✓ Compiled in 1737ms (282 modules)
+ ✓ Compiled in 1219ms (282 modules)
+ ✓ Compiled in 1277ms (282 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 2.1s (538 modules)
+ GET /_next/static/css/app/layout.css?v=1787945544626 404 in 2994ms
+ ⨯ Error: Cannot find module './24.js'
+Require stack:
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\_not-found\page.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\build\utils.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1517:15)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:55:36
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+    at Module._load (node:internal/modules/cjs/loader:1294:5)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at __webpack_require__.f.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\content\page.js:1:10102
+    at Object.<anonymous> (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\content\page.js:1:10146)
+    at Module._compile (node:internal/modules/cjs/loader:1872:14)
+    at Object..js (node:internal/modules/cjs/loader:2003:10)
+    at Module.load (node:internal/modules/cjs/loader:1594:32)
+    at Module._load (node:internal/modules/cjs/loader:1396:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at requirePage (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:84
+    at async loadComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:26)
+    at async DevServer.findPageComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:714:36)
+    at async DevServer.findPageComponents (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:577:20)
+    at async DevServer.renderPageComponent (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1910:24)
+    at async DevServer.renderToResponseImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:818:17)
+    at async C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\app\\_not-found\\page.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ],
+  page: '/content'
+}
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 6.7s (769 modules)
+ GET /content 500 in 7880ms
+ ⨯ Error: Cannot find module './24.js'
+Require stack:
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\pages\_document.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\build\utils.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1517:15)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:55:36
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+    at Module._load (node:internal/modules/cjs/loader:1294:5)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at __webpack_require__.f.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\content\page.js:1:10102
+    at Object.<anonymous> (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\content\page.js:1:10146)
+    at Module._compile (node:internal/modules/cjs/loader:1872:14)
+    at Object..js (node:internal/modules/cjs/loader:2003:10)
+    at Module.load (node:internal/modules/cjs/loader:1594:32)
+    at Module._load (node:internal/modules/cjs/loader:1396:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at requirePage (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:84
+    at async loadComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:26)
+    at async DevServer.findPageComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:714:36)
+    at async DevServer.findPageComponents (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:577:20)
+    at async DevServer.renderPageComponent (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1910:24)
+    at async DevServer.renderToResponseImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:818:17)
+    at async C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\pages\\_document.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ],
+  page: '/content'
+}
+ ⨯ Error: Cannot find module './24.js'
+Require stack:
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\pages\_document.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\build\utils.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1517:15)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:55:36
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+    at Module._load (node:internal/modules/cjs/loader:1294:5)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at __webpack_require__.f.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\content\page.js:1:10102
+    at Object.<anonymous> (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\content\page.js:1:10146)
+    at Module._compile (node:internal/modules/cjs/loader:1872:14)
+    at Object..js (node:internal/modules/cjs/loader:2003:10)
+    at Module.load (node:internal/modules/cjs/loader:1594:32)
+    at Module._load (node:internal/modules/cjs/loader:1396:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at requirePage (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:84
+    at async loadComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:26)
+    at async DevServer.findPageComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:714:36)
+    at async DevServer.findPageComponents (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:577:20)
+    at async DevServer.renderPageComponent (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1910:24)
+    at async DevServer.renderToResponseImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:818:17)
+    at async C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\pages\\_document.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ],
+  page: '/content'
+}
+ GET /content 500 in 178ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1290ms (312 modules)
+ GET / 200 in 1658ms
+ ⨯ Error: Cannot find module './24.js'
+Require stack:
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\page.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\build\utils.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1517:15)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:55:36
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+    at Module._load (node:internal/modules/cjs/loader:1294:5)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at __webpack_require__.f.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\writer\page.js:1:30399
+    at Object.<anonymous> (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\.next\server\app\writer\page.js:1:30443)
+    at Module._compile (node:internal/modules/cjs/loader:1872:14)
+    at Object..js (node:internal/modules/cjs/loader:2003:10)
+    at Module.load (node:internal/modules/cjs/loader:1594:32)
+    at Module._load (node:internal/modules/cjs/loader:1396:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1617:12)
+    at mod.require (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:153:16)
+    at requirePage (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:84
+    at async loadComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\load-components.js:103:26)
+    at async DevServer.findPageComponentsImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:714:36)
+    at async DevServer.findPageComponents (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:577:20)
+    at async DevServer.renderPageComponent (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1910:24)
+    at async DevServer.renderToResponseImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\base-server.js:818:17)
+    at async C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (C:\Users\nikhil\Desktop\seo-agent-system\frontend-next\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\.next\\server\\app\\page.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\nikhil\\Desktop\\seo-agent-system\\frontend-next\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ],
+  page: '/writer'
+}
+ GET /writer 500 in 77ms
+ ○ Compiling /tech-seo ...
+ ✓ Compiled /tech-seo in 855ms (316 modules)
+ GET /tech-seo 200 in 1309ms
+
+C:\Users\nikhil\Desktop\seo-agent-system\frontend-next>

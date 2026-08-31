@@ -1,0 +1,16 @@
+{
+  "unique_key": "https://www.google.com/search?gl=in&hl=en&num=10&q=legal+and+personal+injury+resources+2026+%22page+not+found%22+or+%22404%22+resource",
+  "url": "https://www.google.com/search?q=Legal%20and%20personal%20injury%20resources%202026%20%22page%20not%20found%22%20OR%20%22404%22%20resource&num=10&gl=IN&hl=en",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 4
+    }
+  },
+  "retry_count": 0,
+  "no_retry": false,
+  "loaded_url": "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3DLegal%2520and%2520personal%2520injury%2520resources%25202026%2520%2522page%2520not%2520found%2522%2520OR%2520%2522404%2522%2520resource%26num%3D10%26gl%3DIN%26hl%3Den%26sei%3D2qSVarSNNKafseMP0YLQ6AI&hl=en&q=EhAkCUDQJC51muGDzcW8hHWsGNvJ1tQGIjBkwJvAK8KuID67zdyRqcVekWA9LSBdkRsbhBpwPHCufssEezhX6ZGi_PitUR8egIcyAVJaAUM",
+  "handled_at": "2026-08-31 15:59:25.835956+00:00"
+}

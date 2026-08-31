@@ -898,5 +898,865 @@
     "decision": "GENERATE",
     "id": "09b275e5-e180-4a3d-9053-d2bb34f19c1a",
     "created_at": "2026-08-31T16:03:05.586189"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 2/10 done. SEO: 85. Keyword: personal injury lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "39564291-ac71-4aa3-96d4-fa37a82a0fbe",
+    "created_at": "2026-08-31T16:57:05.082036"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: 'how to file a car accident compensation claim 2026' \u2014 The site provides a step\u2011by\u2011step guide on car accident compensation claims, making it authoritative for this 2026\u2011specific query.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "2f4394f8-0239-4e46-9053-8a9335da1fcf",
+    "created_at": "2026-08-31T17:00:37.588646"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 4/5 for today. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "6495b682-e931-466d-bfee-f0edfab5edf6",
+    "created_at": "2026-08-31T17:00:52.866708"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 3/5 done. SEO: 85. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "3b87bfac-e7b3-42c0-b23a-cd0abaea139b",
+    "created_at": "2026-08-31T17:07:59.350075"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "e73a355f-ecfd-4977-8a18-5d923693b6f9",
+    "created_at": "2026-08-31T17:08:30.381273"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: car accident compensation claims guide. Selected: 'average car accident settlement amount 2026' \u2014 The site provides detailed settlement data and step-by-step guidance for claimants looking for realistic payout expectations.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "0280651a-da40-4059-895d-70f7cc96cca6",
+    "created_at": "2026-08-31T17:09:32.128645"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 4/5 for today. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "5dc61b86-5c00-463c-9512-d8c85f679226",
+    "created_at": "2026-08-31T17:09:49.915454"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 4/5 done. SEO: 90. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "edee653a-fdfc-4646-88b9-217e6e8b932c",
+    "created_at": "2026-08-31T17:12:17.592745"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "775592b6-64bb-4448-94f9-22377dd9b8cc",
+    "created_at": "2026-08-31T17:12:47.114800"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 4/5 done. SEO: 85. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "edcfc597-e70a-4271-b3cb-daeaf3b33a09",
+    "created_at": "2026-08-31T17:13:06.304896"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "825b08b6-bedc-4c90-9f86-418a76904ea7",
+    "created_at": "2026-08-31T17:13:36.215139"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: '2026 average car accident settlement amount' \u2014 The site already discusses settlement amounts, timelines, and step-by-step processes, making it authoritative for this specific 2026 query.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "ace93c50-4a0a-4d66-9148-f6ffcff2949c",
+    "created_at": "2026-08-31T17:14:24.695973"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 5/5 for today. Keyword: 2026 average car accident settlement amount",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "2df2d3d9-ed83-4fa5-b39e-8c221e71427c",
+    "created_at": "2026-08-31T17:14:34.342322"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: 'average car accident settlement amount 2026' \u2014 The site already discusses settlement amounts and timelines, making this query directly addressable.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "428d71c6-fa29-453a-a4ae-c60736e30d2c",
+    "created_at": "2026-08-31T17:15:07.102678"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 5/5 for today. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "0c0fa2ed-3d3c-4d10-a3ea-f237c7f00b22",
+    "created_at": "2026-08-31T17:15:18.624239"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 4/5 done. SEO: 90. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "02980ba0-99e0-49fd-acdf-08210ba805d2",
+    "created_at": "2026-08-31T17:24:07.145747"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "01ffd5a5-b229-4daa-88c6-dd7bc951c941",
+    "created_at": "2026-08-31T17:24:41.893312"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 5/5 done. SEO: 90. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "21810634-422a-4e6c-a31f-d540b4592c83",
+    "created_at": "2026-08-31T17:25:17.486366"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 5/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "e6da48ee-b53e-43d6-9879-e92739fedd30",
+    "created_at": "2026-08-31T17:26:45.068357"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 5/5 done. SEO: 90. Keyword: 2026 average car accident settlement amount",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "c8d71779-a018-455c-b09f-a41b8ebb73d5",
+    "created_at": "2026-08-31T17:27:21.527180"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claim guide. Selected: 'how to file a car accident compensation claim 2026' \u2014 The site already provides step\u2011by\u2011step guidance on car accident claims, making this query a natural extension of its content.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "cb1d03b1-53f6-4ce9-9dde-0c93eedb4e08",
+    "created_at": "2026-08-31T17:27:44.807154"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "31d6f1ce-613d-438a-add9-300e071521ae",
+    "created_at": "2026-08-31T17:27:56.912012"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 6/5 for today. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "39ee9d33-eae7-4402-b9c5-6b0835a8ad4b",
+    "created_at": "2026-08-31T17:28:06.122626"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 3/10 for today. Keyword: accident lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "b2d68a2b-f7c1-48f2-9ec5-11ee91cedd98",
+    "created_at": "2026-08-31T17:28:12.292545"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 5/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "75a4e757-800b-42a6-9a78-a688c710fc37",
+    "created_at": "2026-08-31T17:29:00.154793"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car Accident Compensation Claims Guide. Selected: 'how to file a car accident compensation claim 2026' \u2014 The site offers a detailed step-by-step guide that aligns with the specific 2026 search intent of users looking for up-to-date claim processes.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "5b293c5b-0f90-4ba3-aabb-ae43ece02e9d",
+    "created_at": "2026-08-31T17:29:57.072064"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 6/5 for today. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "93ba9656-5f09-482a-9b2b-4124c8a5f016",
+    "created_at": "2026-08-31T17:30:16.567594"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 6/5 done. SEO: 85. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "31fe5dce-5aa3-4375-8825-0263f6117169",
+    "created_at": "2026-08-31T17:37:56.520004"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 3/10 for today. Keyword: how to file a personal injury claim",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "27c6d950-ab05-4eca-adca-ecb0938f7195",
+    "created_at": "2026-08-31T17:39:13.326141"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 3/10 done. SEO: 90. Keyword: accident lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "0d01a8a5-76ff-46b2-82cd-b9fa31215000",
+    "created_at": "2026-08-31T17:39:24.453329"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 6/5 done. SEO: 90. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "ddb97dbe-9d0d-475b-baa2-5be8c6994e61",
+    "created_at": "2026-08-31T17:39:47.485528"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 6/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "db5cd88e-db2f-4eb1-aecd-96ef743dcc42",
+    "created_at": "2026-08-31T17:40:42.440355"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 4/10 for today. Keyword: car accident lawyer",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "ad78408f-7d10-4df6-9e40-90b5bfa0ff2d",
+    "created_at": "2026-08-31T17:41:02.122707"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: car accident compensation claim guide. Selected: 'how long does a car accident compensation claim take 2026' \u2014 The site already offers detailed timelines and settlement information, making this query a natural extension of its existing content.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "28c934e7-e24d-4c3f-b6dd-5052616de3e5",
+    "created_at": "2026-08-31T17:41:14.345882"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 7/5 for today. Keyword: how long does a car accident compensation claim take 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "cc60a8a5-72e4-43e9-92fc-906a06f806bf",
+    "created_at": "2026-08-31T17:41:22.676424"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 3/10 done. SEO: 85. Keyword: how to file a personal injury claim",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "0e060944-240a-460c-b6a9-95b739320fe1",
+    "created_at": "2026-08-31T17:46:42.741216"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 6/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "efe65d2c-cb9b-4c04-bd01-de0262d8be59",
+    "created_at": "2026-08-31T17:47:45.896937"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 4/10 done. SEO: 90. Keyword: car accident lawyer",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "1612a078-31d9-49f8-9435-2743417ad2ce",
+    "created_at": "2026-08-31T17:48:03.255296"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claim guide. Selected: 'car accident compensation claim steps 2026' \u2014 The site provides a detailed step-by-step guide that matches user intent for procedural instructions on filing claims.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "aa1bb6d9-c6bb-41b0-8fe3-c6456253df31",
+    "created_at": "2026-08-31T17:48:14.223652"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 7/5 for today. Keyword: car accident compensation claim steps 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "83fc0f4a-a668-4fa5-a0c1-59f6e1f83d44",
+    "created_at": "2026-08-31T17:48:22.584317"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 7/5 done. SEO: 85. Keyword: how long does a car accident compensation claim take 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "69750c48-3c21-4192-93b9-05fd854cedbe",
+    "created_at": "2026-08-31T17:48:28.583379"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 5/10 for today. Keyword: car accident lawyer",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "3279b985-e8f5-4bbc-bda5-4342e5183c89",
+    "created_at": "2026-08-31T17:49:49.541401"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 7/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "b64aa23f-1ab5-4318-b6c4-9103a06d2082",
+    "created_at": "2026-08-31T17:50:02.651509"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claim guide. Selected: 'how to file a car accident compensation claim 2026' \u2014 The site provides a detailed 2026 step\u2011by\u2011step guide that matches users' search intent for filing car accident compensation claims.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "41e2ec25-1181-4e92-ae00-d4579417a845",
+    "created_at": "2026-08-31T17:50:27.512434"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 8/5 for today. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "5fc9ddfd-5c44-4b60-9d89-c8b12fd0cda8",
+    "created_at": "2026-08-31T17:50:36.432120"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 7/5 done. SEO: 90. Keyword: car accident compensation claim steps 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "fa1743f1-b63e-4943-841f-88a8e6cb5067",
+    "created_at": "2026-08-31T17:56:31.933944"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "cb76bfc1-0dd0-47b2-97c4-9b34d38c9b42",
+    "created_at": "2026-08-31T17:57:05.576185"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 5/10 done. SEO: 85. Keyword: car accident lawyer",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "df6e6272-806e-4236-a503-7c91852c6a21",
+    "created_at": "2026-08-31T17:57:17.958508"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 7/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "f65d279c-11e8-40de-9b9b-57aa9c0d271a",
+    "created_at": "2026-08-31T17:58:39.175380"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: 'average car accident settlement amount 2026' \u2014 The site already covers settlement details and timing, making this query a natural extension of their existing content.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "be583df7-dbf6-4712-9da5-2e9eb4a1d185",
+    "created_at": "2026-08-31T17:59:15.319858"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 8/5 for today. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "dd6c8afc-072b-4120-94c7-888c99a0079e",
+    "created_at": "2026-08-31T17:59:22.321709"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 7/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "512ace68-f16b-4d7d-8d1f-8958789dc07d",
+    "created_at": "2026-08-31T17:59:47.408581"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 8/5 done. SEO: 90. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "9e9f245a-0ad2-4ad6-9225-8a94bae5e6de",
+    "created_at": "2026-08-31T18:00:14.690176"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car Accident Compensation Claims Guide. Selected: 'average car accident settlement 2026' \u2014 The site already covers settlement amounts and claim steps, so it can provide up\u2011to\u2011date 2026 data and insights.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "ceb91b1a-08ad-4f44-9b15-df4e8ac8fcda",
+    "created_at": "2026-08-31T18:00:28.760673"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 8/5 for today. Keyword: average car accident settlement 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "49d8886a-8353-4ec2-9d91-1271f348343a",
+    "created_at": "2026-08-31T18:00:41.890707"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 6/10 for today. Keyword: corporate lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "f762838f-f317-4f5a-bbec-f93afbb3cacc",
+    "created_at": "2026-08-31T18:01:18.332142"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 6/10 done. SEO: 90. Keyword: corporate lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "ce3da221-4580-4beb-8a92-1984b0afb453",
+    "created_at": "2026-08-31T18:10:11.609767"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 8/5 done. SEO: 90. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "535a6eeb-e763-4928-9053-88c8c1eac41d",
+    "created_at": "2026-08-31T18:10:53.334548"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 8/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "794d5cb5-f446-451b-885f-95525b160959",
+    "created_at": "2026-08-31T18:11:01.515322"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "ae2d2f71-ce3f-4dca-bacd-f5eba90bc3cd",
+    "created_at": "2026-08-31T18:11:37.281855"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: 'average car accident settlement amount 2026' \u2014 The site already details settlement processes and timeframes, making a 2026-specific settlement estimate highly relevant.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "c901deed-eb72-4b20-adce-e195a4589851",
+    "created_at": "2026-08-31T18:11:54.451075"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 9/5 for today. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "3b62a202-0613-4504-9bcb-89ed38973492",
+    "created_at": "2026-08-31T18:12:15.345163"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 8/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "533e197f-88ba-4e8c-8d5d-8839857c5820",
+    "created_at": "2026-08-31T18:12:41.469717"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car Accident Compensation Claims Guide. Selected: 'average car accident settlement 2026' \u2014 The site already covers settlement amounts and a featured snippet, so a 2026 update directly addresses current search intent.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "60233121-773c-44cd-9432-2f699b9f1a6b",
+    "created_at": "2026-08-31T18:13:36.949628"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 9/5 for today. Keyword: average car accident settlement 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "8b7c2a27-69b2-4749-8027-0d8eeda704e3",
+    "created_at": "2026-08-31T18:13:56.772463"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 8/5 done. SEO: 90. Keyword: average car accident settlement 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "3a651a4e-701d-4151-bc86-ac87045da0e0",
+    "created_at": "2026-08-31T18:18:05.252650"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> SKIP",
+    "content": "No keyword available from AI topic picker.",
+    "job": "auto_blog_scheduler",
+    "decision": "SKIP",
+    "id": "d6aecf65-af04-439d-a269-93b372d90902",
+    "created_at": "2026-08-31T18:18:28.453762"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 8/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "6c3398d7-25e6-46e8-b82e-0c3b70d46f68",
+    "created_at": "2026-08-31T18:20:44.292816"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 9/5 done. SEO: 90. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "5bd1451b-ce4d-4f07-bd6a-620ff13cc480",
+    "created_at": "2026-08-31T18:21:18.708089"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: '2026 average car accident settlement amount' \u2014 The site provides detailed step\u2011by\u2011step guidance on car accident claims, making an up\u2011to\u2011date settlement figure highly valuable to its readers.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "5c1fbca3-9b48-4979-85b1-1a778838e5ba",
+    "created_at": "2026-08-31T18:21:32.628704"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 9/5 for today. Keyword: 2026 average car accident settlement amount",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "042c5b4f-4e3b-4a96-9881-1c0c35b348b3",
+    "created_at": "2026-08-31T18:21:52.540147"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 7/10 for today. Keyword: personal injury lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "f7ff8164-1c53-4090-9248-7d18ac899a91",
+    "created_at": "2026-08-31T18:24:18.802943"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 9/5 done. SEO: 90. Keyword: average car accident settlement 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "9ae95873-89f9-4aeb-a34d-8016ebb3951c",
+    "created_at": "2026-08-31T18:24:27.158219"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 7/10 for today. Keyword: how to file a personal injury claim",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "f786e539-39e0-443c-b9c2-2ea17ff8babc",
+    "created_at": "2026-08-31T18:27:00.356341"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 9/5 done. SEO: 90. Keyword: 2026 average car accident settlement amount",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "f5df343d-f212-425a-b506-9fdc8375e24c",
+    "created_at": "2026-08-31T18:34:00.768825"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 7/10 for today. Keyword: corporate attorney near me",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "d20f83c8-8055-4f6a-9486-e2ee6354bfee",
+    "created_at": "2026-08-31T18:35:14.974763"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 7/10 done. SEO: 90. Keyword: personal injury lawyer near me",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "117fd116-ffdb-42be-b7de-da09e9e3e8df",
+    "created_at": "2026-08-31T18:37:16.125984"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 9/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "188630e9-7b8a-494d-a7bf-241856ebb81e",
+    "created_at": "2026-08-31T18:38:08.616387"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 7/10 done. SEO: 85. Keyword: how to file a personal injury claim",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "eca3cee7-4e97-4c85-b650-8234c7e638eb",
+    "created_at": "2026-08-31T18:38:36.766317"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> BYPASS",
+    "content": "Developer mode: bypassing daily limit 9/5 blogs generated today.",
+    "job": "auto_blog_scheduler",
+    "decision": "BYPASS",
+    "id": "08ddf50e-eab0-4b1b-8cbc-9fb33dc4b502",
+    "created_at": "2026-08-31T18:38:40.558420"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car Accident Compensation Claims Guide. Selected: 'average car accident settlement 2026' \u2014 The site offers step\u2011by\u2011step guidance on car accident claims and would benefit readers looking for 2026 settlement expectations.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "22303864-7bc0-4753-a9a6-a8a18e9b13aa",
+    "created_at": "2026-08-31T18:38:50.711388"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 10/5 for today. Keyword: average car accident settlement 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "1180d8dd-421a-40de-b483-5bd65aaab1c2",
+    "created_at": "2026-08-31T18:39:04.783292"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car Accident Compensation Claims Guide. Selected: 'car accident compensation claim steps 2026' \u2014 The site already publishes detailed step\u2011by\u2011step guides on car accident compensation claims, making a 2026\u2011focused procedural article highly relevant.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "cf019352-78c9-47db-8d88-0d552ab9b786",
+    "created_at": "2026-08-31T18:39:34.530655"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 10/5 for today. Keyword: car accident compensation claim steps 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "ff8be385-b135-42bc-bfdf-f0d2a7304ae3",
+    "created_at": "2026-08-31T18:39:55.130802"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 7/10 done. SEO: 85. Keyword: corporate attorney near me",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "08e5483e-e728-42ea-9c53-c5e9c462475d",
+    "created_at": "2026-08-31T18:48:14.211142"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> COMPLETE",
+    "content": "Blog 10/5 done. SEO: 90. Keyword: car accident compensation claim steps 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "COMPLETE",
+    "id": "5d0a2773-bc77-4019-92d6-da58fe3054c3",
+    "created_at": "2026-08-31T18:48:56.866089"
   }
 ]

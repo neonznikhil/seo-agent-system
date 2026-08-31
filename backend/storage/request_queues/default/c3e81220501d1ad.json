@@ -1,0 +1,16 @@
+{
+  "unique_key": "https://www.google.com/search?gl=in&hl=en&num=10&q=houston+accident+lawyer+resources+legal+guide+directory+compare",
+  "url": "https://www.google.com/search?q=Houston%20accident%20lawyer%20resources%20legal%20guide%20directory%20compare&num=10&gl=IN&hl=en",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 4
+    }
+  },
+  "retry_count": 0,
+  "no_retry": false,
+  "loaded_url": "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3DHouston%2520accident%2520lawyer%2520resources%2520legal%2520guide%2520directory%2520compare%26num%3D10%26gl%3DIN%26hl%3Den%26sei%3D23eMaoLjG6-nvr0Pw_Ph6AY&hl=en&q=EhAkCUDQABmc_lA8fcZ4fo6lGNzvsdQGIjCwjB2gyGD1LctviMqYI92WdnXTDlumCpQAcd9r7xHZkyxtTgGiW77qEcp_RdnFctoyAVJaAUM",
+  "handled_at": "2026-08-24 16:57:04.473835+00:00"
+}
