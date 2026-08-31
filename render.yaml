@@ -63,3 +63,4 @@ services:
     region: singapore
     plan: free
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
