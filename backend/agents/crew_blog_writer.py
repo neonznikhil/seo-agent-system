@@ -5019,7 +5019,7 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     elif final_count > 3200:
         print(f"[WORD COUNT] Article slightly over limit: {final_count} words. Acceptable.")
     
-    print(f"[WORD COUNT] Final: {final_count} words ✓")
+    print(f"[WORD COUNT] Final: {final_count} words [OK]")
     
     # 12. Audience check
     if contains_wrong_audience_content(final):

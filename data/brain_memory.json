@@ -228,5 +228,205 @@
     "decision": "SKIP",
     "id": "b8be9681-248e-419b-9bf9-17cbc8b39384",
     "created_at": "2026-08-31T08:48:05.027825"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> FAILED",
+    "content": "Blog generation failed for '2026 average car accident settlement amount': Crew generation failed after fallback: 'charmap' codec can't encode character '\\u2713' in position 31: character maps to <undefined>",
+    "job": "auto_blog_scheduler",
+    "decision": "FAILED",
+    "id": "25b02f8e-7280-40e2-9b4f-f87abca1e16d",
+    "created_at": "2026-08-31T08:58:29.233439"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Independent accident claim resource guide. Selected: '2026 car accident claim deadline' \u2014 The site details 2026 statutory limitation periods, making this query directly relevant to visitors needing timely filing guidance.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "8ba1ef54-750c-44e4-b832-4688bf17df52",
+    "created_at": "2026-08-31T08:58:50.793267"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/10 for today. Keyword: 2026 car accident claim deadline",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "cbf3e956-80a3-4513-afc3-106b93d5b83a",
+    "created_at": "2026-08-31T08:58:53.972317"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> FAILED",
+    "content": "Blog generation failed for 'average car accident settlement amount 2026': Crew generation failed after fallback: 'charmap' codec can't encode character '\\u2713' in position 31: character maps to <undefined>",
+    "job": "auto_blog_scheduler",
+    "decision": "FAILED",
+    "id": "b0395f3a-79de-4141-93a3-58091ac9e548",
+    "created_at": "2026-08-31T09:01:34.082703"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Independent accident claim guide resource. Selected: 'car accident claim deadline 2026' \u2014 The site provides up-to-date statutory deadlines and procedural timelines for 2026 claims.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "ae31127c-f116-4518-bc05-359fa1778b10",
+    "created_at": "2026-08-31T09:01:54.474719"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/10 for today. Keyword: car accident claim deadline 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "dbb39575-64ab-4dca-8acc-d0059a787b18",
+    "created_at": "2026-08-31T09:01:57.895708"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: car accident compensation resources. Selected: 'car accident claim time limit 2026' \u2014 The site's existing step-by-step guides address claim processes, and adding 2026 deadline information directly helps visitors protect their legal rights.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "9bd9abe2-bca3-4cf5-a12a-09bb06d54c66",
+    "created_at": "2026-08-31T09:09:03.128936"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/5 for today. Keyword: car accident claim time limit 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "eb95d859-a297-41a4-88aa-51392bf7584e",
+    "created_at": "2026-08-31T09:09:06.603147"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: car accident compensation claims guidance. Selected: 'average car accident settlement amount 2026' \u2014 The website's core content focuses on guiding claimants through settlement processes, making this a primary search intent for their audience.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "fb8f5aec-a98c-4f5f-ac3a-7a19d9a92070",
+    "created_at": "2026-08-31T09:09:46.944220"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/5 for today. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "2468a517-6603-4fdd-8676-90057e4912e2",
+    "created_at": "2026-08-31T09:09:59.942436"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: what this website is about in 5 words. Selected fallback: 'how to file a car accident compensation claim' \u2014 grounded in KB",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "fa6f0461-f39c-4146-904f-9134ca7b26da",
+    "created_at": "2026-08-31T09:11:03.427610"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/5 for today. Keyword: how to file a car accident compensation claim",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "36c3d205-b4a4-4bf2-8fc4-0ef7dd2f5fc1",
+    "created_at": "2026-08-31T09:11:06.684786"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Independent accident claim guide resource. Selected: '2026 car accident fault determination rules' \u2014 The site provides detailed fault rules and 2026 statutory updates that directly address this query.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "ed3cc791-f4d6-4f02-bad3-c3c98cb09f6c",
+    "created_at": "2026-08-31T13:21:57.363370"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/10 for today. Keyword: 2026 car accident fault determination rules",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "89413974-069c-4e9c-befb-d3ce5fdde061",
+    "created_at": "2026-08-31T13:22:02.095575"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: 'average car accident settlement amount 2026' \u2014 The site already offers step\u2011by\u2011step guidance on car accident claims and settlement amounts, directly answering this query.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "9fd8e321-2d47-409b-8a0c-b82cfe47a7dc",
+    "created_at": "2026-08-31T13:23:16.212062"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: ai_topic_picker -> KEYWORD_SELECTED",
+    "content": "Website is about: Car accident compensation claims guide. Selected: 'how to file a car accident compensation claim 2026' \u2014 The site offers step\u2011by\u2011step instructions for filing compensation claims, aligning directly with this query.",
+    "job": "ai_topic_picker",
+    "decision": "KEYWORD_SELECTED",
+    "id": "2f3a1c5e-07f4-4ab9-8155-41b6b0ec9538",
+    "created_at": "2026-08-31T13:23:20.188585"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/5 for today. Keyword: how to file a car accident compensation claim 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "e40beefb-9e53-4d49-ad69-8a26e2948a3f",
+    "created_at": "2026-08-31T13:23:37.699086"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_blog_scheduler -> GENERATE",
+    "content": "Blog 1/5 for today. Keyword: average car accident settlement amount 2026",
+    "job": "auto_blog_scheduler",
+    "decision": "GENERATE",
+    "id": "0da10a78-b6c2-4ed6-a880-0e718fcd1038",
+    "created_at": "2026-08-31T13:23:41.221085"
+  },
+  {
+    "website_id": "44666e81-1d83-4801-be22-1cb72f39801a",
+    "memory_type": "decision",
+    "title": "Decision: auto_new_page -> SKIP",
+    "content": "Denied unrelated keyword 'Autonomous SEO Strategy' (denylist) for WriterPipeline",
+    "job": "auto_new_page",
+    "decision": "SKIP",
+    "id": "92e5a757-0e37-4778-aed8-286e59fb7993",
+    "created_at": "2026-08-31T14:05:50.547245"
+  },
+  {
+    "website_id": "5a0c3532-f98e-4951-a9e3-8d8bd7c13322",
+    "memory_type": "decision",
+    "title": "Decision: auto_new_page -> SKIP",
+    "content": "Denied unrelated keyword 'Autonomous SEO Strategy' (denylist) for WriterPipeline",
+    "job": "auto_new_page",
+    "decision": "SKIP",
+    "id": "66ff1bed-d0f9-4bbf-9153-a3346341e10e",
+    "created_at": "2026-08-31T14:05:52.163759"
   }
 ]

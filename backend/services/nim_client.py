@@ -2,11 +2,30 @@
 Provider selection via LLM_PROVIDER env: "nvidia" (default) or "openrouter".
 OpenRouter: https://openrouter.ai/api/v1/chat/completions (OpenAI-compatible)
 """
+import asyncio
 import os
 import logging
+import time
 import httpx
 from typing import List
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+logger = logging.getLogger("backend.services.nim_client")
+
+# Rate limiting: min gap between requests (1.5s = 40 RPM max)
+_MIN_REQUEST_GAP = 1.5
+_last_request_time = 0.0
+
+async def _rate_limit():
+    """Enforce minimum gap between API calls to stay under rate limit."""
+    global _last_request_time
+    now = time.monotonic()
+    elapsed = now - _last_request_time
+    if elapsed < _MIN_REQUEST_GAP:
+        wait_time = _MIN_REQUEST_GAP - elapsed
+        logger.debug(f"[NIM RateLimit] Waiting {wait_time:.1f}s")
+        await asyncio.sleep(wait_time)
+    _last_request_time = time.monotonic()
 
 logger = logging.getLogger("backend.services.nim_client")
 
@@ -23,11 +42,15 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
 LLM_MODELS: List[str] = [
-    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b"),
-    os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-ultra-550b-a55b"),
+    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
+    os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b"),
     "nvidia/nemotron-3-super-120b-a12b",
     "nvidia/llama-3.1-nemotron-70b-instruct",
 ]
+# Add OpenRouter free model as final fallback if key available
+_or_key = os.getenv("OPENROUTER_API_KEY", "")
+if _or_key and "nvidia/nemotron-3-ultra-550b-a55b:free" not in LLM_MODELS:
+    LLM_MODELS.append("nvidia/nemotron-3-ultra-550b-a55b:free")
 # Deduplicate preserving order
 _seen = set()
 LLM_MODELS = [m for m in LLM_MODELS if not (m in _seen or _seen.add(m))]
@@ -158,16 +181,25 @@ async def validate_embedding_model(force: bool = False) -> str:
     return _cached_embed_model
 
 # Tenacity retry wrappers for 410 handling
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=15), retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)), reraise=True)
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30), retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)), reraise=True)
 async def _call_llm_with_retry(model: str, messages: list, headers: dict, max_tokens: int, temperature: float) -> str:
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    await _rate_limit()
+    async with httpx.AsyncClient(timeout=180.0) as client:
         payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature}
         resp = await client.post(_get_llm_url(), json=payload, headers=headers)
         if resp.status_code == 410:
             logger.warning(f"[NIM Client] Model EOL 410 {model} - switching to fallback (retry)")
             raise httpx.HTTPStatusError(f"Model EOL 410 {model}", request=resp.request, response=resp)
         if resp.status_code == 429:
+            retry_after = resp.headers.get("retry-after", "10")
+            wait_secs = int(retry_after) if retry_after.isdigit() else 10
+            logger.warning(f"[NIM Client] Rate limited 429 on {model}. Waiting {wait_secs}s (Retry-After: {retry_after})")
+            await asyncio.sleep(wait_secs)
             raise httpx.HTTPStatusError("rate_limited", request=resp.request, response=resp)
+        if resp.status_code == 503:
+            logger.warning(f"[NIM Client] Service overloaded 503 on {model}. Waiting 15s...")
+            await asyncio.sleep(15)
+            raise httpx.HTTPStatusError("service_overloaded_503", request=resp.request, response=resp)
         if resp.status_code != 200:
             raise httpx.HTTPStatusError(f"NIM returned {resp.status_code}: {resp.text[:200]}", request=resp.request, response=resp)
         data = resp.json()
@@ -260,12 +292,36 @@ async def call_llm_central(prompt: str, system: str = "", max_tokens: int = 4096
                 break
             logger.warning(f"[NIM Client] Model {model} failed: {e}, trying fallback")
             continue
+    # All NVIDIA models failed - try OpenRouter if key available and not already using it
+    or_key = os.getenv("OPENROUTER_API_KEY", "")
+    if or_key and _get_api_key() != or_key:
+        logger.warning(f"[NIM Client] All NVIDIA models failed, trying OpenRouter fallback")
+        or_headers = {"Authorization": f"Bearer {or_key}", "Content-Type": "application/json", "HTTP-Referer": "https://rankforge.ai", "X-Title": "RankForge"}
+        for model in LLM_MODELS:
+            if ":free" not in model:
+                continue
+            try:
+                await _rate_limit()
+                async with httpx.AsyncClient(timeout=180.0) as client:
+                    payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature}
+                    resp = await client.post(OPENROUTER_LLM_URL, json=payload, headers=or_headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        if content and content.strip():
+                            logger.info(f"[NIM Client] OpenRouter fallback success with {model}")
+                            _record_success()
+                            return content.strip()
+            except Exception as e:
+                logger.warning(f"[NIM Client] OpenRouter {model} failed: {e}")
+                continue
     _record_failure()
     raise RuntimeError(f"NVIDIA NIM unavailable after trying {len(LLM_MODELS)} models: {last_error}")
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=15), retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)), reraise=True)
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30), retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)), reraise=True)
 async def _call_embed_with_retry(model: str, inputs: list, headers: dict) -> list:
+    await _rate_limit()
     async with httpx.AsyncClient(timeout=30.0) as client:
         payload = {"model": model, "input": inputs, "input_type": "query", "encoding_format": "float"}
         resp = await client.post(_get_embed_url(), json=payload, headers=headers)

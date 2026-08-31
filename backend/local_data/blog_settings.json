@@ -13,13 +13,11 @@
     "auto_generate_enabled": true
   },
   "5a0c3532-f98e-4951-a9e3-8d8bd7c13322": {
-    "generation_interval_minutes": 3,
-    "interval_minutes": 3,
-    "schedule_label": "Every 3 min",
-    "label": "Every 3 min",
     "daily_blog_target": 10,
-    "daily_target": 10,
-    "auto_generate_enabled": true,
-    "updated_at": "2026-08-31T08:18:30.372434"
+    "generation_interval_minutes": 144,
+    "auto_topic_selection": true,
+    "updated_at": "2026-08-31T13:48:01.317513",
+    "blogs_generated_today": 0,
+    "last_reset_date": "2026-08-31"
   }
 }

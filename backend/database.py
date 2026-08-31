@@ -259,7 +259,7 @@ _nim_http_client: Optional[httpx.AsyncClient] = None
 def _get_nim_http_client() -> httpx.AsyncClient:
     global _nim_http_client
     if _nim_http_client is None or _nim_http_client.is_closed:
-        _nim_http_client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
+        _nim_http_client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0))
     return _nim_http_client
 
 
@@ -358,6 +358,20 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
                        max_tokens: int = 8192, temperature: float = 0.7,
                        fail_silently: bool = True, **kwargs) -> str:
     """Call NVIDIA NIM chat completions with 3x retry and model fallbacks."""
+    # Rate limiting: min 1.5s gap between requests
+    global _last_request_time_db
+    try:
+        _last_request_time_db
+    except NameError:
+        _last_request_time_db = 0.0
+    import asyncio
+    import time
+    now = time.monotonic()
+    elapsed = now - _last_request_time_db
+    if elapsed < 1.5:
+        await asyncio.sleep(1.5 - elapsed)
+    _last_request_time_db = time.monotonic()
+    
     api_key = NIM_API_KEY
     messages = []
     if system:
