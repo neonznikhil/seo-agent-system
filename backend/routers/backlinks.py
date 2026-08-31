@@ -293,19 +293,18 @@ async def scout_backlink_stream(website_id: str, niche_keyword: Optional[str] = 
     async def _run_and_publish():
         channel = f"backlinks:scout:{website_id}"
         try:
-            publish(channel, {"event": "log", "message": "Searching resource pages..."})
+            publish(channel, {"event": "log", "message": "Initializing 5-tier opportunity scout..."})
             engine = BacklinkAcquisitionEngine(website_id=website_id)
             keyword = niche_keyword or "primary service resources"
-            publish(channel, {"event": "log", "message": "Searching competitor gap pages..."})
             result = await engine.run_full_weekly_cycle(keyword)
             found = (
-                result.get("opportunities_found")
+                result.get("scout_stage", {}).get("total_discovered")
+                or result.get("opportunities_found")
                 or len(result.get("opportunities", []) or [])
                 or 0
             )
-            publish(channel, {"event": "log", "message": "Filtering by DR threshold..."})
-            publish(channel, {"event": "completed", "found": found,
-                              "summary": str(result)[:300]})
+            publish(channel, {"event": "log", "message": f"Discovered {found} high-authority link targets."})
+            publish(channel, {"event": "completed", "found": found, "summary": str(result)[:300]})
         except Exception as e:
             publish(channel, {"event": "error", "error": str(e)[:300]})
 
@@ -360,3 +359,74 @@ async def get_website_backlinks(website_id: str = Path(...)):
         "monitor": mon,
         "count": len(opps) + len(mon)
     }
+
+
+@router.post("/api/backlinks/{opportunity_id}/draft-email")
+@router.post("/backlinks/{opportunity_id}/draft-email")
+async def draft_outreach_email(opportunity_id: str):
+    """Generate a highly targeted, value-first backlink outreach email via NVIDIA NIM."""
+    supabase = get_supabase()
+    opp = {}
+    try:
+        res = supabase.table("backlink_opportunities").select("*").eq("id", opportunity_id).single().execute()
+        opp = res.data or {}
+    except Exception as e:
+        logger.warning(f"Failed to lookup opportunity {opportunity_id}: {e}")
+
+    source_url = opp.get("source_url") or opp.get("url") or "Target Page"
+    target_url = opp.get("target_url") or "https://yoursite.com"
+    anchor = opp.get("anchor_text") or "Resource Guide"
+    category = opp.get("category") or opp.get("opportunity_type") or "Resource Link"
+
+    from ..services.nim_client import nim_client
+    prompt = f"""You are a senior digital PR and SEO outreach specialist. Write a concise, polite, and persuasive outreach email pitching our comprehensive resource for inclusion on their page.
+
+Target Page: {source_url}
+Our Asset URL: {target_url}
+Opportunity Tier / Category: {category}
+Anchor / Topic: {anchor}
+
+Requirements:
+- Subject line must be punchy and personalized (no clickbait).
+- Keep body under 130 words.
+- Specifically mention how our resource enhances their existing content for their readers.
+- Professional, cordial sign-off with sender placeholder [Your Name / Editorial Team].
+"""
+    try:
+        email_text = await nim_client.chat_completion(
+            messages=[
+                {"role": "system", "content": "You write world-class, high-converting digital PR and editorial link outreach emails."},
+                {"role": "user", "content": prompt}
+            ],
+            model="meta/llama-3.1-nemotron-70b-instruct",
+            temperature=0.4
+        )
+    except Exception as e:
+        logger.warning(f"NIM draft failed, using clean fallback: {e}")
+        email_text = f"Subject: Question regarding your {anchor} resource page\n\nHi Editorial Team,\n\nI was reading your comprehensive page at {source_url} and found the resources extremely valuable.\n\nWe recently published an updated, in-depth guide on {anchor} ({target_url}) that covers recent 2026 data. I believe it would be a helpful addition for your readers.\n\nBest regards,\nEditorial Team"
+
+    try:
+        supabase.table("backlink_opportunities").update({
+            "email_draft": email_text,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", opportunity_id).execute()
+    except Exception:
+        pass
+
+    return {"success": True, "email_draft": email_text}
+
+
+@router.post("/api/backlinks/{opportunity_id}/mark-contacted")
+@router.post("/backlinks/{opportunity_id}/mark-contacted")
+async def mark_opportunity_contacted(opportunity_id: str):
+    """Mark a backlink opportunity status as contacted."""
+    supabase = get_supabase()
+    try:
+        supabase.table("backlink_opportunities").update({
+            "status": "contacted",
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", opportunity_id).execute()
+        return {"success": True, "message": "Marked as contacted"}
+    except Exception as e:
+        logger.error(f"Failed to update opportunity {opportunity_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

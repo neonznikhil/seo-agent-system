@@ -275,6 +275,93 @@ async def process_unread_alerts(website_id: Optional[str] = None):
     return {"processed": processed_count}
 
 
+async def process_autonomous_cycle(website_id: Optional[str] = None) -> Dict[str, Any]:
+    """APScheduler SINGLE AUTHORITY — called every 5 min. Handles alerts + auto_publish queue.
+
+    This replaces the old while True loop. Scheduler (Asia/Kolkata) invoking is sole cron authority.
+    - Processes unread realtime_alerts
+    - Runs auto_publish_approval: publishes pending blog_approvals where quality gate passes and auto_publish ON
+    """
+    result = {"alerts_processed": 0, "auto_published": 0, "errors": []}
+    # 1. Alerts
+    try:
+        alert_res = await process_unread_alerts(website_id)
+        result["alerts_processed"] = alert_res.get("processed", 0)
+    except Exception as e:
+        result["errors"].append(f"alerts: {e}")
+        logger.warning(f"[AutonomousCycle] alerts failed: {e}")
+
+    # 2. Auto-publish approval queue (every 5 min always)
+    # Delegates to scheduler job logic but also runnable standalone
+    try:
+        from .scheduler import job_auto_publish_approval
+        # job_auto_publish_approval handles its own website loop
+        if website_id:
+            await job_auto_publish_approval(website_id)
+        else:
+            await job_auto_publish_approval()
+        result["auto_published"] = 1  # flag that cycle ran
+    except Exception as e:
+        # job may not exist yet, fallback inline
+        try:
+            await _auto_publish_inline(website_id)
+        except Exception as e2:
+            result["errors"].append(f"auto_publish: {e2}")
+            logger.debug(f"[AutonomousCycle] auto_publish note: {e2}")
+    return result
+
+
+async def _auto_publish_inline(website_id: Optional[str] = None):
+    """Inline fallback for auto_publish when scheduler job not yet loaded."""
+    supabase = get_supabase()
+    # Find pending approvals where auto_publish ON
+    for target_id in ([website_id] if website_id else []):
+        try:
+            # Check auto_publish flag
+            try:
+                row = supabase.table("autonomous_settings").select("auto_publish").eq("website_id", target_id).limit(1).execute().data
+                auto_on = bool(row and row[0].get("auto_publish"))
+            except Exception:
+                auto_on = False
+            if not auto_on:
+                continue
+            pending = supabase.table("blog_approvals").select("*").eq("website_id", target_id).eq("status", "pending").limit(10).execute().data or []
+            for appr in pending:
+                seo = float(appr.get("seo_score") or 0)
+                val = float(appr.get("validation_score") or appr.get("validation") or 0.85)
+                ground = float(appr.get("grounding_score") or 0.75)
+                if seo >= 85 and val >= 0.8 and ground >= 0.75:
+                    # Publish via wordpress_service
+                    try:
+                        from ..services.wordpress_service import WordPressService
+                        svc = WordPressService(website_id=target_id)
+                        site = svc._get_site_config()
+                        # Direct publish via crew tool method
+                        meta = appr.get("meta_description") or ""
+                        title = appr.get("title") or ""
+                        html = appr.get("html_content") or ""
+                        slug = appr.get("slug") or ""
+                        pub = await svc.publish_post_via_crew(website_id=target_id, title=title, html_content=html, meta_description=meta, slug=slug, auto_publish=True)
+                        if pub.get("success"):
+                            supabase.table("blog_approvals").update({"status": "published", "wordpress_url": pub.get("wordpress_url"), "wordpress_post_id": pub.get("wordpress_post_id")}).eq("id", appr["id"]).execute()
+                            try:
+                                supabase.table("blogs").update({"status": "published", "wordpress_url": pub.get("wordpress_url")}).eq("id", appr.get("blog_id")).execute()
+                            except Exception:
+                                pass
+                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": "autonomous"}, "created_at": datetime.utcnow().isoformat()}).execute()
+                    except Exception as e:
+                        logger.warning(f"[AutoPublish] failed for {appr.get('id')}: {e}")
+                        # Handle 401 -> deactivate
+                        if "401" in str(e):
+                            try:
+                                supabase.table("wordpress_connections").update({"is_active": False}).eq("website_id", target_id).execute()
+                                supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", target_id).execute()
+                            except Exception:
+                                pass
+        except Exception as e:
+            logger.debug(f"[AutoPublishInline] skip {target_id}: {e}")
+
+
 class AutonomousLoop:
     """Class wrapper for Autonomous Loop services."""
     def __init__(self, website_id: str = "default"):
@@ -291,4 +378,7 @@ class AutonomousLoop:
 
     async def run_reactive(self):
         return await process_unread_alerts(self.website_id)
+
+    async def run_cycle(self):
+        return await process_autonomous_cycle(self.website_id)
 

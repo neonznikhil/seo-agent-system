@@ -32,14 +32,23 @@ class RankingSignalHarvester:
         
         supabase = get_supabase()
         
-        # 1. Pull top keywords
-        sample_keywords = [
-            "Texas car accident lawyer",
-            "commercial truck accident settlements Texas",
-            "statute of limitations personal injury Texas",
-            "Houston auto collision injury compensation",
-            "how to file injury claim Texas"
-        ]
+        # 1. Pull real keywords from database or site
+        sample_keywords = []
+        try:
+            kw_rows = supabase.table("keywords").select("keyword").eq("website_id", self.website_id).limit(5).execute().data or []
+            sample_keywords = [k["keyword"] for k in kw_rows if k.get("keyword")]
+            if not sample_keywords:
+                site_row = supabase.table("websites").select("focus_keywords, niche").eq("id", self.website_id).single().execute().data
+                if site_row and site_row.get("focus_keywords"):
+                    fks = site_row["focus_keywords"]
+                    sample_keywords = fks[:5] if isinstance(fks, list) else [fks]
+                elif site_row and site_row.get("niche"):
+                    sample_keywords = [site_row["niche"]]
+        except Exception:
+            pass
+
+        if not sample_keywords:
+            sample_keywords = ["search engine optimization strategy", "authoritative content architecture"]
 
         harvested_signals = []
 

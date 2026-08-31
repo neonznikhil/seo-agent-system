@@ -71,21 +71,22 @@ class RankPredictionService:
         except Exception as ex:
             logger.warning(f"[RankPrediction] Error querying rank_history: {ex}")
 
-        # If sparse, populate initial baseline data points
-        if len(history_rows) < 5:
-            keywords_seed = [
-                ("car accident compensation claims", 8.2, 4800, 142, 0.029, 65),
-                ("personal injury settlement timeline", 11.4, 3900, 98, 0.025, 85),
-                ("how to file a car accident claim", 9.8, 3100, 86, 0.027, 40),
-                ("average payout for auto collision", 14.1, 2800, 54, 0.021, 95),
-                ("hiring a personal injury attorney Houston", 7.5, 1900, 72, 0.038, 20)
-            ]
-            for kw, pos, imp, clk, ctr_v, age in keywords_seed:
-                await self.record_rank_datapoint(
-                    keyword=kw, position=pos, impressions=imp, clicks=clk, ctr=ctr_v, content_age_days=age
-                )
-            res = supabase.table("rank_history").select("*").eq("website_id", self.website_id).gte("date", cutoff_date).order("date", desc=True).limit(200).execute()
-            history_rows = res.data or []
+        # If sparse, return empty predictions (0 mock policy)
+        if len(history_rows) < 2:
+            try:
+                kw_rows = supabase.table("keywords").select("keyword, position, search_volume, clicks").eq("website_id", self.website_id).limit(10).execute().data or []
+                history_rows = kw_rows
+            except Exception:
+                pass
+
+        if not history_rows:
+            return {
+                "success": True,
+                "website_id": self.website_id,
+                "predictions_count": 0,
+                "predictions": [],
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
         # 2. LLM Time-Series Analysis via NVIDIA NIM
         prompt = (
@@ -117,33 +118,8 @@ class RankPredictionService:
             if isinstance(predictions, dict) and "predictions" in predictions:
                 predictions = predictions["predictions"]
         except Exception as e:
-            logger.warning(f"[RankPrediction] LLM prediction error: {e}. Generating calibrated predictions.")
-            predictions = [
-                {
-                    "keyword": "personal injury settlement timeline",
-                    "current_position": 11.4,
-                    "predicted_position_30d": 16.8,
-                    "confidence": 0.89,
-                    "recommended_action": "refresh_content",
-                    "reasoning": "Declining impressions over 28 days with content age > 80 days. Position predicted to fall without 10-phase refresh."
-                },
-                {
-                    "keyword": "car accident compensation claims",
-                    "current_position": 8.2,
-                    "predicted_position_30d": 3.1,
-                    "confidence": 0.92,
-                    "recommended_action": "build_backlinks",
-                    "reasoning": "High CTR momentum and Top 10 stability. Acquiring 2 high-DR legal resource links will push into Top 3."
-                },
-                {
-                    "keyword": "average payout for auto collision",
-                    "current_position": 14.1,
-                    "predicted_position_30d": 9.5,
-                    "confidence": 0.84,
-                    "recommended_action": "update_schema",
-                    "reasoning": "Missing FAQ and CaseStudy JSON-LD schema while competitor pages feature structured rich snippets."
-                }
-            ]
+            logger.warning(f"[RankPrediction] LLM prediction error: {e}.")
+            predictions = []
 
         # 3. Store predictions into rank_predictions table
         saved_predictions = []
@@ -180,11 +156,7 @@ class RankPredictionService:
         supabase = get_supabase()
         try:
             res = supabase.table("rank_predictions").select("*").eq("website_id", self.website_id).order("confidence", desc=True).limit(20).execute()
-            data = res.data or []
-            if not data:
-                gen_res = await self.run_weekly_prediction_engine()
-                data = gen_res.get("predictions", [])
-            return data
+            return res.data or []
         except Exception as e:
             logger.warning(f"[RankPrediction] Fetch error: {e}")
             return []
@@ -200,11 +172,7 @@ class RankPredictionService:
             pass
 
         if not pred:
-            pred = {
-                "id": prediction_id,
-                "keyword": "car accident compensation claims",
-                "recommended_action": action or "refresh_content"
-            }
+            return {"error": f"Prediction {prediction_id} not found", "status": "failed"}
 
         rec_action = action or pred.get("recommended_action", "refresh_content")
         dispatch_result = {}

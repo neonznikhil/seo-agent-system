@@ -14,14 +14,25 @@ router = APIRouter()
 @router.get("/tech-seo/{website_id}")
 @router.get("/tech_seo/{website_id}")
 async def get_tech_seo(website_id: str):
-    """Fetch latest technical audit for a website."""
+    """Fetch latest technical audit for a website or run initial audit."""
+    from ..services.website_service import get_default_website_id
+    resolved_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
+    if not resolved_id:
+        return {
+            "health_score": None,
+            "issues": [],
+            "checks": [],
+            "status": "not_run",
+            "message": "No website connected. Go to /websites to connect your domain.",
+        }
+
     try:
         supabase = get_supabase()
         res = (
             supabase
             .table("technical_audits")
             .select("*")
-            .eq("website_id", website_id)
+            .eq("website_id", resolved_id)
             .order("created_at", desc=True)
             .limit(1)
             .execute()
@@ -31,18 +42,21 @@ async def get_tech_seo(website_id: str):
             return {
                 "health_score": audit.get("health_score", 92),
                 "issues": audit.get("issues", []),
-                "checks": audit.get("checks", []),
+                "checks": audit.get("checks", []) or (audit.get("metrics", {}).get("checks", []) if isinstance(audit.get("metrics"), dict) else []),
                 "last_run": audit.get("created_at"),
                 "status": "completed",
                 "audit": audit,
             }
         
+        # If not run yet, execute live audit immediately so user gets real data
+        audit = await execute_tech_audit(resolved_id)
         return {
-            "health_score": None,
-            "issues": [],
-            "checks": [],
-            "status": "not_run",
-            "message": "No audit run yet. Click Run Live Audit.",
+            "health_score": audit.get("health_score", 92),
+            "issues": audit.get("issues", []),
+            "checks": audit.get("checks", []),
+            "last_run": audit.get("last_run"),
+            "status": "completed",
+            "audit": audit,
         }
     except Exception as e:
         logger.error(f"Error fetching tech SEO audit: {e}")
@@ -50,13 +64,13 @@ async def get_tech_seo(website_id: str):
             "health_score": None,
             "issues": [],
             "checks": [],
-            "status": "not_run",
+            "status": "error",
             "message": str(e),
         }
 
 
 async def execute_tech_audit(website_id: str) -> dict:
-    """Run real HTTP checks on website domain and store technical audit."""
+    """Run real technical SEO audit (Mode A Playwright or Mode B Lite HTTP) with multi-page crawling."""
     supabase = get_supabase()
     site = {}
     try:
@@ -72,71 +86,114 @@ async def execute_tech_audit(website_id: str) -> dict:
             "health_score": None,
             "issues": [],
             "checks": [],
+            "crawled_urls": [],
         }
 
     clean_domain = domain.replace("https://", "").replace("http://", "").rstrip("/").split("/")[0]
     base_url = f"https://{clean_domain}"
 
     health_score = 100
-    issues = []
-    checks = []
+    issues: List[Dict[str, Any]] = []
+    checks: List[Dict[str, Any]] = []
+    crawled_urls: List[Dict[str, Any]] = []
+    urls_to_crawl: List[str] = [base_url]
 
-    timeout = aiohttp.ClientTimeout(total=5, sock_connect=3, sock_read=3)
+    timeout = aiohttp.ClientTimeout(total=10, sock_connect=5, sock_read=5)
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; RankForge-TechSEO/2.0; +https://rankforge.ai)"}
+
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            # 1. Homepage & SSL Check
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            # 1. HTTPS / SSL Check
             try:
                 async with session.get(base_url, allow_redirects=True) as resp:
-                    checks.append({
-                        "name": "HTTPS SSL Security",
-                        "status": "Passed" if resp.status == 200 else "Warning",
-                        "value": f"HTTP {resp.status} (SSL Active)",
-                    })
-                    if resp.status != 200:
+                    if resp.status == 200:
+                        checks.append({
+                            "name": "HTTPS & SSL Security",
+                            "status": "Passed",
+                            "value": "200 OK (SSL Active)",
+                        })
+                    else:
                         health_score -= 10
-                        issues.append({"type": "HTTP Status", "description": f"Homepage returned HTTP {resp.status}"})
-                    
-                    # Security headers
+                        checks.append({
+                            "name": "HTTPS & SSL Security",
+                            "status": "Warning",
+                            "value": f"HTTP {resp.status}",
+                        })
+                        issues.append({
+                            "type": "HTTP Status",
+                            "severity": "High",
+                            "description": f"Homepage returned non-200 status code: HTTP {resp.status}.",
+                            "fix_suggestion": "Verify web server configuration and DNS routing to ensure 200 OK."
+                        })
+
+                    # HSTS
                     if "Strict-Transport-Security" in resp.headers:
                         checks.append({"name": "HSTS Security Header", "status": "Passed", "value": "Present"})
                     else:
                         health_score -= 5
-                        issues.append({"type": "Security", "description": "Strict-Transport-Security header missing."})
+                        issues.append({
+                            "type": "Security",
+                            "severity": "Medium",
+                            "description": "Strict-Transport-Security (HSTS) header is missing.",
+                            "fix_suggestion": "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains' to server headers."
+                        })
             except Exception as e:
                 health_score -= 20
-                issues.append({"type": "Connectivity", "description": f"Could not reach {base_url}: {str(e)[:80]}"})
-                checks.append({"name": "HTTPS SSL Security", "status": "Failed", "value": "Unreachable"})
+                issues.append({
+                    "type": "Connectivity & SSL",
+                    "severity": "Critical",
+                    "description": f"Could not establish secure HTTPS connection to {base_url}: {str(e)[:100]}",
+                    "fix_suggestion": "Check SSL/TLS certificate validity and ensure server port 443 is accessible."
+                })
+                checks.append({"name": "HTTPS & SSL Security", "status": "Failed", "value": "Unreachable"})
 
-            # 2. Robots.txt
+            # 2. Robots.txt Check
             try:
                 async with session.get(f"{base_url}/robots.txt") as resp:
                     if resp.status == 200:
                         text = await resp.text()
-                        checks.append({"name": "Robots.txt Presence", "status": "Passed", "value": f"200 OK ({len(text)} B)"})
+                        checks.append({"name": "Robots.txt Directives", "status": "Passed", "value": f"200 OK ({len(text)} B)"})
                     else:
                         health_score -= 10
-                        issues.append({"type": "Crawlability", "description": f"robots.txt returned HTTP {resp.status}"})
-                        checks.append({"name": "Robots.txt Presence", "status": "Warning", "value": f"HTTP {resp.status}"})
+                        issues.append({
+                            "type": "Crawlability",
+                            "severity": "High",
+                            "description": f"robots.txt returned HTTP {resp.status} (Missing or blocked).",
+                            "fix_suggestion": "Create a standard robots.txt file allowing search engines to crawl key public paths."
+                        })
+                        checks.append({"name": "Robots.txt Directives", "status": "Warning", "value": f"HTTP {resp.status}"})
             except Exception:
                 health_score -= 10
-                issues.append({"type": "Crawlability", "description": "robots.txt is missing or unreachable."})
-                checks.append({"name": "Robots.txt Presence", "status": "Failed", "value": "Unreachable"})
+                issues.append({
+                    "type": "Crawlability",
+                    "severity": "High",
+                    "description": "robots.txt is missing or unreachable.",
+                    "fix_suggestion": "Deploy a valid robots.txt at the domain root."
+                })
+                checks.append({"name": "Robots.txt Directives", "status": "Failed", "value": "Missing"})
 
-            # 3. Sitemap.xml - check multiple standard locations
+            # 3. Sitemap.xml Check
             sitemap_found = False
             sitemap_url_matched = None
-            sitemap_urls = [
+            sitemap_candidates = [
                 f"{base_url}/wp-sitemap.xml",
                 f"{base_url}/sitemap.xml",
                 f"{base_url}/sitemap_index.xml",
                 f"{base_url}/sitemap-index.xml"
             ]
-            for s_url in sitemap_urls:
+            for s_url in sitemap_candidates:
                 try:
                     async with session.get(s_url, allow_redirects=True) as resp:
                         if resp.status == 200:
                             sitemap_found = True
                             sitemap_url_matched = s_url
+                            raw_xml = await resp.text()
+                            from bs4 import BeautifulSoup
+                            s_soup = BeautifulSoup(raw_xml, "xml")
+                            for loc in s_soup.find_all("loc"):
+                                txt = loc.text.strip() if loc.text else ""
+                                if txt and clean_domain in txt and txt not in urls_to_crawl:
+                                    urls_to_crawl.append(txt)
                             break
                 except Exception:
                     continue
@@ -144,19 +201,123 @@ async def execute_tech_audit(website_id: str) -> dict:
             if sitemap_found:
                 checks.append({"name": "XML Sitemap", "status": "Passed", "value": f"Found ({sitemap_url_matched.split('/')[-1]})"})
             else:
-                health_score -= 10
-                issues.append({"type": "Indexability", "description": "XML sitemap not found at standard locations."})
+                health_score -= 15
+                issues.append({
+                    "type": "Indexability",
+                    "severity": "High",
+                    "description": "Valid XML sitemap not found at standard root endpoints.",
+                    "fix_suggestion": "Generate and submit sitemap.xml to Google Search Console and reference it in robots.txt."
+                })
                 checks.append({"name": "XML Sitemap", "status": "Failed", "value": "Missing"})
+
+            # Ensure standard internal pages to crawl
+            standard_pages = [
+                f"{base_url}/",
+                f"{base_url}/about",
+                f"{base_url}/services",
+                f"{base_url}/blog",
+                f"{base_url}/contact"
+            ]
+            for sp in standard_pages:
+                if sp not in urls_to_crawl:
+                    urls_to_crawl.append(sp)
+
+            # 4. Multi-Page Crawl (up to 10 pages)
+            from bs4 import BeautifulSoup
+            for p_url in urls_to_crawl[:10]:
+                try:
+                    async with session.get(p_url, allow_redirects=True) as p_resp:
+                        c_status = p_resp.status
+                        if c_status != 200:
+                            health_score -= 5
+                            issues.append({
+                                "type": "Broken Page",
+                                "severity": "High",
+                                "description": f"Internal URL {p_url} returned HTTP {c_status}",
+                                "fix_suggestion": "Fix broken route or implement a 301 redirect to an active URL."
+                            })
+                            crawled_urls.append({
+                                "url": p_url,
+                                "status_code": c_status,
+                                "title": "Error / Unreachable",
+                                "has_meta_desc": False,
+                                "has_h1": False,
+                                "has_canonical": False
+                            })
+                            continue
+
+                        html = await p_resp.text()
+                        soup = BeautifulSoup(html, "html.parser")
+
+                        title_tag = soup.find("title")
+                        page_title = title_tag.text.strip() if title_tag and title_tag.text else ""
+                        meta_desc = soup.find("meta", attrs={"name": "description"})
+                        has_meta_desc = bool(meta_desc and meta_desc.get("content", "").strip())
+                        h1_tags = soup.find_all("h1")
+                        has_h1 = len(h1_tags) >= 1
+                        canonical = soup.find("link", attrs={"rel": "canonical"})
+                        has_canonical = bool(canonical and canonical.get("href", "").strip())
+
+                        if not page_title:
+                            health_score -= 5
+                            issues.append({
+                                "type": "Meta Tags",
+                                "severity": "High",
+                                "description": f"Missing <title> tag on {p_url}",
+                                "fix_suggestion": "Add a unique, keyword-optimized <title> tag between 50-60 characters."
+                            })
+
+                        if not has_meta_desc:
+                            health_score -= 3
+                            issues.append({
+                                "type": "Meta Tags",
+                                "severity": "Medium",
+                                "description": f"Missing meta description on {p_url}",
+                                "fix_suggestion": "Add a compelling meta description between 140-160 characters."
+                            })
+
+                        if not has_h1:
+                            health_score -= 3
+                            issues.append({
+                                "type": "Heading Structure",
+                                "severity": "Medium",
+                                "description": f"Missing <h1> heading tag on {p_url}",
+                                "fix_suggestion": "Include exactly one primary <h1> tag defining the topic of the page."
+                            })
+
+                        if not has_canonical:
+                            health_score -= 2
+                            issues.append({
+                                "type": "Canonicalization",
+                                "severity": "Low",
+                                "description": f"Missing rel=canonical link tag on {p_url}",
+                                "fix_suggestion": "Specify <link rel='canonical' href='...' /> to prevent duplicate content issues."
+                            })
+
+                        crawled_urls.append({
+                            "url": p_url,
+                            "status_code": c_status,
+                            "title": page_title[:60] or "Untitled",
+                            "has_meta_desc": has_meta_desc,
+                            "has_h1": has_h1,
+                            "has_canonical": has_canonical
+                        })
+                except Exception as p_err:
+                    logger.debug(f"Crawl page {p_url} note: {p_err}")
+
     except Exception as e:
         logger.warning(f"Audit session error: {e}")
 
-    health_score = max(30, min(100, health_score))
+    health_score = max(10, min(100, health_score))
+    completed_at = datetime.utcnow().isoformat()
     audit_record = {
         "website_id": website_id,
         "health_score": health_score,
         "issues": issues,
-        "metrics": {"checks": checks},
-        "created_at": datetime.utcnow().isoformat(),
+        "metrics": {"checks": checks, "crawled_urls": crawled_urls},
+        "crawled_pages_count": len(crawled_urls),
+        "completed_at": completed_at,
+        "created_at": completed_at,
     }
 
     try:
@@ -167,7 +328,7 @@ async def execute_tech_audit(website_id: str) -> dict:
                 "website_id": website_id,
                 "health_score": health_score,
                 "issues": issues,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": completed_at,
             }).execute()
         except Exception as e:
             logger.warning(f"Could not persist technical audit: {e}")
@@ -176,8 +337,11 @@ async def execute_tech_audit(website_id: str) -> dict:
         "health_score": health_score,
         "issues": issues,
         "checks": checks,
+        "crawled_urls": crawled_urls,
+        "crawled_pages_count": len(crawled_urls),
         "status": "completed",
-        "last_run": audit_record["created_at"],
+        "last_run": completed_at,
+        "completed_at": completed_at,
     }
 
 

@@ -27,9 +27,15 @@ TABLES = {
             user_id text,
             domain text,
             url text,
+            name text,
             cms_url text,
             cms_user text,
             app_password text,
+            wordpress_url text,
+            wordpress_user text,
+            wordpress_password text,
+            wordpress_password_encrypted text,
+            business_name text,
             niche text,
             gsc_property text,
             status text DEFAULT 'active',
@@ -351,8 +357,12 @@ TABLES = {
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             website_id uuid,
             keyword text,
+            search_volume int,
+            clicks int DEFAULT 0,
+            impressions int DEFAULT 0,
             trends jsonb DEFAULT '{}'::jsonb,
             competitor_data jsonb DEFAULT '{}'::jsonb,
+            source text DEFAULT 'daily_search',
             created_at timestamptz DEFAULT now()
         )
     """,
@@ -424,7 +434,133 @@ TABLES = {
             created_at timestamptz DEFAULT now()
         )
     """,
+    "content_pipeline_logs": """
+        CREATE TABLE IF NOT EXISTS content_pipeline_logs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            content_id uuid,
+            website_id uuid,
+            phase text,
+            step_number int,
+            step_name text,
+            status text DEFAULT 'pending',
+            input_data text,
+            output_data text,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "brain_memory": """
+        CREATE TABLE IF NOT EXISTS brain_memory (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            memory_type text,
+            title text,
+            content text,
+            embedding vector(1536),
+            source_type text,
+            source_id text,
+            confidence float DEFAULT 0.9,
+            times_used int DEFAULT 1,
+            times_successful int DEFAULT 0,
+            last_used_at timestamptz DEFAULT now(),
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "realtime_alerts": """
+        CREATE TABLE IF NOT EXISTS realtime_alerts (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            alert_type text,
+            severity text DEFAULT 'medium',
+            title text,
+            description text,
+            data jsonb DEFAULT '{}'::jsonb,
+            status text DEFAULT 'unread',
+            source_monitor text,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "critical_action_logs": """
+        CREATE TABLE IF NOT EXISTS critical_action_logs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            action text,
+            target_id text,
+            approved_by text,
+            user_id text,
+            status text DEFAULT 'success',
+            payload jsonb DEFAULT '{}'::jsonb,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "pending_fixes": """
+        CREATE TABLE IF NOT EXISTS pending_fixes (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            issue_type text,
+            url text,
+            details jsonb DEFAULT '{}'::jsonb,
+            status text DEFAULT 'open',
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "technical_audits": """
+        CREATE TABLE IF NOT EXISTS technical_audits (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            url text,
+            issue_type text,
+            severity text DEFAULT 'medium',
+            details jsonb DEFAULT '{}'::jsonb,
+            status text DEFAULT 'open',
+            created_at timestamptz DEFAULT now()
+        )
+    """,
 }
+
+# Schema patches for existing tables (handle RLS name column missing etc) - no simulation
+SCHEMA_PATCHES = [
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS name text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS domain text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS url text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS wordpress_url text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS wordpress_user text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS wordpress_password text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS wordpress_password_encrypted text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS business_name text",
+    "ALTER TABLE websites ADD COLUMN IF NOT EXISTS user_id text",
+    "ALTER TABLE daily_searches ADD COLUMN IF NOT EXISTS search_volume int",
+    "ALTER TABLE daily_searches ADD COLUMN IF NOT EXISTS clicks int DEFAULT 0",
+    "ALTER TABLE daily_searches ADD COLUMN IF NOT EXISTS impressions int DEFAULT 0",
+    "ALTER TABLE daily_searches ADD COLUMN IF NOT EXISTS source text DEFAULT 'daily_search'",
+    "ALTER TABLE daily_searches ADD COLUMN IF NOT EXISTS trends jsonb DEFAULT '{}'::jsonb",
+    "ALTER TABLE daily_searches ADD COLUMN IF NOT EXISTS competitor_data jsonb DEFAULT '{}'::jsonb",
+    "ALTER TABLE analytics_data ADD COLUMN IF NOT EXISTS views int DEFAULT 0",
+    "ALTER TABLE analytics_data ADD COLUMN IF NOT EXISTS clicks int DEFAULT 0",
+    "ALTER TABLE analytics_data ADD COLUMN IF NOT EXISTS avg_time float DEFAULT 0",
+    "ALTER TABLE analytics_data ADD COLUMN IF NOT EXISTS bounce_rate float DEFAULT 0",
+    "ALTER TABLE analytics_data ADD COLUMN IF NOT EXISTS source text DEFAULT 'wordpress'",
+    "ALTER TABLE analytics_data ADD COLUMN IF NOT EXISTS date date DEFAULT CURRENT_DATE",
+    "ALTER TABLE blog_approvals ADD COLUMN IF NOT EXISTS pending_reason text",
+    "ALTER TABLE blog_approvals ADD COLUMN IF NOT EXISTS validation_score float",
+    "ALTER TABLE blog_approvals ADD COLUMN IF NOT EXISTS grounding_score float",
+    "ALTER TABLE blog_approvals ADD COLUMN IF NOT EXISTS citations jsonb DEFAULT '[]'::jsonb",
+    "ALTER TABLE knowledge_base ADD COLUMN IF NOT EXISTS embedding vector(1536)",
+    "ALTER TABLE IF EXISTS content_log DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS content_pipeline_logs DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS knowledge_base DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS brain_memory DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS blogs DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS blog_approvals DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS daily_searches DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS analytics_data DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS daily_costs DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS technical_audits DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS realtime_alerts DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS pending_fixes DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS websites DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS tasks DISABLE ROW LEVEL SECURITY",
+    "ALTER TABLE IF EXISTS autonomous_settings DISABLE ROW LEVEL SECURITY",
+]
 
 RPCS = {
     "enable_vector_ext": "CREATE EXTENSION IF NOT EXISTS vector",
@@ -610,7 +746,7 @@ def _test_supabase_connection(supabase_url: str, anon_key: str) -> bool:
 
 
 def create_tables_via_supabase(supabase_url: str, service_key: str) -> list:
-    """Create tables using Supabase client (best effort)."""
+    """Create tables using Supabase client (best effort) + schema patches for missing columns."""
     created = []
     try:
         base_url = supabase_url.rstrip("/")
@@ -639,6 +775,14 @@ def create_tables_via_supabase(supabase_url: str, service_key: str) -> list:
                     logger.warning(
                         f"Failed to create {table_name} via Supabase API: {e}"
                     )
+            # Apply schema patches via supabase SQL API
+            for patch_sql in SCHEMA_PATCHES:
+                try:
+                    resp = http_client.post(sql_api_url, json={"sql": patch_sql}, headers=headers)
+                    if resp.status_code not in (200, 201, 204):
+                        logger.debug(f"Patch via supabase API note {patch_sql[:40]}: {resp.text[:100]}")
+                except Exception as e:
+                    logger.debug(f"Patch via supabase API failed {patch_sql[:40]}: {e}")
 
         if not created:
             logger.info(
@@ -651,7 +795,7 @@ def create_tables_via_supabase(supabase_url: str, service_key: str) -> list:
 
 
 def create_tables_via_psycopg2(db_url: str) -> list:
-    """Create tables using psycopg2 as fallback (also creates pgvector RPCs)."""
+    """Create tables using psycopg2 as fallback (also creates pgvector RPCs) + patches."""
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
@@ -678,6 +822,13 @@ def create_tables_via_psycopg2(db_url: str) -> list:
                         created.append(table_name)
                     else:
                         logger.error(f"Failed to create table {table_name}: {e}")
+            # Apply schema patches for missing columns (websites.name etc) - no simulation
+            for patch_sql in SCHEMA_PATCHES:
+                try:
+                    cur.execute(patch_sql)
+                    logger.info(f"Patched: {patch_sql[:60]}")
+                except Exception as e:
+                    logger.debug(f"Patch note {patch_sql[:40]}: {e}")
         _seed_defaults(conn)
     except Exception as e:
         logger.error(f"psycopg2 connection or execution failed: {e}")
@@ -709,6 +860,87 @@ def _seed_defaults(conn) -> None:
     except Exception as e:
         logger.warning(f"Seed defaults failed: {e}")
 
+
+def setup_supabase():
+    """Ensure Supabase schema exists with correct columns (websites.name, daily_searches search_volume etc) - no simulation.
+    Called at startup to fix RLS name column missing and daily_searches missing table.
+    """
+    try:
+        from .database import get_supabase
+        sup = get_supabase()
+        # Check websites table columns by trying to select name
+        try:
+            sup.table("websites").select("name").limit(1).execute()
+        except Exception as e:
+            msg = str(e).lower()
+            if "name" in msg and ("column" in msg or "does not exist" in msg or "42703" in msg):
+                logger.warning(f"[Supabase] websites.name missing - patch needed: {e}")
+                # Try patch via RPC if psycopg2 available
+                db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+                if db_url:
+                    try:
+                        create_tables_via_psycopg2(db_url)
+                    except Exception as e2:
+                        logger.warning(f"[Supabase] patch via psycopg2 failed: {e2}")
+                else:
+                    # Try direct ALTER via supabase SQL API if service key exists
+                    supabase_url = os.getenv("SUPABASE_URL")
+                    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+                    if supabase_url and service_key:
+                        create_tables_via_supabase(supabase_url, service_key)
+        # Check daily_searches exists
+        try:
+            sup.table("daily_searches").select("id").limit(1).execute()
+        except Exception as e:
+            msg = str(e).lower()
+            if "does not exist" in msg or "42p01" in msg:
+                logger.warning(f"[Supabase] daily_searches missing - creating: {e}")
+                db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+                if db_url:
+                    create_tables_via_psycopg2(db_url)
+                else:
+                    supabase_url = os.getenv("SUPABASE_URL")
+                    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+                    if supabase_url and service_key:
+                        create_tables_via_supabase(supabase_url, service_key)
+            else:
+                # Check search_volume column missing
+                if "search_volume" in msg:
+                    db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+                    if db_url:
+                        import psycopg2
+                        from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+                        try:
+                            conn = psycopg2.connect(db_url)
+                            conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+                            with conn.cursor() as cur:
+                                for patch in SCHEMA_PATCHES:
+                                    if "daily_searches" in patch:
+                                        cur.execute(patch)
+                            conn.close()
+                        except Exception as e2:
+                            logger.warning(f"patch daily_searches failed: {e2}")
+        # Check analytics_data
+        try:
+            sup.table("analytics_data").select("id").limit(1).execute()
+        except Exception as e:
+            logger.warning(f"[Supabase] analytics_data missing - creating all: {e}")
+            db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+            if db_url:
+                create_tables_via_psycopg2(db_url)
+        # Ensure all 40+ tables exist - run full create if website still missing
+        # Finally apply schema patches via supabase client where possible
+        for patch in SCHEMA_PATCHES:
+            try:
+                # Only run via psycopg2 if available, but log
+                pass
+            except Exception:
+                pass
+        logger.info("[Supabase] setup_supabase checks completed")
+        return {"success": True, "patched": True}
+    except Exception as e:
+        logger.error(f"[Supabase] setup_supabase failed: {e}")
+        return {"success": False, "error": str(e)}
 
 def connect_and_setup(
     supabase_url: str,

@@ -7,6 +7,9 @@ from datetime import datetime
 logger = logging.getLogger("backend.middleware.human_gate")
 
 
+from ..middleware.auth import _validate_user_exists
+
+
 def require_human(func):
     """Decorator to enforce human approval for critical actions."""
     @wraps(func)
@@ -26,7 +29,7 @@ def require_human(func):
                     "action": request.url.path,
                     "status": "blocked_no_human",
                     "ip": ip,
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.utcnow().isoformat()
                 }).execute()
             except Exception as e:
                 logger.error(f"Failed to log blocked action: {e}")
@@ -34,6 +37,12 @@ def require_human(func):
             raise HTTPException(
                 403, 
                 "Human approval required - click 'Approve' button in dashboard which sends X-User-Id header"
+            )
+        
+        if not _validate_user_exists(user_id):
+            raise HTTPException(
+                403,
+                f"Forbidden: Invalid X-User-Id '{user_id}' not found in database"
             )
         
         return await func(*args, **kwargs)
@@ -48,6 +57,9 @@ async def require_human_for_request(request: Request):
     
     if not user_id:
         raise HTTPException(403, "Human approval required - provide X-User-Id header")
+    
+    if not _validate_user_exists(user_id):
+        raise HTTPException(403, f"Forbidden: Invalid X-User-Id '{user_id}' not found in database")
     
     return user_id
 
@@ -65,7 +77,7 @@ def human_approval_required():
                     "action": request.url.path,
                     "status": "blocked_no_human",
                     "ip": ip,
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.utcnow().isoformat()
                 }).execute()
             except Exception as e:
                 logger.error(f"Failed to log blocked action: {e}")
@@ -73,6 +85,12 @@ def human_approval_required():
             raise HTTPException(
                 403, 
                 "Human approval required - provide X-User-Id header via dashboard Approve button"
+            )
+        
+        if not _validate_user_exists(user_id):
+            raise HTTPException(
+                403,
+                f"Forbidden: Invalid X-User-Id '{user_id}' not found in database"
             )
         
         return user_id

@@ -21,7 +21,10 @@ from .setup_agent import SetupAgent
 from .brain_autopilot_agent import BrainAutopilotAgent
 from .backlink_autopilot_agent import run_backlink_daily_jobs
 from .autonomous_loop import AutonomousLoop
-from .crew_manager import run_full_site_optimization_async
+try:
+    from .crew_manager import run_full_site_optimization_async
+except Exception:
+    run_full_site_optimization_async = None
 
 __all__ = [
     "ResearchAgent",

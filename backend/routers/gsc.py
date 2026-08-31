@@ -45,16 +45,8 @@ async def get_keywords(website_id: str):
     except Exception:
         pass
     
-    # 3. Fallback high-value editorial keywords
-    fallback_kws = [
-        {"keyword": "car accident compensation claims", "search_volume": 3200, "impressions": 4800, "clicks": 142, "ctr": 0.029, "position": 8.4, "opportunity_score": 94},
-        {"keyword": "personal injury settlement timeline", "search_volume": 2600, "impressions": 3900, "clicks": 98, "ctr": 0.025, "position": 11.2, "opportunity_score": 89},
-        {"keyword": "how to file a car accident claim", "search_volume": 2100, "impressions": 3100, "clicks": 86, "ctr": 0.027, "position": 9.8, "opportunity_score": 85},
-        {"keyword": "what damages can you claim after an accident", "search_volume": 1800, "impressions": 2400, "clicks": 62, "ctr": 0.025, "position": 12.5, "opportunity_score": 82},
-        {"keyword": "steps to take after an auto collision", "search_volume": 1500, "impressions": 2100, "clicks": 54, "ctr": 0.025, "position": 14.1, "opportunity_score": 79},
-        {"keyword": "hiring a personal injury attorney", "search_volume": 1400, "impressions": 1900, "clicks": 45, "ctr": 0.023, "position": 15.6, "opportunity_score": 76},
-    ]
-    return {"success": True, "keywords": fallback_kws, "data": fallback_kws}
+    # 3. Empty return if no keywords found in DB or GSC
+    return {"success": True, "keywords": [], "data": []}
 
 
 @router.get("/gsc/{website_id}/performance")
@@ -71,16 +63,32 @@ async def get_performance(website_id: str, start_date: Optional[str] = None, end
     data = await get_keywords(website_id)
     keywords = data.get("keywords", []) if isinstance(data, dict) else data
 
-    total_clicks = sum(k.get("clicks", 0) for k in keywords) or 487
-    total_impressions = sum(k.get("impressions", k.get("search_volume", 0)) for k in keywords) or 18200
-    avg_ctr = round((total_clicks / max(1, total_impressions)) * 100, 2)
-    avg_position = round(sum(k.get("position", 12.0) for k in keywords) / max(1, len(keywords)), 1)
+    total_clicks = sum(k.get("clicks", 0) for k in keywords)
+    total_impressions = sum(k.get("impressions", k.get("search_volume", 0)) for k in keywords)
+    avg_ctr = round((total_clicks / max(1, total_impressions)) * 100, 2) if total_impressions > 0 else 0.0
+    avg_position = round(sum(k.get("position", 0.0) for k in keywords) / max(1, len(keywords)), 1) if keywords else 0.0
 
     # Keyword opportunities (high impressions, CTR < 3%)
     opportunities = [
         k for k in keywords
-        if float(k.get("ctr", 0.025)) < 0.030 and int(k.get("impressions", k.get("search_volume", 0))) > 1000
+        if float(k.get("ctr", 0.0)) < 0.030 and int(k.get("impressions", k.get("search_volume", 0))) > 1000
     ]
+
+    # Query site_pages or content_log for real top pages
+    top_pages = []
+    try:
+        supabase = get_supabase()
+        pages = supabase.table("site_pages").select("url, title").eq("website_id", website_id).limit(5).execute().data or []
+        for p in pages:
+            top_pages.append({
+                "page": p.get("url"),
+                "title": p.get("title"),
+                "clicks": 0,
+                "impressions": 0,
+                "ctr": "0.0%"
+            })
+    except Exception:
+        pass
 
     return {
         "success": True,
@@ -93,9 +101,5 @@ async def get_performance(website_id: str, start_date: Optional[str] = None, end
         "average_position": avg_position,
         "keywords": keywords,
         "opportunities": opportunities,
-        "top_pages": [
-            {"page": "/services/car-accidents", "clicks": 210, "impressions": 6800, "ctr": "3.1%"},
-            {"page": "/blog/settlement-timeline-guide", "clicks": 145, "impressions": 5200, "ctr": "2.8%"},
-            {"page": "/faq/insurance-claims", "clicks": 132, "impressions": 6200, "ctr": "2.1%"}
-        ]
+        "top_pages": top_pages
     }

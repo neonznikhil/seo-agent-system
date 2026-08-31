@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 import json
 
-import requests
+import httpx
 
 from ...database import get_supabase
 from ...config import WORDPRESS_URL
@@ -146,11 +146,11 @@ def publish_blog_after_approval(content_log_id: str, wp_user: str, wp_app_passwo
     }
     
     try:
-        r = requests.post(
+        r = httpx.post(
             f"{WORDPRESS_URL}/wp/v2/posts",
             auth=(wp_user, wp_app_password),
             json=post,
-            timeout=30,
+            timeout=30.0,
         )
         r.raise_for_status()
         _log_proof(website_id, agent, "publish_blog_after_approval", "wordpress", "post")
@@ -228,10 +228,10 @@ def update_page_after_approval(audit_id: str, wp_user: str, wp_app_password: str
     try:
         page_data = None
         if issue_type in ("missing_meta", "duplicate_title", "low_ctr_title", "missing_h1"):
-            wp_resp = requests.get(
+            wp_resp = httpx.get(
                 f"{WORDPRESS_URL}/wp/v2/pages/{wp_post_id}",
                 auth=(wp_user, wp_app_password),
-                timeout=30,
+                timeout=30.0,
             )
             if wp_resp.status_code == 200:
                 page_data = wp_resp.json()
@@ -242,11 +242,11 @@ def update_page_after_approval(audit_id: str, wp_user: str, wp_app_password: str
                     page_data["title"] = record.get("new_value", "") + " - " + page_data.get("title", "")
         
         if page_data:
-            wp_update = requests.post(
+            wp_update = httpx.post(
                 f"{WORDPRESS_URL}/wp/v2/pages/{wp_post_id}",
                 auth=(wp_user, wp_app_password),
                 json=page_data,
-                timeout=30,
+                timeout=30.0,
             )
             wp_update.raise_for_status()
             _log_proof(website_id, agent, "update_page_after_approval", "wordpress", "post")

@@ -1,0 +1,28 @@
+[
+  {
+    "website_id": "site_il_1",
+    "blog_id": "b_index_1",
+    "url": "https://example.com/car-accident-guide",
+    "title": "Car Accident Guide",
+    "target_keyword": "car accident medical documentation",
+    "linkable_topics": [
+      "How to Document Medical Expenses",
+      "Understanding the Multiplier Method"
+    ],
+    "summary": "If you were involved in a collision, obtaining proper medical documentation is essential.",
+    "published_at": "2026-08-29T17:00:47.211988",
+    "id": "3acc049f-24ab-4c5c-ad35-aabc3da8739b"
+  },
+  {
+    "id": "link_art_1",
+    "website_id": "site_il_2",
+    "url": "https://example.com/multiplier-method",
+    "title": "How Insurance Multipliers Work",
+    "target_keyword": "insurance multiplier method",
+    "linkable_topics": [
+      "Multiplier calculation",
+      "Settlement factors"
+    ],
+    "published_at": "2026-08-28T10:00:00"
+  }
+]

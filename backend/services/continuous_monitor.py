@@ -320,7 +320,7 @@ async def competitor_monitor_loop():
                     )
             
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id=last_website_id, monitor_type="competitor_monitor", status="completed", checked_urls=iteration*(len(competitors) if competitors else 1), issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="competitor_monitor", status="completed", checked_urls=iteration, issues_found=issues_found, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Competitor monitor loop crashed: {e}")
@@ -600,21 +600,24 @@ def start_all_monitors():
     logger.info("[Monitoring] All 6 monitor loops registered with staggered start")
 
 
-async def run_all_monitors(website_id: str):
+async def run_all_monitors(website_id: str) -> Dict[str, Any]:
     """Run all monitors for a single website."""
     from .monitors.tech_monitor import TechMonitor
     from .monitors.rank_monitor import RankMonitor
-    from .monitors.serp_monitor import SerpMonitor
-    from .monitors.competitor_monitor import CompetitorMonitor
     
+    results = {}
     try:
         tm = TechMonitor(website_id)
-        await tm.check_all_pages()
+        results["tech"] = await tm.check_all_pages()
     except Exception as e:
         logger.warning(f"Tech monitor pass failed for {website_id}: {e}")
+        results["tech"] = {"status": "error", "error": str(e)}
 
     try:
         rm = RankMonitor(website_id)
-        await rm.get_gsc_keywords(limit=10)
+        results["rank"] = await rm.get_gsc_keywords(limit=10)
     except Exception as e:
-        logger.warning(f"Rank monitor pass failed for {website_id}: {e}")
+        logger.warning(f"Rank monitor pass failed for {website_id}: {e}")
+        results["rank"] = {"status": "error", "error": str(e)}
+
+    return {"website_id": website_id, "results": results}

@@ -2,7 +2,10 @@ import json
 import logging
 import os
 
-from crewai import Agent, Task, Crew, Process
+try:
+    from crewai import Agent, Task, Crew, Process
+except ImportError:
+    Agent = Task = Crew = Process = None  # fallback when crewai not installed
 try:
     from langchain_openai import ChatOpenAI
 except ImportError:
@@ -87,8 +90,21 @@ seo_aeo_geo_tool = SEOAEOGEOTool()
 serp_analyzer_tool = SERPAnalyzerTool()
 content_optimizer_tool = ContentOptimizerTool()
 
-nim_llm = _build_nim_chat()
+nim_llm = _build_nim_chat() if ChatOpenAI is not None else None
 
+
+if Agent is None:
+    class _DummyAgent:
+        def __init__(self, *a, **kw): pass
+    class _DummyTask:
+        def __init__(self, *a, **kw): pass
+    class _DummyCrew:
+        def __init__(self, *a, **kw): pass
+        def kickoff(self, *a, **kw): return "crewai not installed — fallback to direct NIM"
+    Agent = _DummyAgent
+    Task = _DummyTask
+    Crew = _DummyCrew
+    Process = type("P", (), {"sequential": "sequential"})
 
 auditor_agent = Agent(
     role=AUDITOR_PERSONA["role"],

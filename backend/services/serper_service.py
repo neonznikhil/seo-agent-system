@@ -20,6 +20,11 @@ _CONNECTOR_STATE = {
     "credits_remaining": None,
 }
 
+_SERPER_CIRCUIT = {
+    "failures": 0,
+    "circuit_open_until": 0.0,
+}
+
 
 class SerperService:
     """Real-time search backbone for the SEO agent group via Serper.dev API.
@@ -31,15 +36,44 @@ class SerperService:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("SERPER_API_KEY", "")
-        self.tavily_key = os.getenv("TAVILY_API_KEY", "")
+        self._api_key = api_key
+        self._tavily_key = os.getenv("TAVILY_API_KEY", "")
         self.base_url = "https://google.serper.dev"
+
+    @property
+    def api_key(self) -> str:
+        return self._api_key or os.getenv("SERPER_API_KEY", "")
+
+    @api_key.setter
+    def api_key(self, value: str):
+        self._api_key = value
+
+    @property
+    def tavily_key(self) -> str:
+        return self._tavily_key or os.getenv("TAVILY_API_KEY", "")
+
+    @tavily_key.setter
+    def tavily_key(self, value: str):
+        self._tavily_key = value
 
     def is_configured(self) -> bool:
         return bool(self.api_key and len(self.api_key.strip()) > 5)
 
     def is_enabled(self) -> bool:
         return _CONNECTOR_STATE.get("enabled", True)
+
+    def is_circuit_open(self) -> bool:
+        return time.time() < _SERPER_CIRCUIT.get("circuit_open_until", 0.0)
+
+    def _record_circuit_success(self):
+        _SERPER_CIRCUIT["failures"] = 0
+        _SERPER_CIRCUIT["circuit_open_until"] = 0.0
+
+    def _record_circuit_failure(self):
+        _SERPER_CIRCUIT["failures"] = _SERPER_CIRCUIT.get("failures", 0) + 1
+        if _SERPER_CIRCUIT["failures"] >= 3:
+            _SERPER_CIRCUIT["circuit_open_until"] = time.time() + 60.0
+            logger.warning("[SerperService] Circuit breaker tripped! Pausing Serper requests for 60 seconds.")
 
     def toggle(self, enabled: bool) -> bool:
         _CONNECTOR_STATE["enabled"] = enabled
@@ -121,14 +155,16 @@ class SerperService:
         payload = {"q": query, "location": location, "language": language, "num": num, "type": search_type}
 
         # Step 1: Serper.dev Primary
-        if self.is_configured() and self.is_enabled():
+        if self.is_configured() and self.is_enabled() and not self.is_circuit_open():
             try:
                 data = await self._call_serper_search_api(
                     query=query, location=location, language=language, num=num, search_type=search_type
                 )
+                self._record_circuit_success()
                 _CONNECTOR_STATE["successful_calls"] += 1
                 _CONNECTOR_STATE["last_successful_call"] = datetime.utcnow().isoformat()
                 _CONNECTOR_STATE["last_error"] = None
+                self._log_cost_to_daily_costs(cost_usd=0.001)
 
                 # Normalize response keys
                 return {
@@ -143,6 +179,7 @@ class SerperService:
                     "raw": data
                 }
             except Exception as e:
+                self._record_circuit_failure()
                 error_msg = f"Serper search failed for '{query}': {str(e)}"
                 logger.warning(error_msg)
                 _CONNECTOR_STATE["failed_calls"] += 1
@@ -547,28 +584,111 @@ class SerperService:
         except Exception as e:
             logger.warning(f"Serper Autocomplete error: {e}")
 
-        return {"source": "unavailable", "suggestions": []}
-
-    # ---------------------------------------------------------
-    # 5. Key verification (Connectors page save flow)
-    # ---------------------------------------------------------
-    async def verify_key(self, api_key: str) -> bool:
-        """Validate a Serper.dev key by issuing a real 1-result search."""
-        if not api_key or len(api_key.strip()) < 8:
-            return False
+    def _log_cost_to_daily_costs(self, cost_usd: float = 0.001, website_id: Optional[str] = None):
+        """Log Serper API call cost to daily_costs table."""
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                resp = await client.post(
-                    f"{self.base_url}/search",
-                    headers={"X-API-KEY": api_key.strip(), "Content-Type": "application/json"},
-                    json={"q": "test", "num": 1},
-                )
-                return resp.status_code == 200
+            from ..database import get_supabase
+            sb = get_supabase()
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            payload = {
+                "date": today,
+                "agent_name": "serper_service",
+                "tokens": 0,
+                "cost_usd": cost_usd,
+                "created_at": datetime.utcnow().isoformat()
+            }
+            sb.table("daily_costs").insert(payload).execute()
         except Exception as e:
-            logger.warning(f"[SerperService] verify_key error: {e}")
-            return False
+            logger.debug(f"[SerperService] Could not log daily cost: {e}")
+
+    async def search_google(self, query: str, num_results: int = 10, location: Optional[str] = None, language: Optional[str] = "en") -> Dict[str, Any]:
+        """Convenience method for Google SERP search."""
+        return await self.search(query=query, location=location, language=language, num=num_results)
+
+    async def search_news(self, query: str, num_results: int = 10, location: Optional[str] = None, language: Optional[str] = "en") -> Dict[str, Any]:
+        """Convenience method for news search."""
+        return await self.news(query=query, location=location, language=language, num=num_results)
+
+    async def search_images(self, query: str, num_results: int = 10) -> Dict[str, Any]:
+        """Convenience method for image search."""
+        return await self.images(query=query, num=num_results)
+
+    async def get_people_also_ask(self, query: str) -> List[Dict[str, Any]]:
+        """Extract People Also Ask questions from SERP."""
+        res = await self.search(query=query, num=10)
+        return res.get("peopleAlsoAsk", [])
+
+    async def get_related_searches(self, query: str) -> List[Dict[str, Any]]:
+        """Extract Related Searches from SERP."""
+        res = await self.search(query=query, num=10)
+        return res.get("relatedSearches", [])
+
+    async def get_keyword_suggestions(self, query: str) -> Dict[str, Any]:
+        """Extract autocomplete suggestions, related searches and PAA for a seed keyword."""
+        search_res = await self.search(query=query, num=10)
+        auto_res = await self.autocomplete(query=query)
+        suggestions = [s.get("value") for s in auto_res.get("suggestions", []) if isinstance(s, dict)]
+        if not suggestions and isinstance(auto_res.get("suggestions"), list):
+            suggestions = [str(s) for s in auto_res.get("suggestions", [])]
+        return {
+            "suggestions": suggestions,
+            "related": search_res.get("relatedSearches", []),
+            "people_also_ask": search_res.get("peopleAlsoAsk", []),
+        }
 
 
 # Global singleton instance
 serper_service = SerperService()
+
+
+async def serper_search_safe(query: str, num_results: int = 10) -> list:
+    """
+    Safely executes a Google SERP search via Serper with quota and error interception:
+    - 403 / Quota -> Logs system warning alert and returns []
+    - 401 / Invalid Key -> Logs system critical alert and returns []
+    - Network/Other -> Logs warning and returns [] without crashing callers.
+    """
+    try:
+        results = await serper_service.search(query, num=num_results)
+        if isinstance(results, dict):
+            return results.get("organic", []) or []
+        if isinstance(results, list):
+            return results
+        return []
+    except Exception as e:
+        error_str = str(e)
+        if "403" in error_str or "quota" in error_str.lower():
+            try:
+                from ..database import get_supabase
+                get_supabase().table("monitoring_alerts").insert({
+                    "alert_type": "api_quota",
+                    "severity": "warning",
+                    "title": "Serper API Quota Exceeded",
+                    "message": "Serper API quota exceeded. SERP features paused until quota resets. Check your quota at serper.dev/dashboard",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "status": "active",
+                }).execute()
+            except Exception:
+                pass
+            logger.warning(f"[Serper Safe] Quota exceeded for '{query}'")
+            return []
+        elif "401" in error_str or "unauthorized" in error_str.lower():
+            try:
+                from ..database import get_supabase
+                get_supabase().table("monitoring_alerts").insert({
+                    "alert_type": "api_auth",
+                    "severity": "critical",
+                    "title": "Invalid Serper API Key",
+                    "message": "Serper API key is invalid. Update it in /connectors.",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "status": "active",
+                }).execute()
+            except Exception:
+                pass
+            logger.warning(f"[Serper Safe] Invalid API key for '{query}'")
+            return []
+        else:
+            logger.warning(f"[Serper Safe] Search failed for '{query}': {error_str}")
+            return []
+
 

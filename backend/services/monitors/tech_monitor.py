@@ -25,7 +25,20 @@ class TechMonitor:
             return urls[:5]
         except Exception:
             return []
-    
+
+    async def check_all_pages(self) -> Dict[str, Any]:
+        """Check all top pages for technical issues."""
+        pages = await self.get_top_pages(limit=5)
+        page_results = {}
+        for page in pages:
+            if page:
+                page_results[page] = await self.check_page(page)
+        return {
+            "website_id": self.website_id,
+            "pages_checked": len(page_results),
+            "results": page_results
+        }
+
     async def check_page(self, url: str) -> Dict:
         """Run full technical check on a page."""
         result = {

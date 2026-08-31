@@ -180,43 +180,6 @@ async def get_competitor_profiles(website_id: Optional[str] = None):
     except Exception:
         pass
 
-    if not profiles:
-        # Provide rich calibrated initial profiles
-        profiles = [
-            {
-                "domain": "toplawyers.com",
-                "tracked_keywords": ["car accident lawyer", "personal injury settlement", "auto collision claims"],
-                "estimated_monthly_traffic": 34200,
-                "publish_frequency": 3.2,
-                "avg_content_length": 1950,
-                "backlink_velocity": 5.8,
-                "schema_types": ["Article", "LegalService", "FAQPage"],
-                "top_pages": [
-                    {"url": "https://toplawyers.com/injury-compensation", "traffic": 12400},
-                    {"url": "https://toplawyers.com/texas-statutes", "traffic": 9100}
-                ],
-                "last_5_articles": [
-                    {"title": "2026 Commercial Vehicle Claims", "date": datetime.utcnow().strftime("%Y-%m-%d")},
-                    {"title": "Comparative Fault in Auto Accidents", "date": "2026-08-20"}
-                ]
-            },
-            {
-                "domain": "legalguide.org",
-                "tracked_keywords": ["accident attorney consultation", "settlement timeline guide"],
-                "estimated_monthly_traffic": 21800,
-                "publish_frequency": 1.8,
-                "avg_content_length": 1650,
-                "backlink_velocity": 3.1,
-                "schema_types": ["Article", "FAQPage"],
-                "top_pages": [
-                    {"url": "https://legalguide.org/settlement-calculator", "traffic": 8900}
-                ],
-                "last_5_articles": [
-                    {"title": "How Injury Settlements Are Taxed", "date": "2026-08-18"}
-                ]
-            }
-        ]
-
     return {"success": True, "data": profiles}
 
 

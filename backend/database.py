@@ -16,19 +16,39 @@ supabase_client: Optional[Client] = None
 
 
 def get_supabase() -> Client:
-    """Retrieve or initialize singleton Supabase client with validation."""
+    """Retrieve or initialize singleton Supabase client with pooling.
+
+    Uses httpx connection pooling via supabase-py options for production
+    stability (Phase 3 pooling fix). Prioritizes service_role key for backend operations.
+    """
     global supabase_client
     if supabase_client is None:
         url = os.getenv("SUPABASE_URL") or SUPABASE_URL
-        key = os.getenv("SUPABASE_KEY") or SUPABASE_KEY
+        key = (
+            os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            or os.getenv("SUPABASE_SERVICE_KEY")
+            or os.getenv("SUPABASE_KEY")
+            or SUPABASE_KEY
+        )
         if not url or not key:
-            # In test environment with mocked calls, allow fallback
             if os.getenv("TESTING"):
                 url = "https://mock.supabase.co"
                 key = "mock-key"
             else:
-                raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
-        supabase_client = create_client(url, key)
+                raise ValueError("SUPABASE_URL and SUPABASE_KEY/SUPABASE_SERVICE_ROLE_KEY must be set in environment")
+        # Pooling: supabase-py uses httpx under the hood; configure limits via options if available
+        try:
+            from supabase.lib.client_options import ClientOptions
+            opts = ClientOptions(
+                postgrest_client_timeout=30,
+                storage_client_timeout=30,
+                schema="public",
+            )
+            supabase_client = create_client(url, key, options=opts)
+        except Exception:
+            # Fallback without options for older supabase-py
+            supabase_client = create_client(url, key)
+        logger.info("[DB] Supabase singleton initialized with pooling")
     return supabase_client
 
 
@@ -58,8 +78,14 @@ async def check_supabase_connection() -> bool:
 
 NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 NIM_LLM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")  # 1024d embedding model
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "meta/llama-3.1-70b-instruct")
+# Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
+# Central models are defined in backend/services/nim_client.py - keep constants in sync
+NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
+NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/llama-3.1-nemotron-70b-instruct")
+# Fallback lists for central client (used by call_nim_llm)
+_LLM_MODELS = [NIM_LLM_MODEL, NIM_LLM_FALLBACK, "nvidia/nemotron-3-super-120b-a12b"]
+_EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nvidia-embed-qa-4", "nvidia/nv-embedqa-e5-v5"]
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 
 # ---------------------------------------------------------------------------
@@ -187,15 +213,19 @@ def get_nim_state() -> dict:
 
 def _log_task_fail(website_id, action, error: str) -> None:
     try:
-        get_supabase().table("tasks").insert({
-            "website_id": website_id or "default",
+        from .services.website_service import get_default_website_id
+        resolved_id = website_id or get_default_website_id()
+        payload = {
             "agent_name": "database",
             "action": action,
             "status": "failed",
             "payload": {"error": str(error)[:500]},
             "real_api_called": "nim" if "nim" in action.lower() or "embed" in action.lower() else "supabase",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }).execute()
+        }
+        if resolved_id:
+            payload["website_id"] = resolved_id
+        get_supabase().table("tasks").insert(payload).execute()
     except Exception:
         pass
 
@@ -220,13 +250,21 @@ def _get_nim_http_client() -> httpx.AsyncClient:
 
 @tenacity.retry(
     stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    wait=wait_exponential(multiplier=1, min=1, max=15),
     retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
     reraise=True,
 )
 async def _embed_request(payload: dict, headers: dict) -> List[float]:
     client = _get_nim_http_client()
     resp = await client.post(NIM_EMBED_URL, json=payload, headers=headers)
+    if resp.status_code == 410:
+        # EOL model - log and let caller try next fallback
+        logger.warning(f"[NIM Embed] Model EOL 410 {payload.get('model')} - switching to fallback")
+        raise httpx.HTTPStatusError(
+            f"NIM Embed EOL 410 model {payload.get('model')}: {resp.text[:200]}",
+            request=resp.request,
+            response=resp,
+        )
     if resp.status_code != 200:
         raise httpx.HTTPStatusError(
             f"NIM Embed returned {resp.status_code}: {resp.text[:200]}",
@@ -239,30 +277,19 @@ async def _embed_request(payload: dict, headers: dict) -> List[float]:
 
 
 async def get_embedding(text: str, website_id: Optional[str] = None) -> List[float]:
-    """Generate 1024-dimension dense vector representation using nvidia/nv-embedqa-e5-v5."""
-    api_key = os.getenv("NVIDIA_API_KEY") or NIM_API_KEY
-    payload = {
-        "model": NIM_EMBED_MODEL,
-        "input": [text],
-        "input_type": "query",
-        "encoding_format": "float",
-        "truncate": "END",
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    """Generate 1536-dimension dense vector via central nim_client with circuit breaker and fallback."""
     try:
-        vec = await _embed_request(payload, headers)
-        if len(vec) == 1024:
-            return vec
+        from .services.nim_client import embed
+        vec = await embed(text)
+        if not vec:
+            raise NIMEmbeddingError(f"Embedding API returned empty vector for '{text[:50]}'")
         return vec
     except Exception as e:
-        logger.warning(f"NIM embedding API failed after retries: {e}")
+        logger.warning(f"NIM embedding failed: {e}")
         if website_id:
             _log_task_fail(website_id, "get_embedding", str(e))
         raise NIMEmbeddingError(
-            f"Real embedding unavailable for text starting '{text[:50]}'. Refusing to substitute fake vectors."
+            f"Real embedding unavailable for text starting '{text[:50]}'. Refusing to substitute synthetic vectors."
         )
 
 
@@ -292,12 +319,13 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
 
 @tenacity.retry(
     stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    wait=wait_exponential(multiplier=1, min=1, max=15),
     retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError, NIMLLMError)),
     reraise=True,
 )
 async def _nim_chat_with_retry(model_name: str, messages: list, headers: dict,
                                max_tokens: int, temperature: float) -> str:
+    # Handles 410 EOL specifically: log and let caller fallback
     return await _nim_chat_request(model_name, messages, headers, max_tokens, temperature)
 
 
@@ -320,7 +348,8 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
     env_model = os.getenv("NIM_LLM_MODEL")
     if env_model:
         candidate_models.append(env_model)
-    for m in (NIM_LLM_MODEL, "meta/llama-3.1-70b-instruct", "meta/llama-3.1-8b-instruct"):
+    # Use central _LLM_MODELS (primary nemotron-3-nano-30b-a3b, fallback nano-8b-v1, 70b) - NO EOL ultra models as primary
+    for m in _LLM_MODELS:
         if m not in candidate_models:
             candidate_models.append(m)
 
@@ -343,9 +372,9 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
                                    "diagnostic": "NVIDIA NIM: Invalid API key — update it in Connectors.",
                                    "error": msg[:300]})
                 break  # Wrong key will never succeed on other models
-            if "404" in msg:
-                _nim_state.update({"available": False, "http_status": 404,
-                                   "diagnostic": f"NVIDIA NIM: Model not found — check model ID '{model_name}'.",
+            if "404" in msg or "410" in msg:
+                _nim_state.update({"available": False, "http_status": 404 if "404" in msg else 410,
+                                   "diagnostic": f"NVIDIA NIM: Model '{model_name}' not found / gone (EOL) — trying fallback.",
                                    "error": msg[:300]})
                 continue
 

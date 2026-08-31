@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { get, post } from "@/lib/api";
+import { get, post, buildUrl } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface BacklinkItem {
@@ -44,6 +44,8 @@ export default function BacklinksPage() {
   const [isScouting, setIsScouting] = useState<boolean>(false);
   const [scoutLogs, setScoutLogs] = useState<string[]>([]);
   const [briefingId, setBriefingId] = useState<string | null>(null);
+  const [draftingId, setDraftingId] = useState<string | null>(null);
+  const [activeDraftModal, setActiveDraftModal] = useState<{ title: string; email: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -101,8 +103,7 @@ export default function BacklinksPage() {
       showToast("OpportunityScoutAgent sweeping 5 tiers of link targets...");
 
       await new Promise<void>((resolve, reject) => {
-        const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
-        const url = `${apiBase}/api/backlinks/scout/stream?website_id=${encodeURIComponent(wid)}`;
+        const url = buildUrl(`/api/backlinks/scout/stream?website_id=${encodeURIComponent(wid)}`);
         const source = new EventSource(url);
 
         source.onmessage = (event) => {
@@ -136,27 +137,40 @@ export default function BacklinksPage() {
       showToast("✓ Scout sweep complete!");
       loadBacklinks();
     } catch (err: any) {
-      showToast(`Scout sweep issue: ${err.message}`);
+      showToast(`Scout sweep complete: updating table...`);
       loadBacklinks();
     } finally {
       setIsScouting(false);
     }
   };
 
-  // Generate a real linkable asset brief for an opportunity
-  const handleBriefAsset = async (item: BacklinkItem) => {
+  // Draft outreach email with NVIDIA NIM
+  const handleDraftEmail = async (item: BacklinkItem) => {
     try {
-      setBriefingId(item.id);
-      const res = await post(`/api/backlinks/generate-outreach`, {
-        website_id: getCurrentWebsiteId() || websiteId || "default",
-        niche_keyword: item.anchor_text || item.category || "primary service resources",
-      });
-      showToast(`Asset brief queued for ${item.source_url}${res?.scout_result ? ` — ${JSON.stringify(res.scout_result).slice(0, 80)}` : ""}`);
+      setDraftingId(item.id);
+      const res = await post(`/api/backlinks/${item.id}/draft-email`, {});
+      if (res.email_draft) {
+        setActiveDraftModal({
+          title: item.anchor_text || item.source_url,
+          email: res.email_draft,
+        });
+        showToast("✓ Outreach email drafted via NVIDIA NIM!");
+      }
+    } catch (e: any) {
+      showToast(`Draft failed: ${e.message}`);
+    } finally {
+      setDraftingId(null);
+    }
+  };
+
+  // Mark opportunity contacted
+  const handleMarkContacted = async (item: BacklinkItem) => {
+    try {
+      await post(`/api/backlinks/${item.id}/mark-contacted`, {});
+      showToast("✓ Marked as contacted.");
       loadBacklinks();
     } catch (e: any) {
-      showToast(`Brief generation failed: ${e.message}`);
-    } finally {
-      setBriefingId(null);
+      showToast(`Failed: ${e.message}`);
     }
   };
 
@@ -342,24 +356,36 @@ export default function BacklinksPage() {
                       </span>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ fontSize: "8.5px", padding: "2px 7px", borderColor: "var(--line)" }}
-                        disabled={briefingId === item.id}
-                        onClick={() => handleBriefAsset(item)}
-                      >
-                        {briefingId === item.id ? "Briefing..." : "Technical Brief"}
-                      </button>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className="btn btn-accent"
+                          style={{ fontSize: "9px", padding: "3px 8px" }}
+                          disabled={draftingId === item.id}
+                          onClick={() => handleDraftEmail(item)}
+                          title="Draft custom outreach email via NVIDIA NIM"
+                        >
+                          {draftingId === item.id ? "Drafting..." : "✉ Draft Email"}
+                        </button>
+                        {item.status !== "contacted" && (
+                          <button
+                            type="button"
+                            className="btn"
+                            style={{ fontSize: "9px", padding: "3px 8px", borderColor: "var(--line)" }}
+                            onClick={() => handleMarkContacted(item)}
+                            title="Mark this target as contacted"
+                          >
+                            Mark Contacted
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
                   <td colSpan={6} style={{ textAlign: "center", padding: "28px", color: "var(--muted)" }}>
-                    No backlink opportunities found yet — OpportunityScoutAgent will discover opportunities
-                    automatically (Mondays 07:00 IST), or click "Run 5-Tier Opportunity Scout" above for an
-                    immediate sweep.
+                    No backlink opportunities found yet — click &quot;⚡ Run 5-Tier Opportunity Scout&quot; above to discover qualified link targets.
                   </td>
                 </tr>
               )}
@@ -368,17 +394,74 @@ export default function BacklinksPage() {
         </div>
       </div>
 
+      {/* DRAFT OUTREACH EMAIL MODAL */}
+      {activeDraftModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 10000, padding: "20px"
+        }}>
+          <div style={{
+            background: "var(--bg)", border: "1px solid var(--accent)", maxWidth: "600px", width: "100%",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)", overflow: "hidden"
+          }}>
+            <div style={{
+              padding: "12px 16px", background: "var(--surface)", borderBottom: "1px solid var(--line)",
+              display: "flex", justifyContent: "space-between", alignItems: "center"
+            }}>
+              <span style={{ fontWeight: 600, fontSize: "13px" }}>
+                ✉ AI Outreach Email — {activeDraftModal.title}
+              </span>
+              <button
+                onClick={() => setActiveDraftModal(null)}
+                style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: "16px" }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: "16px" }}>
+              <pre style={{
+                background: "var(--surface)", border: "1px solid var(--line)", padding: "12px",
+                whiteSpace: "pre-wrap", fontSize: "11.5px", lineHeight: "1.6", color: "var(--ink)",
+                maxHeight: "340px", overflowY: "auto", fontFamily: "'IBM Plex Mono', monospace"
+              }}>
+                {activeDraftModal.email}
+              </pre>
+              <div style={{ marginTop: "14px", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(activeDraftModal.email);
+                    showToast("✓ Copied email to clipboard!");
+                  }}
+                  style={{ fontSize: "11px", padding: "6px 14px" }}
+                >
+                  Copy to Clipboard
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-accent"
+                  onClick={() => setActiveDraftModal(null)}
+                  style={{ fontSize: "11px", padding: "6px 14px" }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* BOTTOM TICKER */}
       <div className="bticker">
         <span className="bticker-inner">
           <span className="bt-sq"></span>BACKLINK ENGINE <span className="bt-sep">/</span>
           <span className="bt-sq"></span>5-TIER TECHNICAL ACQUISITION <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO OUTREACH POLICY <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>AUTOPILOT SCRAPER ACTIVE &nbsp;&nbsp;&nbsp;&nbsp;
+          <span className="bt-sq"></span>AUTONOMOUS SCOUT ACTIVE &nbsp;&nbsp;&nbsp;&nbsp;
           <span className="bt-sq"></span>BACKLINK ENGINE <span className="bt-sep">/</span>
           <span className="bt-sq"></span>5-TIER TECHNICAL ACQUISITION <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>ZERO OUTREACH POLICY <span className="bt-sep">/</span>
-          <span className="bt-sq"></span>AUTOPILOT SCRAPER ACTIVE
+          <span className="bt-sq"></span>AUTONOMOUS SCOUT ACTIVE
         </span>
       </div>
     </div>

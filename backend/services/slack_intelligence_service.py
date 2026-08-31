@@ -119,7 +119,7 @@ class SlackIntelligenceService:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Needs Your Attention:*\n{pending_text}\n• Direct Link: <{self._frontend_url()}/approvals|Open Approvals Queue →>"
+                    "text": f"*Needs Your Attention:*\n{pending_text}\n• Direct Link: <{self._frontend_url()}/approvals|Open Approvals Queue ->>"
                 }
             },
             {"type": "divider"}
@@ -353,7 +353,7 @@ class SlackIntelligenceService:
                     "text": (f"📝 *New draft ready for your approval*\n"
                              f"*{title}*\n"
                              f"{word_count:,} words · SEO score {seo_score}/100\n"
-                             f"<{self._frontend_url()}/approvals|Review & Approve →>")
+                             f"<{self._frontend_url()}/approvals|Review & Approve ->>")
                 }
             }
         ]
@@ -362,7 +362,7 @@ class SlackIntelligenceService:
 
     async def notify_content_published(self, website_id: str, title: str,
                                        wordpress_url: Optional[str]) -> bool:
-        url_line = f"\n<{wordpress_url}|View live post →>" if wordpress_url else ""
+        url_line = f"\n<{wordpress_url}|View live post ->>" if wordpress_url else ""
         blocks = [
             {
                 "type": "section",

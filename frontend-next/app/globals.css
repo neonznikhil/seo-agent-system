@@ -356,6 +356,8 @@ body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Mono',monospace
 .oauth-btn-text{flex:1;text-align:left;}
 .oauth-btn-arrow{color:var(--muted);font-size:12px;}
 
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+.spin{animation:spin 1s linear infinite;}
 /* NOTICE */
 .notice{padding:10px 12px;border:1px solid var(--line);background:var(--bg2);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px;margin-bottom:12px;}
 .notice-sq{width:5px;height:5px;background:var(--amber);flex-shrink:0;}

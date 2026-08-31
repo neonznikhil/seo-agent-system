@@ -61,22 +61,34 @@ WP_OAUTH_CLIENT_SECRET: str = os.getenv("WP_OAUTH_CLIENT_SECRET", "")
 WP_OAUTH_AUTHORIZE_URL: str = os.getenv("WP_OAUTH_AUTHORIZE_URL", "https://public-api.wordpress.com/oauth2/authorize")
 WP_OAUTH_TOKEN_URL: str = os.getenv("WP_OAUTH_TOKEN_URL", "https://public-api.wordpress.com/oauth2/token")
 
-# Token Encryption
+# Token Encryption — ENCRYPTION_KEY required in production (no hardcoded fallback)
 import base64
 import hashlib
 import secrets
 
-_raw_secret = os.getenv("TOKEN_ENCRYPTION_KEY") or os.getenv("ENCRYPTION_SECRET")
+_raw_secret = (
+    os.getenv("ENCRYPTION_KEY")
+    or os.getenv("TOKEN_ENCRYPTION_KEY")
+    or os.getenv("ENCRYPTION_SECRET")
+)
 if not _raw_secret:
-    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
+    # In production, require explicit key — no silent fallback
+    if os.getenv("ENVIRONMENT") == "production" and not os.getenv("TESTING"):
+        raise RuntimeError("ENCRYPTION_KEY required")
+    # In dev/test, allow deterministic fallback but warn
+    if os.getenv("TESTING"):
+        _raw_secret = "rankforge-test-key-32bytes-do-not-use-in-prod"
+    elif os.getenv("ENVIRONMENT") != "production":
         _raw_secret = "rankforge-local-dev-secret-key-32bytes-secure"
+        logger.warning("[Security] ENCRYPTION_KEY not set — using local dev fallback (do not use in production)")
     else:
-        logger.warning("[Security] TOKEN_ENCRYPTION_KEY not set in production. Generating ephemeral 256-bit key.")
-        _raw_secret = secrets.token_urlsafe(32)
+        raise RuntimeError("ENCRYPTION_KEY required")
 
 # Always ensure exactly 32 url-safe base64-encoded bytes for Fernet
 TOKEN_ENCRYPTION_KEY: str = base64.urlsafe_b64encode(hashlib.sha256(_raw_secret.encode()).digest()).decode()
 ENCRYPTION_SECRET: str = TOKEN_ENCRYPTION_KEY
+# Canonical alias required by audit
+ENCRYPTION_KEY: str = TOKEN_ENCRYPTION_KEY
 
 # Thresholds & URLs
 DUPLICATE_THRESHOLD: float = float(os.getenv("DUPLICATE_THRESHOLD", "0.85"))
@@ -86,10 +98,12 @@ REDIRECT_URI: str = os.getenv("REDIRECT_URI", f"{BACKEND_URL}/api/wordpress/oaut
 
 _default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
 ALLOWED_CORS_ORIGINS: list = [
-    origin.strip()
+    origin.strip().rstrip("/")
     for origin in os.getenv("ALLOWED_CORS_ORIGINS", _default_origins).split(",")
     if origin.strip() and origin.strip() != "*"
 ]
+if FRONTEND_URL and FRONTEND_URL not in ALLOWED_CORS_ORIGINS and FRONTEND_URL != "*":
+    ALLOWED_CORS_ORIGINS.append(FRONTEND_URL)
 
 
 def _mask(val: str) -> str:
@@ -140,9 +154,15 @@ def validate_env() -> None:
         status = "[CONFIGURED]" if v else "[OPTIONAL/FALLBACK]"
         print(f"  [OPT]  {k.ljust(20)}: {masked.ljust(18)} {status}")
 
-    print("================================================================")
-
     if missing_core and not os.getenv("TESTING"):
-        error_msg = f"FATAL: Missing critical environment variables: {', '.join(missing_core)}. RankForge cannot start without these."
-        logger.error(error_msg)
-        warnings.warn(error_msg)
+        error_msg = (
+            f"\n\n================================================================\n"
+            f"FATAL: RankForge Boot Refusal - Missing Required Environment Variables:\n"
+            f"  -> {', '.join(missing_core)}\n\n"
+            f"Please populate these variables in your .env file before launching.\n"
+            f"Refer to .env.example for variable descriptions and instructions.\n"
+            f"================================================================\n"
+        )
+        logger.critical(error_msg)
+        print(error_msg, file=sys.stderr)
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing_core)}")

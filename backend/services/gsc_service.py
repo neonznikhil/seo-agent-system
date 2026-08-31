@@ -230,6 +230,13 @@ class GSCService:
             }
 
 
+    async def get_rankings(self, days: int = 30) -> Dict[str, Any]:
+        """Fetch search rankings for the site over the specified timeframe."""
+        start_date = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d')
+        end_date = datetime.utcnow().strftime('%Y-%m-%d')
+        return await self.get_keyword_performance(start_date=start_date, end_date=end_date)
+
+
 async def get_keyword_performance(website_url: str = None, days: int = 28) -> Dict:
     """Standalone function for keyword performance."""
     service = GSCService(website_url)
@@ -254,4 +261,4 @@ async def list_verified_sites(website_url: str = None) -> List[str]:
         for s in (sites.get("siteEntry") or [])
         if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
     ]
-    return [v for v in verified if v]
+    return [v for v in verified if v]

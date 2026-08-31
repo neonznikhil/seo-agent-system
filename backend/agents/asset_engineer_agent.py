@@ -40,26 +40,27 @@ class AssetEngineerAgent:
             dr = opp.get("domain_rating", 45)
             target_url = opp.get("url", "")
 
-            # Determine asset configuration
+            # Determine asset configuration dynamically
+            topic = opp.get("page_topic") or opp.get("niche_keyword") or opp.get("anchor_text") or "Industry Analysis"
             if opp_type == "statistics_citation":
-                asset_title = "Texas Auto & Truck Accident Statistics [2026 Comprehensive Data]"
-                target_kw = "Texas car accident statistics 2026"
-                why_earns = "Engineered to attract academic and legal citations with real empirical data points."
+                asset_title = f"{topic} Statistics & Benchmark [2026 Comprehensive Data]"
+                target_kw = f"{topic} statistics 2026"
+                why_earns = "Engineered to attract academic and authoritative citations with real empirical data points."
                 min_words = 2800
             elif opp_type == "competitor_gap":
-                asset_title = "Texas Comparative Fault & Insurance Claim Settlement Formula Breakdown"
-                target_kw = "Texas comparative fault injury settlements"
-                why_earns = "Superior technical analysis designed to replace competitor links on high-DR legal resource portals."
+                asset_title = f"{topic} Definitive Framework & Evaluation Guide"
+                target_kw = f"{topic} evaluation guide"
+                why_earns = "Superior technical analysis designed to replace competitor links on high-DR resource portals."
                 min_words = 2600
             elif opp_type == "link_page":
-                asset_title = "Texas Personal Injury Claim Settlement Value Calculator & Statutory Index"
-                target_kw = "Texas injury claim payout calculator"
-                why_earns = "Interactive calculation tool providing unique utility for dedicated legal link directories."
+                asset_title = f"{topic} Resource Directory & Strategic Index"
+                target_kw = f"{topic} resource index"
+                why_earns = "High-utility resource index providing unique value for dedicated industry link hubs."
                 min_words = 2400
             else: # resource_page / default
-                asset_title = "The Definitive 2026 Guide to Texas Commercial Truck Liability Statutes"
-                target_kw = "Texas commercial truck liability rules"
-                why_earns = "Authoritative long-form legal pillar guide built to be the single best reference link on the web."
+                asset_title = f"The Definitive 2026 Guide to {topic}"
+                target_kw = f"{topic} guide 2026"
+                why_earns = "Authoritative long-form pillar guide built to be the single best reference link on the web."
                 min_words = 3000
 
             priority = "critical" if dr >= 50 else "high" if dr >= 30 else "medium"

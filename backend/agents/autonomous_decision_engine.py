@@ -47,6 +47,14 @@ class AutonomousDecisionEngine:
         supabase = get_supabase()
         now = datetime.utcnow()
 
+        # Enforce budget availability
+        budget_status = await self.check_budget_availability()
+        if not budget_status.get("allowed", True):
+            return {
+                "should_run": False,
+                "reason": budget_status.get("reason", "Daily budget limit exceeded")
+            }
+
         # Job: SEO & AEO Report (Runs Daily Always)
         if clean_name in ["seo_report", "seo_report_aeo_tracking", "business_website_watch"]:
             return {
@@ -85,7 +93,7 @@ class AutonomousDecisionEngine:
                 pass
             return {
                 "should_run": True,
-                "reason": "Scheduled Texas legal statute and competitor sync."
+                "reason": "Scheduled knowledge base and competitor sync."
             }
 
         # Job: Brain Learn
@@ -135,11 +143,70 @@ class AutonomousDecisionEngine:
                         "target_keyword": target_kw,
                         "reason": f"Target keyword '{target_kw}' has strong search intent and {len(hits)} verified knowledge grounding points."
                     }
+            target_kw = target_kw or "Autonomous SEO Strategy"
             return {
                 "should_run": True,
-                "target_keyword": "Houston commercial truck accident settlements",
-                "reason": "High-intent personal injury topic selected based on weekly growth targets."
+                "target_keyword": target_kw,
+                "reason": f"High-intent topic '{target_kw}' selected based on weekly growth targets."
             }
+
+        # Job: Daily Content Gap (09:00 IST - Crew)
+        if clean_name in ["daily_content_gap", "daily_content_gap_crew"]:
+            try:
+                # Check last_run >20h
+                last_run_ok = True
+                try:
+                    lr = supabase.table("brain_daily_jobs").select("run_at").eq("job_name", "daily_content_gap").order("run_at", desc=True).limit(1).execute().data or []
+                    if lr and lr[0].get("run_at"):
+                        last = datetime.fromisoformat(lr[0]["run_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                        hours = (now - last).total_seconds() / 3600
+                        last_run_ok = hours > 20
+                        if not last_run_ok:
+                            return {"should_run": False, "reason": f"Last daily_content_gap ran {hours:.1f}h ago (<20h)"}
+                except Exception:
+                    pass
+                # Knowledge freshness avg <0.7
+                avg_fresh = 0.7
+                try:
+                    rows = supabase.table("knowledge_base").select("freshness_score").limit(50).execute().data or []
+                    if rows:
+                        avg_fresh = sum(float(r.get("freshness_score", 1.0)) for r in rows) / len(rows)
+                except Exception:
+                    pass
+                # New gap found?
+                from ..services.analytics_service import AnalyticsService
+                gaps = await AnalyticsService.get_content_gaps(self.website_id)
+                has_new_gap = bool(gaps)
+                if (avg_fresh < 0.7) or has_new_gap:
+                    return {"should_run": True, "reason": f"Knowledge freshness {avg_fresh:.2f} <0.7 or new gap found ({len(gaps)} gaps)"}
+                if last_run_ok:
+                    return {"should_run": True, "reason": "20h elapsed since last gap check"}
+            except Exception as e:
+                logger.debug(f"daily_content_gap decision note: {e}")
+            return {"should_run": True, "reason": "Scheduled daily gap check"}
+
+        # Job: Auto Publish Approval (every 5 min always)
+        if clean_name in ["auto_publish_approval", "auto_publish", "process_autonomous_cycle"]:
+            return {"should_run": True, "reason": "Auto-publish runs every 5 min always (quality gate will filter)"}
+
+        # Job: Content Refresh (10:30)
+        if clean_name == "content_refresh":
+            try:
+                from ..services.analytics_service import AnalyticsService
+                decaying = await AnalyticsService.get_decaying_content(self.website_id)
+                if decaying and len(decaying) > 0:
+                    return {"should_run": True, "reason": f"Decaying content exists ({len(decaying)} articles >30% drop)"}
+                # Also check low freshness
+                try:
+                    fresh_rows = supabase.table("knowledge_base").select("freshness_score").lt("freshness_score", 0.4).limit(1).execute().data or []
+                    if fresh_rows:
+                        return {"should_run": True, "reason": "Low freshness (<0.4) knowledge found for refresh"}
+                except Exception:
+                    pass
+                return {"should_run": False, "reason": "No decaying content nor stale freshness — skipping refresh"}
+            except Exception:
+                pass
+            return {"should_run": True, "reason": "Periodic refresh check"}
 
         # Job: Backlink Prospecting
         if clean_name == "backlink_prospecting":
@@ -157,6 +224,21 @@ class AutonomousDecisionEngine:
                     }
             except Exception:
                 pass
+
+        # Log decision to agent_memory type decision
+        try:
+            from ..services.brain_service import BrainService
+            brain = BrainService(website_id=self.website_id)
+            await brain.remember(
+                website_id=self.website_id,
+                memory_type="decision",
+                title=f"Decision: {clean_name}",
+                content=f"should_run={True} reason=Standard execution",
+                source_type="autonomous_decision_engine",
+                confidence=0.8
+            )
+        except Exception:
+            pass
 
         return {"should_run": True, "reason": "Standard execution."}
 
@@ -188,22 +270,75 @@ class AutonomousDecisionEngine:
         except Exception:
             pass
 
-        # 3. Find focus keyword not yet published
+        # 3. Find focus keyword not yet published — with denylist + grounding guard
+        DENYLIST = ["how to start a blog", "start a blog", "generic marketing", "strategy and best practices", "autonomous seo"]
         for kw in focus_kws:
             if kw.lower() not in existing_kws:
+                kw_low = kw.lower()
+                if any(denied in kw_low for denied in DENYLIST):
+                    continue
+                # Grounding check: ensure keyword is relevant to KB
+                try:
+                    from ..services.knowledge_service import KnowledgeService
+                    ks = KnowledgeService(website_id=self.website_id)
+                    hits = await ks.retrieve_relevant_hybrid(kw, top_k=3)
+                    if hits:
+                        avg = sum(float(h.get("final_score", 0)) for h in hits)/len(hits)
+                        if avg < 0.55:
+                            continue
+                    else:
+                        continue
+                except Exception:
+                    pass
                 return kw
 
-        # 4. Check daily_searches table
+        # 5. Check keywords table — with same guards
         try:
-            searches = supabase.table("daily_searches").select("keyword").order("created_at", desc=True).limit(10).execute().data or []
-            for s in searches:
-                kw = s.get("keyword")
+            kws = supabase.table("keywords").select("keyword").eq("website_id", self.website_id).order("search_volume", desc=True).limit(10).execute().data or []
+            for k in kws:
+                kw = k.get("keyword")
                 if kw and kw.lower() not in existing_kws:
+                    kw_low = kw.lower()
+                    if any(denied in kw_low for denied in DENYLIST):
+                        continue
+                    try:
+                        from ..services.knowledge_service import KnowledgeService
+                        ks = KnowledgeService(website_id=self.website_id)
+                        hits = await ks.retrieve_relevant_hybrid(kw, top_k=3)
+                        if hits:
+                            avg = sum(float(h.get("final_score", 0)) for h in hits)/len(hits)
+                            if avg < 0.55:
+                                continue
+                        else:
+                            continue
+                    except Exception:
+                        pass
                     return kw
         except Exception:
             pass
 
-        return "Houston car accident lawyer settlement rules"
+        # 6. Generate from site niche or domain — but NEVER return generic fallback if not grounded
+        # Instead return None to signal no grounded keyword available (forces skip rather than unrelated blog)
+        try:
+            site = supabase.table("websites").select("niche, domain, name").eq("id", self.website_id).single().execute().data
+            if site:
+                niche = site.get("niche") or site.get("name") or site.get("domain")
+                if niche and niche.lower() not in ["professional services", "strategy and best practices", "autonomous seo optimization strategy"]:
+                    # Validate niche grounding
+                    try:
+                        from ..services.knowledge_service import KnowledgeService
+                        ks = KnowledgeService(website_id=self.website_id)
+                        hits = await ks.retrieve_relevant_hybrid(niche, top_k=3)
+                        if hits and sum(float(h.get("final_score", 0)) for h in hits)/len(hits) >= 0.55:
+                            return f"{niche} strategy and best practices"
+                    except Exception:
+                        pass
+                    # If not grounded, don't return generic
+                    return None
+        except Exception:
+            pass
+
+        return None
 
     # ---------------------------------------------------------
     # 3. Multi-Vector Quality Gate for Autonomous Publishing
@@ -262,25 +397,21 @@ class AutonomousDecisionEngine:
         }
 
     # ---------------------------------------------------------
-    # 4. Daily Token & Cost Tracking
+    # 4. Daily Token & Cost Tracking (via BudgetManager)
     # ---------------------------------------------------------
     async def track_cost(self, agent_name: str, tokens: int):
         """Record token usage and estimated cost per agent per day."""
         cost_per_1k = 0.002
         cost_usd = round((tokens / 1000.0) * cost_per_1k, 5)
-        supabase = get_supabase()
-        try:
-            supabase.table("daily_costs").insert({
-                "id": str(uuid.uuid4()),
-                "website_id": self.website_id or "default",
-                "date": datetime.utcnow().strftime("%Y-%m-%d"),
-                "agent_name": agent_name,
-                "tokens": tokens,
-                "cost_usd": cost_usd,
-                "created_at": datetime.utcnow().isoformat()
-            }).execute()
-        except Exception as e:
-            logger.debug(f"Cost track error: {e}")
+        from ..services.budget_manager import BudgetManager
+        bm = BudgetManager(website_id=self.website_id)
+        await bm.record_spend(agent_name=agent_name, tokens=tokens, cost_usd=cost_usd)
+
+    async def check_budget_availability(self, estimated_cost: float = 0.0) -> Dict[str, Any]:
+        """Check if today's spend allows running next autonomous task."""
+        from ..services.budget_manager import BudgetManager
+        bm = BudgetManager(website_id=self.website_id)
+        return await bm.check_budget(website_id=self.website_id, estimated_cost=estimated_cost)
 
     # ---------------------------------------------------------
     # 5. Self-Healing & Memory Learning

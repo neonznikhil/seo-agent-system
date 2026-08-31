@@ -190,5 +190,369 @@
     "error": "{'message': \"Could not find the 'error_message' column of 'content_log' in the schema cache\", 'code': 'PGRST204', 'hint': None, 'details': None}",
     "retry_count": 0,
     "queued_at": "2026-08-24T14:21:35.426893"
+  },
+  {
+    "id": "c52758d3-a61b-4d26-93c0-32f54002d069",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-24T16:56:33.080478"
+  },
+  {
+    "id": "3ccac824-eadf-4a23-8794-08b3c5abf967",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T08:15:18.241617"
+  },
+  {
+    "id": "2bbfd4ba-56ae-4312-915f-0cbe015a6227",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T08:17:30.623156"
+  },
+  {
+    "id": "3212685a-61af-42a8-a572-28476cec3336",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T08:46:50.255697"
+  },
+  {
+    "id": "54410507-efc7-4323-b8a8-a3dfd6869c9d",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "Houston commercial truck accident settlements"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T08:47:25.935524"
+  },
+  {
+    "id": "42b8431a-f789-406c-a89b-c7372e678b9e",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T12:36:00.286381"
+  },
+  {
+    "id": "063a50de-a091-4281-a3eb-aba237732aae",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T12:36:36.422729"
+  },
+  {
+    "id": "2b7aad26-4677-4188-b968-3f15506dcf30",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T12:42:13.726848"
+  },
+  {
+    "id": "e412dbef-9f95-4c23-87f1-a11029d66cce",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T12:43:36.915218"
+  },
+  {
+    "id": "3048dcdc-98db-4baa-83c8-6e182c9c7a86",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T12:44:06.630075"
+  },
+  {
+    "id": "7f48b298-53c4-41ba-9872-682dc9dc944b",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:06:53.000500"
+  },
+  {
+    "id": "cbd78334-5ced-49d1-9011-3d553b765ceb",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:07:43.520248"
+  },
+  {
+    "id": "62292da1-a5b2-4991-9004-3a0c375dfcec",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:18:44.904177"
+  },
+  {
+    "id": "46ae7251-f34a-4ff3-b272-05b92a5cbdb7",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:19:50.075480"
+  },
+  {
+    "id": "be60bb09-7bb4-4112-82a3-a7f6aa18882b",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:43:09.205263"
+  },
+  {
+    "id": "0097758d-4e85-4601-b3fb-73882a95a9b7",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:43:50.071829"
+  },
+  {
+    "id": "9d95597e-dc87-4a68-b69f-8a09365103d7",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:56:20.463049"
+  },
+  {
+    "id": "73e7f9b2-5b8e-4e23-9e97-7db9a2ca3967",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T13:57:16.947062"
+  },
+  {
+    "id": "d27bbb72-8c51-40f8-a9a2-26e539f72c15",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T14:03:47.298247"
+  },
+  {
+    "id": "a4a4fd82-13f1-4638-8a6b-d550256e6663",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T14:04:20.829383"
+  },
+  {
+    "id": "04d89ee6-a985-4746-b596-355d0470d5be",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T14:10:13.143775"
+  },
+  {
+    "id": "4c5601b6-2661-477e-82ae-69977216eb03",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T14:30:42.444319"
+  },
+  {
+    "id": "a954dbd2-7da0-47ad-9a61-430d22e42f4e",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T14:31:16.752265"
+  },
+  {
+    "id": "e96dabdd-195d-48fc-b16f-4c04e2ee7450",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T17:37:12.585536"
+  },
+  {
+    "id": "bd01da57-adea-4bde-bc4d-312958f6a27b",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T17:37:47.964075"
+  },
+  {
+    "id": "3b4df2e3-8ce4-4ebe-8866-e52f4e78fefa",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T17:50:45.034344"
+  },
+  {
+    "id": "7bd1a872-fa53-4866-8573-0a98f51963ab",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T17:51:22.883857"
+  },
+  {
+    "id": "1cc9de49-c4df-45e9-b2d5-7ec77aa303dc",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T18:03:18.554560"
+  },
+  {
+    "id": "52d11c98-c4db-40a8-8d07-291582771472",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T18:03:55.627844"
+  },
+  {
+    "id": "520b3d21-126b-4bfa-87c5-7befe0ab6064",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T19:45:21.770451"
+  },
+  {
+    "id": "984212a6-c603-4d8e-a1e0-91e0f2861939",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T19:46:00.651522"
+  },
+  {
+    "id": "aaa2a633-cbfd-4c58-9ddd-9c0cc7432f8f",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T20:59:20.645602"
+  },
+  {
+    "id": "236843ef-94ab-4523-af06-6e2a7c7772b1",
+    "job_name": "auto_new_page",
+    "payload": {
+      "keyword": "autonomous SEO optimization strategy"
+    },
+    "error": "{'message': 'new row violates row-level security policy for table \"content_log\"', 'code': '42501', 'hint': None, 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T20:59:59.386169"
+  },
+  {
+    "id": "26a68fff-a582-4278-9da8-34ec0e194b22",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-28T23:04:32.313361"
+  },
+  {
+    "id": "62e926c5-9190-465c-9c67-5550ab082acd",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T08:05:42.484437"
+  },
+  {
+    "id": "4d0b8272-a0fb-4326-8e1c-070024cdc227",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T09:21:10.241311"
+  },
+  {
+    "id": "9463ac08-d604-4119-b0bc-c9f67bc6ec19",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T09:33:28.815809"
+  },
+  {
+    "id": "540c1f6b-3cc3-4967-bfd5-069073160a62",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T10:15:05.591136"
+  },
+  {
+    "id": "ac5e030e-ea5c-4aff-be95-61b058983846",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T15:56:15.970207"
+  },
+  {
+    "id": "63c11c40-783c-4e64-b5a7-3fb4d4aba4dd",
+    "job_name": "daily_search",
+    "payload": {},
+    "error": "{'message': \"Could not find the table 'public.daily_searches' in the schema cache\", 'code': 'PGRST205', 'hint': \"Perhaps you meant the table 'public.data_source_alerts'\", 'details': None}",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T16:09:47.404164"
+  },
+  {
+    "id": "bc3352cb-fb23-4e5b-b11d-d1af3df040d9",
+    "job_name": "test_job",
+    "payload": {
+      "test": true
+    },
+    "error": "Simulated Network Timeout",
+    "retry_count": 0,
+    "queued_at": "2026-08-29T16:58:49.007521"
   }
 ]

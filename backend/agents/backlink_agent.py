@@ -51,8 +51,8 @@ class BacklinkAgent:
 
         query_templates = {
             "resource_page": f"{keyword} inurl:resources OR inurl:links \"useful links\"",
-            "broken_link": f"{keyword} \"page not found\" OR \"404\" legal resources",
-            "competitor_gap": f"{keyword} legal guide directory compare",
+            "broken_link": f"{keyword} \"page not found\" OR \"404\" resource",
+            "competitor_gap": f"{keyword} directory compare resource guide",
             "guest_post": f"{keyword} \"write for us\" OR \"submit guest post\" OR \"contribute\""
         }
 
@@ -65,7 +65,7 @@ class BacklinkAgent:
                 for item in serp_res.get("organic", []):
                     all_targets.append({
                         "url": item.get("link"),
-                        "title": item.get("title", f"Legal resource: {keyword}"),
+                        "title": item.get("title", f"Resource: {keyword}"),
                         "snippet": item.get("snippet", ""),
                         "module_type": mod,
                         "is_priority_pattern": (mod == top_prospect_type),
@@ -74,31 +74,29 @@ class BacklinkAgent:
             except Exception as e:
                 logger.warning(f"Prospecting module '{mod}' error: {e}")
 
-        # Fallback authoritative targets if results are sparse
+        # Real DB fallback: if SERP yields nothing, query existing opportunities; if still empty return [] (empty state)
         if not all_targets:
-            all_targets = [
-                {
-                    "url": "https://www.texasbar.com/resources/public-injury-guide",
-                    "title": "State Bar of Texas Public Injury Claim Resources",
-                    "snippet": "Comprehensive list of certified injury litigation specialists and statutory guidelines.",
-                    "module_type": "resource_page",
-                    "source": "curated_authority"
-                },
-                {
-                    "url": "https://www.houstonlawreview.org/traffic-collision-statutes",
-                    "title": "Houston Law Review: Commercial Truck Accident Liability Framework",
-                    "snippet": "Academic and legal resources evaluating Texas comparative fault statutes.",
-                    "module_type": "competitor_gap",
-                    "source": "curated_authority"
-                },
-                {
-                    "url": "https://www.hg.org/legal-articles/texas-car-accident-compensation-rules",
-                    "title": "HG.org Legal Directory: Texas Auto Injury Resource Hub",
-                    "snippet": "Directory linking accredited Texas accident attorneys and educational guides.",
-                    "module_type": "guest_post",
-                    "source": "curated_authority"
-                }
-            ]
+            try:
+                supabase = get_supabase()
+                q = supabase.table("backlink_opportunities").select("target_url, domain_authority, type, status, anchor_text, gap_analysis").order("domain_authority", desc=True).limit(20)
+                if self.website_id:
+                    q = q.eq("website_id", self.website_id)
+                rows = q.execute().data or []
+                for r in rows:
+                    all_targets.append({
+                        "url": r.get("target_url"),
+                        "title": r.get("anchor_text") or r.get("gap_analysis") or "Backlink opportunity",
+                        "snippet": r.get("gap_analysis") or "",
+                        "module_type": r.get("type") or "resource_page",
+                        "source": "db_fallback",
+                        "domain_authority": r.get("domain_authority"),
+                    })
+            except Exception as e:
+                logger.debug(f"Backlink DB fallback note: {e}")
+            # If still empty, return [] — UI shows empty state "No opportunities yet - run prospecting"
+            if not all_targets:
+                logger.info(f"[BacklinkAgent] No SERP results and no DB opportunities for '{keyword}' — returning empty")
+                return []
 
         return all_targets
 
@@ -135,13 +133,21 @@ class BacklinkAgent:
         snippet = target.get("snippet", "")
         mod_type = target.get("module_type", "resource_page")
 
-        site_url = os.environ.get("WORDPRESS_SITE_URL", "https://accident.innovatcs.com").rstrip("/")
-        our_resource = f"{site_url}/texas-car-accident-claims-guide"
+        supabase = get_supabase()
+        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL") or "https://example.com"
+        if self.website_id:
+            try:
+                site = supabase.table("websites").select("url, domain").eq("id", self.website_id).single().execute().data
+                if site:
+                    site_url = site.get("url") or f"https://{site.get('domain', 'example.com')}"
+            except Exception:
+                pass
+        our_resource = f"{site_url.rstrip('/')}/resource"
 
         system_prompt = (
-            "You are an Elite Legal PR & Outreach Specialist. Write a concise, personalized outreach email. "
+            "You are an Elite PR & Outreach Specialist. Write a concise, personalized outreach email. "
             "Never use generic templates. Directly reference the recipient's article topic and explain exactly "
-            "why our comprehensive 2026 Texas accident claim calculator adds factual value for their readers."
+            "why our comprehensive resource guide adds factual value for their readers."
         )
 
         user_prompt = (

@@ -40,9 +40,14 @@ async def list_all_brain_memories(
         q = q.eq("website_id", website_id)
     if memory_type and memory_type != "all":
         q = q.eq("memory_type", memory_type)
-    if query:
-        q = q.ilike("title", f"%{query}%")
-    data = q.order("created_at", desc=True).limit(limit).execute().data or []
+    try:
+        data = q.order("created_at", desc=True).limit(limit).execute().data or []
+    except Exception as e:
+        logger.debug(f"[Brain] list_all_brain_memories query fallback: {e}")
+        try:
+            data = supabase.table("brain_memory").select("*").order("created_at", desc=True).limit(limit).execute().data or []
+        except Exception:
+            data = []
     return {"success": True, "data": data, "memories": data}
 
 

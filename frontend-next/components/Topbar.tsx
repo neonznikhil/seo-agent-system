@@ -15,15 +15,13 @@ const pageTitles: Record<string, string> = {
   "/approvals": "Approval Queue",
   "/brain": "Brand Brain & Memory",
   "/knowledge": "Knowledge Base",
-  "/wordpress": "WordPress Manager",
+  "/crew": "CrewAI Autonomous Writer",
   "/backlinks": "Backlinks & Authority",
   "/tech-seo": "Technical SEO",
   "/monitoring": "24/7 Monitoring",
-  "/workforce": "Autonomous Workforce",
   "/calendar": "Publishing Calendar",
   "/llms-txt": "LLMs.txt & GEO",
   "/connectors": "Connectors & Integrations",
-  "/settings": "System Settings",
   "/websites": "Websites",
 };
 
@@ -36,13 +34,11 @@ const sectionMap: Record<string, string> = {
   "/tech-seo": "SEO Studio",
   "/monitoring": "SEO Studio",
   "/calendar": "SEO Studio",
-  "/workforce": "AI Intelligence",
+  "/crew": "AI Intelligence",
   "/brain": "AI Intelligence",
-  "/knowledge": "AI Intelligence",
+  "/knowledge": "Core",
   "/llms-txt": "AI Intelligence",
-  "/wordpress": "Integrations",
   "/connectors": "Integrations",
-  "/settings": "System",
 };
 
 interface HealthData {

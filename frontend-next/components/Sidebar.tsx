@@ -7,19 +7,20 @@ import { useState, useEffect } from "react";
 const coreNav = [
   { label: "Dashboard", href: "/" },
   { label: "Websites", href: "/websites" },
+  { label: "Knowledge", href: "/knowledge" },
   { label: "Writer", href: "/writer" },
   { label: "Content", href: "/content" },
   { label: "Approvals", href: "/approvals" },
 ];
 
 const seoNav = [
-  { label: "Backlinks", href: "/backlinks" },
   { label: "Tech SEO", href: "/tech-seo" },
   { label: "Monitoring", href: "/monitoring" },
+  { label: "Backlinks", href: "/backlinks" },
 ];
 
 const aiNav = [
-  { label: "Workforce", href: "/workforce" },
+  { label: "Crew", href: "/crew" },
   { label: "Brain", href: "/brain" },
   { label: "AEO / Schema", href: "/aeo" },
   { label: "LLMs.txt", href: "/llms-txt" },
@@ -27,8 +28,6 @@ const aiNav = [
 
 const integrationsNav = [
   { label: "Connectors", href: "/connectors" },
-  { label: "WordPress", href: "/wordpress" },
-  { label: "Settings", href: "/settings" },
 ];
 
 interface NavItem {
@@ -63,7 +62,7 @@ export function Sidebar() {
     <>
       {sectionLabel && <div className="sidebar-section-label">{sectionLabel}</div>}
       {items.map((item) => {
-        const isActive = pathname === item.href;
+        const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
         return (
           <Link
             key={item.href}
@@ -102,7 +101,7 @@ export function Sidebar() {
           <div className="sys-indicators">
             <span className="sq-ind"></span>
             <span className="sq-ind"></span>
-            <span className="sq-ind off"></span>
+            <span className="sq-ind"></span>
           </div>
           <button
             type="button"
@@ -122,10 +121,10 @@ export function Sidebar() {
           <span className="ticker-inner">
             <span className="tick-sq"></span>AUTONOMOUS SEO &nbsp;/&nbsp;
             <span className="tick-sq"></span>REAL-TIME &nbsp;/&nbsp;
-            <span className="tick-sq"></span>AI AGENTS RUNNING &nbsp;&nbsp;&nbsp;
+            <span className="tick-sq"></span>CREWAI RUNNING &nbsp;&nbsp;&nbsp;
             <span className="tick-sq"></span>AUTONOMOUS SEO &nbsp;/&nbsp;
             <span className="tick-sq"></span>REAL-TIME &nbsp;/&nbsp;
-            <span className="tick-sq"></span>AI AGENTS RUNNING
+            <span className="tick-sq"></span>CREWAI RUNNING
           </span>
         </div>
       </div>

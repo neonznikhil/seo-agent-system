@@ -5,6 +5,8 @@ autonomous health service daemon, and full agent routing.
 
 import asyncio
 import logging
+import os
+import re
 import traceback
 import time
 import uuid
@@ -57,7 +59,12 @@ from .routers.analytics import router as analytics_router
 from .routers.serp import router as serp_router
 from .routers.report import router as report_router
 from .routers.links import router as links_router
+from .routers.scheduler import router as scheduler_router
+from .routers.crew_writer import router as crew_writer_router
+from .routers.costs import router as costs_router
 from .routers.auth import router as auth_router
+from .routers.rank_tracker import router as rank_tracker_router
+from .routers.demo import router as demo_router
 from .scripts.migrate import run_migrations
 from .agents.seo_agent_group import seo_agent_group
 
@@ -123,15 +130,95 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"[Startup] Daily job catch-up failed: {e}")
 
         asyncio.create_task(_run_catchup())
+
+        # Restore all saved blog schedules — P1 persistence across restarts
+        async def restore_all_schedules():
+            try:
+                from .database import get_supabase
+                supabase_local = get_supabase()
+                result = None
+                try:
+                    result = supabase_local.table("autonomous_settings").select("website_id, generation_interval_minutes, auto_generate_enabled, schedule_label, daily_blog_target, auto_generate").eq("auto_generate_enabled", True).execute()
+                except Exception:
+                    try:
+                        result = supabase_local.table("autonomous_settings").select("website_id, generation_interval_minutes, schedule_label").limit(50).execute()
+                        # filter in python
+                        if result.data:
+                            result.data = [r for r in result.data if r.get("auto_generate_enabled") is not False]
+                    except Exception:
+                        result = None
+                # Fallback to local file if DB cache miss
+                schedules = []
+                if result and result.data:
+                    schedules = result.data
+                else:
+                    import json as _json
+                    from pathlib import Path as _Path
+                    p = _Path(__file__).resolve().parent / "local_data" / "blog_settings.json"
+                    if p.exists():
+                        try:
+                            jdata = _json.loads(p.read_text(encoding="utf-8"))
+                            for wid, vals in jdata.items():
+                                schedules.append({"website_id": wid, "generation_interval_minutes": vals.get("generation_interval_minutes") or vals.get("interval_minutes") or 288, "schedule_label": vals.get("schedule_label") or vals.get("label") or "default", "auto_generate_enabled": vals.get("auto_generate_enabled", True)})
+                        except Exception:
+                            pass
+                from .agents.scheduler import scheduler, run_autonomous_blog_generation
+                for setting in (schedules or []):
+                    wid = setting.get("website_id")
+                    if not wid:
+                        continue
+                    interval = int(setting.get("generation_interval_minutes") or 288)
+                    label = setting.get("schedule_label") or f"every {interval} min"
+                    job_id = f"auto_blog_{wid}"
+                    try:
+                        scheduler.add_job(
+                            func=run_autonomous_blog_generation,
+                            trigger="interval",
+                            minutes=interval,
+                            id=job_id,
+                            name=f"Auto Blog — {label} — {wid[:8]}",
+                            replace_existing=True,
+                            misfire_grace_time=120
+                        )
+                        logger.info(f"[SCHEDULER] Restored: {job_id} every {interval} min ({label})")
+                        print(f"[SCHEDULER] Restored: {job_id} every {interval} min ({label})")
+                    except Exception as e:
+                        logger.warning(f"[SCHEDULER] Failed to restore {job_id}: {e}")
+            except Exception as e:
+                logger.warning(f"[SCHEDULER] restore_all_schedules failed: {e}")
+
+        asyncio.create_task(restore_all_schedules())
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
 
-    # 5. Backlink autopilot loop
+    # 5. Backlink autopilot: scheduler is single authority (Phase 3)
+    logger.info("[Startup] Backlink jobs delegated to APScheduler (single authority Asia/Kolkata)")
+
+    # 6. Continuous 24/7 Monitoring Engine (6 loops)
     try:
-        asyncio.create_task(run_backlink_daily_jobs())
-        logger.info("[Startup] Backlink autopilot loop started")
+        from .services.continuous_monitor import start_all_monitors
+        start_all_monitors()
+        logger.info("[ContinuousMonitor] 6 autonomous monitoring loops started (Rank, SERP, Competitor, Tech, Geo, Structure).")
     except Exception as e:
-        logger.error(f"[Startup] Backlink autopilot init failed: {e}")
+        logger.error(f"[ContinuousMonitor] Startup failed: {e}")
+
+    # 7. Seed initial system status alert if table is empty
+    try:
+        from .database import get_supabase
+        sb = get_supabase()
+        existing_alerts = sb.table("realtime_alerts").select("id").limit(1).execute().data
+        if not existing_alerts or len(existing_alerts) == 0:
+            sb.table("realtime_alerts").insert({
+                "severity": "info",
+                "title": "Autonomous SEO Monitoring Active",
+                "description": "Autonomous SEO Monitoring active. 6 background agents running (Rank, SERP, Competitor, Tech, Geo, Structure).",
+                "source": "continuous_monitor",
+                "is_read": False,
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+            logger.info("[RealtimeAlerts] Seeded initial system status alert.")
+    except Exception as e:
+        logger.debug(f"[RealtimeAlerts] Seed alert note: {e}")
 
     yield
 
@@ -207,20 +294,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/dashboard")
 @app.get("/app")
 async def serve_rankforge(request: Request):
-    accept = request.headers.get("accept", "")
-    if accept == "application/json":
-        return {
-            "name": "RankForge API",
-            "version": "2.0.0",
-            "status": "online",
-            "docs_url": "/docs",
-            "health_url": "/health",
-        }
-    
-    html_path = Path(__file__).resolve().parent.parent / "rankforge.html"
-    if html_path.exists():
-        return FileResponse(str(html_path), media_type="text/html")
-    return {"name": "RankForge API", "status": "online", "docs": "/docs"}
+    return {
+        "name": "RankForge API",
+        "version": "2.0.0",
+        "status": "online",
+        "docs_url": "/docs",
+        "health_url": "/health",
+    }
 
 
 class GenerateBlogPayload(BaseModel):
@@ -233,10 +313,43 @@ class GenerateBlogPayload(BaseModel):
 @app.post("/generate")
 @app.post("/api/generate")
 async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
-    """Generate an SEO blog post using NVIDIA NIM and isolate under account_id."""
+    """Generate an SEO blog post using NVIDIA NIM and isolate under account_id — with date + keyword lock (FIX autonomous unrelated)."""
     topic = payload.topic.strip()
     keyword = (payload.primary_keyword or topic).strip()
     account_id = get_current_account_id(request)
+    # FIX autonomous unrelated: validate keyword at entry (prevent unrelated blogs via raw endpoint)
+    if not keyword or not keyword.strip():
+        raise HTTPException(status_code=400, detail="target_keyword cannot be empty — cannot generate blog without a keyword")
+    if len(keyword.strip()) < 5:
+        raise HTTPException(status_code=400, detail=f"target_keyword '{keyword}' is too short — must be a real search query")
+    _denylist_raw = ["how to start a blog", "start a blog", "generic marketing", "digital marketing", "content calendar", "save money", "business plan", "keyword research", "empty content", "autonomous seo"]
+    if any(d in keyword.lower() for d in _denylist_raw):
+        # Check if website KB actually grounds this (blogging niche)
+        try:
+            from .services.knowledge_service import KnowledgeService as _KSRaw
+            _ksr = _KSRaw(website_id=payload.website_id or account_id)
+            _hitsr = await _ksr.retrieve_relevant_hybrid(keyword, top_k=3)
+            _avgr = sum(float(h.get("final_score", 0)) for h in _hitsr)/len(_hitsr) if _hitsr else 0
+            if _avgr < 0.75:
+                raise HTTPException(status_code=400, detail=f"Denied unrelated keyword '{keyword}' (denylist)")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Denied unrelated keyword '{keyword}' (denylist)")
+    # Grounding check
+    try:
+        from .services.knowledge_service import KnowledgeService as _KSRaw2
+        if payload.website_id:
+            _ksr2 = _KSRaw2(website_id=payload.website_id)
+            _hitsr2 = await _ksr2.retrieve_relevant_hybrid(keyword, top_k=3)
+            if _hitsr2:
+                _avgr2 = sum(float(h.get("final_score", 0)) for h in _hitsr2)/len(_hitsr2)
+                if _avgr2 < 0.55:
+                    raise HTTPException(status_code=400, detail=f"Keyword '{keyword}' not grounded in KB (similarity {_avgr2:.2f} <0.55)")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     
     website_id = payload.website_id
     supabase = get_supabase()
@@ -250,41 +363,153 @@ async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
         except Exception as e:
             logger.warning(f"Could not fetch website id: {e}")
 
-    system_prompt = (
-        "You are RankForge's Autonomous SEO Content Writer. Write high-ranking, comprehensive, "
-        "well-structured articles with clear H2 and H3 sections, actionable bullet points, "
-        "and direct answers to user search intent. Avoid generic filler AI buzzwords."
-    )
-    user_prompt = (
-        f"Write an in-depth, production-ready SEO blog post.\n"
-        f"Topic: {topic}\n"
-        f"Primary Keyword: {keyword}\n"
-        f"Tone: {payload.tone}\n\n"
-        f"Structure required:\n"
-        f"1. Title (H1 format)\n"
-        f"2. Executive summary in the first 100 words\n"
-        f"3. 4-5 Detailed H2 sections\n"
-        f"4. Comparison table or key takeaways\n"
-        f"5. Actionable FAQ section (3 questions)\n"
-        f"6. Conclusion\n\n"
-        f"Return the entire article in Markdown format."
-    )
+    _cur_raw = datetime.utcnow()
+    _date_block_raw = f"""CRITICAL DATE CONTEXT — READ THIS FIRST:
+Today's date is {_cur_raw.strftime("%B %d, %Y")}.
+The current year is {_cur_raw.year}.
+The current month is {_cur_raw.strftime("%B")}.
+
+When writing titles, headings, or any content that references a year:
+- ALWAYS use {_cur_raw.year} — never 2024, never 2023, never any other year
+- If the keyword already contains a year, keep that year exactly as given
+- If no year is in the keyword, use {_cur_raw.year} when adding one
+- Never guess the year — use only what is written above
+"""
+    _keyword_lock_raw = f"""KEYWORD LOCK — THIS IS THE ONLY TOPIC YOU WRITE ABOUT:
+Target keyword: "{keyword}"
+This keyword is your entire assignment. Every sentence you write must be about this topic.
+You are NOT allowed to write about any other topic.
+Your H1 title must contain words from this keyword.
+Do NOT write about:
+- How to start a blog (unless that is the keyword)
+- Generic marketing advice (unless that is the keyword)
+- Any topic not directly related to "{keyword}"
+"""
+    system_prompt = _date_block_raw + "\n\n" + _keyword_lock_raw + "\n\n" + """You are an expert SEO blog writer. Follow these rules strictly every time you write a blog post:
+
+---
+
+FORMATTING RULES:
+
+1. NEVER use ** (double asterisks) anywhere in the output. Not for bold, not for emphasis, not for anything.
+
+2. NEVER use ## or any markdown heading symbols (##, ###, ####). Do not use markdown at all.
+
+3. Use plain HTML tags for all formatting:
+   - Main blog title: <h1>Title Here</h1>
+   - Section headings: <h2>Section Title</h2>
+   - Sub-section headings: <h3>Sub-section Title</h3>
+   - Bold text: <strong>text here</strong>
+   - Paragraphs: <p>content here</p>
+   - Bullet lists: <ul><li>item</li></ul>
+   - Numbered lists: <ol><li>item</li></ol>
+   - Tables: use proper <table><tr><td> HTML structure
+
+4. The output must be clean HTML — no markdown syntax whatsoever.
+
+---
+
+BLOG STRUCTURE (follow this every time):
+
+<h1>[Main Blog Title]</h1>
+
+<p>[Introduction paragraph — 2 to 3 sentences summarizing what the blog covers and why it matters]</p>
+
+<h2>[Section 1 Heading]</h2>
+<p>[Content]</p>
+
+<h2>[Section 2 Heading]</h2>
+<p>[Content]</p>
+
+[Continue sections as needed]
+
+<h2>Frequently Asked Questions</h2>
+<h3>[Question 1]</h3>
+<p>[Answer]</p>
+<h3>[Question 2]</h3>
+<p>[Answer]</p>
+
+<h2>Conclusion</h2>
+<p>[Closing paragraph]</p>
+
+---
+
+SEO RULES:
+
+- Include the target keyword naturally in the H1, first paragraph, at least 2 H2s, and conclusion
+- Do not keyword stuff — keep it natural and readable
+- Write at a Grade 8 reading level — simple, clear sentences
+- Every section must have at least 2 paragraphs
+- Meta description: always end the blog with this line in plain text:
+  Meta Description: [Write a 150-160 character meta description including the target keyword]
+
+---
+
+TONE & STYLE:
+
+- Professional but easy to read
+- No fluff or filler sentences
+- Get to the point quickly
+- Use real data or statistics when available
+
+Never deviate from these rules. Always output clean HTML. Never use markdown."""
+
+    user_prompt = f"""{_date_block_raw}
+
+{_keyword_lock_raw}
+
+Target Keyword: {keyword}
+Blog Title: {topic}
+Word Count: 2500 to 3000 words
+Additional Notes: Focus on Houston personal injury legal guidance and client rights.
+
+Never deviate from these rules. Always output clean HTML. Never use markdown."""
 
     try:
         content = await call_nim_llm(prompt=user_prompt, system=system_prompt, website_id=website_id)
+        if not content or not str(content).strip():
+            raise HTTPException(status_code=502, detail="NVIDIA NIM returned empty content — check API key / rate limits and retry")
+        # Ensure zero markdown headings or asterisks
+        content = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", content)
+        content = content.replace("**", "")
+        content = re.sub(r"^###\s+([^\n]+)", r"<h3>\1</h3>", content, flags=re.M)
+        content = re.sub(r"^##\s+([^\n]+)", r"<h2>\1</h2>", content, flags=re.M)
+        content = re.sub(r"^#\s+([^\n]+)", r"<h1>\1</h1>", content, flags=re.M)
+        if "```html" in content:
+            content = content.replace("```html", "").replace("```", "")
+        elif "```" in content:
+            content = content.replace("```", "")
+        content = content.strip()
+        # FIX Problem 1: Enforce year correctness (replace hallucinated years only, don't force inject)
+        _cur_year_str = str(_cur_raw.year)
+        _kw_year = None
+        _m_kw = re.search(r"\b((?:19|20)\d{2})\b", keyword)
+        if _m_kw:
+            _kw_year = _m_kw.group(1)
+        for _bad in ["2024", "2023", "2022", "2021", "2020", "2025"]:
+            if _bad == _cur_year_str or _bad == _kw_year or _bad in keyword:
+                continue
+            content = re.sub(rf"\b{_bad}\b", _cur_year_str, content)
+        # FIX Problem 2: Off-topic check before saving — prevent unrelated blogs
+        _tmp_h1 = re.search(r"<h1[^>]*>(.*?)</h1>", content, re.I|re.S)
+        _tmp_title = (_tmp_h1.group(1).lower() if _tmp_h1 else content.lower()[:200])
+        _kw_words_check = keyword.lower().split()
+        if not any(w in _tmp_title for w in _kw_words_check if len(w) > 3):
+            raise HTTPException(status_code=400, detail=f"Writer went off-topic. Title '{_tmp_title[:80]}' does not match keyword '{keyword}'")
+        if "how to start a blog" in content.lower() and "how to start a blog" not in keyword.lower():
+            raise HTTPException(status_code=400, detail=f"Generated unrelated generic blog for keyword '{keyword}'")
+        if "2024" in content and "2024" not in keyword:
+            content = re.sub(r"\b2024\b", _cur_year_str, content)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"NIM generation failed: {e}")
         raise HTTPException(500, f"NVIDIA NIM Generation failed: {str(e)}")
 
     title = topic
-    lines = [line.strip() for line in content.split("\n") if line.strip()]
-    for line in lines[:5]:
-        if line.startswith("# "):
-            title = line.replace("# ", "").strip()
-            break
-        elif line.startswith("Title:"):
-            title = line.replace("Title:", "").strip()
-            break
+    h1_match = re.search(r"<h1>([^<]+)</h1>", content, re.IGNORECASE)
+    if h1_match:
+        title = h1_match.group(1).strip()
 
     insert_data = {
         "account_id": account_id,
@@ -318,62 +543,126 @@ async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
     }
 
 
+_STATS_CACHE: dict = {}
+_STATS_CACHE_TS: dict = {}
+
+
 @app.get("/api/stats")
 @app.get("/stats")
 async def get_dashboard_stats(request: Request, website_id: Optional[str] = None):
-    """Fetch live aggregated stats from Supabase filtered strictly by tenant account_id."""
+    """Fetch live aggregated stats with 10s TTL in-memory cache."""
     account_id = get_current_account_id(request)
-    supabase = get_supabase()
-    set_account_context(supabase, account_id)
-
     if website_id in ("default-website-id", "all", "", "null", "undefined"):
         website_id = None
 
+    import time
+    cache_key = f"{account_id}:{website_id}"
+    now = time.time()
+    if cache_key in _STATS_CACHE and (now - _STATS_CACHE_TS.get(cache_key, 0)) < 10.0:
+        return _STATS_CACHE[cache_key]
+
+    supabase = get_supabase()
+    set_account_context(supabase, account_id)
+
     try:
-        q = supabase.table("content_log").select("id, title, keyword, status, created_at").eq("account_id", account_id)
-        if website_id:
-            q = q.eq("website_id", website_id)
-        rows = q.order("created_at", desc=True).limit(10).execute().data or []
+        # Helper to run sync Supabase query in thread
+        async def _fetch_coro(fn):
+            return await asyncio.to_thread(fn)
 
-        all_q = supabase.table("content_log").select("id, status").eq("account_id", account_id)
-        if website_id:
-            all_q = all_q.eq("website_id", website_id)
-        all_logs = all_q.execute().data or []
+        from .services.local_store import (
+            list_local_knowledge, list_local_brain_memory, list_local_content, list_local_approvals, list_local_websites
+        )
 
-        m_q = supabase.table("brain_memory").select("id").eq("account_id", account_id)
-        if website_id:
-            m_q = m_q.eq("website_id", website_id)
-        memories_count = len(m_q.execute().data or [])
+        def _fetch_recent():
+            try:
+                q = supabase.table("content_log").select("id, title, keyword, status, created_at")
+                if website_id:
+                    q = q.eq("website_id", website_id)
+                return q.order("created_at", desc=True).limit(10).execute().data or []
+            except Exception:
+                return []
 
-        k_q = supabase.table("knowledge_base").select("id").eq("account_id", account_id)
-        if website_id:
-            k_q = k_q.eq("website_id", website_id)
-        knowledge_count = len(k_q.execute().data or [])
+        def _fetch_all_logs():
+            try:
+                q = supabase.table("content_log").select("id, status")
+                if website_id:
+                    q = q.eq("website_id", website_id)
+                return q.execute().data or []
+            except Exception:
+                return []
 
-        wp_q = supabase.table("websites").select("id, domain, status").eq("account_id", account_id)
-        if website_id:
-            wp_q = wp_q.eq("id", website_id)
-        wp_rows = wp_q.execute().data or []
-        wp_connected = any(w.get("status") == "active" for w in wp_rows)
+        def _fetch_memories():
+            try:
+                q = supabase.table("brain_memory").select("id")
+                if website_id:
+                    q = q.eq("website_id", website_id)
+                return q.execute().data or []
+            except Exception:
+                return []
 
-        b_q = supabase.table("backlink_opportunities").select("id").eq("account_id", account_id)
-        if website_id:
-            b_q = b_q.eq("website_id", website_id)
-        backlinks_count = len(b_q.execute().data or [])
+        def _fetch_knowledge():
+            try:
+                q = supabase.table("knowledge_base").select("id")
+                if website_id:
+                    q = q.eq("website_id", website_id)
+                return q.execute().data or []
+            except Exception:
+                return []
 
-        health_score = 94
-        try:
-            t_q = supabase.table("technical_audits").select("health_score").eq("account_id", account_id)
-            if website_id:
-                t_q = t_q.eq("website_id", website_id)
-            audits = t_q.order("created_at", desc=True).limit(1).execute().data or []
-            if audits and audits[0].get("health_score") is not None:
-                health_score = round(float(audits[0]["health_score"]))
-        except Exception:
-            pass
+        def _fetch_websites():
+            try:
+                q = supabase.table("websites").select("id, domain, status")
+                if website_id:
+                    q = q.eq("id", website_id)
+                return q.execute().data or []
+            except Exception:
+                return []
 
-        return {
-            "total_articles": len(all_logs),
+        def _fetch_backlinks():
+            try:
+                q = supabase.table("backlinks").select("id")
+                if website_id:
+                    q = q.eq("website_id", website_id)
+                return q.execute().data or []
+            except Exception:
+                return []
+
+        def _fetch_health():
+            try:
+                q = supabase.table("technical_audits").select("health_score")
+                if website_id:
+                    q = q.eq("website_id", website_id)
+                audits = q.order("created_at", desc=True).limit(1).execute().data or []
+                if audits and audits[0].get("health_score") is not None:
+                    return round(float(audits[0]["health_score"]))
+            except Exception:
+                pass
+            return 94
+
+        rows, all_logs, memories_data, knowledge_data, wp_rows, backlinks_data, health_score = await asyncio.gather(
+            _fetch_coro(_fetch_recent),
+            _fetch_coro(_fetch_all_logs),
+            _fetch_coro(_fetch_memories),
+            _fetch_coro(_fetch_knowledge),
+            _fetch_coro(_fetch_websites),
+            _fetch_coro(_fetch_backlinks),
+            _fetch_coro(_fetch_health),
+        )
+
+        local_k_count = len(list_local_knowledge(website_id))
+        local_m_count = len(list_local_brain_memory(website_id))
+        local_c_count = len(list_local_content(website_id))
+        local_w_rows = list_local_websites()
+
+        memories_count = max(len(memories_data), local_m_count)
+        knowledge_count = max(len(knowledge_data), local_k_count)
+        all_websites = wp_rows + [w for w in local_w_rows if not any(r.get("id") == w.get("id") for r in wp_rows)]
+        wp_connected = any(w.get("status") == "active" or w.get("wordpress_configured") for w in all_websites)
+        backlinks_count = len(backlinks_data)
+        total_articles = max(len(all_logs), local_c_count)
+
+        res_payload = {
+            "total_articles": total_articles,
             "pending_articles": len([r for r in all_logs if r.get("status") in ("pending_approval", "draft")]),
             "health_score": health_score,
             "memories_count": memories_count,
@@ -383,14 +672,18 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
             "recent_blogs": rows,
             "ai_engine": "Llama-3.1-70B (NVIDIA NIM Live)",
         }
+        _STATS_CACHE[cache_key] = res_payload
+        _STATS_CACHE_TS[cache_key] = now
+        return res_payload
     except Exception as e:
         logger.error(f"Stats calculation error: {e}")
+        local_k_count = len(list_local_knowledge(website_id))
         return {
             "total_articles": 0,
             "pending_articles": 0,
-            "health_score": 100,
+            "health_score": 94,
             "memories_count": 0,
-            "knowledge_count": 0,
+            "knowledge_count": local_k_count,
             "backlinks_count": 0,
             "wp_connected": False,
             "recent_blogs": [],
@@ -488,67 +781,75 @@ async def delete_content_item(blog_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# ROUTER REGISTRATION (WITH /api AND DIRECT ALIASES)
+# ROUTER REGISTRATION - SINGLE MOUNT PER ROUTER (NO DUPLICATES)
 # ---------------------------------------------------------------------------
 
-app.include_router(auth_router, prefix="/api")
-app.include_router(health_router, prefix="/api")
-app.include_router(websites, prefix="/api")
-app.include_router(proposals, prefix="/api")
-app.include_router(memory, prefix="/api")
-app.include_router(llms_txt, prefix="/api")
-app.include_router(gsc, prefix="/api")
-app.include_router(tech_seo, prefix="/api")
-app.include_router(backlinks, prefix="/api")
-app.include_router(calendar, prefix="/api")
-app.include_router(roi, prefix="/api")
-app.include_router(seo_aeo_geo, prefix="/api")
-app.include_router(monitoring_router, prefix="/api")
-app.include_router(writer_router, prefix="/api")
-app.include_router(decay_router, prefix="/api")
-app.include_router(wordpress_router, prefix="/api")
-app.include_router(wordpress_oauth_router, prefix="/api")
-app.include_router(wordpress_connect_router, prefix="/api")
-app.include_router(research_router, prefix="/api")
-app.include_router(clusters_router, prefix="/api")
-app.include_router(knowledge_router, prefix="/api")
-app.include_router(content_router, prefix="/api")
-app.include_router(settings_router, prefix="/api")
-app.include_router(connectors_router, prefix="/api")
-app.include_router(connectors_serper_router, prefix="/api")
-app.include_router(connectors_slack_router, prefix="/api")
-app.include_router(dashboard_router, prefix="/api")
-app.include_router(brain_router, prefix="/api")
-app.include_router(setup_router, prefix="/api")
-app.include_router(chat_router, prefix="/api")
-app.include_router(workforce_router, prefix="/api")
-app.include_router(rag_router, prefix="/api")
-app.include_router(autonomy_router, prefix="/api")
-app.include_router(approvals_router, prefix="/api")
-app.include_router(keywords_router, prefix="/api")
-app.include_router(analytics_router, prefix="/api")
-app.include_router(serp_router, prefix="/api")
-app.include_router(report_router, prefix="/api")
-app.include_router(links_router, prefix="/api")
-app.include_router(phase3_router, prefix="/api")
-app.include_router(oauth_connectors_router, prefix="/api")
+# Auth & Health
+app.include_router(auth_router, prefix="/api")                 # /api/auth/*
+app.include_router(health_router, prefix="/api")               # /api/health/*
+app.include_router(health_router)                              # /health
 
-# Direct Aliases
-app.include_router(auth_router)
-app.include_router(health_router)
-app.include_router(websites)
-app.include_router(backlinks)
-app.include_router(wordpress_router)
-app.include_router(writer_router)
-app.include_router(settings_router)
-app.include_router(brain_router)
-app.include_router(proposals)
-app.include_router(content_router)
-app.include_router(llms_txt)
-app.include_router(workforce_router)
-app.include_router(connectors_router)
-app.include_router(autonomy_router)
-app.include_router(approvals_router)
+# Websites & Workspaces
+app.include_router(websites, prefix="/api")                    # /api/websites/*
+app.include_router(setup_router, prefix="/api")                # /api/setup/*
+app.include_router(settings_router, prefix="/api")             # /api/settings/*
+
+# Approvals & Human Gates
+app.include_router(approvals_router, prefix="/api")            # /api/approvals/*
+app.include_router(proposals, prefix="/api")                   # /api/proposals/*
+
+# Content Generation & Pipelines
+app.include_router(writer_router, prefix="/api")               # /api/writer/*
+app.include_router(crew_writer_router, prefix="/api")          # /api/crew-writer/*
+app.include_router(content_router, prefix="/api")              # /api/content/*
+app.include_router(calendar, prefix="/api")                    # /api/calendar/*
+app.include_router(decay_router, prefix="/api")                # /api/decay/*
+
+# SEO Intelligence, Keywords, Clusters & SERP
+app.include_router(keywords_router, prefix="/api")             # /api/keywords/*
+app.include_router(clusters_router, prefix="/api")             # /api/clusters/*
+app.include_router(serp_router, prefix="/api")                 # /api/serp/*
+app.include_router(research_router, prefix="/api")             # /api/research/*
+app.include_router(seo_aeo_geo, prefix="/api")                 # /api/seo-analysis, /api/aeo-score, /api/geo-readiness
+app.include_router(tech_seo, prefix="/api")                    # /api/tech-seo/*
+app.include_router(gsc, prefix="/api")                         # /api/gsc/*
+app.include_router(analytics_router, prefix="/api")            # /api/analytics/*
+app.include_router(roi, prefix="/api")                         # /api/roi/*
+app.include_router(report_router, prefix="/api")               # /api/report/*
+
+# Backlinks & Internal Linking
+app.include_router(backlinks, prefix="/api")                   # /api/backlinks/*
+app.include_router(links_router, prefix="/api")                # /api/links/*
+
+# Brain, Memory, Knowledge Graph & RAG
+app.include_router(brain_router, prefix="/api")                # /api/brain/*
+app.include_router(memory, prefix="/api")                      # /api/memory/*
+app.include_router(knowledge_router, prefix="/api")            # /api/knowledge/*
+app.include_router(rag_router, prefix="/api")                  # /api/rag/*
+app.include_router(chat_router, prefix="/api")                 # /api/chat/*
+app.include_router(llms_txt, prefix="/api")                    # /api/llms-txt/*
+
+# WordPress CMS & OAuth Connectors
+app.include_router(wordpress_router, prefix="/api")            # /api/wordpress/*
+app.include_router(wordpress_oauth_router, prefix="/api")      # /api/wordpress/oauth/*
+app.include_router(wordpress_connect_router, prefix="/api")    # /api/wordpress-connect/*
+app.include_router(oauth_connectors_router, prefix="/api")     # /api/oauth/*
+
+# Integration Connectors (Serper, Slack, Cost Tracking)
+app.include_router(connectors_router, prefix="/api")           # /api/connectors/*
+app.include_router(connectors_serper_router, prefix="/api")    # /api/connectors/serper/*
+app.include_router(connectors_slack_router, prefix="/api")     # /api/connectors/slack/*
+app.include_router(costs_router, prefix="/api")                # /api/costs/*
+
+# Autonomous Monitoring, Schedulers & Workforce
+app.include_router(monitoring_router, prefix="/api")           # /api/monitoring/*
+app.include_router(autonomy_router, prefix="/api")             # /api/autonomy/*
+app.include_router(scheduler_router, prefix="/api")            # /api/scheduler/*
+app.include_router(workforce_router, prefix="/api")            # /api/workforce/*
+app.include_router(dashboard_router, prefix="/api")            # /api/dashboard/*
+app.include_router(phase3_router, prefix="/api")               # /api/phase3/*
+app.include_router(rank_tracker_router, prefix="/api")         # /api/rankings/*
+app.include_router(demo_router, prefix="/api")                 # /api/demo/*
 
 
 @app.get("/api/seo-agent-group/status")
@@ -556,3 +857,106 @@ app.include_router(approvals_router)
 async def get_seo_agent_group_status():
     """Unified status endpoint for RankForge's Autonomous SEO Agent Group."""
     return await seo_agent_group.get_status_snapshot()
+
+# --- Developer Mode direct routes (fallback for autonomy router prefix) ---
+class DeveloperModeRequestMain(BaseModel):
+    enabled: bool = False
+
+def _get_dev_mode_state_main() -> bool:
+    import json as _json
+    from pathlib import Path as _Path
+    if os.getenv("DEVELOPER_MODE", "").lower() in ("1", "true", "yes", "on"):
+        return True
+    for p in [
+        _Path(__file__).resolve().parent / "local_data" / "developer_mode.json",
+        _Path(__file__).resolve().parent.parent / "data" / "developer_mode.json",
+    ]:
+        try:
+            if p.exists():
+                data = _json.loads(p.read_text(encoding="utf-8"))
+                if data.get("enabled") is True or data.get("developer_mode") is True:
+                    return True
+        except Exception:
+            pass
+    try:
+        supabase = get_supabase()
+        rows = supabase.table("autonomous_settings").select("developer_mode").limit(1).execute().data or []
+        if rows and rows[0].get("developer_mode") is True:
+            return True
+        rows2 = supabase.table("autonomous_settings").select("goals").limit(1).execute().data or []
+        if rows2 and (rows2[0].get("goals") or {}).get("developer_mode") is True:
+            return True
+    except Exception:
+        pass
+    return False
+
+def _set_dev_mode_state_main(enabled: bool):
+    import json as _json
+    from pathlib import Path as _Path
+    for p in [
+        _Path(__file__).resolve().parent / "local_data" / "developer_mode.json",
+        _Path(__file__).resolve().parent.parent / "data" / "developer_mode.json",
+    ]:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(_json.dumps({"enabled": enabled, "developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+    try:
+        supabase = get_supabase()
+        existing = supabase.table("autonomous_settings").select("id").limit(1).execute().data or []
+        if existing:
+            try:
+                supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}).eq("id", existing[0]["id"]).execute()
+            except Exception:
+                cur = supabase.table("autonomous_settings").select("goals").eq("id", existing[0]["id"]).single().execute().data or {}
+                goals = cur.get("goals") or {}
+                goals["developer_mode"] = enabled
+                supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.utcnow().isoformat()}).eq("id", existing[0]["id"]).execute()
+        else:
+            try:
+                supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}).execute()
+            except Exception:
+                supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.utcnow().isoformat()}).execute()
+    except Exception:
+        pass
+    # Reschedule for 2-min cadence
+    try:
+        from backend.agents.scheduler import scheduler
+        from apscheduler.triggers.interval import IntervalTrigger
+        if enabled:
+            try:
+                scheduler.reschedule_job("job_auto_blog_10min", trigger=IntervalTrigger(minutes=2))
+            except Exception:
+                pass
+            for job in list(scheduler.get_jobs()):
+                if job.id.startswith("auto_blog_"):
+                    try:
+                        scheduler.reschedule_job(job.id, trigger=IntervalTrigger(minutes=2))
+                    except Exception:
+                        pass
+        else:
+            try:
+                scheduler.reschedule_job("job_auto_blog_10min", trigger=IntervalTrigger(minutes=10))
+            except Exception:
+                pass
+            for job in list(scheduler.get_jobs()):
+                if job.id.startswith("auto_blog_"):
+                    try:
+                        scheduler.reschedule_job(job.id, trigger=IntervalTrigger(minutes=10))
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+@app.get("/api/developer-mode")
+@app.get("/developer-mode")
+async def get_developer_mode_main():
+    enabled = _get_dev_mode_state_main()
+    return {"enabled": enabled, "developer_mode": enabled}
+
+@app.post("/api/developer-mode")
+@app.post("/developer-mode")
+async def set_developer_mode_main(payload: DeveloperModeRequestMain):
+    _set_dev_mode_state_main(payload.enabled)
+    return {"success": True, "enabled": payload.enabled, "developer_mode": payload.enabled}

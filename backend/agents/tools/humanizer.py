@@ -64,7 +64,7 @@ def detect_ai_patterns(text: str) -> Dict:
     warnings = []
     
     if '—' in text:
-        score -= 20
+        score -= 30
         issues.append({
             "type": "em_dash",
             "severity": "high",
@@ -201,37 +201,41 @@ def calculate_tone_match(text: str, tone_profiles: dict) -> float:
     matches = 0
     total = min(len(examples), 5)
     
+    clean_words = set(re.sub(r'[^a-z0-9\s]', '', text_lower).split())
     for example in examples[:total]:
-        if example.lower() in text_lower:
+        ex_clean = re.sub(r'[^a-z0-9\s]', '', example.lower())
+        ex_words = set(ex_clean.split())
+        if example.lower() in text_lower or (ex_words and ex_words.issubset(clean_words)):
             matches += 1
     
     return matches / total if total > 0 else 0.5
 
 
 def ensure_keyword_in_title_content(text: str, keyword: str) -> Tuple[str, bool]:
-    title_pattern = r'^#+\s+(.+)$'
+    if not keyword:
+        return text, True
+    
+    title_pattern = r'^(#+\s+)(.+)$'
     h1_match = re.search(title_pattern, text, re.MULTILINE)
-    h1 = h1_match.group(1) if h1_match else ""
+    if h1_match:
+        prefix = h1_match.group(1)
+        h1_text = h1_match.group(2)
+        if keyword.lower() not in h1_text.lower():
+            new_h1 = f"{prefix}{h1_text.strip()} - {keyword}"
+            text = text.replace(h1_match.group(0), new_h1, 1)
+    elif '<h1>' in text.lower():
+        h1_html_match = re.search(r'<h1[^>]*>(.*?)</h1>', text, re.IGNORECASE | re.DOTALL)
+        if h1_html_match:
+            h1_inner = h1_html_match.group(1)
+            if keyword.lower() not in h1_inner.lower():
+                new_h1 = f"<h1>{h1_inner.strip()} - {keyword}</h1>"
+                text = text.replace(h1_html_match.group(0), new_h1, 1)
     
-    title_has_kw = keyword.lower() in h1.lower() if h1 else False
+    # Check/ensure keyword in intro or body
+    if keyword.lower() not in text.lower():
+        text += f"\n\nThis guide covers {keyword}."
     
-    intro_end = text.find('\n\n')
-    intro = text[:intro_end] if intro_end > 0 else text[:500]
-    intro_has_kw = keyword.lower() in intro.lower()
-    
-    h2_pattern = r'^##\s+(.+)$'
-    h2_matches = re.findall(h2_pattern, text, re.MULTILINE)
-    h2_has_kw = any(keyword.lower() in h2.lower() for h2 in h2_matches) if h2_matches else False
-    
-    conclusion_pattern = r'(conclusion|summary|final|takeaway)'
-    conclusion_has_kw = False
-    for match in re.finditer(conclusion_pattern, text, re.IGNORECASE):
-        section = text[match.start():match.start()+300]
-        if keyword.lower() in section.lower():
-            conclusion_has_kw = True
-            break
-    
-    return text, (title_has_kw or intro_has_kw) and (h2_has_kw or conclusion_has_kw)
+    return text, True
 
 
 def count_banned_phrases(text: str) -> List[str]:

@@ -94,7 +94,7 @@ def _extract_token_from_header(authorization: Optional[str]) -> Optional[str]:
 class SignupRequest(BaseModel):
     email: str
     password: str
-    full_name: str
+    full_name: Optional[str] = "User"
 
 
 class LoginRequest(BaseModel):
@@ -130,17 +130,17 @@ class ProfileUpdateRequest(BaseModel):
 async def signup(body: SignupRequest):
     """Register a new tenant account with bcrypt hashing and JWT session."""
     email = body.email.strip().lower()
-    full_name = body.full_name.strip()
+    full_name = (body.full_name or "User").strip()
     password = body.password
 
     # Validation
     if not _is_valid_email(email):
-        return {"success": False, "error": "Invalid email address format."}
+        raise HTTPException(status_code=400, detail="Invalid email address format.")
     if not full_name:
-        return {"success": False, "error": "Full name is required."}
+        raise HTTPException(status_code=400, detail="Full name is required.")
     pwd_err = _validate_password(password)
     if pwd_err:
-        return {"success": False, "error": pwd_err}
+        raise HTTPException(status_code=400, detail=pwd_err)
 
     supabase = get_supabase()
 
@@ -148,7 +148,9 @@ async def signup(body: SignupRequest):
     try:
         existing = supabase.table("accounts").select("id").eq("email", email).execute().data
         if existing and len(existing) > 0:
-            return {"success": False, "error": "An account with this email already exists"}
+            raise HTTPException(status_code=400, detail="An account with this email already exists")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error checking existing account: {e}")
 
@@ -170,12 +172,14 @@ async def signup(body: SignupRequest):
     try:
         res = supabase.table("accounts").insert(new_account_payload).execute()
         if not res.data:
-            return {"success": False, "error": "Could not create account in database."}
+            raise HTTPException(status_code=500, detail="Could not create account in database.")
         account = res.data[0]
         account_id = str(account["id"])
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Account creation failed: {e}")
-        return {"success": False, "error": f"Failed to create account: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
 
     # Generate JWT
     token = _create_jwt(account_id=account_id, email=email, plan="free")
@@ -195,15 +199,19 @@ async def signup(body: SignupRequest):
     # Set RLS context
     set_account_context(supabase, account_id)
 
+    user_info = {
+        "id": account_id,
+        "email": email,
+        "full_name": full_name,
+        "plan": "free",
+        "role": "owner",
+    }
+
     return {
         "success": True,
         "token": token,
-        "account": {
-            "id": account_id,
-            "email": email,
-            "full_name": full_name,
-            "plan": "free",
-        },
+        "account": user_info,
+        "user": user_info,
     }
 
 
@@ -233,15 +241,18 @@ async def login(body: LoginRequest):
             }).execute()
         except Exception:
             pass
+        user_info = {
+            "id": "a0000000-0000-0000-0000-000000000001",
+            "email": email,
+            "full_name": "Lead SEO Architect",
+            "plan": "agency",
+            "role": "owner",
+        }
         return {
             "success": True,
             "token": token,
-            "account": {
-                "id": "a0000000-0000-0000-0000-000000000001",
-                "email": email,
-                "full_name": "Lead SEO Architect",
-                "plan": "agency",
-            },
+            "account": user_info,
+            "user": user_info,
         }
 
     supabase = get_supabase()
@@ -529,7 +540,7 @@ async def forgot_password(body: ForgotPasswordRequest):
                                 <div style="font-family: sans-serif; background: #0a0a0a; color: #fff; padding: 24px; border-radius: 8px;">
                                     <h2 style="color: #ff4500;">RankForge Password Reset</h2>
                                     <p>You requested a password reset for your RankForge account.</p>
-                                    <p><a href="{reset_link}" style="display:inline-block; padding:10px 20px; background:#ff4500; color:#fff; text-decoration:none; border-radius:4px; font-weight:bold;">Reset Password →</a></p>
+                                    <p><a href="{reset_link}" style="display:inline-block; padding:10px 20px; background:#ff4500; color:#fff; text-decoration:none; border-radius:4px; font-weight:bold;">Reset Password -></a></p>
                                     <p style="color: #888; font-size: 12px;">This link will expire in 1 hour. If you did not request this, please ignore this email.</p>
                                 </div>
                                 """,

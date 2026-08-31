@@ -173,7 +173,7 @@ class TestDashboardIntegration:
                 website_id="test-site",
                 alert_type="rank_drop",
                 severity="critical",
-                title="Rank 8→14",
+                title="Rank 8->14",
                 data={"keyword": "test", "old_pos": 8, "new_pos": 14},
                 source_monitor="rank_monitor"
             )

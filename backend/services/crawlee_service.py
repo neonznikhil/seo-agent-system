@@ -373,18 +373,19 @@ class CrawleeService:
     
     async def _get_sitemap_urls(self, domain: str) -> List[str]:
         """Extract URLs from sitemap.xml."""
-        import requests
+        import httpx
+        import re
         urls = []
         
-        for protocol in ['https', 'http']:
-            try:
-                resp = requests.get(f"{protocol}://{domain}/sitemap.xml", timeout=10)
-                if resp.status_code == 200:
-                    import re
-                    urls = re.findall(r'<loc>(.*?)</loc>', resp.text)
-                    return urls[:100]
-            except Exception:
-                pass
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            for protocol in ['https', 'http']:
+                try:
+                    resp = await client.get(f"{protocol}://{domain}/sitemap.xml")
+                    if resp.status_code == 200:
+                        urls = re.findall(r'<loc>(.*?)</loc>', resp.text)
+                        return urls[:100]
+                except Exception:
+                    pass
         
         return urls
 

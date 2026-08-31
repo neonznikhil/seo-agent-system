@@ -83,13 +83,11 @@ class BrainService:
             "memory_type": normalized_type,
             "title": title,
             "content": content,
-            "embedding": embedding,
+            "embedding": embedding[:1024] if len(embedding) > 1024 else embedding,
             "source_type": source_type,
-            "source_id": str(source_id) if source_id else None,
             "confidence": confidence,
             "times_used": 1,
             "times_successful": 1 if normalized_type in ("outcome", "preference") else 0,
-            "last_used_at": datetime.utcnow().isoformat(),
             "created_at": datetime.utcnow().isoformat()
         }
 

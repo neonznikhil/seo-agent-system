@@ -22,20 +22,19 @@ class TopicOwnershipEngine:
         self.website_id = website_id or "default"
         self.brain = BrainService(website_id=self.website_id)
 
-    async def build_semantic_map(self, pillar_keyword: str = "Texas personal injury law") -> Dict[str, Any]:
+    async def build_semantic_map(self, pillar_keyword: str = "Search engine optimization") -> Dict[str, Any]:
         start_t = time.time()
         logger.info(f"[TopicOwnership] Building full semantic graph for pillar '{pillar_keyword}'...")
         
         supabase = get_supabase()
 
-        # Seed node definitions
+        # Dynamic node definitions parameterized by pillar_keyword
         node_types = [
-            {"type": "question", "text": f"How is pain and suffering calculated in {pillar_keyword}?", "vol": 2400, "covered": False, "comp_cov": 3},
-            {"type": "comparison", "text": "Comparative fault vs modified comparative fault Texas", "vol": 1900, "covered": True, "comp_cov": 4},
-            {"type": "entity", "text": "Texas Department of Insurance claim limits", "vol": 3200, "covered": False, "comp_cov": 2},
-            {"type": "howto", "text": "How to negotiate car accident settlement with adjuster without lawyer", "vol": 4100, "covered": False, "comp_cov": 5},
-            {"type": "local", "text": "Houston Harris County commercial vehicle accident claims", "vol": 1600, "covered": True, "comp_cov": 3},
-            {"type": "temporal", "text": "2026 Texas tort reform and damage caps timeline", "vol": 2800, "covered": False, "comp_cov": 1} # Blue Ocean!
+            {"type": "question", "text": f"What are the core fundamentals of {pillar_keyword}?", "vol": 2400, "covered": False, "comp_cov": 3},
+            {"type": "comparison", "text": f"Key frameworks and approaches in {pillar_keyword}", "vol": 1900, "covered": False, "comp_cov": 4},
+            {"type": "entity", "text": f"Industry standards and compliance for {pillar_keyword}", "vol": 3200, "covered": False, "comp_cov": 2},
+            {"type": "howto", "text": f"How to master and implement {pillar_keyword}", "vol": 4100, "covered": False, "comp_cov": 5},
+            {"type": "temporal", "text": f"2026 Trends and future developments in {pillar_keyword}", "vol": 2800, "covered": False, "comp_cov": 1}
         ]
 
         mapped_nodes = []

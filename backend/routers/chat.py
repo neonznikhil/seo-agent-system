@@ -66,7 +66,7 @@ async def handle_chat(body: ChatMessageIn):
     # 3. Check for rankings query
     if any(k in m_lower for k in ["rank", "ranking", "top keywords", "keywords"]):
         return {
-            "reply": "📊 Live Keyword Intelligence:\n\n- **autonomous seo tools** → Position #3 (↑4)\n- **ai content writing** → Position #7 (↑2)\n- **technical seo checklist** → Generating ranking cluster\n\nCheck the **Monitoring** tab for real-time rank tracking!",
+            "reply": "📊 Live Keyword Intelligence:\n\n- **autonomous seo tools** -> Position #3 (↑4)\n- **ai content writing** -> Position #7 (↑2)\n- **technical seo checklist** -> Generating ranking cluster\n\nCheck the **Monitoring** tab for real-time rank tracking!",
             "action_taken": "rank_check",
             "website_id": website_id
         }

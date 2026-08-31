@@ -1,0 +1,243 @@
+Hey Maruf,
+
+I wanted to send you a clear picture of what we're building with RankForge so you have the full context before we dive into the work. This is an autonomous SEO/AEO/GEO content engine — essentially a system that runs 24/7 on behalf of a website owner, handling everything from keyword research to WordPress publishing, but with a strict human approval gate so nothing goes live without a click.
+
+I'll walk you through how it's supposed to work, what's already in place, what's broken, and what needs to be done to get it actually running.
+
+---
+
+## What RankForge Does (The Big Picture)
+
+Think of it as an operating system for SEO. A user connects their WordPress site once, sets some goals (like "I want 5 articles per week" or "I want to rank for these 10 keywords"), and then the system takes over. It researches keywords, writes long-form content optimized for both traditional Google search and AI answer engines like Perplexity and ChatGPT, audits technical SEO, finds backlink opportunities, monitors rankings every 15 minutes, and pushes drafts to WordPress. The only time a human needs to step in is to approve content before it publishes — unless they explicitly opt into auto-publish.
+
+The system is built around a few core ideas:
+
+- Everything runs on real data. No mock pipelines, no fake Texas lawyer backlinks, no hardcoded health scores. If the database is empty, the UI shows an empty state.
+- It learns from itself. Every day it looks at what content performed well, what got approved, what got rejected, and adjusts its preferences accordingly.
+- When something breaks, it tries to fix itself. If an agent fails twice in a row, it generates an alternative strategy rather than just stopping.
+- Cost is tracked per agent per day, and if the budget gets too high, it pauses non-critical work.
+
+---
+
+## The Tech Stack
+
+Backend is FastAPI in Python, talking to Supabase (PostgreSQL with pgvector for embeddings). We're using NVIDIA NIM for both the LLM (Llama 3.1 70B) and embeddings. The frontend is Next.js 14 with TypeScript and Tailwind. APScheduler handles all the cron jobs in Asia/Kolkata timezone. Crawlee handles web crawling when we need to scrape SERP results or competitor pages.
+
+---
+
+## The 7 Agents and What They Actually Do
+
+These are the main moving parts. Each one runs on a schedule or gets triggered by alerts.
+
+**KnowledgeAgent** — Runs twice a day. It crawls the user's website sitemap, chunks the content into 3200-character pieces, generates embeddings, extracts named entities (people, orgs, laws, services, locations), and stores everything in a knowledge base with freshness and credibility scores. Every other agent queries this before doing anything, so it's basically the system's long-term memory.
+
+**ResearchAgent** — Runs daily. It looks at the user's focus keywords, queries live SERP data, pulls the top 10 competitor pages, extracts their outlines, finds PAA questions and featured snippets, and identifies content gaps. The output goes into the research table and brain memory.
+
+**WriterPipeline** — This is the big one. It's a 12-phase, roughly 111-step content generation pipeline. It starts by recalling the brand's tone and preferences from memory, analyzes audience demand and CPC trends, studies the SERP landscape, creates a positioning outline, then writes the content in 25 steps, runs it through 11 expert reviewers (SEO, EEAT, helpful content, AI search, brand voice, business impact, editorial, fact check, internal links, citations, humanizer), strips out AI-sounding patterns, fact-checks statistical claims, optimizes internal links, audits citations, runs a final quality gate (SEO score ≥85, validation ≥0.80, knowledge grounding ≥0.75), and finally stores what it learned back in memory. The output lands in an approval queue.
+
+**TechSEOAgent** — Runs daily. Crawls the site for Core Web Vitals, checks the sitemap, finds redirect chains, identifies orphan pages, validates indexability, checks mobile usability, and creates fix proposals for human approval.
+
+**BacklinkAgent** — Runs daily. Has four prospecting modules: broken link building (finds 404s on competitor backlinks), resource page opportunities, competitor gap analysis (sites linking to competitors but not the user), and guest post prospects. Outputs qualified opportunities with anchor text suggestions and contact emails.
+
+**StrategyAgent** — Doesn't run on a fixed schedule. It wakes up when something goes wrong: rank drops, budget exceeded, agent failures, competitor wins. It classifies the problem and generates a remediation strategy. If an agent has failed twice or more, it generates an alternative execution path with fallback connectors and reduced batch sizes.
+
+**SupervisorAgent** — Runs daily. It looks at the last 14 days of content performance and human rejections, figures out what patterns exist (what ranks, what gets approved, what gets rejected), and codifies those as preference rules in memory. It also adjusts trigger weights if certain agents are over or underperforming.
+
+---
+
+## The Writer Pipeline in More Detail
+
+This is where most of the complexity lives. When it generates an article, it goes through:
+
+1. Brain recall — pulls brand facts, tone profile, banned phrases from vector memory
+2. Audience demand analysis — business potential scoring, intent mapping, CPC trends
+3. SERP and competitor intelligence — top 10 results, PAA questions, featured snippets, competitor structure
+4. Positioning and outline strategy — unique angle, H2/H3 structure, E-E-A-T plan
+5. Multi-step content writing — H1, meta description, intro, 10+ H2 sections, table, FAQ, conclusion
+6. Multi-expert review — 11 reviewers each score the content and provide feedback; content gets revised based on their input
+7. Humanizer gate — removes banned phrases, checks readability, varies sentence structure
+8. Fact-check verification — statistical claims, date-sensitive claims, source citations
+9. Internal link optimization — at least 3 links to high-traffic pages
+10. Citation and reference audit — verified sources, schema validation
+11. Final quality gate — minimum scores enforced
+12. Brain learn — stores the final content, scores, and feedback in memory for next time
+
+Every phase logs to a pipeline log table so we can audit exactly what happened at each step.
+
+---
+
+## The Continuous Monitoring Loops
+
+There are six always-running monitors, each with its own cadence:
+
+- Rank monitor — every 15 minutes, checks keyword positions. A drop of 3 or more spots triggers an alert.
+- SERP monitor — every 30 minutes, watches for volatility in search results.
+- Competitor monitor — every 60 minutes, detects new content, pricing changes, rank gains.
+- Tech monitor — every 60 minutes, catches broken links, speed drops, mobile issues.
+- GEO monitor — every 30 minutes, checks AI search visibility and local SEO opportunities.
+- Structure monitor — every 6 hours, finds orphan pages, redirect chains, duplicate titles.
+
+When any of these finds a problem, it creates a realtime alert, pushes it to the dashboard via SSE, sends Slack and email notifications for critical issues, and the autonomous loop picks it up within 5 minutes to hand off to the StrategyAgent.
+
+---
+
+## The Autonomous Loop and Scheduler
+
+The system runs 20+ cron jobs on the APScheduler, all in Asia/Kolkata timezone. The daily cadence looks like this:
+
+03:00 IST — Knowledge evolution checks freshness decay
+08:00 IST — Slack morning brief
+08:30 IST — KnowledgeAgent crawls sitemap
+09:00 IST — ResearchAgent queries SERP
+09:30 IST — Knowledge sync
+10:00 IST — SupervisorAgent runs 14-day outcome synthesis
+10:30 IST — Content refresh
+11:00 IST — WriterPipeline generates new content
+11:30 IST — BacklinkAgent prospects
+12:00 IST — TechSEO audit
+20:00 IST — Slack evening summary
+
+Then there are weekly jobs (self-audit on Fridays), monthly jobs (goal setting on the 1st), and a 5-minute autonomous loop that processes unread alerts and checks whether auto-generate, auto-refresh, or auto-publish conditions are met.
+
+Before each job fires, the AutonomousDecisionEngine checks empirical conditions: Is the knowledge base stale? Are there unread critical alerts? Is the budget running low? Did the last 3 runs of this job fail? If the answer is no, it skips the job and logs the reason. No hardcoded triggers.
+
+---
+
+## The Brain (Self-Learning Memory)
+
+The system has a vector-backed memory store with seven types of memories: facts, experiences, failures, preferences, entities, relationships, and outcomes. Memories are stored with 1536-dimensional embeddings via NVIDIA NIM, and recall uses a hybrid scoring system: vector similarity at 60%, keyword match at 10%, freshness at 20%, credibility at 10%, and validation at 10%. There's also an LLM cross-encoder reranker on top.
+
+Every day at 10:00 IST, the SupervisorAgent analyzes the last 14 days of content performance. It looks at what ranked, what got approved, what got rejected, and turns those patterns into preference rules. So over time, the system gets better at matching the user's taste without them having to manually correct it every time.
+
+The memory also has a freshness decay model: `exp(-days/90) * credibility_score`. Old, low-credibility memories naturally fade, and duplicate memories get consolidated when cosine similarity exceeds 0.92.
+
+---
+
+## SEO, AEO, and GEO Workflows
+
+Traditional SEO is handled end-to-end: keyword research, content creation, technical audits, backlinks, rank monitoring, content refresh, and competitor tracking. There's also a topic cluster architecture with pillar pages and supporting articles linked together.
+
+AEO (Answer Engine Optimization) is built into the writer pipeline from the ground up, not bolted on. Every article gets entity-rich content, FAQ schema, numbered citations linking to authoritative sources, and concise 40-60 word answers designed for snippet extraction. There's a dedicated AEO phase in the writer pipeline, and a GEO monitor that tracks AI citations across ChatGPT, Perplexity, and Google AI Overview every 30 minutes.
+
+GEO (Generative Engine Optimization) focuses on structured data (JSON-LD for Article, FAQPage, HowTo, Organization), entity consolidation in the knowledge graph, freshness signals, multi-format content, and authority signals. The strategy agent adjusts content strategy based on GEO visibility trends.
+
+---
+
+## Human Approval and Oversight
+
+Every WordPress publish and tech fix requires explicit human approval. The enforcement is strict: the backend requires an X-User-Id header on every publish route. If it's missing or invalid, it returns 403 and logs the attempt. There's no default "admin" fallback. The RBAC system has three roles — owner (full access), editor (can approve/reject content and view analytics), and viewer (read-only access to dashboard and reports).
+
+The approval workflow is straightforward: content gets generated, lands in the approval queue as pending, the human sees it on the dashboard, clicks approve or reject, and the system logs the action with the real user identity. If they reject it, the system analyzes the rejection for learning so it doesn't repeat the same mistakes.
+
+---
+
+## What's Already Built
+
+The backend structure is in place: 30+ routers, 30+ services, 25+ agents, and 25+ CrewAI tools. The Supabase schema has 40+ tables covering content, brain memory, knowledge base, backlinks, monitoring, costs, approvals, and more. The frontend Next.js app has 25+ pages covering the dashboard, approvals, content studio, backlinks, tech SEO, monitoring, brain memory, connectors, settings, and more. The standalone rankforge.html prototype is also still around as a fallback.
+
+The writer pipeline, knowledge service, RAG service, continuous monitors, event bus for SSE, Slack and email alerting, WordPress service, GSC and GA4 integrations, backlink prospecting, topic clusters, content decay detection, and budget manager are all implemented at some level.
+
+---
+
+## What Needs to Be Fixed Before It Actually Runs
+
+I'm going to be honest — there are some significant gaps between the design and what's currently functional.
+
+**Critical security issues first.** The .env file has live secrets that shouldn't be in the repo. There's a hardcoded fallback encryption key that needs to be removed. The X-User-Id header defaults to "admin" when missing, which defeats the whole human approval model. CORS is misconfigured. These need to be fixed before anything else.
+
+**Missing routes and routers.** The frontend is making calls to routes that don't exist yet: save WordPress connection, direct publish, backlink scouting, outreach generation, link graph, AEO share of voice. There are also five router files that are referenced in imports but don't exist: keywords, analytics, serp, scheduler, and report.
+
+**Mock data in production paths.** This is the biggest functional problem. There are 15+ places where hardcoded values are returned instead of real database queries. The backlink service returns 20+ fake Texas legal URLs when the database is empty. The autonomous loop hardcodes wins, failures, and a health score of 96.5. The budget manager uses a fixed $18.50 instead of querying daily_costs. The monthly goal fallback contains hardcoded target numbers. The writer pipeline has 10+ stub methods returning fake values like "average word count: 2500" and "AI detection score: 85." None of this will work in production.
+
+**Architecture issues.** There are two competing schedulers — APScheduler and a while True loop in autonomous_loop.py — with overlapping responsibilities. The stats endpoint runs six sequential database queries instead of parallel ones. Synchronous requests calls are blocking the async event loop. There's no connection pooling for Supabase. The circuit breaker for LLM calls exists but isn't being used.
+
+**Observability gaps.** Every autonomous decision should log timestamp, website_id, trigger, action taken, and result, but structured logging isn't in place yet. Cost tracking hooks need to be added to every LLM call. Alert TTL and escalation logic needs to be implemented so unhandled alerts auto-escalate to a human after a certain number of hours.
+
+---
+
+## What Needs to Be Built (In Order)
+
+**Phase 1: Critical fixes (can't run without these)**
+- Rotate all exposed secrets
+- Remove hardcoded "admin" fallback for X-User-Id
+- Remove hardcoded encryption key fallback
+- Fix duplicate router mounts in main.py
+- Add missing router files (keywords, analytics, serp, scheduler, report)
+- Add missing backend routes
+- Add missing packages to requirements.txt
+
+**Phase 2: Remove mock data**
+- Replace fake backlink URLs with real data or empty results
+- Remove hardcoded wins, failures, and health scores
+- Remove hardcoded budget values
+- Remove hardcoded goal fallbacks
+- Replace writer pipeline stubs with real LLM calls or explicit "not implemented" errors
+
+**Phase 3: Architecture fixes**
+- Make APScheduler the single authority, remove the while True loop
+- Parallelize database queries
+- Replace sync requests with httpx
+- Add Supabase connection pooling
+- Wire up the circuit breaker
+- Version monthly goals instead of overwriting
+
+**Phase 4: Observability and polish**
+- Add structured logging to all autonomous decisions
+- Add cost tracking hooks
+- Add alert TTL and escalation
+- Add performance profiling for writer pipeline phases
+
+---
+
+## Database Overview
+
+We're working with 40+ Supabase tables. The main ones to know about:
+
+- **websites** — root entity for each connected site
+- **blogs** and **blog_approvals** — published content and the approval queue
+- **content_log** and **content_pipeline_logs** — all generated content and the full audit trail of the writer pipeline
+- **knowledge_base** — business facts with 1536-dim embeddings, freshness and credibility scores
+- **brain_memory** — vector memory with seven types of memories
+- **realtime_alerts** — all monitoring alerts that feed the dashboard
+- **daily_costs** — token and cost tracking per agent per day
+- **autonomous_settings** — the configuration for auto-publish, auto-generate, auto-refresh, goals, and success rates
+- **backlink_opportunities** and **backlinks** — prospecting results and inventory
+- **technical_audits** and **pending_fixes** — tech SEO findings awaiting approval
+- **critical_action_logs** — audit trail for every publish or blocked action
+
+All tables carry a website_id for strict multi-tenancy. No data leaks between sites.
+
+---
+
+## Frontend Structure
+
+The Next.js app has a sidebar layout with pages for dashboard, approvals, content, backlinks, tech SEO, monitoring, brain, knowledge, WordPress management, research, clusters, calendar, settings, connectors, workforce (agent management), proposals, decay tracking, links, AEO, memory, LLMs.txt, websites, and setup. The dashboard is the main hub — it shows autonomous health score, today's scheduled jobs, the approval queue, recent alerts, agent status, cost tracking, and content pipeline progress. Everything updates live via SSE from the backend event bus.
+
+---
+
+## What "Autonomous" Actually Means Here
+
+When everything is working, here's what a typical day looks like:
+
+At 03:00 IST, the knowledge evolution service checks freshness decay. At 08:30, the KnowledgeAgent crawls the sitemap. At 09:00, the ResearchAgent queries SERP. At 09:30, knowledge sync runs. At 10:00, the SupervisorAgent analyzes the last two weeks of performance and updates preferences. At 10:30, decaying articles get queued for refresh. At 11:00, the WriterPipeline generates new content if the auto-generate flag is on and the queue is below threshold. At 11:30, the BacklinkAgent prospects new opportunities. At 12:00, the TechSEOAgent runs its audit.
+
+All day, six monitors run in the background checking rankings, SERP volatility, competitors, tech health, AI visibility, and site structure. The autonomous loop runs every 5 minutes processing alerts and checking whether auto-publish or auto-refresh conditions are met. The human only needs to log in, check the approval queue, and click approve or reject.
+
+If something breaks — say, the rank monitor detects a 7-position drop — it creates an alert, pushes it to Slack and the dashboard, and the StrategyAgent generates a remediation plan: create a topic cluster around that keyword, optimize the existing article, queue new content. If the WriterPipeline fails twice in a row, the StrategyAgent generates an alternative with reduced batch sizes or fallback connectors.
+
+---
+
+## The Key Constraint
+
+The system is designed to be autonomous, but not reckless. Every publish action requires a real human identity (X-User-Id header validated against the users table). The quality gates are strict: SEO score ≥85, validation ≥0.80, knowledge grounding ≥0.75, and 11 expert reviewers all have to sign off. If any of these fail, the content goes back for revision rather than publishing.
+
+---
+
+## Where We Are Now
+
+The skeleton is solid. The database schema is comprehensive. The frontend has all the pages. The backend has all the routers and services wired up. But the gap between "compiles and has routes" and "actually runs autonomously on real data" is mostly in removing the mock data, fixing the security issues, wiring up the missing routes, and making sure the decision engine actually drives the scheduler instead of being bypassed.
+
+That's the work ahead. Let me know if you want to start with the critical fixes or if you'd rather tackle a specific area first.
+
+Best,
+Nikhil

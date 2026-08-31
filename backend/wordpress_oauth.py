@@ -75,18 +75,103 @@ def validate_and_consume_state(state: str, user_id: str) -> Optional[str]:
     return site_url
 
 
+async def test_wordpress_connection(site_url: str, username: str, app_password: str) -> dict:
+    """
+    Tests WordPress connection with explicit error diagnostics:
+    - 200: Connected (role, name, user_id)
+    - 401: Wrong username or app password
+    - 403: Security plugin / Cloudflare blocking REST API
+    - 404: Pretty permalinks / REST API disabled
+    - Timeout: Connection timed out
+    - Other: Specific error message
+    """
+    clean_url = site_url.rstrip("/")
+    if clean_url and not clean_url.startswith("http"):
+        clean_url = f"https://{clean_url}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 RankForge/1.0",
+        "Accept": "application/json",
+    }
+    endpoints = [
+        f"{clean_url}/wp-json/wp/v2/users/me?context=edit",
+        f"{clean_url}/?rest_route=/wp/v2/users/me&context=edit",
+        f"{clean_url}/wp-json/wp/v2/users/me",
+    ]
+
+    last_error_res = None
+    for ep in endpoints:
+        try:
+            async with httpx.AsyncClient(headers=headers, timeout=10.0, follow_redirects=True) as client:
+                r = await client.get(ep, auth=(username, app_password))
+
+            if r.status_code == 200:
+                user_data = r.json()
+                roles = user_data.get("roles", ["unknown"]) or ["unknown"]
+                can_pub = bool(user_data.get("capabilities", {}).get("publish_posts") or any(role in ["author", "editor", "administrator"] for role in roles))
+                return {
+                    "status": "connected",
+                    "connected": True,
+                    "role": roles[0] if roles else "unknown",
+                    "roles": roles,
+                    "display_name": user_data.get("name", username),
+                    "user_id": user_data.get("id"),
+                    "can_publish": can_pub,
+                    "message": f"Connected as {user_data.get('name', username)} (Role: {roles[0] if roles else 'unknown'})",
+                }
+            elif r.status_code == 401:
+                last_error_res = {
+                    "status": "error",
+                    "connected": False,
+                    "message": "Wrong username or app password. Generate a new app password in WordPress under Users > Profile > Application Passwords."
+                }
+            elif r.status_code == 403:
+                last_error_res = {
+                    "status": "error",
+                    "connected": False,
+                    "message": "Access blocked. Your security plugin (Wordfence, Cloudflare, etc.) is blocking the REST API. Whitelist this IP or disable REST API blocking in your security plugin settings."
+                }
+            elif r.status_code == 404:
+                last_error_res = {
+                    "status": "error",
+                    "connected": False,
+                    "message": "WordPress REST API not found. Make sure your site is using pretty permalinks (Settings > Permalinks > Post name) and the REST API is enabled."
+                }
+            else:
+                last_error_res = {
+                    "status": "error",
+                    "connected": False,
+                    "message": f"Unexpected response: HTTP {r.status_code}. Check that the site URL is correct and accessible."
+                }
+        except httpx.TimeoutException:
+            last_error_res = {
+                "status": "error",
+                "connected": False,
+                "message": "Connection timed out. Check that the site URL is correct and the server is responding."
+            }
+        except Exception as e:
+            last_error_res = {
+                "status": "error",
+                "connected": False,
+                "message": f"Could not connect: {str(e)}"
+            }
+
+    return last_error_res or {
+        "status": "error",
+        "connected": False,
+        "message": "Could not establish connection to WordPress site."
+    }
+
+
 async def test_wp_connection(site_url: str, username: str, app_password: str) -> dict:
-    url = site_url.rstrip("/") + "/wp-json/wp/v2/users/me"
-    credentials = base64.b64encode(f"{username}:{app_password}".encode()).decode()
-    headers = {"Authorization": f"Basic {credentials}"}
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url, headers=headers)
-
-    if resp.status_code != 200:
-        raise RuntimeError(f"WordPress connection test failed: {resp.status_code} - {resp.text}")
-
-    return resp.json()
+    res = await test_wordpress_connection(site_url, username, app_password)
+    if not res.get("connected") and res.get("status") != "connected":
+        raise RuntimeError(res.get("message", "WordPress connection test failed"))
+    return {
+        "id": res.get("user_id"),
+        "name": res.get("display_name", username),
+        "roles": res.get("roles", ["editor"]),
+    }
 
 
 async def save_connection(user_id: str, site_url: str, username: str, app_password: str) -> dict:
@@ -94,15 +179,31 @@ async def save_connection(user_id: str, site_url: str, username: str, app_passwo
 
     encrypted_password = encrypt(app_password)
 
-    supabase = _get_supabase()
-    supabase.table("wordpress_connections").upsert({
-        "user_id": user_id,
-        "site_url": site_url,
-        "wp_username": username,
-        "encrypted_password": encrypted_password,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, on_conflict="user_id").execute()
+    try:
+        supabase = _get_supabase()
+        supabase.table("wordpress_connections").upsert({
+            "user_id": user_id,
+            "site_url": site_url,
+            "wp_username": username,
+            "encrypted_password": encrypted_password,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="user_id").execute()
+    except Exception as e:
+        logger.warning(f"Could not persist to wordpress_connections in Supabase: {e}")
+
+    try:
+        from .services.local_store import save_local_wp_connection
+        save_local_wp_connection({
+            "user_id": user_id,
+            "site_url": site_url,
+            "wp_username": username,
+            "encrypted_password": encrypted_password,
+            "wp_app_password_encrypted": encrypted_password,
+            "is_active": True,
+        })
+    except Exception as local_e:
+        logger.debug(f"Local store WP connection note: {local_e}")
 
     return {
         "connected": True,

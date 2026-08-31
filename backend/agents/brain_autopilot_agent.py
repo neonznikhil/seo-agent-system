@@ -310,59 +310,20 @@ async def _run_all_jobs():
 
 
 async def run_daily_autopilot():
-    """Runs forever loop. Runs on boot, then at scheduled intervals."""
-    logger.info("[BrainAutopilot] Starting daily autopilot with pattern intelligence...")
+    """Single-cycle autopilot — scheduler is single authority (Phase 3).
+
+    Previously an infinite while True loop; now runs one full job set and returns.
+    Scheduler in agents/scheduler.py (Asia/Kolkata) invoking is the sole cron authority.
+    """
+    logger.info("[BrainAutopilot] Running single-cycle autopilot (scheduler authority)")
     await _run_all_jobs()
+    logger.info("[BrainAutopilot] Single cycle complete — scheduler owns next run")
 
-    last_run_dates: Dict[str, str] = {}
-    scheduled_jobs = [
-        ("daily_search", 6),
-        ("daily_cluster_build", 7),
-        ("daily_geo_check", 8),
-        ("daily_refresh_check", 9),
-        ("daily_new_page_suggestion", 10),
-        ("daily_backlink_check", 11),
-    ]
 
-    while True:
-        try:
-            now = datetime.utcnow()
-            date_str = now.date().isoformat()
-
-            # Sunday 00:00 UTC (~05:30 IST) weekly pattern recognition
-            if now.weekday() == 6 and now.hour == 0 and last_run_dates.get("pattern_engine") != date_str:
-                last_run_dates["pattern_engine"] = date_str
-                try:
-                    websites = get_supabase().table("websites").select("id").execute().data or []
-                    for w in websites:
-                        asyncio.create_task(run_pattern_recognition_engine(w["id"]))
-                except Exception as ex:
-                    logger.error(f"[BrainAutopilot] Pattern engine schedule error: {ex}")
-
-            for job_type, hour in scheduled_jobs:
-                if last_run_dates.get(job_type) != date_str and now.hour == hour:
-                    last_run_dates[job_type] = date_str
-                    try:
-                        websites = get_supabase().table("websites").select("id").execute().data or []
-                        for website in websites:
-                            website_id = website["id"]
-                            job_func = {
-                                "daily_search": _daily_search_job,
-                                "daily_cluster_build": _daily_cluster_build_job,
-                                "daily_geo_check": _daily_geo_check_job,
-                                "daily_refresh_check": _daily_refresh_check_job,
-                                "daily_new_page_suggestion": _daily_new_page_suggestion_job,
-                                "daily_backlink_check": _daily_backlink_check_job,
-                            }.get(job_type)
-                            if job_func:
-                                asyncio.create_task(_run_job(website_id, job_type, job_func))
-                    except Exception as err:
-                        logger.error(f"[BrainAutopilot] Daily job dispatch error: {err}")
-
-            await asyncio.sleep(60)
-        except Exception as e:
-            logger.error(f"[BrainAutopilot] Loop error: {e}")
-            await asyncio.sleep(60)
+async def _deprecated_loop():
+    """Deprecated: infinite loop retained only for reference, not used."""
+    logger.warning("[BrainAutopilot] Deprecated loop called — use run_daily_autopilot single cycle via scheduler")
+    await run_daily_autopilot()
 
 
 class BrainAutopilotAgent:

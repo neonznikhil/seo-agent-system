@@ -1,0 +1,107 @@
+[
+  {
+    "website_id": "test_site_1",
+    "wp_post_id": "101",
+    "wp_url": "https://example.com/car-accident-compensation",
+    "target_keyword": "car accident compensation pain and suffering",
+    "blog_id": "b_1",
+    "title": "How to Calculate Car Accident Compensation",
+    "status": "tracking",
+    "published_at": "2026-08-29T17:01:53.055275",
+    "last_checked_at": null,
+    "current_position": null,
+    "best_position": null,
+    "position_history": [],
+    "id": "f919c728-14cc-4dc2-ad51-bf18bae7288e"
+  },
+  {
+    "id": "trk_test_1",
+    "website_id": "test_site_2",
+    "wp_post_id": "102",
+    "wp_url": "https://houstonlaw.com/personal-injury-calculator",
+    "target_keyword": "personal injury calculator houston",
+    "status": "tracking",
+    "current_position": 3,
+    "best_position": 3,
+    "position_history": [
+      {
+        "date": "2026-08-28T00:00:00",
+        "position": 8
+      },
+      {
+        "date": "2026-08-29T17:01:53.590010",
+        "position": 3
+      }
+    ],
+    "published_at": "2026-08-29T17:01:53.312309",
+    "last_checked_at": "2026-08-29T17:01:53.590010"
+  },
+  {
+    "id": "trk_test_drop",
+    "website_id": "test_site_alert",
+    "wp_post_id": "103",
+    "wp_url": "https://houstonlaw.com/truck-accident",
+    "target_keyword": "truck accident lawyer",
+    "status": "tracking",
+    "current_position": 15,
+    "best_position": 4,
+    "position_history": [
+      {
+        "date": "2026-08-28T00:00:00",
+        "position": 4
+      },
+      {
+        "date": "2026-08-29T17:01:54.328016",
+        "position": 15
+      }
+    ],
+    "published_at": "2026-08-29T17:01:54.088387",
+    "last_checked_at": "2026-08-29T17:01:54.328016"
+  },
+  {
+    "id": "trk_enriched_1",
+    "website_id": "site_enrich",
+    "wp_url": "https://example.com/test",
+    "target_keyword": "test keyword",
+    "status": "tracking",
+    "current_position": 2,
+    "best_position": 1,
+    "position_history": [
+      {
+        "date": "2026-08-28T00:00:00",
+        "position": 5
+      },
+      {
+        "date": "2026-08-29T00:00:00",
+        "position": 2
+      }
+    ],
+    "published_at": "2026-08-29T17:01:54.601603"
+  },
+  {
+    "id": "trk_decaying_1",
+    "website_id": "site_decay_test",
+    "blog_id": "b_decay_1",
+    "wp_post_id": "99",
+    "wp_url": "https://example.com/decaying-post",
+    "target_keyword": "texas car accident statute of limitations",
+    "status": "tracking",
+    "current_position": 22,
+    "best_position": 6,
+    "position_history": [
+      {
+        "date": "2026-08-01T00:00:00",
+        "position": 6
+      },
+      {
+        "date": "2026-08-15T00:00:00",
+        "position": 14
+      },
+      {
+        "date": "2026-08-29T00:00:00",
+        "position": 22
+      }
+    ],
+    "published_at": "2026-08-29T17:00:03.126972"
+  }
+]

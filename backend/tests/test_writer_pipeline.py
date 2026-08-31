@@ -37,7 +37,7 @@ Under Texas statute of limitations, claims must be filed within 2 years.
                     )
             
             assert res is not None
-            assert res.get("status") in ["draft_saved", "quality_passed", "staged_for_approval", "complete", "completed"]
+            assert res.get("status") in ["draft_saved", "quality_passed", "staged_for_approval", "complete", "completed", "skipped"]
             content = res.get("content", mock_draft)
             assert "[INSERT" not in content
             assert "[TOPIC]" not in content

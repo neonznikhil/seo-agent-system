@@ -53,24 +53,7 @@ export default function ProposalsPage() {
   const handleApprove = async (proposalId: string) => {
     try {
       const activeWebsiteId = getWebsiteId() || websiteId;
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const res = await fetch(
-        `${apiUrl}/proposals/${activeWebsiteId}/approve/${proposalId}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-User-Id": "human-approved",
-          },
-        }
-      );
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Approval failed");
-      }
-
-      const data = await res.json();
+      await post(`/api/proposals/${activeWebsiteId}/approve/${proposalId}`);
       alert("✅ Approved successfully!");
       fetchProposals();
     } catch (err: any) {

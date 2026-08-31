@@ -16,7 +16,7 @@ from ..agents.rules import (
     log_successful_approval,
     check_homepage_cooldown
 )
-import requests
+import httpx
 
 logger = logging.getLogger("backend.routers.proposals")
 router = APIRouter()
@@ -81,7 +81,8 @@ async def list_proposals(website_id: str):
 
 @router.post("/proposals/{website_id}/approve/{proposal_id}")
 async def approve_proposal_by_website(website_id: str, proposal_id: str, request: Request):
-    user_id = request.headers.get("X-User-Id") or "human-approved"
+    from ..middleware.human_gate import require_human_for_request
+    user_id = await require_human_for_request(request)
     supabase = get_supabase()
     
     # Check if in content_log
@@ -177,26 +178,26 @@ async def approve_proposal(audit_id: str, body: HomepageConfirmIn = HomepageConf
             if m:
                 wp_post_id = m.group(1)
                 page_data = None
-                wp_get = requests.get(
-                    f"{WORDPRESS_URL}/wp/v2/pages/{wp_post_id}",
-                    auth=_get_wp_auth(),
-                    timeout=30,
-                )
-                if wp_get.status_code == 200:
-                    page_data = wp_get.json()
-                    if issue_type in ("missing_meta", "duplicate_title", "low_ctr_title"):
-                        page_data["meta"] = page_data.get("meta", {})
-                        page_data["meta"]["description"] = wp_resp.get("new_value", "")
-                    elif issue_type == "missing_h1":
-                        page_data["title"] = wp_resp.get("new_value", "") + " - " + page_data.get("title", "")
-                    if page_data:
-                        wp_update = requests.post(
-                            f"{WORDPRESS_URL}/wp/v2/pages/{wp_post_id}",
-                            auth=_get_wp_auth(),
-                            json=page_data,
-                            timeout=30,
-                        )
-                        wp_result = wp_update.status_code == 200
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=_httpx.Timeout(30.0, connect=5.0)) as _client:
+                    wp_get = await _client.get(
+                        f"{WORDPRESS_URL}/wp/v2/pages/{wp_post_id}",
+                        auth=_get_wp_auth(),
+                    )
+                    if wp_get.status_code == 200:
+                        page_data = wp_get.json()
+                        if issue_type in ("missing_meta", "duplicate_title", "low_ctr_title"):
+                            page_data["meta"] = page_data.get("meta", {})
+                            page_data["meta"]["description"] = wp_resp.get("new_value", "")
+                        elif issue_type == "missing_h1":
+                            page_data["title"] = wp_resp.get("new_value", "") + " - " + page_data.get("title", "")
+                        if page_data:
+                            wp_update = await _client.post(
+                                f"{WORDPRESS_URL}/wp/v2/pages/{wp_post_id}",
+                                auth=_get_wp_auth(),
+                                json=page_data,
+                            )
+                            wp_result = wp_update.status_code == 200
         
         if wp_result:
             _log_task(
@@ -346,7 +347,6 @@ async def critical_logs(website_id: str):
 
 def _get_wp_auth():
     from ..config import WORDPRESS_URL
-    import requests
     wp_user = os.getenv("WORDPRESS_USER", "")
     wp_pass = os.getenv("WORDPRESS_APP_PASSWORD", "")
     return (wp_user, wp_pass)

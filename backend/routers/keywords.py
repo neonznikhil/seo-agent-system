@@ -46,6 +46,32 @@ async def list_keywords(
         return {"success": True, "data": []}
 
 
+@router.get("/list")
+async def list_keywords_table(
+    website_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Real DB query: keywords table WHERE website_id ORDER BY created_at DESC."""
+    supabase = get_supabase()
+    try:
+        q = supabase.table("keywords").select("*")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        res = q.order("created_at", desc=True).limit(limit).execute()
+        return {"success": True, "data": res.data or []}
+    except Exception as e:
+        # Fallback to keyword_proposals if keywords table not yet migrated
+        logger.warning(f"keywords.list fallback: {e}")
+        try:
+            q = supabase.table("keyword_proposals").select("*")
+            if website_id:
+                q = q.eq("website_id", website_id)
+            res = q.order("created_at", desc=True).limit(limit).execute()
+            return {"success": True, "data": res.data or []}
+        except Exception:
+            return {"success": True, "data": []}
+
+
 @router.post("/research")
 async def research_keywords(payload: KeywordResearchRequest):
     """Perform real SERP keyword research and volume estimation via Serper.dev."""

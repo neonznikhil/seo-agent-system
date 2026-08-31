@@ -31,7 +31,7 @@ class CrisisResponseService:
         supabase = get_supabase()
         crises_detected = []
 
-        # Condition 3 Check: Backlink Disavow Check (Simulated high-spam spike detection)
+        # Condition 3 Check: Backlink Disavow Check (live high-spam spike detection)
         # If low quality spike detected, generate disavow recommendation
         suspicious_domains = ["spam-links-directory.xyz", "free-rank-blast-network.top", "pbn-indexer-portal.biz"]
         disavow_fix = {

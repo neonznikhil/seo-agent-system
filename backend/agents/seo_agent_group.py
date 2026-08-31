@@ -170,14 +170,15 @@ class SEOAgentGroup:
     # ---------------------------------------------------------
     # 2. Scheduled Cadence Runner Handlers
     # ---------------------------------------------------------
-    async def run_0900_research_cadence(self, topic: str = "Texas car accident settlement statutes 2026") -> Dict[str, Any]:
+    async def run_0900_research_cadence(self, topic: Optional[str] = None) -> Dict[str, Any]:
         """09:00 IST - ResearchAgent mines SERP trends via Serper.dev connector."""
+        target_topic = topic or await self.decision_engine.get_next_target_keyword()
         agent = ResearchAgent(website_id=self.website_id or "default")
         return await self.run_agent_with_healing(
             "ResearchAgent",
             agent.run,
             "daily_search",
-            topic
+            target_topic
         )
 
     async def run_1000_self_improvement_cadence(self) -> Dict[str, Any]:
@@ -200,14 +201,15 @@ class SEOAgentGroup:
             target_kw
         )
 
-    async def run_1130_backlink_cadence(self, keyword: str = "Houston car accident legal resources") -> Dict[str, Any]:
+    async def run_1130_backlink_cadence(self, keyword: Optional[str] = None) -> Dict[str, Any]:
         """11:30 IST - BacklinkAgent runs 4-module prospecting via Serper.dev."""
+        target_kw = keyword or await self.decision_engine.get_next_target_keyword()
         agent = BacklinkAgent(website_id=self.website_id or "default")
         return await self.run_agent_with_healing(
             "BacklinkAgent",
             agent.run_prospecting_loop,
             "backlink_prospecting",
-            keyword
+            target_kw
         )
 
     async def run_1200_tech_seo_cadence(self) -> Dict[str, Any]:

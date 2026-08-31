@@ -14,7 +14,7 @@ from ..services.wordpress_oauth_service import (
 )
 
 logger = logging.getLogger("backend.routers.wordpress_oauth")
-router = APIRouter(prefix="/api/wordpress/oauth", tags=["wordpress-oauth"])
+router = APIRouter(prefix="/wordpress/oauth", tags=["wordpress-oauth"])
 
 
 class AuthorizeResponse(BaseModel):

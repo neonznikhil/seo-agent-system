@@ -18,7 +18,8 @@ class TechSEOAgent:
     """
 
     def __init__(self, website_id: Optional[str] = None):
-        self.website_id = website_id
+        from ..services.website_service import get_default_website_id
+        self.website_id = website_id if website_id and website_id not in ("default", "all") else get_default_website_id()
 
     async def check_sitemap(self, url: str) -> Dict[str, Any]:
         """Verify presence and validity of XML sitemap."""
@@ -72,15 +73,16 @@ class TechSEOAgent:
         try:
             audit_result = await execute_tech_audit(website_id)
         except Exception as e:
-            logger.warning(f"execute_tech_audit failed, executing fallback: {e}")
+            logger.warning(f"execute_tech_audit failed: {e}")
             audit_result = {
-                "health_score": 88,
-                "pages_crawled": 25,
-                "issues_count": 2,
-                "core_web_vitals": {"lcp": 2.1, "cls": 0.04, "fid": 45},
+                "health_score": 0,
+                "pages_crawled": 0,
+                "issues_count": 0,
+                "core_web_vitals": {},
                 "redirect_chains": 0,
-                "orphan_pages": 1,
-                "sitemap_status": "valid"
+                "orphan_pages": 0,
+                "sitemap_status": "error",
+                "issues": []
             }
 
         health_score = audit_result.get("health_score", 85)

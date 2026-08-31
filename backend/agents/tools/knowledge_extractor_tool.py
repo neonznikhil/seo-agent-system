@@ -3,7 +3,17 @@ from typing import Optional
 import json
 import asyncio
 
-from crewai.tools import BaseTool
+try:
+    from crewai.tools import BaseTool
+except ImportError:
+    try:
+        from crewai_tools import BaseTool  # type: ignore
+    except ImportError:
+        class BaseTool:  # fallback stub for py_compile without crewai
+            name: str = ""
+            description: str = ""
+            def _run(self, *a, **kw):
+                raise NotImplementedError("crewai not installed")
 from pydantic import BaseModel, Field
 
 from ...database import get_embedding, get_supabase, call_nim_llm

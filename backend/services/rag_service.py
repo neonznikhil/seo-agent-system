@@ -20,14 +20,15 @@ logger = logging.getLogger("backend.services.rag_service")
 class RAGService:
     """Production-grade Retrieval-Augmented Generation (RAG) Service.
     
-    Zero mock data strictly. Uses real NVIDIA NIM embeddings (nv-embedqa-e5-v5),
+    Zero mock data strictly. Uses real NVIDIA NIM embeddings via nim_client (nvidia/nemotron-3-embed-1b primary, fallback nvidia-embed-qa-4),
     hybrid vector + full-text retrieval, NIM cross-encoder reranking, strict citation mapping,
     anti-hallucination verification, and SSE streaming token generation.
     """
 
     def __init__(self, website_id: Optional[str] = None):
-        self.website_id = website_id
-        self.knowledge_service = KnowledgeService(website_id=website_id)
+        from .website_service import get_default_website_id
+        self.website_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else (get_default_website_id() or "")
+        self.knowledge_service = KnowledgeService(website_id=self.website_id)
 
     # ---------------------------------------------------------
     # 1. Heading-Aware Chunking (3200 chars / 400 overlap)
@@ -43,10 +44,10 @@ class RAGService:
         return self.knowledge_service.chunk_text(text, target_size=target_size, overlap=overlap)
 
     # ---------------------------------------------------------
-    # 2. Batch Embedding Generation (NVIDIA NIM nv-embedqa-e5-v5)
+    # 2. Batch Embedding Generation (NVIDIA NIM via nim_client nemotron-3-embed-1b 1536)
     # ---------------------------------------------------------
     async def create_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
-        """Batch embed texts (10 at a time) via NVIDIA NIM API with 1536-dim unit vector normalization."""
+        """Batch embed texts (10 at a time) via NVIDIA NIM central client with 1536-dim unit vector normalization and 410 fallback."""
         return await KnowledgeService.create_embeddings_batch(texts)
 
     # ---------------------------------------------------------

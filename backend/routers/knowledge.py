@@ -31,8 +31,17 @@ class ScrapeCompetitorRequest(BaseModel):
 
 
 class WatchBusinessRequest(BaseModel):
-    site_url: Optional[str] = "https://accident.innovatcs.com"
+    site_url: Optional[str] = None
     website_id: Optional[str] = None
+    max_pages: Optional[int] = 50
+
+
+class CrawlSiteRequest(BaseModel):
+    site_url: Optional[str] = None
+    url: Optional[str] = None
+    website_id: Optional[str] = None
+    max_pages: Optional[int] = 50
+    max_depth: Optional[int] = 3
 
 
 # ---------------------------------------------------------
@@ -49,47 +58,53 @@ async def get_knowledge(
     limit: int = 50
 ):
     """List knowledge base documents with entities, credibility, and validation states."""
-    supabase = get_supabase()
+    from ..services.local_store import list_local_knowledge
+
+    data = []
     try:
         query = supabase.table("knowledge_base").select("*")
         if website_id:
             query = query.eq("website_id", website_id)
         if type and type != "all":
-            query = query.eq("type", type)
-        if validated is not None:
-            query = query.eq("validated", validated)
-        if q:
-            query = query.ilike("content", f"%{q}%")
-            
+            query = query.eq("fact_type", type)
         res = query.order("created_at", desc=True).limit(limit).execute()
         data = res.data or []
-        
-        # Format for UI presentation
-        formatted = []
-        for item in data:
-            formatted.append({
-                "id": item.get("id"),
-                "title": item.get("title") or "Untitled Fact",
-                "content": item.get("content") or "",
-                "type": item.get("type", "business_info"),
-                "source": item.get("source", "text"),
-                "source_type": item.get("source_type", "file"),
-                "url": item.get("url"),
-                "chunk_index": item.get("chunk_index", 0),
-                "total_chunks": item.get("total_chunks", 1),
-                "freshness_score": float(item.get("freshness_score", 1.0)),
-                "credibility_score": float(item.get("credibility_score", 1.0)),
-                "validated": bool(item.get("validated", False)),
-                "validation_score": float(item.get("validation_score", 0.0)),
-                "entities": item.get("entities") or {"people": [], "orgs": [], "locations": [], "laws": [], "services": [], "keywords": []},
-                "usage_count": int(item.get("usage_count", 0)),
-                "last_used": item.get("last_used"),
-                "created_at": item.get("created_at")
-            })
-        return formatted
     except Exception as e:
-        logger.error(f"Error fetching knowledge items: {e}")
-        return []
+        logger.debug(f"[Knowledge] Supabase query note: {e}")
+
+    local_kb = list_local_knowledge(website_id)
+    known_ids = {str(d.get("id")) for d in data if d.get("id")}
+    for lk in local_kb:
+        if str(lk.get("id")) not in known_ids:
+            data.append(lk)
+            known_ids.add(str(lk.get("id")))
+
+    # Format for UI presentation
+    formatted = []
+    for item in data:
+        cnt = item.get("fact") or item.get("content") or ""
+        src_url = item.get("source_url") or item.get("url") or ""
+        f_type = item.get("fact_type") or item.get("type") or "company_info"
+        formatted.append({
+            "id": item.get("id"),
+            "title": item.get("title") or (cnt[:60] + "..." if len(cnt) > 60 else "Company Knowledge"),
+            "content": cnt,
+            "type": f_type,
+            "source": item.get("source", "crawler"),
+            "source_type": item.get("source_type", "web"),
+            "url": src_url,
+            "chunk_index": item.get("chunk_index", 0),
+            "total_chunks": item.get("total_chunks", 1),
+            "freshness_score": float(item.get("freshness_score", 1.0)),
+            "credibility_score": float(item.get("credibility_score", 1.0)),
+            "validated": bool(item.get("validated", True)),
+            "validation_score": float(item.get("validation_score", 1.0)),
+            "entities": item.get("entities") or {"people": [], "orgs": [], "locations": [], "laws": [], "services": [], "keywords": []},
+            "usage_count": int(item.get("usage_count", 0)),
+            "last_used": item.get("last_used"),
+            "created_at": item.get("created_at")
+        })
+    return formatted
 
 
 @router.get("/api/knowledge/search")
@@ -172,8 +187,66 @@ async def consolidate_knowledge():
 async def watch_business_endpoint(payload: WatchBusinessRequest):
     """Autonomous watcher: parses sitemap, compares content hashes, auto-ingests new/updated pages."""
     service = KnowledgeService(website_id=payload.website_id)
-    res = await service.watch_business_website(target_site=payload.site_url)
+    res = await service.watch_business_website(target_site=payload.site_url, max_pages=payload.max_pages or 50)
     return res
+
+
+@router.post("/api/knowledge/crawl")
+@router.post("/knowledge/crawl")
+async def crawl_full_site_endpoint(payload: CrawlSiteRequest):
+    """Full-site crawl: recursively crawls sitemap + BFS discovers ALL internal subpages (up to max_pages) and indexes into knowledge base.
+
+    FIX: Previously single-page scrape only; now crawls entire site to build comprehensive knowledge base.
+    """
+    site = (payload.site_url or payload.url or "").strip() or None
+    # Clamp max_pages 5..100
+    try:
+        max_pages = int(payload.max_pages or 50)
+    except Exception:
+        max_pages = 50
+    max_pages = max(5, min(100, max_pages))
+    try:
+        max_depth = int(payload.max_depth or 3)
+    except Exception:
+        max_depth = 3
+    max_depth = max(1, min(5, max_depth))
+    service = KnowledgeService(website_id=payload.website_id)
+    res = await service.watch_business_website(target_site=site, max_pages=max_pages, max_depth=max_depth)
+    # Enrich with human-readable message
+    if res.get("success"):
+        res["message"] = (
+            f"Full-site crawl complete: {res.get('urls_scanned', 0)} pages scanned "
+            f"({res.get('new_pages_ingested', 0)} new + {res.get('updated_pages', 0)} updated), "
+            f"{res.get('total_chunks_indexed', 0)} chunks indexed across {res.get('urls_discovered', 0)} discovered URLs."
+        )
+    return res
+
+
+@router.get("/api/knowledge/crawl/status")
+@router.get("/knowledge/crawl/status")
+async def crawl_status(website_id: Optional[str] = None):
+    """Quick status: counts of knowledge chunks per source_url to show crawl breadth."""
+    from ..services.local_store import list_local_knowledge
+    supabase = get_supabase()
+    data = []
+    try:
+        res = supabase.table("knowledge_base").select("source_url, created_at").limit(100).execute()
+        data = res.data or []
+        if website_id:
+            data = [d for d in data if d.get("website_id") == website_id or not d.get("website_id")]
+    except Exception as e:
+        logger.debug(f"[Knowledge] crawl status supabase note: {e}")
+    local_kb = list_local_knowledge(website_id)
+    all_urls = {}
+    for row in data + local_kb:
+        url = row.get("source_url") or row.get("url") or "manual"
+        all_urls[url] = all_urls.get(url, 0) + 1
+    return {
+        "website_id": website_id,
+        "total_chunks": len(data) + len(local_kb),
+        "unique_sources": len(all_urls),
+        "sources": [{"url": k, "chunks": v} for k, v in sorted(all_urls.items(), key=lambda x: -x[1])[:20]],
+    }
 
 
 # ---------------------------------------------------------
@@ -188,9 +261,15 @@ async def upload_knowledge(
     text: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     type: Optional[str] = Form(None),
-    website_id: Optional[str] = Form(None)
+    website_id: Optional[str] = Form(None),
+    crawl_mode: Optional[str] = Form(None),
+    max_pages: Optional[str] = Form(None),
 ):
-    """Multipart upload endpoint for PDF documents, scraped URLs, or raw text with entity extraction."""
+    """Multipart upload endpoint for PDF documents, scraped URLs, or raw text with entity extraction.
+
+    If crawl_mode == 'full-site' and a URL is provided, triggers full-site BFS crawl (all subpages)
+    instead of single-page scrape.
+    """
     service = KnowledgeService(website_id=website_id)
     
     # 1. File Upload (PDF / TXT / DOCX)
@@ -209,8 +288,17 @@ async def upload_knowledge(
         )
         return res
         
-    # 2. URL Scrape
+    # 2. URL Scrape — support full-site crawl mode
     elif url:
+        mode = (crawl_mode or "").strip().lower()
+        if mode in ("full-site", "full_site", "crawl-site", "site", "all", "crawl"):
+            try:
+                mp = int(max_pages) if max_pages and str(max_pages).isdigit() else 50
+            except Exception:
+                mp = 50
+            mp = max(5, min(100, mp))
+            res = await service.watch_business_website(target_site=url.strip(), max_pages=mp)
+            return res
         res = await service.ingest(
             url=url.strip(),
             source_type="url",

@@ -37,13 +37,26 @@ export default function LlmsTxtPage() {
   }, []);
 
   useEffect(() => {
-    const wid = getCurrentWebsiteId();
-    setWebsiteId(wid);
-    if (wid) {
-      fetchLlmsTxt(wid);
-    } else {
-      setLoading(false);
-    }
+    const init = async () => {
+      let wid = getCurrentWebsiteId();
+      if (!wid) {
+        try {
+          const sites = await get("/api/websites");
+          const list = Array.isArray(sites) ? sites : sites?.websites || [];
+          if (list.length > 0 && list[0]?.id) {
+            wid = list[0].id;
+            localStorage.setItem("current-website-id", wid);
+          }
+        } catch {}
+      }
+      setWebsiteId(wid || "");
+      if (wid) {
+        fetchLlmsTxt(wid);
+      } else {
+        setLoading(false);
+      }
+    };
+    init();
 
     const handleChanged = () => {
       const newWid = getCurrentWebsiteId();
@@ -148,9 +161,18 @@ export default function LlmsTxtPage() {
       </div>
 
       {error && (
-        <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
-          <span className="notice-sq" style={{ background: "var(--red)" }}></span>
-          <span style={{ color: "var(--red)" }}>Error: {error}</span>
+        <div className="notice" style={{ borderColor: error.includes("website") ? "var(--accent)" : "var(--red)", background: error.includes("website") ? "rgba(255, 77, 18, 0.08)" : "rgba(239,68,68,0.08)", marginBottom: "16px" }}>
+          <span className="notice-sq" style={{ background: error.includes("website") ? "var(--accent)" : "var(--red)" }}></span>
+          <div>
+            <span>{error}</span>
+            {error.toLowerCase().includes("website") && (
+              <div style={{ marginTop: "8px" }}>
+                <Link href="/websites" className="btn btn-accent" style={{ textDecoration: "none", fontSize: "11px", padding: "4px 10px" }}>
+                  Go to Websites
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

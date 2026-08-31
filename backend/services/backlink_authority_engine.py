@@ -169,24 +169,10 @@ class BacklinkAuthorityEngine:
                 except Exception as e:
                     logger.debug(f"Crawl note on {source_url}: {e}")
 
-        # Fallback simulation if all remote live links are active
+        # No fallback simulation - real detection only. If no broken links found, return empty honestly.
         if not discovered_broken:
-            simulated = {
-                "website_id": self.website_id,
-                "source_url": "https://www.texasbar.com/resources/public-guides",
-                "broken_target_url": "https://old-statutes-portal.org/2022-accident-fault-rules",
-                "anchor_text": "Texas Comparative Fault Statutory Guide",
-                "domain_rating": 68,
-                "page_traffic_estimate": 1400,
-                "topic_relevance_score": 0.95,
-                "reclamation_difficulty": "low",
-                "status": "new"
-            }
-            try:
-                supabase.table("broken_link_opportunities").insert(simulated).execute()
-                discovered_broken.append(simulated)
-            except Exception:
-                pass
+            logger.info("[BacklinkEngine] No broken links found on scanned resources - honest empty result (0 mock)")
+            # Do not insert mock data; real gaps will be found on next crawl when links break
 
         duration = time.time() - start_t
         _log_task(self.website_id, "broken_link_reclamation", "completed", duration, {"broken_count": len(discovered_broken)})
@@ -246,15 +232,26 @@ class BacklinkAuthorityEngine:
     # -------------------------------------------------------------------------
     # Subsystem 4: Unlinked Brand Mention Monitor
     # -------------------------------------------------------------------------
-    async def scan_unlinked_brand_mentions(self, brand_name: str = "RankForge Legal") -> List[Dict[str, Any]]:
+    async def scan_unlinked_brand_mentions(self, brand_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """6-hour search for brand and founder mentions without a hyperlink; alert on DR 40+."""
         start_t = time.time()
+        supabase = get_supabase()
+        domain = "example.com"
+        if self.website_id:
+            try:
+                site = supabase.table("websites").select("domain, name").eq("id", self.website_id).single().execute().data
+                if site:
+                    domain = site.get("domain") or "example.com"
+                    brand_name = brand_name or site.get("name") or domain
+            except Exception:
+                pass
+
+        brand_name = brand_name or "Brand"
         logger.info(f"[BacklinkEngine] Subsystem 4: Scanning for unlinked brand mentions of '{brand_name}'...")
         
-        query = f'"{brand_name}" -site:accident.innovatcs.com'
+        query = f'"{brand_name}" -site:{domain}'
         serp_res = await serper_service.search(query=query, num=8, auto_fallback=True)
         unlinked_found = []
-        supabase = get_supabase()
 
         for item in serp_res.get("organic", [])[:4]:
             source_url = item.get("link", "")

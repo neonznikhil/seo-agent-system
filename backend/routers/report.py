@@ -53,6 +53,21 @@ async def get_weekly_report(website_id: Optional[str] = Query(None)):
         return {"success": True, "report": None, "error": str(e)}
 
 
+@router.get("/seo")
+async def get_seo_report(website_id: Optional[str] = Query(None), limit: int = Query(20, ge=1, le=100)):
+    """Real DB query: seo_reports WHERE website_id ORDER BY created_at DESC."""
+    supabase = get_supabase()
+    try:
+        q = supabase.table("seo_reports").select("*")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        res = q.order("created_at", desc=True).limit(limit).execute()
+        return {"success": True, "data": res.data or []}
+    except Exception as e:
+        logger.warning(f"seo report query note: {e}")
+        return {"success": True, "data": []}
+
+
 @router.get("/summary")
 async def get_executive_summary(website_id: Optional[str] = Query(None)):
     """Get high-level summary of articles published, backlinks acquired, and health."""
@@ -62,7 +77,7 @@ async def get_executive_summary(website_id: Optional[str] = Query(None)):
         if website_id:
             cq = cq.eq("website_id", website_id)
         content = cq.execute().data or []
-        
+
         bq = supabase.table("backlink_opportunities").select("id, status")
         if website_id:
             bq = bq.eq("website_id", website_id)

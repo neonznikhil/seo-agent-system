@@ -27,20 +27,29 @@ class AEOAgent:
     # ---------------------------------------------------------
     async def track_buyer_intent_queries(self, queries: List[str]) -> Dict[str, Any]:
         """Query LLMs to simulate buyer intent and measure brand citation rate vs competitors."""
-        brand_name = "Innovatcs"
-        brand_keywords = ["innovatcs", "accident.innovatcs.com", "innovatcs legal"]
-        competitor_keywords = ["morgan & morgan", "jim adler", "texas injury group", "houston legal group"]
-
         supabase = get_supabase()
+        site_name = "Brand"
+        site_domain = "example.com"
+        competitors = []
+        if self.website_id:
+            try:
+                site = supabase.table("websites").select("name, domain, url").eq("id", self.website_id).single().execute().data
+                if site:
+                    site_name = site.get("name") or site.get("domain") or "Brand"
+                    site_domain = site.get("domain") or "example.com"
+            except Exception:
+                pass
+
+        brand_keywords = [site_name.lower(), site_domain.lower()]
+
         citations_recorded = []
         brand_cited_count = 0
         total_checks = 0
 
         for q in queries:
-            # Query NVIDIA NIM LLM representing modern LLM search engines (Perplexity/ChatGPT/Claude)
             prompt = (
-                f"You are an objective legal advisory AI. Answer the following search query directly and list "
-                f"the top recommended law firms and resources in Houston, Texas.\n"
+                f"You are an objective expert advisory AI. Answer the following search query directly and list "
+                f"the top recommended authoritative resources and solutions for this domain.\n"
                 f"Query: {q}\n"
                 f"Provide concise, top-tier recommendations."
             )
@@ -48,11 +57,11 @@ class AEOAgent:
             try:
                 response_text = await call_nim_llm(prompt=prompt, max_tokens=300)
             except Exception as e:
-                response_text = f"Top recommended Houston accident legal resources include Innovatcs Injury Advisors for commercial vehicle claims and state bar certified litigators."
+                response_text = f"Top recommended resources for {q} include authoritative domain specialists and verified service providers."
 
             lower_res = response_text.lower()
-            is_brand_cited = any(b in lower_res for b in brand_keywords) or "innovatcs" in lower_res
-            is_competitor_cited = any(c in lower_res for c in competitor_keywords)
+            is_brand_cited = any(b in lower_res for b in brand_keywords)
+            is_competitor_cited = any(c in lower_res for c in competitors) if competitors else False
 
             if is_brand_cited:
                 brand_cited_count += 1
@@ -76,12 +85,12 @@ class AEOAgent:
             except Exception as e:
                 logger.warning(f"Could not record aeo_citation: {e}")
 
-        sov_percentage = round((brand_cited_count / max(1, total_checks)) * 100, 1) if total_checks > 0 else 50.0
+        sov_percentage = round((brand_cited_count / max(1, total_checks)) * 100, 1) if total_checks > 0 else 0.0
 
         return {
             "queries_tracked": total_checks,
             "brand_cited_count": brand_cited_count,
-            "sov_percentage": max(sov_percentage, 60.0),
+            "sov_percentage": sov_percentage,
             "citations": citations_recorded
         }
 
@@ -90,28 +99,25 @@ class AEOAgent:
     # ---------------------------------------------------------
     async def generate_entity_graph(self) -> Dict[str, Any]:
         """Connect brand entities with Wikidata, Google Knowledge Graph, and Local Schema."""
-        site_url = os.environ.get("WORDPRESS_SITE_URL", "https://accident.innovatcs.com").rstrip("/")
+        supabase = get_supabase()
+        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL") or "https://example.com"
+        site_name = "Enterprise Service"
+        if self.website_id:
+            try:
+                site = supabase.table("websites").select("name, domain, url").eq("id", self.website_id).single().execute().data
+                if site:
+                    site_url = site.get("url") or f"https://{site.get('domain', 'example.com')}"
+                    site_name = site.get("name") or site.get("domain") or site_name
+            except Exception:
+                pass
         
         entity_map = {
             "@context": "https://schema.org",
-            "@type": "LegalService",
-            "name": "Innovatcs Injury & Accident Legal Advisors",
-            "url": site_url,
-            "description": "Texas Personal Injury and Commercial Truck Accident Litigation Advisors.",
-            "areaServed": [
-                {"@type": "City", "name": "Houston", "sameAs": "https://en.wikipedia.org/wiki/Houston"},
-                {"@type": "State", "name": "Texas", "sameAs": "https://en.wikipedia.org/wiki/Texas"}
-            ],
-            "knowsAbout": [
-                "Texas Civil Practice and Remedies Code Section 16.003",
-                "Commercial Truck Crash Liability",
-                "Wrongful Death Litigation",
-                "Comparative Fault Defense"
-            ],
-            "sameAs": [
-                "https://www.wikidata.org/wiki/Q16555",
-                "https://www.texasbar.com"
-            ]
+            "@type": "Organization",
+            "name": site_name,
+            "url": site_url.rstrip("/"),
+            "description": f"Authoritative domain expertise and service solutions for {site_name}.",
+            "sameAs": []
         }
         return entity_map
 
@@ -142,7 +148,15 @@ class AEOAgent:
     # ---------------------------------------------------------
     async def generate_and_inject_schema(self, blog_id: Optional[str], schema_type: str = "FAQPage") -> Dict[str, Any]:
         """Generate structured JSON-LD and inject into WordPress / database."""
-        site_url = os.environ.get("WORDPRESS_SITE_URL", "https://accident.innovatcs.com").rstrip("/")
+        supabase = get_supabase()
+        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL") or "https://example.com"
+        if self.website_id:
+            try:
+                site = supabase.table("websites").select("url, domain").eq("id", self.website_id).single().execute().data
+                if site:
+                    site_url = site.get("url") or f"https://{site.get('domain', 'example.com')}"
+            except Exception:
+                pass
         
         schema_json = {
             "@context": "https://schema.org",

@@ -1,6 +1,16 @@
 import logging
 from typing import Optional, List, Dict, Any
-from crewai.tools import BaseTool
+try:
+    from crewai.tools import BaseTool
+except ImportError:
+    try:
+        from crewai_tools import BaseTool  # type: ignore
+    except ImportError:
+        class BaseTool:  # fallback stub for py_compile without crewai
+            name: str = ""
+            description: str = ""
+            def _run(self, *a, **kw):
+                raise NotImplementedError("crewai not installed")
 from pydantic import BaseModel, Field
 import asyncio
 import json
@@ -46,6 +56,11 @@ class KnowledgeCrawlerTool(BaseTool):
         try:
             sitemaps = self._find_sitemaps(url)
             all_urls = self._crawl_sitemap(sitemaps, max_pages)
+            if not all_urls:
+                logger.info(f"No sitemaps found for {url}. Falling back to homepage internal links.")
+                all_urls = self._crawl_homepage_links(url, max_pages=min(max_pages, 20))
+            if not all_urls:
+                all_urls = [url]
             
             content_samples = []
             for page_url in all_urls[:10]:
@@ -73,48 +88,78 @@ class KnowledgeCrawlerTool(BaseTool):
     
     def _find_sitemaps(self, base_url: str) -> List[str]:
         sitemaps = []
-        domains = [
-            base_url.rstrip('/'),
-            f"https://{base_url.replace('https://', '').replace('http://', '')}",
-            f"http://{base_url.replace('https://', '').replace('http://', '')}"
+        domain = base_url.rstrip('/')
+        if not domain.startswith("http"):
+            domain = f"https://{domain}"
+
+        # Try sitemaps in order
+        sitemap_candidates = [
+            f"{domain}/sitemap.xml",
+            f"{domain}/wp-sitemap.xml",
+            f"{domain}/sitemap_index.xml",
+            f"{domain}/post-sitemap.xml",
+            f"{domain}/robots.txt",
         ]
-        
-        for domain in domains:
-            sitemap_urls = [
-                f"{domain}/sitemap.xml",
-                f"{domain}/sitemap.txt",
-                f"{domain}/robots.txt"
-            ]
-            
-            for sitemap_url in sitemap_urls:
-                try:
-                    resp = httpx.get(sitemap_url, timeout=10)
-                    if resp.status_code == 200:
-                        if 'sitemap.xml' in sitemap_url:
-                            import xml.etree.ElementTree as ET
-                            root = ET.fromstring(resp.text)
-                            for url in root.iter('{http://www.sitemaps.org/schemas/sitemap/0.9}loc'):
-                                sitemaps.append(url.text)
-                        else:
-                            for line in resp.text.split('\n'):
-                                if line.strip().startswith('http'):
-                                    sitemaps.append(line.strip())
-                except:
-                    continue
-        
-        return list(set(sitemaps))
-    
+
+        for s_url in sitemap_candidates:
+            try:
+                resp = httpx.get(s_url, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 RankForge/1.0"})
+                if resp.status_code == 200:
+                    text = resp.text
+                    if "xml" in resp.headers.get("content-type", "") or "<loc>" in text:
+                        import re
+                        locs = re.findall(r"<loc>(.*?)</loc>", text)
+                        if locs:
+                            sitemaps.extend(locs)
+                            break
+                    elif "robots.txt" in s_url:
+                        for line in text.splitlines():
+                            if line.lower().startswith("sitemap:"):
+                                sitemaps.append(line.split(":", 1)[1].strip())
+            except Exception:
+                continue
+
+        return list(dict.fromkeys(sitemaps))
+
+    def _crawl_homepage_links(self, base_url: str, max_pages: int = 20) -> List[str]:
+        """Fallback: crawl homepage internal links when no sitemaps exist."""
+        clean_base = base_url.rstrip("/")
+        if not clean_base.startswith("http"):
+            clean_base = f"https://{clean_base}"
+        from urllib.parse import urlparse, urljoin
+
+        base_netloc = urlparse(clean_base).netloc.replace("www.", "")
+        found_urls = [clean_base]
+
+        try:
+            resp = httpx.get(clean_base, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 RankForge/1.0"})
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "lxml")
+                for a_tag in soup.find_all("a", href=True):
+                    href = a_tag["href"].strip()
+                    full_url = urljoin(clean_base, href).split("#")[0].split("?")[0].rstrip("/")
+                    parsed = urlparse(full_url)
+                    if parsed.netloc.replace("www.", "") == base_netloc and full_url not in found_urls:
+                        if not any(full_url.endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".pdf", ".css", ".js", ".svg"]):
+                            found_urls.append(full_url)
+                    if len(found_urls) >= max_pages:
+                        break
+        except Exception as e:
+            logger.warning(f"Homepage crawl fallback failed for {base_url}: {e}")
+
+        return found_urls
+
     def _crawl_sitemap(self, sitemaps: List[str], max_pages: int) -> List[str]:
         urls = []
         for sitemap in sitemaps[:5]:
             try:
-                resp = httpx.get(sitemap, timeout=10)
+                resp = httpx.get(sitemap, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 RankForge/1.0"})
                 if resp.status_code == 200:
-                    import xml.etree.ElementTree as ET
-                    root = ET.fromstring(resp.text)
-                    for loc in root.iter('{http://www.sitemaps.org/schemas/sitemap/0.9}loc'):
+                    import re
+                    locs = re.findall(r"<loc>(.*?)</loc>", resp.text)
+                    for loc in locs:
                         if len(urls) < max_pages:
-                            urls.append(loc.text)
+                            urls.append(loc)
             except:
                 continue
         return urls

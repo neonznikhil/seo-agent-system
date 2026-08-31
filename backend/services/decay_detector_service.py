@@ -86,8 +86,8 @@ class DecayDetectorService:
                 decayed_pages.append({
                     "url": url,
                     "decay_percent": decay_percent,
-                    "position_change": f"{previous.get('position', 0)} → {recent.get('position', 0)}",
-                    "clicks_change": f"{previous.get('clicks', 0)} → {recent.get('clicks', 0)}"
+                    "position_change": f"{previous.get('position', 0)} -> {recent.get('position', 0)}",
+                    "clicks_change": f"{previous.get('clicks', 0)} -> {recent.get('clicks', 0)}"
                 })
                 
                 if auto_alert:
@@ -97,7 +97,7 @@ class DecayDetectorService:
                         alert_type="content_decay",
                         severity="warning" if decay_percent < 30 else "major",
                         title=f"Content decay detected: {url}",
-                        description=f"Position dropped {previous.get('position', 0)} → {recent.get('position', 0)}, clicks -{decay_percent}%",
+                        description=f"Position dropped {previous.get('position', 0)} -> {recent.get('position', 0)}, clicks -{decay_percent}%",
                         data={"decay_log_id": decay_id, "decay_percent": decay_percent, "page_url": url},
                         source_monitor="decay_detector"
                     )

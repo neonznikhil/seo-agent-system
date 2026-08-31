@@ -54,9 +54,35 @@ async def run_serp_sweep(payload: SerpSweepRequest):
     }
 
 
+@router.get("/monitor")
+async def get_serp_monitor(
+    website_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Real DB query: serp_data WHERE website_id ORDER BY created_at DESC."""
+    supabase = get_supabase()
+    try:
+        q = supabase.table("serp_data").select("*")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        res = q.order("created_at", desc=True).limit(limit).execute()
+        return {"success": True, "data": res.data or []}
+    except Exception as e:
+        logger.warning(f"serp.monitor fallback: {e}")
+        return {"success": True, "data": []}
+
+
 @router.get("/volatility")
 async def get_serp_volatility():
-    """Retrieve Google SERP Volatility Index and algorithmic sensor data."""
+    """Retrieve Google SERP Volatility Index from serp_data or sensor."""
+    # First try real serp_data aggregation
+    try:
+        supabase = get_supabase()
+        rows = supabase.table("serp_data").select("volatility_score, created_at").order("created_at", desc=True).limit(1).execute().data or []
+        if rows and rows[0].get("volatility_score") is not None:
+            return {"success": True, "volatility": {"score": float(rows[0]["volatility_score"]), "status": "measured", "last_updated": rows[0].get("created_at")}}
+    except Exception:
+        pass
     try:
         from ..services.monitoring_service import MonitoringService
         ms = MonitoringService(website_id="default")

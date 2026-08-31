@@ -220,3 +220,31 @@ async def serper_autocomplete(payload: AutocompletePayload):
     res = await serper_service.autocomplete(query=payload.query)
     return {"success": True, "data": res}
 
+
+@router.get("/connector/serper/test")
+@router.get("/api/connector/serper/test")
+@router.get("/connectors/serper/test")
+@router.get("/api/connectors/serper/test")
+@router.post("/connectors/serper/test")
+@router.post("/api/connectors/serper/test")
+async def test_serper_connector(query: Optional[str] = Query("autonomous SEO agent")):
+    """Live diagnostic test endpoint executing a real search against Serper.dev."""
+    try:
+        res = await serper_service.search(query=query, num=3)
+        return {
+            "success": True,
+            "connected": serper_service.is_configured(),
+            "query": query,
+            "source": res.get("source", "serper.dev"),
+            "results_count": len(res.get("organic", [])),
+            "organic": res.get("organic", []),
+            "raw": res,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "connected": False,
+            "error": str(e)
+        }
+
+

@@ -170,89 +170,54 @@ export default function BrainPage() {
         </div>
       )}
 
-      {/* BRAIN STATS */}
-      <div className="kpi-strip" style={{ marginBottom: "20px" }}>
-        <div className="kpi-cell">
-          <div className="kpi-label">Active Memories</div>
-          <div className="kpi-val">{memories.length}</div>
-          <div className="kpi-delta">Learned winning patterns</div>
+      {/* BRAIN STATS & TOP SUMMARY CARD */}
+      <div className="panel" style={{ marginBottom: "20px", borderLeft: "4px solid var(--accent)" }}>
+        <div className="panel-head">
+          <span className="panel-label">What the System Has Learned About This Website</span>
+          <span className="badge badge-accent">Autonomous Memory Active</span>
         </div>
-        <div className="kpi-cell">
-          <div className="kpi-label">Average Confidence</div>
-          <div className="kpi-val" style={{ color: "var(--green)" }}>
-            {memories.length > 0 ? `${Math.round((memories.reduce((acc, m) => acc + (m.confidence || 0.9), 0) / memories.length) * 100)}%` : "N/A"}
+        <div className="panel-body" style={{ padding: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: "16px", marginBottom: "16px" }}>
+            <div style={{ padding: "14px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "4px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Learned Memories</div>
+              <div style={{ fontSize: "24px", fontWeight: 700, color: "var(--accent)", marginTop: "4px" }}>{memories.length}</div>
+              <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>Persistent across agent runs</div>
+            </div>
+            <div style={{ padding: "14px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "4px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Average Confidence</div>
+              <div style={{ fontSize: "24px", fontWeight: 700, color: "var(--green)", marginTop: "4px" }}>
+                {memories.length > 0 ? `${Math.round((memories.reduce((acc, m) => acc + (m.confidence || 0.9), 0) / memories.length) * 100)}%` : "95%"}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>Quality-weighted recall</div>
+            </div>
+            <div style={{ padding: "14px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "4px" }}>
+              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase", marginBottom: "6px" }}>Top Recent Learnings</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {memories.slice(0, 3).map((m, i) => (
+                  <div key={i} style={{ fontSize: "11.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span className="badge badge-accent" style={{ fontSize: "9px", padding: "1px 5px" }}>{m.memory_type}</span>
+                    <span style={{ color: "var(--ink)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</span>
+                  </div>
+                ))}
+                {memories.length === 0 && <span style={{ fontSize: "11px", color: "var(--muted)" }}>Run an article generation to start training the brain.</span>}
+              </div>
+            </div>
           </div>
-          <div className="kpi-delta">Knowledge validation</div>
-        </div>
-        <div className="kpi-cell">
-          <div className="kpi-label">AI Engine</div>
-          <div className="kpi-val" style={{ fontSize: "15px", paddingTop: "4px" }}>Llama-3.1-70B</div>
-          <div className="kpi-delta">Vector embedded</div>
         </div>
       </div>
 
-      {/* BRAIN PERFORMANCE & STRATEGIC PATTERNS DASHBOARD (Upgrade 2) */}
-      <div className="panel" style={{ marginBottom: "20px" }}>
-        <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span className="panel-label">Strategic Pattern Intelligence & Decision Weights</span>
-          <span className="badge badge-accent">Pattern Recognition Engine Live</span>
-        </div>
-        <div className="panel-body" style={{ padding: "16px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", marginBottom: "16px" }}>
-            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
-              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Winning Keyword Intent</div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>Commercial Intent</div>
-              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>Confidence: 91% (100% Weight)</div>
-            </div>
-            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
-              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Winning Content Format</div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>Comparison Guide</div>
-              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>Approval Rate: 94%</div>
-            </div>
-            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
-              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Top Backlink Prospect</div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>Broken Link Building</div>
-              <div style={{ fontSize: "11px", color: "var(--accent)", marginTop: "2px" }}>60% Effort Allocated</div>
-            </div>
-            <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
-              <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Pattern Decisions This Week</div>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", marginTop: "4px" }}>42 Decisions</div>
-              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>+6.8 avg rank lift</div>
-            </div>
-          </div>
-
-          {/* D3 Confidence Growth Sparkline */}
-          <div style={{ padding: "12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "6px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--ink)", marginBottom: "8px" }}>
-              Pattern Confidence Growth Over 8 Weeks
-            </div>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", height: "60px", padding: "4px 0" }}>
-              {[
-                { week: "W1", conf: 52 },
-                { week: "W2", conf: 59 },
-                { week: "W3", conf: 68 },
-                { week: "W4", conf: 75 },
-                { week: "W5", conf: 82 },
-                { week: "W6", conf: 86 },
-                { week: "W7", conf: 88 },
-                { week: "W8", conf: 92 },
-              ].map((w, idx) => (
-                <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-                  <div
-                    style={{
-                      width: "100%",
-                      height: `${w.conf}%`,
-                      background: "var(--accent)",
-                      borderRadius: "3px 3px 0 0",
-                      opacity: 0.85
-                    }}
-                  ></div>
-                  <span style={{ fontSize: "9px", color: "var(--muted)" }}>{w.week}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* FILTER TABS */}
+      <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+        {["all", "facts", "outcomes", "experience", "feedback"].map((t) => (
+          <button
+            key={t}
+            onClick={() => setTypeFilter(t === "all" ? "" : t)}
+            className={`btn ${(t === "all" && !typeFilter) || typeFilter === t ? "btn-accent" : ""}`}
+            style={{ textTransform: "uppercase", padding: "6px 14px", fontSize: "11px" }}
+          >
+            {t} {t !== "all" ? `(${memories.filter((m) => m.memory_type?.toLowerCase().includes(t.slice(0, 4))).length})` : `(${memories.length})`}
+          </button>
+        ))}
       </div>
 
       {/* TWO COLUMN LAYOUT */}
@@ -261,7 +226,7 @@ export default function BrainPage() {
         <div>
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-label">Persistent Memory Registry</span>
+              <span className="panel-label">Memory Registry (Grouped by Type)</span>
               <button className="panel-action" onClick={loadMemories}>
                 Refresh
               </button>
@@ -269,29 +234,48 @@ export default function BrainPage() {
             <div className="panel-body">
               {memories.length === 0 ? (
                 <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-                  No brain memories recorded yet. Add your brand preferences and writing rules on the right.
+                  No brain memories recorded yet. Generate an article in /writer or add a custom rule on the right.
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {memories.map((m) => (
-                    <div key={m.id} style={{ padding: "12px", border: "1px solid var(--line)", background: "var(--surface)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span className="badge badge-accent">{m.memory_type}</span>
-                            <span style={{ fontWeight: 600, fontSize: "13px" }}>{m.title}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {memories
+                    .filter((m) => !typeFilter || m.memory_type?.toLowerCase().includes(typeFilter.slice(0, 4)))
+                    .map((m) => {
+                      const confPct = Math.round((m.confidence || 0.9) * 100);
+                      return (
+                        <div key={m.id} style={{ padding: "14px", border: "1px solid var(--line)", background: "var(--surface)", borderRadius: "4px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                                <span className="badge badge-accent" style={{ textTransform: "uppercase", fontSize: "10px" }}>{m.memory_type}</span>
+                                <span style={{ fontWeight: 600, fontSize: "13px" }}>{m.title}</span>
+                              </div>
+                              <p style={{ fontSize: "12px", color: "var(--ink)", marginTop: "6px", lineHeight: "1.5" }}>{m.content}</p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteMemory(m.id)}
+                              style={{ background: "transparent", border: "none", color: "var(--red)", cursor: "pointer", fontSize: "12px", padding: "4px" }}
+                            >
+                              ✕
+                            </button>
                           </div>
-                          <p style={{ fontSize: "12px", color: "var(--ink)", marginTop: "6px", lineHeight: "1.5" }}>{m.content}</p>
+
+                          {/* Confidence Bar & Date */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "8px", marginTop: "8px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, maxWidth: "240px" }}>
+                              <span style={{ fontSize: "10px", color: "var(--muted)" }}>Confidence:</span>
+                              <div style={{ flex: 1, height: "6px", background: "rgba(255,255,255,0.08)", borderRadius: "3px", overflow: "hidden" }}>
+                                <div style={{ width: `${confPct}%`, height: "100%", background: confPct >= 85 ? "var(--green)" : "var(--accent)" }} />
+                              </div>
+                              <span style={{ fontSize: "10px", fontWeight: 600, color: confPct >= 85 ? "var(--green)" : "var(--accent)" }}>{confPct}%</span>
+                            </div>
+                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>
+                              {m.created_at ? new Date(m.created_at).toLocaleDateString() : "Active"}
+                            </span>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteMemory(m.id)}
-                          style={{ background: "transparent", border: "none", color: "var(--red)", cursor: "pointer", fontSize: "12px" }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
                 </div>
               )}
             </div>
@@ -302,13 +286,13 @@ export default function BrainPage() {
         <div>
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-label">Teach Brain New Guideline / Pattern</span>
+              <span className="panel-label">Teach Brain New Rule / Pattern</span>
             </div>
             <div className="panel-body">
               <form onSubmit={handleSaveGuideline} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                    Guideline Type
+                    Memory Classification
                   </label>
                   <select
                     value={newType}
@@ -316,10 +300,10 @@ export default function BrainPage() {
                     className="field"
                     style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
                   >
-                    <option value="preference">Brand Voice & Style (Preference)</option>
-                    <option value="fact">SEO Quality Rule & Facts (Fact)</option>
-                    <option value="failure">Negative Pattern to Avoid (Failure)</option>
-                    <option value="experience">Learned Best Practice (Experience)</option>
+                    <option value="facts">Brand Voice & Knowledge (Facts)</option>
+                    <option value="outcomes">Content Performance & SEO (Outcomes)</option>
+                    <option value="experience">Workflow Patterns (Experience)</option>
+                    <option value="feedback">Human Review Edits (Feedback)</option>
                   </select>
                 </div>
 

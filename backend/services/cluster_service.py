@@ -42,18 +42,9 @@ class ClusterService:
             except Exception:
                 pass
 
-        # 3. Editorial baseline fallback if DB is completely fresh
+        # 3. If no keywords found in GSC or DB, return empty result
         if not keywords:
-            keywords = [
-                {"keyword": "car accident compensation claims", "impressions": 4800, "position": 8.4},
-                {"keyword": "personal injury settlement timeline", "impressions": 3900, "position": 11.2},
-                {"keyword": "how to file a car accident claim", "impressions": 3100, "position": 9.8},
-                {"keyword": "average payout for car accident injury", "impressions": 2800, "position": 14.1},
-                {"keyword": "what damages can you claim after accident", "impressions": 2400, "position": 12.5},
-                {"keyword": "steps to take after auto collision", "impressions": 2100, "position": 10.5},
-                {"keyword": "hiring a personal injury attorney", "impressions": 1900, "position": 15.6},
-                {"keyword": "pain and suffering settlement calculation", "impressions": 1700, "position": 13.2},
-            ]
+            return {"clusters": [], "created_articles": [], "total_keywords": 0}
 
         kw_texts = [k.get("keyword", "") for k in keywords if k.get("keyword")]
         embeddings = await KnowledgeService.create_embeddings_batch(kw_texts[:30])
@@ -178,7 +169,18 @@ class ClusterService:
             return "transactional"
         if any(w in kw_lower for w in ["best", "review", "vs", "compare", "options", "timeline"]):
             return "commercial"
-        return "informational"
+    async def cluster_keywords_list(self, keywords_list: List[str]) -> List[Dict[str, Any]]:
+        """Cluster arbitrary list of keywords using semantic embeddings and cosine similarity."""
+        if not keywords_list:
+            return []
+        from ..services.knowledge_service import KnowledgeService
+        kw_records = [{"keyword": kw, "impressions": 100, "position": 10.0} for kw in keywords_list]
+        embeddings = await KnowledgeService.create_embeddings_batch(keywords_list[:50])
+        return await self._cluster_keywords(kw_records, embeddings)
+
+
+# Backwards compatibility alias
+ClusterEngine = ClusterService
 
 
 async def build_clusters(website_id: str = "default", max_clusters: int = 6) -> Dict[str, Any]:

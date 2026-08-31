@@ -28,7 +28,7 @@ class SlackAppService:
     Token resolution order:
       1. Per-website Fernet-encrypted token from websites.slack_credentials
       2. Environment SLACK_BOT_TOKEN
-    Delivery is never simulated: if no token/webhook is configured the call
+    Delivery is never mocked: if no token/webhook is configured the call
     returns False with an explicit reason.
     """
 

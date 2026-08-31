@@ -402,7 +402,18 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
     graph_data = await build_internal_link_graph(website_id)
     orphans = graph_data.get("orphans", [])
 
+    # Get site config
+    site_url = "https://example.com"
+    try:
+        s_row = supabase.table("websites").select("url, domain").eq("id", website_id).single().execute().data
+        if s_row:
+            site_url = s_row.get("url") or f"https://{s_row.get('domain', 'example.com')}"
+    except Exception:
+        pass
+
     # Pass 1: Orphan Rescue
+    pages = [n.get("id") for n in graph_data.get("nodes", []) if n.get("id") not in orphans]
+    fallback_source = pages[0] if pages else site_url
     for orphan_url in orphans[:5]:
         fix = {
             "website_id": website_id,
@@ -410,8 +421,8 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
             "title": f"Internal Link: Rescue Orphan Page {orphan_url}",
             "details": {
                 "orphan_url": orphan_url,
-                "recommended_source": f"https://accident.innovatcs.com/texas-car-accident-claims-guide",
-                "suggested_anchor": "Texas accident claim statutory rules",
+                "recommended_source": fallback_source,
+                "suggested_anchor": "Related Domain Guide",
                 "pass": "orphan_rescue"
             },
             "status": "pending_human_approval",
@@ -423,44 +434,47 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         except Exception:
             pass
 
-    # Pass 2: PageRank Sculpting
-    star_fix = {
-        "website_id": website_id,
-        "fix_type": "internal_link_pagerank",
-        "title": "Internal Link: Sculpt PageRank to Star Guide",
-        "details": {
-            "target_star_url": "https://accident.innovatcs.com/texas-truck-accident-lawyer-settlement-guide",
-            "high_pr_source": "https://accident.innovatcs.com",
-            "suggested_anchor": "Texas commercial truck accident settlements",
-            "pass": "pagerank_sculpting"
-        },
-        "status": "pending_human_approval",
-        "created_at": datetime.utcnow().isoformat()
-    }
-    try:
-        supabase.table("pending_fixes").insert(star_fix).execute()
-        fixes_generated.append(star_fix)
-    except Exception:
-        pass
+    # Pass 2: PageRank Sculpting (if pages available)
+    if len(pages) >= 2:
+        star_fix = {
+            "website_id": website_id,
+            "fix_type": "internal_link_pagerank",
+            "title": f"Internal Link: Sculpt PageRank to {pages[0]}",
+            "details": {
+                "target_star_url": pages[0],
+                "high_pr_source": site_url,
+                "suggested_anchor": "Core Domain Guide",
+                "pass": "pagerank_sculpting"
+            },
+            "status": "pending_human_approval",
+            "created_at": datetime.utcnow().isoformat()
+        }
+        try:
+            supabase.table("pending_fixes").insert(star_fix).execute()
+            fixes_generated.append(star_fix)
+        except Exception:
+            pass
 
     # Pass 3: Anchor Diversification
-    anchor_fix = {
-        "website_id": website_id,
-        "fix_type": "internal_link_anchor_diversification",
-        "title": "Internal Link: Diversify Over-Optimized Anchor Text",
-        "details": {
-            "target_url": "https://accident.innovatcs.com/average-auto-collision-settlement-houston",
-            "suggested_variations": ["Houston accident compensation rules", "average payouts for injury", "our settlement guide"],
-            "pass": "anchor_diversification"
-        },
-        "status": "pending_human_approval",
-        "created_at": datetime.utcnow().isoformat()
-    }
-    try:
-        supabase.table("pending_fixes").insert(anchor_fix).execute()
-        fixes_generated.append(anchor_fix)
-    except Exception:
-        pass
+    if pages:
+        target_page = pages[0]
+        anchor_fix = {
+            "website_id": website_id,
+            "fix_type": "internal_link_anchor_diversification",
+            "title": f"Internal Link: Diversify Anchor Text for {target_page}",
+            "details": {
+                "target_url": target_page,
+                "suggested_variations": ["Explore our guide", "Read complete analysis", "Full overview"],
+                "pass": "anchor_diversification"
+            },
+            "status": "pending_human_approval",
+            "created_at": datetime.utcnow().isoformat()
+        }
+        try:
+            supabase.table("pending_fixes").insert(anchor_fix).execute()
+            fixes_generated.append(anchor_fix)
+        except Exception:
+            pass
 
     return {
         "success": True,
