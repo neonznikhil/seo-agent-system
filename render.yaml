@@ -1,0 +1,65 @@
+services:
+  - type: web
+    name: rankforge-backend
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          name: rankforge-redis
+          type: redis
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: https://rankforge-frontend.onrender.com,http://localhost:3000
+
+  - type: web
+    name: rankforge-frontend
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    rootDir: frontend-next
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://rankforge-backend.onrender.com/api
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: PORT
+        value: 10000
+
+  - type: redis
+    name: rankforge-redis
+    region: singapore
+    plan: free
+    maxmemoryPolicy: allkeys-lru
