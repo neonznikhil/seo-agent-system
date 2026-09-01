@@ -34,3 +34,5 @@ Thumbs.db
 # Build
 .next/
 out/
+
+.next/
