@@ -3,11 +3,11 @@ import pytest
 from unittest.mock import patch, MagicMock
 import asyncio
 
-from backend.agents.crew import plan_blogs_for_website
-from backend.agents.tools.quality_gate_tool import QualityGateTool
-from backend.agents.tools.vector_memory_tool import is_duplicate, _check_duplicate
-from backend.agents.tools.cms_tools import publish_blog_after_approval
-from backend.database import get_embedding
+from agents.crew import plan_blogs_for_website
+from agents.tools.quality_gate_tool import QualityGateTool
+from agents.tools.vector_memory_tool import is_duplicate, _check_duplicate
+from agents.tools.cms_tools import publish_blog_after_approval
+from database import get_embedding
 
 logger = logging.getLogger("backend.tests.test_real_work")
 

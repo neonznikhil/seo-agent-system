@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 import httpx
 from bs4 import BeautifulSoup
 
-from backend.database import get_supabase
+from database import get_supabase
 from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.agents.acquisition_monitor_agent")

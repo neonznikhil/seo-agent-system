@@ -1,9 +1,9 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from backend.main import app
-from backend.services.rag_service import RAGService
-from backend.services.knowledge_service import KnowledgeService
-from backend.agents.autonomous_decision_engine import AutonomousDecisionEngine
+from main import app
+from services.rag_service import RAGService
+from services.knowledge_service import KnowledgeService
+from agents.autonomous_decision_engine import AutonomousDecisionEngine
 
 
 @pytest.mark.asyncio

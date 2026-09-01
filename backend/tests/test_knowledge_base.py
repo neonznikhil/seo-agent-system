@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.services.knowledge_evolution_service import KnowledgeEvolutionService
+from services.knowledge_evolution_service import KnowledgeEvolutionService
 
 
 @pytest.mark.asyncio

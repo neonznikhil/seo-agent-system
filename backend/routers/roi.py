@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.routers.roi")
 router = APIRouter()

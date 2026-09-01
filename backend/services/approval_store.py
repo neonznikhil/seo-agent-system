@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from backend.database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.services.approval_store")
 

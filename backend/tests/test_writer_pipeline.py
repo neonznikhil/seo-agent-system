@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.agents.writer_agent import WriterPipeline
+from agents.writer_agent import WriterPipeline
 
 
 @pytest.mark.asyncio

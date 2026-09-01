@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from backend.services.crisis_response_service import CrisisResponseService
+from services.crisis_response_service import CrisisResponseService
 
 
 @pytest.mark.asyncio

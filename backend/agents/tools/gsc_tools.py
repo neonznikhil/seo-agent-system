@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict
 import json
 
-from backend.database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.tools.gsc")
 

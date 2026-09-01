@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from backend.database import get_supabase, is_nim_available
+from database import get_supabase, is_nim_available
 from knowledge_agent import run_knowledge_agent
 from services.knowledge_service import KnowledgeService
 from research_agent import ResearchAgent

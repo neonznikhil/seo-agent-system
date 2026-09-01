@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import patch, AsyncMock
-from backend.services.content_refresh import (
+from services.content_refresh import (
     detect_decaying_articles,
     refresh_decaying_article,
 )
-from backend.services.local_store import (
+from services.local_store import (
     save_local_rank_tracking,
     save_local_approval,
 )

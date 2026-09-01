@@ -5,9 +5,9 @@ import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from backend.database import get_supabase, call_nim_llm
-from backend.services.serper_service import serper_service
-from backend.services.brain_service import BrainService
+from database import get_supabase, call_nim_llm
+from services.serper_service import serper_service
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.services.topic_ownership_engine")
 

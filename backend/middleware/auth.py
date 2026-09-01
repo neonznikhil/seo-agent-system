@@ -14,7 +14,7 @@ from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from backend.database import get_supabase, set_account_context
+from database import get_supabase, set_account_context
 
 logger = logging.getLogger("backend.middleware.auth")
 

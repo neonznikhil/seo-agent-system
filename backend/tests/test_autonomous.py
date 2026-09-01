@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from backend.main import app
-from backend.agents.autonomous_decision_engine import AutonomousDecisionEngine
+from main import app
+from agents.autonomous_decision_engine import AutonomousDecisionEngine
 
 
 @pytest.mark.asyncio

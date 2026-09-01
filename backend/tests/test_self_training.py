@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.services.self_training_service import SelfTrainingService
+from services.self_training_service import SelfTrainingService
 
 
 @pytest.mark.asyncio

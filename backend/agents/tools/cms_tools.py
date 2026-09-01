@@ -4,13 +4,13 @@ import json
 
 import httpx
 
-from backend.database import get_supabase
-from backend.config import WORDPRESS_URL
+from database import get_supabase
+from config import WORDPRESS_URL
 
 logger = logging.getLogger("backend.tools.cms")
 
 
-from rules import CriticalActionBlockedError
+from agents.rules import CriticalActionBlockedError
 
 
 def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: str) -> None:

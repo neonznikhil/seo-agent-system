@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.services.knowledge_service import KnowledgeService, VECTOR_DIM, _deterministic_embedding
-from backend.services.rag_service import RAGService
-from backend.database import get_supabase
+from services.knowledge_service import KnowledgeService, VECTOR_DIM, _deterministic_embedding
+from services.rag_service import RAGService
+from database import get_supabase
 
 async def _get_test_website_id(prefix: str = "test"):
     """Get existing accident site or create temp - ensures FK without RLS mock"""

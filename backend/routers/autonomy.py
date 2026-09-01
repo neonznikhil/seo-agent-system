@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from backend.database import get_supabase
+from database import get_supabase
 from agents.scheduler import get_scheduler_status, get_scheduler_logs, run_job_now
 from agents.autonomous_decision_engine import AutonomousDecisionEngine
 from services.analytics_service import AnalyticsService

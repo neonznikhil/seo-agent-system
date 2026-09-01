@@ -4,9 +4,9 @@ from unittest.mock import patch, MagicMock
 import asyncio
 from datetime import datetime, timedelta
 
-from backend.database import get_supabase, get_embedding
-from backend.agents.tools.cms_tools import publish_blog_after_approval, CriticalActionBlockedError
-from backend.agents.rules import require_human_approval
+from database import get_supabase, get_embedding
+from agents.tools.cms_tools import publish_blog_after_approval, CriticalActionBlockedError
+from agents.rules import require_human_approval
 
 logger = logging.getLogger("backend.tests.test_e2e_full_flow")
 

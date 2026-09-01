@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends, Request
 from pydantic import BaseModel, Field
 
-from backend.database import get_supabase
+from database import get_supabase
 from services.knowledge_service import KnowledgeService
 from services.knowledge_service import crawl_and_index_website
 

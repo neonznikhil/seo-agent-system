@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import patch, AsyncMock
-from backend.services.rank_tracker import (
+from services.rank_tracker import (
     track_published_post,
     check_keyword_rankings,
     get_tracked_rankings,
     create_rank_alert,
     _normalize_url,
 )
-from backend.services.local_store import save_local_rank_tracking
+from services.local_store import save_local_rank_tracking
 
 
 @pytest.mark.asyncio

@@ -4,8 +4,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
-from backend.database import get_supabase
-from backend.services.serper_service import serper_service
+from database import get_supabase
+from services.serper_service import serper_service
 from slack_intelligence_service import slack_intelligence_service
 
 logger = logging.getLogger("backend.services.serp_volatility_service")

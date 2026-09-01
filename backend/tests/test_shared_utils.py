@@ -2,8 +2,8 @@ import logging
 import pytest
 from unittest.mock import patch
 
-from backend.agents.tools.shared_utils import is_homepage
-from backend.config import validate_env
+from agents.tools.shared_utils import is_homepage
+from config import validate_env
 
 logger = logging.getLogger("backend.tests.test_shared_utils")
 

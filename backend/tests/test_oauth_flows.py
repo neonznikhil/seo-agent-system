@@ -1,8 +1,8 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import patch, MagicMock, AsyncMock
-from backend.main import app
-from backend.routers.oauth_connectors import set_oauth_state, get_and_validate_oauth_state
+from main import app
+from routers.oauth_connectors import set_oauth_state, get_and_validate_oauth_state
 
 
 @pytest.mark.asyncio

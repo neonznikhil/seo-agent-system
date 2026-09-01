@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.services.slack_intelligence_service import SlackIntelligenceService
-from backend.services.slack_app_service import SlackAppService
+from services.slack_intelligence_service import SlackIntelligenceService
+from services.slack_app_service import SlackAppService
 
 
 @pytest.mark.asyncio

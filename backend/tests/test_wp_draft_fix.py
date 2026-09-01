@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.services.wordpress_service import WordPressService
+from services.wordpress_service import WordPressService
 
 
 @pytest.mark.asyncio

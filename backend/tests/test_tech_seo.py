@@ -1,7 +1,7 @@
 import logging
 import pytest
 
-from backend.agents.tech_seo_agent import run_tech_seo_agent
+from agents.tech_seo_agent import run_tech_seo_agent
 
 logger = logging.getLogger("backend.tests.test_tech_seo")
 

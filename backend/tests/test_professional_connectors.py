@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.main import app
-from backend.database import get_supabase
+from main import app
+from database import get_supabase
 
 NIM_MODELS_URL = "https://integrate.api.nvidia.com/v1/models"
 NIM_LLM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"

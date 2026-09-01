@@ -1,8 +1,8 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from backend.main import app
-from backend.agents.backlink_agent import BacklinkAgent
-from backend.agents.aeo_agent import AEOAgent
+from main import app
+from agents.backlink_agent import BacklinkAgent
+from agents.aeo_agent import AEOAgent
 
 
 @pytest.mark.asyncio

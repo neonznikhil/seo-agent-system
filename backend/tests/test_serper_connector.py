@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport
-from backend.services.serper_service import serper_service, SerperService
-from backend.main import app
+from services.serper_service import serper_service, SerperService
+from main import app
 
 
 @pytest.mark.asyncio

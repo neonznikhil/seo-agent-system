@@ -2,7 +2,7 @@ import logging
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
 
-from backend.agents.rules import (
+from agents.rules import (
     CRITICAL_ACTIONS,
     CriticalActionBlockedError,
     is_critical_action,
@@ -12,7 +12,7 @@ from backend.agents.rules import (
     validate_approval_for_update,
     log_blocked_critical_action,
 )
-from backend.agents.tools.cms_tools import (
+from agents.tools.cms_tools import (
     publish_blog_after_approval,
     update_page_after_approval,
     delete_page_on_wordpress,

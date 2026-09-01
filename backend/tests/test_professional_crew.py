@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.database import get_supabase
+from database import get_supabase
 
 @pytest.mark.asyncio
 async def test_serper_service_real():

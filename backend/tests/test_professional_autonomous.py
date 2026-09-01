@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.database import get_supabase
+from database import get_supabase
 
 def test_apscheduler_single_authority_ist():
     """APScheduler SINGLE AUTHORITY: scheduler.py:20 IST Asia/Kolkata, autonomous_loop while True removed, process_autonomous_cycle every 5m"""

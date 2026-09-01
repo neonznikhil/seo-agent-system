@@ -6,7 +6,7 @@ import logging
 import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from backend.services.rag_service import RAGService
+from services.rag_service import RAGService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("test_rag")

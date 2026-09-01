@@ -16,8 +16,8 @@ except ImportError:
                 raise NotImplementedError("crewai not installed")
 from pydantic import BaseModel, Field
 
-from backend.database import get_supabase, get_embedding
-from backend.config import DUPLICATE_THRESHOLD
+from database import get_supabase, get_embedding
+from config import DUPLICATE_THRESHOLD
 
 logger = logging.getLogger("backend.tools.vector_memory")
 

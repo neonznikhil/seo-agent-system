@@ -1,7 +1,7 @@
 import logging
 import pytest
 
-from backend.agents.tools.quality_gate_tool import QualityGateTool
+from agents.tools.quality_gate_tool import QualityGateTool
 
 logger = logging.getLogger("backend.tests.test_quality_gate")
 

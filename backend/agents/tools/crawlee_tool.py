@@ -16,7 +16,7 @@ except ImportError:
                 raise NotImplementedError("crewai not installed")
 from pydantic import BaseModel, Field
 
-from backend.database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.tools.crawlee")
 

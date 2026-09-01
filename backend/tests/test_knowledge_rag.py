@@ -6,9 +6,9 @@ except ImportError:
     fitz = None
 import pytest
 from httpx import AsyncClient, ASGITransport
-from backend.main import app
-from backend.services.rag_service import RAGService
-from backend.services.knowledge_service import KnowledgeService
+from main import app
+from services.rag_service import RAGService
+from services.knowledge_service import KnowledgeService
 
 
 def test_chunking_heading_aware():

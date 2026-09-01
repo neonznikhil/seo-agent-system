@@ -11,10 +11,10 @@ from urllib.parse import urljoin, urlparse
 import networkx as nx
 from bs4 import BeautifulSoup
 
-from backend.database import get_supabase, get_embedding, call_nim_llm
-from backend.services.ga4_service import GA4Service
-from backend.services.crawlee_service import _is_url_blocked
-from backend.services.reporting_service import report_problem
+from database import get_supabase, get_embedding, call_nim_llm
+from services.ga4_service import GA4Service
+from services.crawlee_service import _is_url_blocked
+from services.reporting_service import report_problem
 
 logger = logging.getLogger("backend.services.internal_link")
 

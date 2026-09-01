@@ -1,10 +1,10 @@
 import pytest
 from bs4 import BeautifulSoup
-from backend.services.internal_links import (
+from services.internal_links import (
     index_blog_for_linking,
     inject_internal_links,
 )
-from backend.services.local_store import save_local_internal_link
+from services.local_store import save_local_internal_link
 
 
 @pytest.mark.asyncio

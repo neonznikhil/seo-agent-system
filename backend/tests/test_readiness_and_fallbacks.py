@@ -3,11 +3,11 @@ from unittest.mock import patch, AsyncMock, MagicMock
 import httpx
 from fastapi.testclient import TestClient
 
-from backend.wordpress_oauth import test_wordpress_connection as wp_test_conn
-from backend.services.nim_client import nim_generate_with_feedback
-from backend.services.serper_service import serper_search_safe
-from backend.agents.tools.knowledge_crawler_tool import KnowledgeCrawlerTool
-from backend.main import app
+from wordpress_oauth import test_wordpress_connection as wp_test_conn
+from services.nim_client import nim_generate_with_feedback
+from services.serper_service import serper_search_safe
+from agents.tools.knowledge_crawler_tool import KnowledgeCrawlerTool
+from main import app
 
 client = TestClient(app)
 

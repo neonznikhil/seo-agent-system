@@ -2,7 +2,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import patch, MagicMock
 
-from backend.main import app
+from main import app
 
 
 @pytest.mark.asyncio

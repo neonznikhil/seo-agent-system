@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
-from backend.main import app
+from main import app
 
 client = TestClient(app)
 

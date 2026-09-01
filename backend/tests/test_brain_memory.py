@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.services.brain_service import BrainService
+from services.brain_service import BrainService
 
 
 @pytest.mark.asyncio

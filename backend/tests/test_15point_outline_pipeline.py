@@ -1,7 +1,7 @@
 import pytest
 import re
 from bs4 import BeautifulSoup
-from backend.agents.crew_blog_writer import (
+from agents.crew_blog_writer import (
     sanitize_keyword,
     fix_broken_year_in_content,
     validate_word_count,

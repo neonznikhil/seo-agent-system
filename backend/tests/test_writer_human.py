@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.agents.tools.humanizer import (
+from agents.tools.humanizer import (
     humanize_content,
     detect_ai_patterns,
     optimize_for_human_readability,

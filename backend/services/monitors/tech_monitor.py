@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, Any
 import aiohttp
 import os
 from datetime import datetime
-from backend.database import get_supabase
+from database import get_supabase
 
 
 class TechMonitor:

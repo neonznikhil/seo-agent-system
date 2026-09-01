@@ -21,7 +21,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from pydantic import Field
 
-from backend.database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm
 
 logger = logging.getLogger("backend.agents.crew_blog_writer")
 

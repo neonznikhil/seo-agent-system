@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from backend.database import get_supabase, set_account_context
+from database import get_supabase, set_account_context
 from middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.dashboard")

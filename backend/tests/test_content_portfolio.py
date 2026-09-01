@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from backend.services.content_portfolio_service import ContentPortfolioService
+from services.content_portfolio_service import ContentPortfolioService
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
-from backend.database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm
 from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.agents.autonomous_loop")

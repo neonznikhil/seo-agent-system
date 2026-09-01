@@ -3,7 +3,7 @@ import json
 import logging
 import httpx
 
-from backend.main import app
+from main import app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("test_api_endpoints")

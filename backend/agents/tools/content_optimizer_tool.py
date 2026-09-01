@@ -13,7 +13,7 @@ except ImportError:
                 raise NotImplementedError("crewai not installed")
 from pydantic import BaseModel, Field
 
-from backend.database import get_supabase
+from database import get_supabase
 import asyncio
 import json
 import re

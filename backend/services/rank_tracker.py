@@ -9,9 +9,9 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse
 
-from backend.database import get_supabase
-from backend.services.serper_service import serper_service
-from backend.services.local_store import (
+from database import get_supabase
+from services.serper_service import serper_service
+from services.local_store import (
     save_local_rank_tracking,
     list_local_rank_tracking,
     get_local_rank_tracking,

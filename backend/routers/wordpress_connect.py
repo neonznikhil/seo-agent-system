@@ -17,7 +17,7 @@ from wordpress_oauth import (
     decrypt,
     publish_post,
 )
-from backend.config import FRONTEND_URL, WORDPRESS_URL
+from config import FRONTEND_URL, WORDPRESS_URL
 
 logger = logging.getLogger("backend.routers.wordpress_connect")
 

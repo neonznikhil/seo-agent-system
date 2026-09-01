@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from backend.services.backlink_authority_engine import BacklinkAuthorityEngine
-from backend.agents.opportunity_scout_agent import OpportunityScoutAgent
-from backend.agents.asset_engineer_agent import AssetEngineerAgent
-from backend.agents.acquisition_monitor_agent import AcquisitionMonitorAgent
-from backend.agents.authority_calibration_agent import AuthorityCalibrationAgent
+from services.backlink_authority_engine import BacklinkAuthorityEngine
+from agents.opportunity_scout_agent import OpportunityScoutAgent
+from agents.asset_engineer_agent import AssetEngineerAgent
+from agents.acquisition_monitor_agent import AcquisitionMonitorAgent
+from agents.authority_calibration_agent import AuthorityCalibrationAgent
 
 
 @pytest.mark.asyncio

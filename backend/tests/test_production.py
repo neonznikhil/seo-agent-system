@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import pytest
 from httpx import AsyncClient, ASGITransport
-from backend.main import app
+from main import app
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 

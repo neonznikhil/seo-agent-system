@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Body, Header
 from pydantic import BaseModel
 
-from backend.database import get_supabase
+from database import get_supabase
 from services.serper_service import serper_service
 
 logger = logging.getLogger("backend.routers.keywords")

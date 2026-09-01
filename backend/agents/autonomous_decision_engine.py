@@ -9,7 +9,7 @@ from typing import Dict, List, Any, Optional
 
 import httpx
 
-from backend.database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm
 
 logger = logging.getLogger("backend.agents.autonomous_decision_engine")
 

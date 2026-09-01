@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
-from backend.database import get_supabase, get_embedding, call_nim_llm
-from backend.services.crawlee_service import _is_url_blocked
-from backend.services.reporting_service import report_problem, log_monitoring
-from backend.services.brain_service import BrainService
+from database import get_supabase, get_embedding, call_nim_llm
+from services.crawlee_service import _is_url_blocked
+from services.reporting_service import report_problem, log_monitoring
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.services.backlink_prospect")
 

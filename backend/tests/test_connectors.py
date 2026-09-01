@@ -1,8 +1,8 @@
 import os
 import pytest
 from httpx import AsyncClient, ASGITransport
-from backend.main import app
-from backend.database import get_supabase
+from main import app
+from database import get_supabase
 
 
 @pytest.mark.asyncio
