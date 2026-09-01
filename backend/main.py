@@ -20,38 +20,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
-from .config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
-from .database import get_supabase, set_account_context, call_nim_llm
-from .middleware.auth import AuthMiddleware, require_auth, get_current_account_id
-from .services.autonomous_health_service import autonomous_health_service
+from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
+from database import get_supabase, set_account_context, call_nim_llm
+from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
+from services.autonomous_health_service import autonomous_health_service
 
-from .routers import (
+from routers import (
     websites, proposals, memory, llms_txt, gsc, tech_seo, backlinks, calendar, roi, seo_aeo_geo
 )
-from .routers.monitoring import router as monitoring_router
-from .routers.writer import router as writer_router
-from .routers.decay import router as decay_router
-from .routers.wordpress import router as wordpress_router
-from .routers.wordpress_oauth import router as wordpress_oauth_router
-from .routers.wordpress_connect import router as wordpress_connect_router
-from .routers.research import router as research_router
-from .routers.clusters import router as clusters_router
-from .routers.knowledge import router as knowledge_router
-from .routers.content import router as content_router
-from .routers.settings import router as settings_router
-from .routers.connectors import router as connectors_router
-from .routers.connectors_slack import router as connectors_slack_router
-from .routers.dashboard import router as dashboard_router
-from .routers.brain import router as brain_router
-from .routers.autonomy import router as autonomy_router
-from .routers.approvals import router as approvals_router
-from .agents.backlink_autopilot_agent import run_backlink_daily_jobs
-from .routers.setup import router as setup_router
-from .routers.chat import router as chat_router
-from .routers.workforce import router as workforce_router
-from .routers.rag import router as rag_router
-from .routers.connectors_serper import router as connectors_serper_router
-from .routers.health import router as health_router
+from routers.monitoring import router as monitoring_router
+from routers.writer import router as writer_router
+from routers.decay import router as decay_router
+from routers.wordpress import router as wordpress_router
+from routers.wordpress_oauth import router as wordpress_oauth_router
+from routers.wordpress_connect import router as wordpress_connect_router
+from routers.research import router as research_router
+from routers.clusters import router as clusters_router
+from routers.knowledge import router as knowledge_router
+from routers.content import router as content_router
+from routers.settings import router as settings_router
+from routers.connectors import router as connectors_router
+from routers.connectors_slack import router as connectors_slack_router
+from routers.dashboard import router as dashboard_router
+from routers.brain import router as brain_router
+from routers.autonomy import router as autonomy_router
+from routers.approvals import router as approvals_router
+from agents.backlink_autopilot_agent import run_backlink_daily_jobs
+from routers.setup import router as setup_router
+from routers.chat import router as chat_router
+from routers.workforce import router as workforce_router
+from routers.rag import router as rag_router
+from routers.connectors_serper import router as connectors_serper_router
+from routers.health import router as health_router
 from .routers.phase3_router import router as phase3_router
 from .routers.oauth_connectors import router as oauth_connectors_router
 from .routers.keywords import router as keywords_router
