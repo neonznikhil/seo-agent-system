@@ -12,7 +12,7 @@ from datetime import datetime
 import httpx
 
 from database import get_supabase, call_nim_llm
-from .knowledge_service import KnowledgeService, VECTOR_DIM, _cosine_similarity, _deterministic_embedding
+from knowledge_service import KnowledgeService, VECTOR_DIM, _cosine_similarity, _deterministic_embedding
 
 logger = logging.getLogger("backend.services.rag_service")
 

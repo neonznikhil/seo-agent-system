@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 
 from database import get_supabase, call_nim_llm, get_embedding
 from services.serper_service import serper_service
-from .slack_intelligence_service import slack_intelligence_service
+from slack_intelligence_service import slack_intelligence_service
 
 logger = logging.getLogger("backend.services.knowledge_evolution_service")
 

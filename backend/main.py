@@ -20,8 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
-from .config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
-from .database import get_supabase, set_account_context, call_nim_llm
+from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
+from database import get_supabase, set_account_context, call_nim_llm
 from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
 from services.autonomous_health_service import autonomous_health_service
 

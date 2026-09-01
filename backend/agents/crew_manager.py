@@ -3,7 +3,7 @@ from typing import Optional, List
 import asyncio
 import json
 
-from .crew import (
+from crew import (
     plan_blogs_for_website, 
     auditor_agent, writer_agent, tech_seo_agent, 
     seo_backlink_agent, manager_agent,
