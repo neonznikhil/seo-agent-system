@@ -1,6 +1,6 @@
 import json
 import logging
-from .datetime import datetime
+from datetime import datetime
 from .crawlee_tool import CrawleeTool, CrawleeInput
 from .knowledge_extractor_tool import KnowledgeExtractorTool, KnowledgeExtractorInput
 from .quality_gate_tool import QualityGateTool, QualityGateInput

@@ -1,6 +1,6 @@
 import json
 import logging
-from .datetime import datetime
+from datetime import datetime
 from .rank_monitor import RankMonitor
 from .serp_monitor import SERPMonitor
 from .competitor_monitor import CompetitorMonitor

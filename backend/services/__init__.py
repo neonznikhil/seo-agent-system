@@ -1,6 +1,6 @@
 import json
 import logging
-from .datetime import datetime
+from datetime import datetime
 from .reporting_service import report_problem, log_monitoring
 from .continuous_monitor import start_all_monitors
 from .wordpress_service import WordPressService, get_wordpress_service
