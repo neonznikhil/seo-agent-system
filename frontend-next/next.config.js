@@ -25,7 +25,7 @@ const nextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: "https://seo-agent-system-production.up.railway.app/api/:path*",
+        destination: "https://tangy-phones-bet.loca.lt/api/:path*",
       },
     ];
   },
