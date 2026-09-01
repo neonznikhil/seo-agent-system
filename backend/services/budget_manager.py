@@ -3,7 +3,7 @@ import uuid
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
-from ..database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger('backend.services.budget_manager')
 

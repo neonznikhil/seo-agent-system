@@ -6,11 +6,11 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 
-from ..database import get_supabase, set_account_context
-from ..middleware.auth import get_current_account_id
-from ..security import encrypt_secret, decrypt_secret, sanitize_website_row
-from ..agents.knowledge_agent import run_knowledge_agent
-from ..services.local_store import (
+from database import get_supabase, set_account_context
+from middleware.auth import get_current_account_id
+from security import encrypt_secret, decrypt_secret, sanitize_website_row
+from agents.knowledge_agent import run_knowledge_agent
+from services.local_store import (
     save_local_website,
     list_local_websites,
     get_local_website,

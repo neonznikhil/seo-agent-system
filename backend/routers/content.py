@@ -4,8 +4,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from ..database import get_supabase, set_account_context
-from ..middleware.auth import get_current_account_id
+from database import get_supabase, set_account_context
+from middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.content")
 router = APIRouter()

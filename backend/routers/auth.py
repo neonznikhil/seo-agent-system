@@ -16,14 +16,14 @@ from jose import jwt, JWTError
 from fastapi import APIRouter, HTTPException, Header, Request, status, Depends
 from pydantic import BaseModel, Field
 
-from ..config import (
+from config import (
     JWT_SECRET,
     JWT_ALGORITHM,
     JWT_EXPIRATION_DAYS,
     RESEND_API_KEY,
     FRONTEND_URL,
 )
-from ..database import get_supabase, set_account_context
+from database import get_supabase, set_account_context
 
 logger = logging.getLogger("backend.routers.auth")
 router = APIRouter(tags=["auth"])

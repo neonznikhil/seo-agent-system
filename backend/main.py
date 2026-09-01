@@ -52,21 +52,21 @@ from routers.workforce import router as workforce_router
 from routers.rag import router as rag_router
 from routers.connectors_serper import router as connectors_serper_router
 from routers.health import router as health_router
-from .routers.phase3_router import router as phase3_router
-from .routers.oauth_connectors import router as oauth_connectors_router
-from .routers.keywords import router as keywords_router
-from .routers.analytics import router as analytics_router
-from .routers.serp import router as serp_router
-from .routers.report import router as report_router
-from .routers.links import router as links_router
-from .routers.scheduler import router as scheduler_router
-from .routers.crew_writer import router as crew_writer_router
-from .routers.costs import router as costs_router
-from .routers.auth import router as auth_router
-from .routers.rank_tracker import router as rank_tracker_router
-from .routers.demo import router as demo_router
-from .scripts.migrate import run_migrations
-from .agents.seo_agent_group import seo_agent_group
+from routers.phase3_router import router as phase3_router
+from routers.oauth_connectors import router as oauth_connectors_router
+from routers.keywords import router as keywords_router
+from routers.analytics import router as analytics_router
+from routers.serp import router as serp_router
+from routers.report import router as report_router
+from routers.links import router as links_router
+from routers.scheduler import router as scheduler_router
+from routers.crew_writer import router as crew_writer_router
+from routers.costs import router as costs_router
+from routers.auth import router as auth_router
+from routers.rank_tracker import router as rank_tracker_router
+from routers.demo import router as demo_router
+from scripts.migrate import run_migrations
+from agents.seo_agent_group import seo_agent_group
 
 validate_env()
 

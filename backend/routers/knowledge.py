@@ -6,9 +6,9 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends, Request
 from pydantic import BaseModel, Field
 
-from ..database import get_supabase
-from ..services.knowledge_service import KnowledgeService
-from ..services.knowledge_service import crawl_and_index_website
+from database import get_supabase
+from services.knowledge_service import KnowledgeService
+from services.knowledge_service import crawl_and_index_website
 
 logger = logging.getLogger("backend.routers.knowledge")
 router = APIRouter(tags=["knowledge"])

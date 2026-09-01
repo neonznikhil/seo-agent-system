@@ -5,8 +5,8 @@ Strictly returns real website UUIDs or None. Never returns the string 'default'.
 
 import logging
 from typing import Optional, Dict, Any, List
-from ..database import get_supabase
-from .local_store import list_local_websites, get_local_website
+from database import get_supabase
+from local_store import list_local_websites, get_local_website
 
 logger = logging.getLogger("backend.services.website_service")
 

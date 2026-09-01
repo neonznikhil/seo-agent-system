@@ -18,12 +18,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from pydantic import BaseModel
 
-from ..config import (
+from config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
     BACKEND_URL, WP_SITE_URL, WORDPRESS_URL,
 )
-from ..database import get_supabase
-from ..security import encrypt_secret
+from database import get_supabase
+from security import encrypt_secret
 
 logger = logging.getLogger("backend.routers.oauth_connectors")
 router = APIRouter(tags=["OAuth Connectors"])

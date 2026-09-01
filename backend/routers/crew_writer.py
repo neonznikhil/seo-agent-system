@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..database import get_supabase
-from ..middleware.auth import get_current_account_id
+from database import get_supabase
+from middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.crew_writer")
 router = APIRouter(prefix="/crew", tags=["CrewAI 3-Agent"])

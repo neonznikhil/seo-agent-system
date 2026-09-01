@@ -7,13 +7,13 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request
 
-from ..services.autonomous_health_service import (
+from services.autonomous_health_service import (
     autonomous_health_service,
     _latest_health_cache,
 )
-from ..database import get_supabase, call_nim_llm
-from ..services.serper_service import serper_service
-from ..middleware.circuit_breaker import CircuitBreaker
+from database import get_supabase, call_nim_llm
+from services.serper_service import serper_service
+from middleware.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger("backend.routers.health")
 router = APIRouter(tags=["health"])

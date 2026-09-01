@@ -22,9 +22,9 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..config import SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, BACKEND_URL
-from ..database import get_supabase
-from ..security import encrypt_secret
+from config import SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, BACKEND_URL
+from database import get_supabase
+from security import encrypt_secret
 
 logger = logging.getLogger("backend.routers.connectors_slack")
 router = APIRouter(tags=["slack-oauth"])

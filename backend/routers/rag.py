@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..database import get_supabase
-from ..services.rag_service import RAGService
+from database import get_supabase
+from services.rag_service import RAGService
 
 logger = logging.getLogger("backend.routers.rag")
 router = APIRouter(tags=["rag"])

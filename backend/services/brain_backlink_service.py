@@ -3,9 +3,9 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from ..database import get_supabase
-from ..services.brain_service import BrainService
-from ..services.reporting_service import report_problem
+from database import get_supabase
+from services.brain_service import BrainService
+from services.reporting_service import report_problem
 
 logger = logging.getLogger("backend.services.brain_backlink")
 

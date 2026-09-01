@@ -7,8 +7,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..database import get_supabase, call_nim_llm
-from ..agents.scheduler import get_scheduler_status, get_scheduler_logs
+from database import get_supabase, call_nim_llm
+from agents.scheduler import get_scheduler_status, get_scheduler_logs
 
 logger = logging.getLogger("backend.routers.workforce")
 router = APIRouter(tags=["workforce"])

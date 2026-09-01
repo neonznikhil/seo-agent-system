@@ -6,17 +6,17 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel
 
-from ..services.ranking_signal_harvester import RankingSignalHarvester
-from ..services.topic_ownership_engine import TopicOwnershipEngine
-from ..services.entity_authority_service import EntityAuthorityService
-from ..services.serp_volatility_service import SerpVolatilityService
-from ..services.content_portfolio_service import ContentPortfolioService
-from ..services.internal_link_service import build_internal_link_graph, run_autonomous_internal_link_optimization
-from ..services.knowledge_evolution_service import KnowledgeEvolutionService
-from ..services.conversion_intelligence_service import ConversionIntelligenceService
-from ..services.crisis_response_service import CrisisResponseService
-from ..services.self_training_service import SelfTrainingService
-from ..services.slack_intelligence_service import slack_intelligence_service
+from services.ranking_signal_harvester import RankingSignalHarvester
+from services.topic_ownership_engine import TopicOwnershipEngine
+from services.entity_authority_service import EntityAuthorityService
+from services.serp_volatility_service import SerpVolatilityService
+from services.content_portfolio_service import ContentPortfolioService
+from services.internal_link_service import build_internal_link_graph, run_autonomous_internal_link_optimization
+from services.knowledge_evolution_service import KnowledgeEvolutionService
+from services.conversion_intelligence_service import ConversionIntelligenceService
+from services.crisis_response_service import CrisisResponseService
+from services.self_training_service import SelfTrainingService
+from services.slack_intelligence_service import slack_intelligence_service
 
 logger = logging.getLogger("backend.routers.phase3_router")
 

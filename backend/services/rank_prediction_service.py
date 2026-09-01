@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import uuid
 
-from ..database import get_supabase, call_nim_llm
-from ..services.brain_service import BrainService
+from database import get_supabase, call_nim_llm
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.services.rank_prediction_service")
 

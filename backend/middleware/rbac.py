@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Callable
 from fastapi import Request, HTTPException, Depends, Header
-from ..database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.middleware.rbac")
 

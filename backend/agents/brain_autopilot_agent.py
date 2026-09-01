@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 import re
 
-from ..database import get_supabase, call_nim_llm
-from ..services.brain_service import BrainService
+from database import get_supabase, call_nim_llm
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.agents.brain_autopilot_agent")
 

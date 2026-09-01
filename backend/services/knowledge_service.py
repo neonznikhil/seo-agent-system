@@ -23,8 +23,8 @@ try:
 except ImportError:
     TRAFILATURA_AVAILABLE = False
 
-from ..database import get_supabase, call_nim_llm
-from .local_store import save_local_knowledge, list_local_knowledge
+from database import get_supabase, call_nim_llm
+from local_store import save_local_knowledge, list_local_knowledge
 
 logger = logging.getLogger("backend.services.knowledge_service")
 

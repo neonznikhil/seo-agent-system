@@ -5,8 +5,8 @@ import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from ..database import get_supabase, call_nim_llm
-from ..services.brain_service import BrainService
+from database import get_supabase, call_nim_llm
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.agents.asset_engineer_agent")
 

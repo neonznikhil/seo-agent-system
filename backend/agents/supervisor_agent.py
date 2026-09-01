@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Dict, Any, Optional, List
 
-from ..services.brain_service import BrainService
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.agents.supervisor_agent")
 

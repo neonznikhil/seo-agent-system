@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, Optional, List, Any
 import httpx
 from fastapi import HTTPException
-from ..database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.services.wordpress_service")
 

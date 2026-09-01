@@ -6,11 +6,11 @@ import os
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel
 
-from ..database import get_supabase
-from ..agents.tools.shared_utils import generate_learning_from_rejection, is_homepage
-from ..config import WORDPRESS_URL
-from ..agents.tools.cms_tools import publish_blog_after_approval, update_page_after_approval
-from ..agents.rules import (
+from database import get_supabase
+from agents.tools.shared_utils import generate_learning_from_rejection, is_homepage
+from config import WORDPRESS_URL
+from agents.tools.cms_tools import publish_blog_after_approval, update_page_after_approval
+from agents.rules import (
     CriticalActionBlockedError, 
     log_blocked_critical_action,
     log_successful_approval,

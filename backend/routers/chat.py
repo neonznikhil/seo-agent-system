@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm
 
 logger = logging.getLogger("backend.routers.chat")
 router = APIRouter()

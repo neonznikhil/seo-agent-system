@@ -9,8 +9,8 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from bs4 import BeautifulSoup
 
-from ..database import get_supabase
-from ..services.local_store import (
+from database import get_supabase
+from services.local_store import (
     save_local_internal_link,
     list_local_internal_links,
 )

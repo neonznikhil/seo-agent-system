@@ -7,9 +7,9 @@ from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, Path
 from pydantic import BaseModel
 
-from ..database import get_supabase
-from ..services.backlink_authority_engine import BacklinkAuthorityEngine
-from ..services.backlink_acquisition_engine import BacklinkAcquisitionEngine
+from database import get_supabase
+from services.backlink_authority_engine import BacklinkAuthorityEngine
+from services.backlink_acquisition_engine import BacklinkAcquisitionEngine
 
 logger = logging.getLogger("backend.routers.backlinks")
 

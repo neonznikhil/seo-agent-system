@@ -12,14 +12,14 @@ from typing import Dict, Any, List, Optional
 
 import httpx
 
-from ..config import (
+from config import (
     NVIDIA_API_KEY,
     SERPER_API_KEY,
     SLACK_BOT_TOKEN,
     SLACK_WEBHOOK_URL,
     FRONTEND_URL,
 )
-from ..database import (
+from database import (
     get_supabase,
     call_nim_llm,
     _nim_state,

@@ -5,9 +5,9 @@ import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from ..database import get_supabase, get_embedding
-from ..services.gsc_service import GSCService
-from ..services.reporting_service import report_problem
+from database import get_supabase, get_embedding
+from services.gsc_service import GSCService
+from services.reporting_service import report_problem
 
 logger = logging.getLogger("backend.services.gsc_miner_service")
 

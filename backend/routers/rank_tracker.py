@@ -4,9 +4,9 @@ Endpoints for fetching Google ranking performance metrics, trigger checks, and v
 
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query
-from ..database import get_supabase, set_account_context
-from ..middleware.auth import get_current_account_id
-from ..services.rank_tracker import (
+from database import get_supabase, set_account_context
+from middleware.auth import get_current_account_id
+from services.rank_tracker import (
     get_tracked_rankings,
     check_keyword_rankings,
     track_published_post,

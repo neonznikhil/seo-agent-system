@@ -4,8 +4,8 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
-from ..services.serper_service import serper_service, SerperService
-from ..auto_supabase import write_env_file
+from services.serper_service import serper_service, SerperService
+from auto_supabase import write_env_file
 
 logger = logging.getLogger("backend.routers.connectors_serper")
 

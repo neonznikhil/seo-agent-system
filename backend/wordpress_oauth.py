@@ -9,7 +9,7 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from supabase import create_client
 
-from .config import SUPABASE_URL, SUPABASE_KEY, ENCRYPTION_SECRET, FRONTEND_URL, WORDPRESS_URL
+from config import SUPABASE_URL, SUPABASE_KEY, ENCRYPTION_SECRET, FRONTEND_URL, WORDPRESS_URL
 
 logger = logging.getLogger("backend.wordpress_oauth")
 

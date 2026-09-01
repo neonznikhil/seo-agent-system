@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, Type, Optional
 from pydantic import BaseModel, ValidationError
 from datetime import datetime
-from ..database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.services.validation_service")
 

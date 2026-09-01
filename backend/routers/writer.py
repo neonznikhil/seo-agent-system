@@ -8,10 +8,10 @@ from fastapi import APIRouter, Request, HTTPException, Depends, Body, Background
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..database import get_supabase, call_nim_llm
-from ..agents.writer_agent import WriterPipeline
-from ..agents.human_writer import HumanWriterAgent
-from ..services.wordpress_service import WordPressService
+from database import get_supabase, call_nim_llm
+from agents.writer_agent import WriterPipeline
+from agents.human_writer import HumanWriterAgent
+from services.wordpress_service import WordPressService
 
 logger = logging.getLogger("backend.routers.writer")
 router = APIRouter()

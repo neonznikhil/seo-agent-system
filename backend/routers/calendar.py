@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ..database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.routers.calendar")
 router = APIRouter()

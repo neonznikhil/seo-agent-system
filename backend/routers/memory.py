@@ -2,8 +2,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..database import get_supabase
-from ..agents.tools.vector_memory_tool import is_duplicate
+from database import get_supabase
+from agents.tools.vector_memory_tool import is_duplicate
 
 logger = logging.getLogger("backend.routers.memory")
 router = APIRouter()

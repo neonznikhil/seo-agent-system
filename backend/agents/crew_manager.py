@@ -3,14 +3,14 @@ from typing import Optional, List
 import asyncio
 import json
 
-from .crew import (
+from crew import (
     plan_blogs_for_website, 
     auditor_agent, writer_agent, tech_seo_agent, 
     seo_backlink_agent, manager_agent,
     seo_aeo_geo_tool, serp_analyzer_tool, content_optimizer_tool
 )
-from .tools.serp_analyzer_tool import SERPAnalyzerTool
-from ..database import get_supabase
+from tools.serp_analyzer_tool import SERPAnalyzerTool
+from database import get_supabase
 
 logger = logging.getLogger("backend.agents.crew_manager")
 

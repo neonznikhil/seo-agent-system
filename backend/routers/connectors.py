@@ -7,15 +7,15 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
-from ..database import get_supabase
-from ..security import encrypt_secret
-from ..auto_supabase import (
+from database import get_supabase
+from security import encrypt_secret
+from auto_supabase import (
     connect_and_setup,
     write_env_file,
     extract_project_ref,
     build_db_url,
 )
-from ..services.website_service import get_default_website_id
+from services.website_service import get_default_website_id
 
 logger = logging.getLogger("backend.routers.connectors")
 router = APIRouter(tags=["connectors"])

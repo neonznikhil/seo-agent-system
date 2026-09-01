@@ -6,9 +6,9 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ..database import get_supabase
-from ..agents.research_agent import ResearchAgent
-from ..services.serper_service import serper_service
+from database import get_supabase
+from agents.research_agent import ResearchAgent
+from services.serper_service import serper_service
 
 logger = logging.getLogger("backend.routers.research")
 router = APIRouter()

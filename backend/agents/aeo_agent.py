@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from ..database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm
 
 logger = logging.getLogger("backend.agents.aeo_agent")
 

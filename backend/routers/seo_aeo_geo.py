@@ -24,8 +24,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..database import get_supabase, call_nim_llm
-from ..services.serper_service import serper_service
+from database import get_supabase, call_nim_llm
+from services.serper_service import serper_service
 
 logger = logging.getLogger("backend.routers.seo_aeo_geo")
 router = APIRouter(tags=["aeo", "geo", "seo"])

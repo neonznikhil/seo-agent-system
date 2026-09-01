@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from ..database import get_supabase
+from database import get_supabase
 
 logger = logging.getLogger("backend.routers.scheduler")
 

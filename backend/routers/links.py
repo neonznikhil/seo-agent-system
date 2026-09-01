@@ -5,8 +5,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 
-from ..database import get_supabase
-from ..services.internal_link_service import build_internal_link_graph
+from database import get_supabase
+from services.internal_link_service import build_internal_link_graph
 
 logger = logging.getLogger("backend.routers.links")
 

@@ -8,11 +8,11 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query
 from pydantic import BaseModel
 
-from ..database import get_supabase, set_account_context
-from ..middleware.auth import get_current_account_id
-from ..agents.crew_blog_writer import run_crew_blog_writer_with_retry
-from ..agents.scheduler import ai_pick_best_keyword
-from ..services.local_store import list_local_knowledge
+from database import get_supabase, set_account_context
+from middleware.auth import get_current_account_id
+from agents.crew_blog_writer import run_crew_blog_writer_with_retry
+from agents.scheduler import ai_pick_best_keyword
+from services.local_store import list_local_knowledge
 
 logger = logging.getLogger("backend.routers.demo")
 router = APIRouter(prefix="/demo", tags=["demo"])

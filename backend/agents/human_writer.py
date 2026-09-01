@@ -10,9 +10,9 @@ import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 
-from ..services.serper_service import serper_service
-from ..database import get_supabase, call_nim_llm
-from ..services.brain_service import BrainService
+from services.serper_service import serper_service
+from database import get_supabase, call_nim_llm
+from services.brain_service import BrainService
 
 logger = logging.getLogger("backend.agents.writer_human")
 
