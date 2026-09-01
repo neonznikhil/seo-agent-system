@@ -1,0 +1,7 @@
+Total issues found: 6
+.venv\Lib\site-packages\apscheduler\util.py:23 -> 'from calendar ...' should be 'from routers.calendar ...'
+.venv\Lib\site-packages\apscheduler\triggers\cron\expressions.py:12 -> 'from calendar ...' should be 'from routers.calendar ...'
+.venv\Lib\site-packages\apscheduler\triggers\cron\fields.py:14 -> 'from calendar ...' should be 'from routers.calendar ...'
+.venv\Lib\site-packages\h2\connection.py:63 -> 'from settings ...' should be 'from routers.settings ...'
+.venv\Lib\site-packages\h2\events.py:17 -> 'from settings ...' should be 'from routers.settings ...'
+.venv\Lib\site-packages\jwt\api_jwt.py:6 -> 'from calendar ...' should be 'from routers.calendar ...'

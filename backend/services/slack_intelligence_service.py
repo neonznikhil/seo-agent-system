@@ -3,7 +3,11 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
 from database import get_supabase
-from slack_app_service import slack_app_service, SLACK_CHANNELS
+try:
+    from services.slack_app_service import slack_app_service, SLACK_CHANNELS
+except ImportError:
+    from .slack_app_service import slack_app_service, SLACK_CHANNELS
+
 
 logger = logging.getLogger("backend.services.slack_intelligence_service")
 

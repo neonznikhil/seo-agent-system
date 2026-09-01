@@ -8,14 +8,25 @@ from typing import Dict, Any, List, Optional
 from database import get_supabase
 from services.brain_service import BrainService
 from services.serper_service import serper_service
-from autonomous_decision_engine import AutonomousDecisionEngine
-from research_agent import ResearchAgent
-from keyword_agent import KeywordAgent
-from seo_agent import SEOAgent
-from tech_seo_agent import TechSEOAgent
-from backlink_agent import BacklinkAgent
-from strategy_agent import StrategyAgent
-from supervisor_agent import SupervisorAgent
+try:
+    from agents.autonomous_decision_engine import AutonomousDecisionEngine
+    from agents.research_agent import ResearchAgent
+    from agents.keyword_agent import KeywordAgent
+    from agents.seo_agent import SEOAgent
+    from agents.tech_seo_agent import TechSEOAgent
+    from agents.backlink_agent import BacklinkAgent
+    from agents.strategy_agent import StrategyAgent
+    from agents.supervisor_agent import SupervisorAgent
+except ImportError:
+    from .autonomous_decision_engine import AutonomousDecisionEngine
+    from .research_agent import ResearchAgent
+    from .keyword_agent import KeywordAgent
+    from .seo_agent import SEOAgent
+    from .tech_seo_agent import TechSEOAgent
+    from .backlink_agent import BacklinkAgent
+    from .strategy_agent import StrategyAgent
+    from .supervisor_agent import SupervisorAgent
+
 
 logger = logging.getLogger("backend.agents.seo_agent_group")
 

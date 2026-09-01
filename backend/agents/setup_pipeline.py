@@ -4,13 +4,21 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from database import get_supabase, is_nim_available
-from knowledge_agent import run_knowledge_agent
 from services.knowledge_service import KnowledgeService
-from research_agent import ResearchAgent
-from writer_agent import WriterPipeline
-from tech_seo_agent import TechSEOAgent
-from backlink_agent import BacklinkAgent
 from services.slack_intelligence_service import slack_intelligence_service
+try:
+    from agents.knowledge_agent import run_knowledge_agent
+    from agents.research_agent import ResearchAgent
+    from agents.writer_agent import WriterPipeline
+    from agents.tech_seo_agent import TechSEOAgent
+    from agents.backlink_agent import BacklinkAgent
+except ImportError:
+    from .knowledge_agent import run_knowledge_agent
+    from .research_agent import ResearchAgent
+    from .writer_agent import WriterPipeline
+    from .tech_seo_agent import TechSEOAgent
+    from .backlink_agent import BacklinkAgent
+
 
 logger = logging.getLogger("backend.agents.setup_pipeline")
 
