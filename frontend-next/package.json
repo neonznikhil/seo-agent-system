@@ -8,6 +8,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@netlify/plugin-nextjs": "^5.15.13",
     "@supabase/supabase-js": "^2.45.0",
     "@types/d3": "^7.4.3",
     "@xyflow/react": "^12.11.3",

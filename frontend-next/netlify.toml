@@ -11,6 +11,9 @@
 [build.processing]
   skip_processing = true
 
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
 [[redirects]]
   from = "/api/*"
   to = "https://seo-agent-system-production.up.railway.app/api/:splat"
