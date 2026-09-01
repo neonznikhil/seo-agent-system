@@ -25,9 +25,16 @@ from database import get_supabase, set_account_context, call_nim_llm
 from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
 from services.autonomous_health_service import autonomous_health_service
 
-from routers import (
-    websites, proposals, memory, llms_txt, gsc, tech_seo, backlinks, calendar, roi, seo_aeo_geo
-)
+from routers.websites import router as websites_router
+from routers.proposals import router as proposals_router
+from routers.memory import router as memory_router
+from routers.llms_txt import router as llms_txt_router
+from routers.gsc import router as gsc_router
+from routers.tech_seo import router as tech_seo_router
+from routers.backlinks import router as backlinks_router
+from routers.calendar import router as calendar_router
+from routers.roi import router as roi_router
+from routers.seo_aeo_geo import router as seo_aeo_geo_router
 from routers.monitoring import router as monitoring_router
 from routers.writer import router as writer_router
 from routers.decay import router as decay_router
@@ -790,19 +797,19 @@ app.include_router(health_router, prefix="/api")               # /api/health/*
 app.include_router(health_router)                              # /health
 
 # Websites & Workspaces
-app.include_router(websites, prefix="/api")                    # /api/websites/*
+app.include_router(websites_router, prefix="/api")                    # /api/websites/*
 app.include_router(setup_router, prefix="/api")                # /api/setup/*
 app.include_router(settings_router, prefix="/api")             # /api/settings/*
 
 # Approvals & Human Gates
 app.include_router(approvals_router, prefix="/api")            # /api/approvals/*
-app.include_router(proposals, prefix="/api")                   # /api/proposals/*
+app.include_router(proposals_router, prefix="/api")                   # /api/proposals/*
 
 # Content Generation & Pipelines
 app.include_router(writer_router, prefix="/api")               # /api/writer/*
 app.include_router(crew_writer_router, prefix="/api")          # /api/crew-writer/*
 app.include_router(content_router, prefix="/api")              # /api/content/*
-app.include_router(calendar, prefix="/api")                    # /api/calendar/*
+app.include_router(calendar_router, prefix="/api")                    # /api/calendar/*
 app.include_router(decay_router, prefix="/api")                # /api/decay/*
 
 # SEO Intelligence, Keywords, Clusters & SERP
@@ -810,24 +817,24 @@ app.include_router(keywords_router, prefix="/api")             # /api/keywords/*
 app.include_router(clusters_router, prefix="/api")             # /api/clusters/*
 app.include_router(serp_router, prefix="/api")                 # /api/serp/*
 app.include_router(research_router, prefix="/api")             # /api/research/*
-app.include_router(seo_aeo_geo, prefix="/api")                 # /api/seo-analysis, /api/aeo-score, /api/geo-readiness
-app.include_router(tech_seo, prefix="/api")                    # /api/tech-seo/*
-app.include_router(gsc, prefix="/api")                         # /api/gsc/*
+app.include_router(seo_aeo_geo_router, prefix="/api")                 # /api/seo-analysis, /api/aeo-score, /api/geo-readiness
+app.include_router(tech_seo_router, prefix="/api")                    # /api/tech-seo/*
+app.include_router(gsc_router, prefix="/api")                         # /api/gsc/*
 app.include_router(analytics_router, prefix="/api")            # /api/analytics/*
-app.include_router(roi, prefix="/api")                         # /api/roi/*
+app.include_router(roi_router, prefix="/api")                         # /api/roi/*
 app.include_router(report_router, prefix="/api")               # /api/report/*
 
 # Backlinks & Internal Linking
-app.include_router(backlinks, prefix="/api")                   # /api/backlinks/*
+app.include_router(backlinks_router, prefix="/api")                   # /api/backlinks/*
 app.include_router(links_router, prefix="/api")                # /api/links/*
 
 # Brain, Memory, Knowledge Graph & RAG
 app.include_router(brain_router, prefix="/api")                # /api/brain/*
-app.include_router(memory, prefix="/api")                      # /api/memory/*
+app.include_router(memory_router, prefix="/api")                      # /api/memory/*
 app.include_router(knowledge_router, prefix="/api")            # /api/knowledge/*
 app.include_router(rag_router, prefix="/api")                  # /api/rag/*
 app.include_router(chat_router, prefix="/api")                 # /api/chat/*
-app.include_router(llms_txt, prefix="/api")                    # /api/llms-txt/*
+app.include_router(llms_txt_router, prefix="/api")                    # /api/llms-txt/*
 
 # WordPress CMS & OAuth Connectors
 app.include_router(wordpress_router, prefix="/api")            # /api/wordpress/*
