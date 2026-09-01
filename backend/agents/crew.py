@@ -17,7 +17,7 @@ except ImportError:
         except ImportError:
             ChatOpenAI = None
 
-from personas import AUDITOR_PERSONA, EDITOR_PERSONA, WRITER_PERSONA, TECH_SEO_PERSONA, MANAGER_PERSONA, SEO_BACKLINK_PERSONA
+from .personas import AUDITOR_PERSONA, EDITOR_PERSONA, WRITER_PERSONA, TECH_SEO_PERSONA, MANAGER_PERSONA, SEO_BACKLINK_PERSONA
 from tools.think_and_log_tool import ThinkAndLogTool
 from tools.vector_memory_tool import VectorMemoryTool
 from tools.knowledge_extractor_tool import KnowledgeExtractorTool

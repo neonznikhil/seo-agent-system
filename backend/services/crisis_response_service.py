@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
 from database import get_supabase
-from slack_intelligence_service import slack_intelligence_service
+from .slack_intelligence_service import slack_intelligence_service
 
 logger = logging.getLogger("backend.services.crisis_response_service")
 

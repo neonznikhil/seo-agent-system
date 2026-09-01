@@ -13,7 +13,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from autonomous_decision_engine import AutonomousDecisionEngine
+from .autonomous_decision_engine import AutonomousDecisionEngine
 
 logger = logging.getLogger("backend.agents.scheduler")
 

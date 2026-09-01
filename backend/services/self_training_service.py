@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
 from database import get_supabase, call_nim_llm
-from slack_intelligence_service import slack_intelligence_service
+from .slack_intelligence_service import slack_intelligence_service
 
 logger = logging.getLogger("backend.services.self_training_service")
 

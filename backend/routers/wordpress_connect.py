@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from wordpress_oauth import (
+from .wordpress_oauth import (
     generate_authorize_url,
     store_state,
     validate_and_consume_state,

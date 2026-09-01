@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from auto_supabase import connect_and_setup
+from .auto_supabase import connect_and_setup
 
 try:
     from .database import get_supabase
