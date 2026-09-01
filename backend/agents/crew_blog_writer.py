@@ -4812,39 +4812,43 @@ async def generate_blog_autonomous(
     for idx, (phase, out) in enumerate(phases, start=1):
         await _log_phase(website_id, content_id, phase, idx, "completed", out, {"topic": topic})
 
-    # TASK D1: Write 3 new memories to brain_memory
-    try:
-        from ..services.brain_service import BrainService
-        brain = BrainService(website_id=website_id)
-        # 1. Target keyword memory
-        await brain.remember(
-            website_id=website_id,
-            memory_type="experience",
-            title=f"Target Keyword Architecture: {topic[:60]}",
-            content=f"Successfully generated article outline targeting '{topic}' covering {len(planner_outline.get('h2_sections', []))} core H2 sections and competitive SERP gap analysis.",
-            source_type="crew_blog_writer",
-            confidence=0.95,
-        )
-        # 2. SEO score memory
-        await brain.remember(
-            website_id=website_id,
-            memory_type="outcomes",
-            title=f"Content Quality & SEO Performance: {topic[:60]}",
-            content=f"Achieved SEO Quality Score {seo_score}/100 and word count {words_total} with zero AI jargon and Elementor-safe HTML formatting.",
-            source_type="crew_blog_writer",
-            confidence=float(seo_score) / 100.0,
-        )
-        # 3. Brand tone & knowledge memory
-        await brain.remember(
-            website_id=website_id,
-            memory_type="facts",
-            title=f"Brand Voice Profile for {business_name}",
-            content=f"Applied brand tone '{tone}' grounded in verified knowledge base chunks with average similarity score {ground_score:.2f}.",
-            source_type="crew_blog_writer",
-            confidence=ground_score,
-        )
-    except Exception as e:
-        logger.debug(f"[Crew] brain learn 3 memories note: {e}")
+    # TASK D1: Write 3 new memories to brain_memory — ONLY for published blogs
+    if status == "published":
+        try:
+            from ..services.brain_service import BrainService
+            brain = BrainService(website_id=website_id)
+            # 1. Target keyword memory
+            await brain.remember(
+                website_id=website_id,
+                memory_type="experience",
+                title=f"Target Keyword Architecture: {topic[:60]}",
+                content=f"Successfully generated published article targeting '{topic}' covering {len(planner_outline.get('h2_sections', []))} core H2 sections.",
+                source_type="crew_blog_writer",
+                confidence=0.95,
+            )
+            # 2. SEO score memory
+            await brain.remember(
+                website_id=website_id,
+                memory_type="outcome",
+                title=f"Published Content Quality: {topic[:60]}",
+                content=f"Published article with SEO Score {seo_score}/100 and word count {words_total}.",
+                source_type="crew_blog_writer",
+                confidence=float(seo_score) / 100.0,
+            )
+            # 3. Brand tone & knowledge memory
+            await brain.remember(
+                website_id=website_id,
+                memory_type="fact",
+                title=f"Brand Voice Profile for {business_name}",
+                content=f"Applied brand tone '{tone}' with average similarity score {ground_score:.2f}.",
+                source_type="crew_blog_writer",
+                confidence=ground_score,
+            )
+            logger.info(f"[Crew] Brain learned from published content: {topic[:40]}")
+        except Exception as e:
+            logger.debug(f"[Crew] brain learn 3 memories note: {e}")
+    else:
+        logger.info(f"[Crew] Brain skip: status is '{status}' (only learns from 'published')")
 
     # daily_costs — estimate tokens * 0.00001 (spec)
     try:

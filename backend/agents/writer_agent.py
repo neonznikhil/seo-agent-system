@@ -184,6 +184,7 @@ class WriterPipeline:
         self.phase_results = {}
         self.step_log = []
         self.brain_context = None
+        self.status = "draft"
 
     async def check_duplicate_title(self, website_id: str, title: str) -> bool:
         if not self.supabase:
@@ -452,7 +453,7 @@ class WriterPipeline:
                                   "phase": self.current_phase})
                 return result
 
-        learn_result = await self._phase_brain_learn()
+        learn_result = await self._phase_brain_learn(status=self.status)
         self.phase_results['brain_learn'] = learn_result
 
         # -------------------------------------------------------------
@@ -772,14 +773,14 @@ class WriterPipeline:
             self._log_step(phase, 1, 'brain_recall', 'completed', None, {'error': str(e)})
             return {'status': 'completed', 'brain_context': self.brain_context}
 
-    async def _phase_brain_learn(self) -> Dict[str, Any]:
+    async def _phase_brain_learn(self, status: str = "draft") -> Dict[str, Any]:
         phase = 'brain_learn'
         self._log_step(phase, 1, 'brain_learn', 'running', None, thought='Learning from this article for future runs')
 
         try:
             from ..services.brain_service import BrainService
             brain = BrainService(self.website_id)
-            learn_result = await brain.learn_from_content(self.content_id)
+            learn_result = await brain.learn_from_content(self.content_id, status=status)
             self._log_step(phase, 1, 'brain_learn', 'completed', None, learn_result)
             return learn_result
         except Exception as e:

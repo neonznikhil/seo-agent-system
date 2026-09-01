@@ -404,19 +404,28 @@ class BrainService:
             logger.error(f"14-day outcome synthesis failed: {e}")
             return {"success": False, "error": str(e), "learnings_codified": 0}
 
-    async def learn_from_content(self, website_id: Optional[str] = None, content_id: str = "", content: str = "", scores: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Learn and codify preferences/patterns from newly generated content."""
+    async def learn_from_content(self, website_id: Optional[str] = None, content_id: str = "", content: str = "", scores: Optional[Dict[str, Any]] = None, status: str = "draft") -> Dict[str, Any]:
+        """Learn and codify preferences/patterns from content.
+        
+        Only learns from published blogs. Drafts and pending posts are skipped.
+        """
+        # BRAIN only learns from published content
+        if status != "published":
+            logger.debug(f"[Brain] Skipping learn: content status is '{status}' (only learns from 'published')")
+            return {"success": False, "skipped": True, "reason": f"status is '{status}', only 'published' content is learned"}
+        
         target_id = website_id or self.website_id
         scores = scores or {}
         try:
             mem_id = await self.remember(
                 website_id=target_id,
                 memory_type="outcome",
-                title=f"Content Generation Memory: {content_id[:8] if content_id else 'draft'}",
-                content=f"Generated high-quality content ({len(content)} chars). Quality score: {scores.get('overall', 92)}",
-                source_type="writer_pipeline",
+                title=f"Published Content Memory: {content_id[:8] if content_id else 'published'}",
+                content=f"Published high-quality content ({len(content)} chars). Quality score: {scores.get('overall', 92)}",
+                source_type="published_content",
                 confidence=0.95
             )
+            logger.info(f"[Brain] Learned from published content {content_id[:8]}")
             return {"success": True, "memory_id": mem_id}
         except Exception as e:
             logger.warning(f"learn_from_content note: {e}")
