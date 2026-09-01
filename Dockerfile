@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ .
 RUN mkdir -p local_data
 
-# Expose port for Render
-EXPOSE 10000
+# Expose port for Fly.io
+EXPOSE 8080
 
-# Run uvicorn directly (absolute imports in main.py)
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]
+# Use PORT env var (Fly.io sets this dynamically)
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
