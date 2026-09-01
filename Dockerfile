@@ -13,10 +13,11 @@ COPY backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
+COPY run_backend.py .
 RUN mkdir -p local_data
 
 # Expose port for Render
 EXPOSE 10000
 
-# Use PORT env var (Render sets this dynamically)
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]
+# Run with wrapper script
+CMD ["python", "run_backend.py"]
