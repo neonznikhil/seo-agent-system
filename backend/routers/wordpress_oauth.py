@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from config import FRONTEND_URL, WP_OAUTH_CLIENT_ID
+from backend.config import FRONTEND_URL, WP_OAUTH_CLIENT_ID
 from services.wordpress_oauth_service import (
     get_authorize_url,
     exchange_code_for_token,

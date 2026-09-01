@@ -11,8 +11,8 @@ import httpx
 import redis
 from cryptography.fernet import Fernet, InvalidToken
 
-from database import get_supabase
-from config import (
+from backend.database import get_supabase
+from backend.config import (
     WP_OAUTH_CLIENT_ID,
     WP_OAUTH_CLIENT_SECRET,
     WP_OAUTH_AUTHORIZE_URL,

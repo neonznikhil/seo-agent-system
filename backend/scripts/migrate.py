@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
-from database import get_supabase
+from backend.database import get_supabase
 
 logger = logging.getLogger("backend.scripts.migrate")
 

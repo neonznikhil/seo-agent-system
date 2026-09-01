@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
 
-from database import get_supabase
+from backend.database import get_supabase
 from services.cluster_service import ClusterService
 from agents.writer_agent import WriterPipeline
 

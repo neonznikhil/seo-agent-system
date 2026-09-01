@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from database import get_supabase
+from backend.database import get_supabase
 
 logger = logging.getLogger("backend.services.content_portfolio_service")
 

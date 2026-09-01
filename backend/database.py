@@ -8,7 +8,7 @@ import tenacity
 from supabase import create_client, Client
 from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
+from backend.config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
 
 logger = logging.getLogger("backend.database")
 

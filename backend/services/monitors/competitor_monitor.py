@@ -7,7 +7,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from database import get_supabase
+from backend.database import get_supabase
 from serper_service import serper_service
 
 logger = logging.getLogger("backend.services.monitors.competitor_monitor")

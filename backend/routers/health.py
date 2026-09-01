@@ -11,7 +11,7 @@ from services.autonomous_health_service import (
     autonomous_health_service,
     _latest_health_cache,
 )
-from database import get_supabase, call_nim_llm
+from backend.database import get_supabase, call_nim_llm
 from services.serper_service import serper_service
 from middleware.circuit_breaker import CircuitBreaker
 

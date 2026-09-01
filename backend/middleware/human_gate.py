@@ -1,13 +1,13 @@
 import logging
 from functools import wraps
 from fastapi import Request, HTTPException
-from database import get_supabase
+from backend.database import get_supabase
 from datetime import datetime
 
 logger = logging.getLogger("backend.middleware.human_gate")
 
 
-from middleware.auth import _validate_user_exists
+from backend.middleware.auth import _validate_user_exists
 
 
 def require_human(func):

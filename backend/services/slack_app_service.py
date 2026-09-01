@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 import httpx
-from config import SLACK_BOT_TOKEN, SLACK_WEBHOOK_URL
-from database import get_supabase
+from backend.config import SLACK_BOT_TOKEN, SLACK_WEBHOOK_URL
+from backend.database import get_supabase
 from security import decrypt_secret
 
 logger = logging.getLogger("backend.services.slack_app_service")

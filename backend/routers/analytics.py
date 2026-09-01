@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Header
 from pydantic import BaseModel
 
-from database import get_supabase
+from backend.database import get_supabase
 
 logger = logging.getLogger("backend.routers.analytics")
 

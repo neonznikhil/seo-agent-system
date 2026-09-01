@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
-from database import get_supabase
+from backend.database import get_supabase
 from security import encrypt_secret
 from auto_supabase import (
     connect_and_setup,

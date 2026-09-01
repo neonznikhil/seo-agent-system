@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import httpx
 
-from database import get_supabase
+from backend.database import get_supabase
 
 logger = logging.getLogger("backend.services.analytics_service")
 

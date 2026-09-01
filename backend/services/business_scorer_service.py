@@ -3,8 +3,8 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-from database import call_nim_llm, get_supabase
-from services.reporting_service import report_problem
+from backend.database import call_nim_llm, get_supabase
+from backend.services.reporting_service import report_problem
 
 logger = logging.getLogger("backend.services.business_scorer_service")
 

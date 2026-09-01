@@ -18,16 +18,16 @@ except ImportError:
             ChatOpenAI = None
 
 from personas import AUDITOR_PERSONA, EDITOR_PERSONA, WRITER_PERSONA, TECH_SEO_PERSONA, MANAGER_PERSONA, SEO_BACKLINK_PERSONA
-from tools.think_and_log_tool import ThinkAndLogTool
-from tools.vector_memory_tool import VectorMemoryTool
-from tools.knowledge_extractor_tool import KnowledgeExtractorTool
-from tools.tone_analyzer_tool import ToneAnalyzerTool
-from tools.llms_txt_tool import LlmsTxtTool
-from tools.crawlee_tool import CrawleeTool
-from tools.quality_gate_tool import QualityGateTool
-from tools.seo_aeo_geo_tool import SEOAEOGEOTool
-from tools.serp_analyzer_tool import SERPAnalyzerTool
-from tools.content_optimizer_tool import ContentOptimizerTool
+from backend.agents.tools.think_and_log_tool import ThinkAndLogTool
+from backend.agents.tools.vector_memory_tool import VectorMemoryTool
+from backend.agents.tools.knowledge_extractor_tool import KnowledgeExtractorTool
+from backend.agents.tools.tone_analyzer_tool import ToneAnalyzerTool
+from backend.agents.tools.llms_txt_tool import LlmsTxtTool
+from backend.agents.tools.crawlee_tool import CrawleeTool
+from backend.agents.tools.quality_gate_tool import QualityGateTool
+from backend.agents.tools.seo_aeo_geo_tool import SEOAEOGEOTool
+from backend.agents.tools.serp_analyzer_tool import SERPAnalyzerTool
+from backend.agents.tools.content_optimizer_tool import ContentOptimizerTool
 
 logger = logging.getLogger("backend.agents.crew")
 

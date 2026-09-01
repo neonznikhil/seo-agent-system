@@ -2,8 +2,8 @@ import asyncio
 import json
 import logging
 
-from database import get_supabase, get_embedding
-from agents.tools.shared_utils import is_homepage
+from backend.database import get_supabase, get_embedding
+from backend.agents.tools.shared_utils import is_homepage
 
 logger = logging.getLogger("backend.agents.knowledge_agent")
 

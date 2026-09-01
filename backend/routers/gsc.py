@@ -6,7 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Query, HTTPException
 
-from database import get_supabase, call_nim_llm
+from backend.database import get_supabase, call_nim_llm
 
 logger = logging.getLogger("backend.routers.gsc")
 router = APIRouter()

@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
-from database import get_supabase
+from backend.database import get_supabase
 from services.brain_service import BrainService
 from services.serper_service import serper_service
 from autonomous_decision_engine import AutonomousDecisionEngine

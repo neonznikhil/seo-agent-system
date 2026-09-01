@@ -7,7 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from database import get_supabase, call_nim_llm
+from backend.database import get_supabase, call_nim_llm
 from services.serper_service import serper_service
 from services.brain_service import BrainService
 

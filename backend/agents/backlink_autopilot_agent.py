@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from database import get_supabase
+from backend.database import get_supabase
 from services.internal_link_service import build_internal_link_graph
 from services.backlink_prospect_service import find_backlink_prospects, monitor_backlinks
 from services.reporting_service import report_problem

@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Response, Request
 from fastapi.responses import PlainTextResponse
 
-from database import get_supabase
+from backend.database import get_supabase
 from services.website_service import get_default_website_id, get_website_details
 from services.local_store import (
     list_local_websites,
