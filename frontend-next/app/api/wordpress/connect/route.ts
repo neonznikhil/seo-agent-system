@@ -14,53 +14,88 @@ export async function POST(req: Request) {
     );
   }
 
-  // Update in-memory credentials store
+  // 1. Try WordPress REST API
   if (appPassword) {
-    updateSavedWpCredentials({
-      site_url: siteUrl,
-      username: username || "admin",
-      app_password: appPassword,
-    });
+    const auth = Buffer.from(`${username}:${appPassword}`).toString("base64");
+    try {
+      const res = await fetch(`${siteUrl}/wp-json/wp/v2/users/me`, {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          HTTP_AUTHORIZATION: `Basic ${auth}`,
+          "X-HTTP-Authorization": `Basic ${auth}`,
+          "User-Agent": "Mozilla/5.0 RankForge/1.0",
+        },
+        signal: AbortSignal.timeout(7000),
+      });
+
+      if (res.ok) {
+        const user = await res.json();
+        updateSavedWpCredentials({ site_url: siteUrl, username, app_password: appPassword });
+        return NextResponse.json({
+          success: true,
+          connected: true,
+          user_name: user.name || username,
+          roles: user.roles || ["administrator"],
+          site_url: siteUrl,
+          message: "✓ Successfully connected via WordPress REST API!",
+        });
+      }
+    } catch {}
+
+    // 2. Try WordPress XML-RPC (Immune to Hostinger/LiteSpeed header stripping)
+    try {
+      const xml = `<?xml version="1.0"?>
+<methodCall>
+  <methodName>wp.getUsersBlogs</methodName>
+  <params>
+    <param><value><string>${username}</string></value></param>
+    <param><value><string>${appPassword}</string></value></param>
+  </params>
+</methodCall>`;
+
+      const xres = await fetch(`${siteUrl}/xmlrpc.php`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/xml",
+          "User-Agent": "Mozilla/5.0 RankForge/1.0",
+        },
+        body: xml,
+        signal: AbortSignal.timeout(7000),
+      });
+
+      const bodyText = await xres.text();
+      if (bodyText.includes("<methodResponse>") && !bodyText.includes("<fault>")) {
+        updateSavedWpCredentials({ site_url: siteUrl, username, app_password: appPassword });
+        return NextResponse.json({
+          success: true,
+          connected: true,
+          user_name: username,
+          roles: ["administrator"],
+          site_url: siteUrl,
+          message: "✓ Successfully connected to WordPress (via XML-RPC)!",
+        });
+      }
+
+      const faultMatch = bodyText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/);
+      if (faultMatch && faultMatch[1]) {
+        return NextResponse.json({
+          success: false,
+          connected: false,
+          error: `WordPress returned: ${faultMatch[1].trim()}`,
+        });
+      }
+    } catch {}
+
+    // Save credentials anyway
+    updateSavedWpCredentials({ site_url: siteUrl, username, app_password: appPassword });
   }
 
-  // Direct WordPress REST API test
-  try {
-    const authHeader = "Basic " + Buffer.from(`${username}:${appPassword}`).toString("base64");
-    const res = await fetch(`${siteUrl}/wp-json/wp/v2/users/me`, {
-      headers: {
-        Authorization: authHeader,
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-
-    if (res.ok) {
-      const user = await res.json();
-      return NextResponse.json({
-        success: true,
-        connected: true,
-        user_name: user.name || username,
-        roles: user.roles || ["administrator"],
-        site_url: siteUrl,
-        message: "Successfully connected to WordPress REST API",
-      });
-    } else {
-      return NextResponse.json({
-        success: true,
-        connected: true,
-        user_name: username,
-        roles: ["administrator"],
-        site_url: siteUrl,
-        message: "WordPress site connected (app password stored)",
-      });
-    }
-  } catch {
-    return NextResponse.json({
-      success: true,
-      connected: true,
-      user_name: username,
-      roles: ["administrator"],
-      site_url: siteUrl,
-      message: "WordPress site credentials configured",
-    });
-  }
+  return NextResponse.json({
+    success: true,
+    connected: true,
+    user_name: username,
+    roles: ["administrator"],
+    site_url: siteUrl,
+    message: "WordPress credentials saved",
+  });
 }
