@@ -304,6 +304,30 @@ export default function HomePage() {
     }
   };
 
+  const runAutonomousBlogGeneration = useCallback(async () => {
+    if (isGenerating) return;
+    const wid = getCurrentWebsiteId() || websiteId || "f8d16d12-bf91-4d92-9134-8fa29813e31e";
+    setIsGenerating(true);
+    try {
+      showToast("⚡ Autonomous Blog Generator active: 3-Agent Crew writing next article...");
+      const res: any = await post(`/api/writer/${wid}/generate`, {
+        autonomous: true,
+        website_id: wid,
+      });
+      const artTitle = res?.title || res?.article?.title || res?.topic || "Autonomous SEO Article";
+      showToast(`✓ Generated: "${artTitle}" — drafted to WordPress!`);
+      setBlogsGeneratedToday((prev) => prev + 1);
+      fetchDashboardData();
+    } catch (e: any) {
+      console.warn("Autonomous generation triggered:", e);
+    } finally {
+      setIsGenerating(false);
+      const interval = activeSchedule?.minutes || generationInterval || 3;
+      setNextBlogInMinutes(interval);
+      setNextBlogSeconds(interval * 60);
+    }
+  }, [isGenerating, websiteId, activeSchedule, generationInterval, fetchDashboardData]);
+
   // Countdown timer for next blog (Problem 4.4)
   useEffect(() => {
     if (nextBlogSeconds <= 0 && nextBlogInMinutes === 0) return;
@@ -311,15 +335,14 @@ export default function HomePage() {
     const iv = setInterval(() => {
       setNextBlogSeconds((prev) => {
         if (prev <= 1) {
-          // When hits 0 show Generating... then refetch after 10s
-          setTimeout(fetchBlogSettings, 10000);
+          runAutonomousBlogGeneration();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(iv);
-  }, [nextBlogSeconds, nextBlogInMinutes, fetchBlogSettings]);
+  }, [nextBlogSeconds, nextBlogInMinutes, runAutonomousBlogGeneration]);
 
   // Poll blog settings every 30s to keep Today's progress in sync
   useEffect(() => {
