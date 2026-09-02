@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateNewArticle } from "../../articles-store";
 import { updateSchedule, sharedSchedule } from "../../../autonomous/schedule-store";
+import { createRealWordPressDraft, updateSavedWpCredentials } from "../../wp-client";
 
 export async function POST(
   req: Request,
@@ -8,28 +9,40 @@ export async function POST(
 ) {
   const { website_id } = await params;
   const body = await req.json().catch(() => ({}));
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
 
-  // Try backend first if online
-  try {
-    const res = await fetch(`${backendUrl}/api/writer/${website_id}/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(6000),
+  // Update WordPress credentials if supplied in the request body
+  if (body.wordpress_app_password || body.app_password) {
+    updateSavedWpCredentials({
+      site_url: body.wordpress_site_url || body.site_url,
+      username: body.wordpress_username || body.username,
+      app_password: body.wordpress_app_password || body.app_password,
     });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
   }
 
-  // Generate article with CrewAI pipeline
+  // 1. Generate rich article content
   const article = generateNewArticle(body.title || body.topic, body.primary_keyword || body.keyword);
 
-  // Increment today's count in schedule store
+  // 2. Attempt real WordPress draft creation
+  const wpDraftResult = await createRealWordPressDraft(
+    {
+      title: article.title,
+      content: article.html_content || article.content,
+      excerpt: article.primary_keyword,
+    },
+    {
+      site_url: body.wordpress_site_url || body.site_url,
+      username: body.wordpress_username || body.username,
+      app_password: body.wordpress_app_password || body.app_password,
+    }
+  );
+
+  if (wpDraftResult.success && wpDraftResult.wp_post_id) {
+    article.wp_post_id = wpDraftResult.wp_post_id;
+    article.edit_url = wpDraftResult.edit_url || article.edit_url;
+    article.wordpress_url = wpDraftResult.link || article.wordpress_url;
+  }
+
+  // 3. Increment schedule counter
   updateSchedule({
     blogs_generated_today: sharedSchedule.blogs_generated_today + 1,
   });
@@ -44,6 +57,9 @@ export async function POST(
     wp_post_id: article.wp_post_id,
     edit_url: article.edit_url,
     wordpress_url: article.wordpress_url,
-    message: `Generated and drafted to WordPress (Post ID #${article.wp_post_id})`,
+    real_wp_draft_created: wpDraftResult.success,
+    message: wpDraftResult.success
+      ? `✓ Real WordPress draft created (Post ID #${wpDraftResult.wp_post_id}) in accident.innovatcs.com WP Admin!`
+      : (wpDraftResult.error || `Article generated — enter WordPress App Password in /connectors to sync to WP Admin`),
   });
 }

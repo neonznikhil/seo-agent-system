@@ -97,6 +97,18 @@ export default function ConnectorsPage() {
 
   useEffect(() => {
     loadStatus();
+    try {
+      const stored = localStorage.getItem("rankforge_wp_credentials");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.site_url) setWpUrl(parsed.site_url);
+        if (parsed.username) setWpUser(parsed.username);
+        if (parsed.app_password) setWpPass(parsed.app_password);
+      } else {
+        setWpUrl("https://accident.innovatcs.com");
+        setWpUser("admin");
+      }
+    } catch {}
   }, [loadStatus]);
 
   // Test NVIDIA
@@ -174,6 +186,12 @@ export default function ConnectorsPage() {
     setWpTesting(true);
     setErrorMsg(null);
     try {
+      try {
+        localStorage.setItem(
+          "rankforge_wp_credentials",
+          JSON.stringify({ site_url: wpUrl, username: wpUser, app_password: wpPass })
+        );
+      } catch {}
       const res = await post("/api/wordpress/connect", {
         site_url: wpUrl,
         wp_username: wpUser,
@@ -308,6 +326,12 @@ export default function ConnectorsPage() {
   // Save All Credentials
   const handleSaveAll = async () => {
     try {
+      try {
+        localStorage.setItem(
+          "rankforge_wp_credentials",
+          JSON.stringify({ site_url: wpUrl, username: wpUser, app_password: wpPass })
+        );
+      } catch {}
       await post("/api/connectors/save-all", {
         nvidia_api_key: nvidiaKey || undefined,
         supabase_url: supabaseUrl || undefined,

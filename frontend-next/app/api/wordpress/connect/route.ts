@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { updateSavedWpCredentials } from "../../writer/wp-client";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -11,6 +12,15 @@ export async function POST(req: Request) {
       { success: false, error: "WordPress site URL is required" },
       { status: 400 }
     );
+  }
+
+  // Update in-memory credentials store
+  if (appPassword) {
+    updateSavedWpCredentials({
+      site_url: siteUrl,
+      username: username || "admin",
+      app_password: appPassword,
+    });
   }
 
   // Direct WordPress REST API test

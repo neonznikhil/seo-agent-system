@@ -151,6 +151,8 @@ export default function HomePage() {
   const [nextBlogInMinutes, setNextBlogInMinutes] = useState<number>(0);
   const [nextBlogSeconds, setNextBlogSeconds] = useState<number>(0);
   const targetTimestampRef = useRef<number | null>(null);
+  const intervalMinsRef = useRef<number>(3);
+  const runGenerationRef = useRef<() => void>(() => {});
   const [blogSettingsSaving, setBlogSettingsSaving] = useState<boolean>(false);
   // Developer Mode - bypass daily limits
   const [developerMode, setDeveloperMode] = useState<boolean>(false);
@@ -240,32 +242,21 @@ export default function HomePage() {
       if (b) {
         setDailyBlogTarget(b.daily_blog_target ?? 10);
         setBlogsGeneratedToday(b.blogs_generated_today ?? 0);
-        setGenerationInterval(b.generation_interval_minutes ?? 3);
-        setAutoTopicSelection(b.auto_topic_selection ?? true);
-        if (!targetTimestampRef.current) {
-          const mins = b.generation_interval_minutes || 3;
-          targetTimestampRef.current = Date.now() + mins * 60 * 1000;
-          setNextBlogSeconds(mins * 60);
+        if (b.generation_interval_minutes) {
+          intervalMinsRef.current = b.generation_interval_minutes;
+          setGenerationInterval((prev) => (prev !== b.generation_interval_minutes ? b.generation_interval_minutes : prev));
         }
+        setAutoTopicSelection(b.auto_topic_selection ?? true);
       }
     } catch {}
     // Verify persistent schedule (P1)
     try {
-      const local = typeof window !== "undefined" ? localStorage.getItem("activeSchedule") : null;
-      if (local) {
-        try {
-          const parsed = JSON.parse(local);
-          if (parsed?.minutes) setActiveSchedule({ minutes: parsed.minutes, label: parsed.label });
-        } catch {}
-      }
       const res = await get(`/api/autonomous/blog-schedule${wid ? `?website_id=${wid}` : ""}`);
       if (res && res.generation_interval_minutes) {
-        setActiveSchedule({ minutes: res.generation_interval_minutes, label: res.schedule_label || `every ${res.generation_interval_minutes} min` });
-        setGenerationInterval(res.generation_interval_minutes);
+        intervalMinsRef.current = res.generation_interval_minutes;
+        setGenerationInterval((prev) => (prev !== res.generation_interval_minutes ? res.generation_interval_minutes : prev));
+        setActiveSchedule((prev) => (prev?.minutes === res.generation_interval_minutes ? prev : { minutes: res.generation_interval_minutes, label: res.schedule_label || `every ${res.generation_interval_minutes} min` }));
         if (res.daily_blog_target) setDailyBlogTarget(res.daily_blog_target);
-        try {
-          localStorage.setItem("activeSchedule", JSON.stringify({ minutes: res.generation_interval_minutes, label: res.schedule_label }));
-        } catch {}
       }
     } catch {}
   }, [websiteId]);
@@ -280,13 +271,28 @@ export default function HomePage() {
     const wid = getCurrentWebsiteId() || websiteId || "f8d16d12-bf91-4d92-9134-8fa29813e31e";
     setIsGenerating(true);
     showToast("⚡ Autonomous Blog Generator active: 3-Agent Crew writing next article...");
+
+    // Retrieve real WordPress credentials from localStorage if user entered them in /connectors
+    let wpCreds: any = {};
+    try {
+      const stored = localStorage.getItem("rankforge_wp_credentials");
+      if (stored) wpCreds = JSON.parse(stored);
+    } catch {}
+
     try {
       const res: any = await post(`/api/writer/${wid}/generate`, {
         autonomous: true,
         website_id: wid,
+        wordpress_site_url: wpCreds.site_url,
+        wordpress_username: wpCreds.username,
+        wordpress_app_password: wpCreds.app_password,
       });
       const artTitle = res?.title || res?.article?.title || res?.topic || "Autonomous SEO Article";
-      showToast(`✓ Generated: "${artTitle}" — drafted to WordPress!`);
+      if (res?.real_wp_draft_created) {
+        showToast(`✓ Real WordPress Draft #${res.wp_post_id} created in WP Admin!`);
+      } else {
+        showToast(`✓ Generated: "${artTitle}" — ${res?.message || "draft created"}`);
+      }
       setBlogsGeneratedToday((prev) => prev + 1);
       fetchDashboardData();
     } catch (e: any) {
@@ -296,14 +302,19 @@ export default function HomePage() {
       fetchDashboardData();
     } finally {
       setIsGenerating(false);
-      const interval = activeSchedule?.minutes || generationInterval || 3;
+      const interval = intervalMinsRef.current || 3;
       targetTimestampRef.current = Date.now() + interval * 60 * 1000;
       try {
         localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
       } catch {}
       setNextBlogSeconds(interval * 60);
     }
-  }, [isGenerating, websiteId, activeSchedule, generationInterval, fetchDashboardData]);
+  }, [isGenerating, websiteId, fetchDashboardData]);
+
+  // Keep runGenerationRef updated with the latest callback
+  useEffect(() => {
+    runGenerationRef.current = runAutonomousBlogGeneration;
+  }, [runAutonomousBlogGeneration]);
 
   const saveSchedule = async (option: { label: string; minutes: number; daily: number; description: string }) => {
     const wid = getCurrentWebsiteId() || websiteId;
@@ -312,6 +323,7 @@ export default function HomePage() {
       return;
     }
     setBlogSettingsSaving(true);
+    intervalMinsRef.current = option.minutes;
     setActiveSchedule({ minutes: option.minutes, label: option.label });
     setGenerationInterval(option.minutes);
     setDailyBlogTarget(option.daily);
@@ -339,14 +351,14 @@ export default function HomePage() {
     }
   };
 
-  // Bulletproof countdown timer using wall-clock target timestamp
+  // Continuous, rock-solid countdown timer that runs once on mount and never tears down
   useEffect(() => {
-    const intervalMins = activeSchedule?.minutes || generationInterval || 3;
     if (!targetTimestampRef.current) {
       const stored = typeof window !== "undefined" ? localStorage.getItem("nextBlogTargetTimestamp") : null;
       if (stored && Number(stored) > Date.now()) {
         targetTimestampRef.current = Number(stored);
       } else {
+        const intervalMins = intervalMinsRef.current || 3;
         targetTimestampRef.current = Date.now() + intervalMins * 60 * 1000;
         try {
           localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
@@ -361,8 +373,8 @@ export default function HomePage() {
       setNextBlogSeconds(secondsLeft);
 
       if (secondsLeft <= 0) {
-        // Reset target immediately for the next interval
-        const nextMins = activeSchedule?.minutes || generationInterval || 3;
+        // Advance target for the next interval
+        const nextMins = intervalMinsRef.current || 3;
         targetTimestampRef.current = Date.now() + nextMins * 60 * 1000;
         try {
           localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
@@ -370,12 +382,14 @@ export default function HomePage() {
         setNextBlogSeconds(nextMins * 60);
 
         // Fire autonomous generation!
-        runAutonomousBlogGeneration();
+        if (runGenerationRef.current) {
+          runGenerationRef.current();
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeSchedule, generationInterval, runAutonomousBlogGeneration]);
+  }, []);
 
   // Poll blog settings every 30s to keep Today's progress in sync
   useEffect(() => {

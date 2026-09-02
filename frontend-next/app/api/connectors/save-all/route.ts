@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
+import { updateSavedWpCredentials } from "../../writer/wp-client";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
+
+  if (body.wordpress_site_url || body.wordpress_app_password || body.wordpress_username) {
+    updateSavedWpCredentials({
+      site_url: body.wordpress_site_url,
+      username: body.wordpress_username,
+      app_password: body.wordpress_app_password,
+    });
+  }
+
   const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/connectors/save-all`, {
