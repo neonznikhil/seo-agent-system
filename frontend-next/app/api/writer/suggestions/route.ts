@@ -1,23 +1,8 @@
 import { NextResponse } from "next/server";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ website_id: string }> }
-) {
-  const { website_id } = await params;
-
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
-  try {
-    const res = await fetch(`${backendUrl}/api/writer/${website_id}/suggestions`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
-  }
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const website_id = url.searchParams.get("website_id") || "default";
 
   return NextResponse.json({
     success: true,

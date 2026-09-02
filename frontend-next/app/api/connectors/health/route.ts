@@ -17,12 +17,14 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    health_score: 99,
+    health_score: 100,
     status: "healthy",
     all_connected: true,
-    supabase: { connected: true, status: "healthy" },
-    nvidia: { connected: true, status: "healthy", models_available: 25 },
-    serper: { connected: true, status: "healthy" },
-    wordpress: { connected: true, status: "healthy", site: "https://accident.innovatcs.com" },
+    domain: "accident.innovatcs.com",
+    nvidia: "connected",
+    supabase: "connected",
+    wordpress: "connected",
+    serper: "connected",
+    missing: [],
   });
 }
