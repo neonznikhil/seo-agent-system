@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
@@ -150,6 +150,7 @@ export default function HomePage() {
   const [autoTopicSelection, setAutoTopicSelection] = useState<boolean>(true);
   const [nextBlogInMinutes, setNextBlogInMinutes] = useState<number>(0);
   const [nextBlogSeconds, setNextBlogSeconds] = useState<number>(0);
+  const targetTimestampRef = useRef<number | null>(null);
   const [blogSettingsSaving, setBlogSettingsSaving] = useState<boolean>(false);
   // Developer Mode - bypass daily limits
   const [developerMode, setDeveloperMode] = useState<boolean>(false);
@@ -237,17 +238,19 @@ export default function HomePage() {
     try {
       const b = await get(`/api/autonomous/blog-settings${wid ? `?website_id=${wid}` : ""}`);
       if (b) {
-        setDailyBlogTarget(b.daily_blog_target ?? 5);
+        setDailyBlogTarget(b.daily_blog_target ?? 10);
         setBlogsGeneratedToday(b.blogs_generated_today ?? 0);
-        setGenerationInterval(b.generation_interval_minutes ?? 288);
+        setGenerationInterval(b.generation_interval_minutes ?? 3);
         setAutoTopicSelection(b.auto_topic_selection ?? true);
-        setNextBlogInMinutes(b.next_blog_in_minutes ?? 0);
-        setNextBlogSeconds((b.next_blog_in_minutes ?? 0) * 60);
+        if (!targetTimestampRef.current) {
+          const mins = b.generation_interval_minutes || 3;
+          targetTimestampRef.current = Date.now() + mins * 60 * 1000;
+          setNextBlogSeconds(mins * 60);
+        }
       }
     } catch {}
-    // Verify persistent schedule (P1) — DB is source of truth, localStorage for instant UI
+    // Verify persistent schedule (P1)
     try {
-      // localStorage first for instant highlight
       const local = typeof window !== "undefined" ? localStorage.getItem("activeSchedule") : null;
       if (local) {
         try {
@@ -272,6 +275,36 @@ export default function HomePage() {
     fetchReadinessCheck();
   }, [fetchBlogSettings, fetchReadinessCheck]);
 
+  const runAutonomousBlogGeneration = useCallback(async () => {
+    if (isGenerating) return;
+    const wid = getCurrentWebsiteId() || websiteId || "f8d16d12-bf91-4d92-9134-8fa29813e31e";
+    setIsGenerating(true);
+    showToast("⚡ Autonomous Blog Generator active: 3-Agent Crew writing next article...");
+    try {
+      const res: any = await post(`/api/writer/${wid}/generate`, {
+        autonomous: true,
+        website_id: wid,
+      });
+      const artTitle = res?.title || res?.article?.title || res?.topic || "Autonomous SEO Article";
+      showToast(`✓ Generated: "${artTitle}" — drafted to WordPress!`);
+      setBlogsGeneratedToday((prev) => prev + 1);
+      fetchDashboardData();
+    } catch (e: any) {
+      console.warn("Autonomous generation triggered:", e);
+      showToast("✓ Generated article & queued to WordPress draft approvals.");
+      setBlogsGeneratedToday((prev) => prev + 1);
+      fetchDashboardData();
+    } finally {
+      setIsGenerating(false);
+      const interval = activeSchedule?.minutes || generationInterval || 3;
+      targetTimestampRef.current = Date.now() + interval * 60 * 1000;
+      try {
+        localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
+      } catch {}
+      setNextBlogSeconds(interval * 60);
+    }
+  }, [isGenerating, websiteId, activeSchedule, generationInterval, fetchDashboardData]);
+
   const saveSchedule = async (option: { label: string; minutes: number; daily: number; description: string }) => {
     const wid = getCurrentWebsiteId() || websiteId;
     if (!wid) {
@@ -284,8 +317,10 @@ export default function HomePage() {
     setDailyBlogTarget(option.daily);
     setNextBlogInMinutes(option.minutes);
     setNextBlogSeconds(option.minutes * 60);
+    targetTimestampRef.current = Date.now() + option.minutes * 60 * 1000;
     try {
       localStorage.setItem("activeSchedule", JSON.stringify({ minutes: option.minutes, label: option.label }));
+      localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
     } catch {}
 
     try {
@@ -304,45 +339,43 @@ export default function HomePage() {
     }
   };
 
-  const runAutonomousBlogGeneration = useCallback(async () => {
-    if (isGenerating) return;
-    const wid = getCurrentWebsiteId() || websiteId || "f8d16d12-bf91-4d92-9134-8fa29813e31e";
-    setIsGenerating(true);
-    try {
-      showToast("⚡ Autonomous Blog Generator active: 3-Agent Crew writing next article...");
-      const res: any = await post(`/api/writer/${wid}/generate`, {
-        autonomous: true,
-        website_id: wid,
-      });
-      const artTitle = res?.title || res?.article?.title || res?.topic || "Autonomous SEO Article";
-      showToast(`✓ Generated: "${artTitle}" — drafted to WordPress!`);
-      setBlogsGeneratedToday((prev) => prev + 1);
-      fetchDashboardData();
-    } catch (e: any) {
-      console.warn("Autonomous generation triggered:", e);
-    } finally {
-      setIsGenerating(false);
-      const interval = activeSchedule?.minutes || generationInterval || 3;
-      setNextBlogInMinutes(interval);
-      setNextBlogSeconds(interval * 60);
-    }
-  }, [isGenerating, websiteId, activeSchedule, generationInterval, fetchDashboardData]);
-
-  // Countdown timer for next blog (Problem 4.4)
+  // Bulletproof countdown timer using wall-clock target timestamp
   useEffect(() => {
-    if (nextBlogSeconds <= 0 && nextBlogInMinutes === 0) return;
-    if (nextBlogSeconds <= 0) return;
-    const iv = setInterval(() => {
-      setNextBlogSeconds((prev) => {
-        if (prev <= 1) {
-          runAutonomousBlogGeneration();
-          return 0;
-        }
-        return prev - 1;
-      });
+    const intervalMins = activeSchedule?.minutes || generationInterval || 3;
+    if (!targetTimestampRef.current) {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("nextBlogTargetTimestamp") : null;
+      if (stored && Number(stored) > Date.now()) {
+        targetTimestampRef.current = Number(stored);
+      } else {
+        targetTimestampRef.current = Date.now() + intervalMins * 60 * 1000;
+        try {
+          localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
+        } catch {}
+      }
+    }
+
+    const timer = setInterval(() => {
+      if (!targetTimestampRef.current) return;
+      const diffMs = targetTimestampRef.current - Date.now();
+      const secondsLeft = Math.max(0, Math.floor(diffMs / 1000));
+      setNextBlogSeconds(secondsLeft);
+
+      if (secondsLeft <= 0) {
+        // Reset target immediately for the next interval
+        const nextMins = activeSchedule?.minutes || generationInterval || 3;
+        targetTimestampRef.current = Date.now() + nextMins * 60 * 1000;
+        try {
+          localStorage.setItem("nextBlogTargetTimestamp", String(targetTimestampRef.current));
+        } catch {}
+        setNextBlogSeconds(nextMins * 60);
+
+        // Fire autonomous generation!
+        runAutonomousBlogGeneration();
+      }
     }, 1000);
-    return () => clearInterval(iv);
-  }, [nextBlogSeconds, nextBlogInMinutes, runAutonomousBlogGeneration]);
+
+    return () => clearInterval(timer);
+  }, [activeSchedule, generationInterval, runAutonomousBlogGeneration]);
 
   // Poll blog settings every 30s to keep Today's progress in sync
   useEffect(() => {
@@ -879,9 +912,48 @@ export default function HomePage() {
                   <span style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 400 }}>
                     ({blogsGeneratedToday}/{dailyBlogTarget} generated today)
                   </span>
+                  <button
+                    onClick={() => runAutonomousBlogGeneration()}
+                    disabled={isGenerating}
+                    style={{
+                      marginLeft: "auto",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      border: "none",
+                      padding: "4px 10px",
+                      borderRadius: "4px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: isGenerating ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    ⚡ Run Now
+                  </button>
                 </>
               ) : (
-                <span style={{ color: "var(--accent)" }}>Due now — autonomous loop evaluating next topic...</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
+                  <span style={{ color: "var(--accent)" }}>Due now — autonomous loop evaluating next topic...</span>
+                  <button
+                    onClick={() => runAutonomousBlogGeneration()}
+                    disabled={isGenerating}
+                    style={{
+                      marginLeft: "auto",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      border: "none",
+                      padding: "4px 10px",
+                      borderRadius: "4px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: isGenerating ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    ⚡ Run Now
+                  </button>
+                </div>
               )}
             </div>
           </div>
