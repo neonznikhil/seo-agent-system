@@ -58,7 +58,8 @@ class PermissiveCORSMiddleware(BaseHTTPMiddleware):
         # Always reflect origin — critical for browser CORS
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
+        if origin != "*":
+            response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
         response.headers["Access-Control-Allow-Headers"] = allow_headers
         response.headers["Access-Control-Expose-Headers"] = "X-Request-ID, X-Process-Time"

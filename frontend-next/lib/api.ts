@@ -11,8 +11,29 @@ export function buildUrl(path: string): string {
     return path;
   }
   let cleanPath = path.startsWith("/") ? path : `/${path}`;
-  const base = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-  
+
+  // When running in browser on deployed domains, route through same-origin Next.js rewrites
+  // This completely eliminates CORS preflight issues
+  if (typeof window !== "undefined") {
+    const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    if (!isLocalhost) {
+      if (!cleanPath.startsWith("/api/") && cleanPath !== "/api") {
+        cleanPath = `/api${cleanPath}`;
+      }
+      return cleanPath;
+    }
+  }
+
+  const rawBase = process.env.NEXT_PUBLIC_API_URL;
+  const base = (rawBase !== undefined ? rawBase : "http://127.0.0.1:8000").replace(/\/+$/, "");
+
+  if (!base) {
+    if (!cleanPath.startsWith("/api/") && cleanPath !== "/api") {
+      cleanPath = `/api${cleanPath}`;
+    }
+    return cleanPath;
+  }
+
   if (base.endsWith("/api") && cleanPath.startsWith("/api/")) {
     cleanPath = cleanPath.substring(4);
   }

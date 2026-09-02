@@ -97,7 +97,7 @@ async def lifespan(app: FastAPI):
     # 2. NVIDIA NIM startup validation
     async def _validate_nim_bg():
         try:
-            from .database import validate_nim_connection
+            from database import validate_nim_connection
             nim_state = await validate_nim_connection(force=True)
             if nim_state.get("available"):
                 logger.info(f"[NIM] {nim_state.get('diagnostic')}")
@@ -117,7 +117,7 @@ async def lifespan(app: FastAPI):
 
     # 4. Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
     try:
-        from .agents.scheduler import setup_scheduler, get_scheduler_status, run_pending_daily_jobs
+        from agents.scheduler import setup_scheduler, get_scheduler_status, run_pending_daily_jobs
         sched = setup_scheduler()
         if not sched.running:
             sched.start()
@@ -141,7 +141,7 @@ async def lifespan(app: FastAPI):
         # Restore all saved blog schedules — P1 persistence across restarts
         async def restore_all_schedules():
             try:
-                from .database import get_supabase
+                from database import get_supabase
                 supabase_local = get_supabase()
                 result = None
                 try:
@@ -169,7 +169,7 @@ async def lifespan(app: FastAPI):
                                 schedules.append({"website_id": wid, "generation_interval_minutes": vals.get("generation_interval_minutes") or vals.get("interval_minutes") or 288, "schedule_label": vals.get("schedule_label") or vals.get("label") or "default", "auto_generate_enabled": vals.get("auto_generate_enabled", True)})
                         except Exception:
                             pass
-                from .agents.scheduler import scheduler, run_autonomous_blog_generation
+                from agents.scheduler import scheduler, run_autonomous_blog_generation
                 for setting in (schedules or []):
                     wid = setting.get("website_id")
                     if not wid:
@@ -203,7 +203,7 @@ async def lifespan(app: FastAPI):
 
     # 6. Continuous 24/7 Monitoring Engine (6 loops)
     try:
-        from .services.continuous_monitor import start_all_monitors
+        from services.continuous_monitor import start_all_monitors
         start_all_monitors()
         logger.info("[ContinuousMonitor] 6 autonomous monitoring loops started (Rank, SERP, Competitor, Tech, Geo, Structure).")
     except Exception as e:
@@ -211,7 +211,7 @@ async def lifespan(app: FastAPI):
 
     # 7. Seed initial system status alert if table is empty
     try:
-        from .database import get_supabase
+        from database import get_supabase
         sb = get_supabase()
         existing_alerts = sb.table("realtime_alerts").select("id").limit(1).execute().data
         if not existing_alerts or len(existing_alerts) == 0:
@@ -236,7 +236,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     try:
-        from .agents.scheduler import stop_scheduler
+        from agents.scheduler import stop_scheduler
         stop_scheduler()
     except Exception:
         pass
@@ -278,19 +278,21 @@ app.add_middleware(PermissiveCORSMiddleware)
 @app.options("/{full_path:path}")
 async def catch_all_options(full_path: str, request: Request):
     origin = request.headers.get("origin") or "*"
-    req_headers = request.headers.get("access-control-request-headers") or "Content-Type, X-User-Id, X-Website-Id, Authorization, X-Requested-With"
+    req_headers = request.headers.get("access-control-request-headers") or "Content-Type, X-User-Id, X-Website-Id, Authorization, X-Requested-With, *"
+    headers = {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD",
+        "Access-Control-Allow-Headers": req_headers,
+        "Access-Control-Max-Age": "600",
+        "Vary": "Origin",
+        "Content-Length": "0",
+    }
+    if origin != "*":
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         content={},
         status_code=204,
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD",
-            "Access-Control-Allow-Headers": req_headers,
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Max-Age": "600",
-            "Vary": "Origin",
-            "Content-Length": "0",
-        },
+        headers=headers,
     )
 
 
@@ -351,7 +353,7 @@ async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
     if any(d in keyword.lower() for d in _denylist_raw):
         # Check if website KB actually grounds this (blogging niche)
         try:
-            from .services.knowledge_service import KnowledgeService as _KSRaw
+            from services.knowledge_service import KnowledgeService as _KSRaw
             _ksr = _KSRaw(website_id=payload.website_id or account_id)
             _hitsr = await _ksr.retrieve_relevant_hybrid(keyword, top_k=3)
             _avgr = sum(float(h.get("final_score", 0)) for h in _hitsr)/len(_hitsr) if _hitsr else 0
@@ -363,7 +365,7 @@ async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
             raise HTTPException(status_code=400, detail=f"Denied unrelated keyword '{keyword}' (denylist)")
     # Grounding check
     try:
-        from .services.knowledge_service import KnowledgeService as _KSRaw2
+        from services.knowledge_service import KnowledgeService as _KSRaw2
         if payload.website_id:
             _ksr2 = _KSRaw2(website_id=payload.website_id)
             _hitsr2 = await _ksr2.retrieve_relevant_hybrid(keyword, top_k=3)
@@ -594,7 +596,7 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
         async def _fetch_coro(fn):
             return await asyncio.to_thread(fn)
 
-        from .services.local_store import (
+        from services.local_store import (
             list_local_knowledge, list_local_brain_memory, list_local_content, list_local_approvals, list_local_websites
         )
 

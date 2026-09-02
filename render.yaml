@@ -55,8 +55,10 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
+      - key: BACKEND_URL
+        value: https://rankforge-backend.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        value: https://rankforge-backend.onrender.com/api
+        value: ""
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY

@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN mkdir -p local_data
 
+ENV PYTHONPATH="/app:/app/backend"
 EXPOSE 10000
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2"]
 
