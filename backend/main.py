@@ -3,6 +3,16 @@ Complete FastAPI initialization with custom JWT auth middleware, multi-tenant RL
 autonomous health service daemon, and full agent routing.
 """
 
+import sys
+from pathlib import Path
+
+# Ensure both backend directory and repo root are always in sys.path
+_backend_dir = Path(__file__).resolve().parent
+_repo_root = _backend_dir.parent
+for _p in [str(_backend_dir), str(_repo_root)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import asyncio
 import logging
 import os
@@ -13,7 +23,6 @@ import uuid
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
-from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException, Header
 from fastapi.responses import JSONResponse, FileResponse

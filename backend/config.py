@@ -159,12 +159,10 @@ def validate_env() -> None:
     if missing_core and not os.getenv("TESTING"):
         error_msg = (
             f"\n\n================================================================\n"
-            f"FATAL: RankForge Boot Refusal - Missing Required Environment Variables:\n"
+            f"WARNING: RankForge Started with Unset Environment Variables:\n"
             f"  -> {', '.join(missing_core)}\n\n"
-            f"Please populate these variables in your .env file before launching.\n"
-            f"Refer to .env.example for variable descriptions and instructions.\n"
+            f"Please populate these variables via /connectors in the UI or Render dashboard.\n"
             f"================================================================\n"
         )
-        logger.critical(error_msg)
+        logger.warning(error_msg)
         print(error_msg, file=sys.stderr)
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing_core)}")
