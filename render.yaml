@@ -13,11 +13,9 @@ services:
         value: 10000
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_ANON_KEY
+      - key: SUPABASE_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: DATABASE_URL
         sync: false
@@ -36,8 +34,8 @@ services:
           name: rankforge-redis
           type: redis
           property: connectionString
-      - key: CORS_ORIGINS
-        value: https://rankforge-frontend.onrender.com,http://localhost:3000
+      - key: ALLOWED_CORS_ORIGINS
+        value: https://rankforge-frontend.onrender.com,http://localhost:3000,https://seo-agent-system-production.up.railway.app:8080,https://*.netlify.app
 
   - type: web
     name: rankforge-frontend

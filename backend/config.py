@@ -103,10 +103,11 @@ FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/
 BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 REDIRECT_URI: str = os.getenv("REDIRECT_URI", f"{BACKEND_URL}/api/wordpress/oauth/callback")
 
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,https://seo-agent-system-production.up.railway.app:8080,https://*.netlify.app"
+_raw_cors = os.getenv("ALLOWED_CORS_ORIGINS") or os.getenv("CORS_ORIGINS") or _default_origins
 ALLOWED_CORS_ORIGINS: list = [
     origin.strip().rstrip("/")
-    for origin in os.getenv("ALLOWED_CORS_ORIGINS", _default_origins).split(",")
+    for origin in _raw_cors.split(",")
     if origin.strip() and origin.strip() != "*"
 ]
 if FRONTEND_URL and FRONTEND_URL not in ALLOWED_CORS_ORIGINS and FRONTEND_URL != "*":

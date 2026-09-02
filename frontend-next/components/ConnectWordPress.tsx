@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { get, post } from "@/lib/api";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+import { get, del } from "@/lib/api";
 
 export default function ConnectWordPress() {
   const [status, setStatus] = useState<{ connected: boolean; site_url?: string; username?: string } | null>(null);
@@ -47,17 +45,7 @@ export default function ConnectWordPress() {
     setActionLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/wordpress/disconnect`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "X-User-Id": typeof window !== "undefined" ? (localStorage.getItem("x-user-id") || "anonymous") : "anonymous",
-        },
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Disconnect failed: ${res.status} - ${text}`);
-      }
+      await del("/wordpress/disconnect");
       setStatus({ connected: false });
     } catch (err: any) {
       setError(err.message || "Failed to disconnect WordPress");
