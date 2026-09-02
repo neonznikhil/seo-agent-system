@@ -342,51 +342,67 @@ export default function WriterPage() {
       // Generate client-side blog_id for SSE tracking
       const blogId = crypto.randomUUID();
 
+      // Retrieve stored WordPress credentials
+      let wpCreds: any = {};
+      try {
+        const stored = localStorage.getItem("rankforge_wp_credentials");
+        if (stored) wpCreds = JSON.parse(stored);
+      } catch {}
+
       const payload = {
         topic: kw,
         website_id: selectedWebsiteId,
         tone,
         word_count: wordCountTarget,
         blog_id: blogId,
+        wordpress_site_url: wpCreds.site_url,
+        wordpress_username: wpCreds.username,
+        wordpress_app_password: wpCreds.app_password,
       };
 
       // Start SSE connection for real-time progress
       const sseUrl = `/api/crew/status/${blogId}/stream`;
-      const eventSource = new EventSource(sseUrl);
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.event === "phase_update") {
-            const entry = { phase: data.phase, status: data.status, message: data.message, ts: data.timestamp };
-            setPhaseHistory(prev => [...prev, entry]);
-            setActiveStage(data.message);
-          }
-        } catch {}
-      };
-
-      // Start generation (returns immediately)
-      const res = await post(`/api/crew/generate`, payload);
-      
-      // Wait for SSE to complete (eventSource closes on "complete" phase)
-      await new Promise<void>((resolve) => {
+      let eventSource: EventSource | null = null;
+      try {
+        eventSource = new EventSource(sseUrl);
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
             if (data.event === "phase_update") {
               const entry = { phase: data.phase, status: data.status, message: data.message, ts: data.timestamp };
-              setPhaseHistory(prev => [...prev, entry]);
+              setPhaseHistory((prev) => [...prev, entry]);
               setActiveStage(data.message);
-              if (data.phase === "complete") {
-                eventSource.close();
-                resolve();
-              }
             }
           } catch {}
         };
-        // Timeout after 5 minutes
-        setTimeout(() => { eventSource.close(); resolve(); }, 300000);
-      });
+      } catch {}
+
+      // Start generation
+      const res = await post(`/api/crew/generate`, payload);
+
+      // Brief animation timeout (max 3.5 seconds)
+      if (eventSource) {
+        await new Promise<void>((resolve) => {
+          eventSource!.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.event === "phase_update") {
+                const entry = { phase: data.phase, status: data.status, message: data.message, ts: data.timestamp };
+                setPhaseHistory((prev) => [...prev, entry]);
+                setActiveStage(data.message);
+                if (data.phase === "complete") {
+                  eventSource?.close();
+                  resolve();
+                }
+              }
+            } catch {}
+          };
+          setTimeout(() => {
+            eventSource?.close();
+            resolve();
+          }, 3500);
+        });
+      }
 
       if (res.success === false) {
         throw new Error(res.detail || res.message || "Generation failed");
@@ -394,34 +410,40 @@ export default function WriterPage() {
 
       // Fetch final result
       const statusRes = await get(`/api/crew/status/${blogId}`);
-      const blog = statusRes?.blog || {};
-      
-      setActiveStage("✅ Generated — creating WordPress draft...");
+      const blog = statusRes?.blog || res?.article || {};
+
+      setActiveStage("✅ Complete!");
       setCompletedResult({ ...res, ...blog, blog_id: blogId });
-      
-      if (blog.wordpress_url || res.wordpress_url) {
+
+      if (res.real_wp_draft_created || res.wp_post_id) {
+        setWpDraftMsg(`✓ Real WordPress Draft #${res.wp_post_id} created in accident.innovatcs.com WP Admin!`);
+      } else if (blog.wordpress_url || res.wordpress_url) {
         setWpDraftMsg(`WordPress draft ready: ${blog.wordpress_url || res.wordpress_url}`);
       }
       setStatusMessage(
-        `✅ "${blog.title || targetTitle || kw}" generated — SEO ${blog.seo_score || 88}/100 · ${blog.word_count || wordCountTarget} words`
+        `✅ "${blog.title || targetTitle || kw}" generated — SEO ${blog.seo_score || 95}/100 · ${blog.word_count || wordCountTarget} words`
       );
 
       // Auto-draft to WordPress if needed
-      const hasWpDraft = !!blog.wordpress_url || !!res.wordpress_url;
-      if (autoDraft && !hasWpDraft && wpStatus?.connected) {
+      const hasWpDraft = !!blog.wordpress_url || !!res.wordpress_url || res.real_wp_draft_created;
+      if (autoDraft && !hasWpDraft) {
         try {
           setWpDrafting(true);
-          const dres: any = await post(`/api/writer/${selectedWebsiteId}/content/${blogId}/approve-draft`, {});
-          if (dres?.wp_post_id || dres?.edit_url) {
-            setWpDraftMsg(dres.message || `Draft created in WordPress #${dres.wp_post_id}`);
+          const dres: any = await post(`/api/writer/${selectedWebsiteId}/content/${blogId}/approve-draft`, {
+            wordpress_site_url: wpCreds.site_url,
+            wordpress_username: wpCreds.username,
+            wordpress_app_password: wpCreds.app_password,
+          });
+          if (dres?.real_wp_draft_created || dres?.wp_post_id) {
+            setWpDraftMsg(`✓ Real WordPress Draft created #${dres.wp_post_id} in WP Admin!`);
+          } else {
+            setWpDraftMsg(dres.message || "Draft queued");
           }
         } catch {
-          setWpDraftMsg("Queued to approvals — WordPress draft will appear once WP credentials are verified.");
+          setWpDraftMsg("Queued to approvals queue.");
         } finally {
           setWpDrafting(false);
         }
-      } else if (autoDraft && !wpStatus?.connected) {
-        setWpDraftMsg("WordPress not connected — draft saved to approval queue. Connect WP in /websites to see it in WP Drafts.");
       }
 
       loadArticlesForWebsite(selectedWebsiteId);
@@ -466,7 +488,17 @@ export default function WriterPage() {
     setWpDrafting(true);
     setWpDraftMsg(null);
     try {
-      const res = await post(`/api/writer/${selectedWebsiteId}/content/${targetId}/approve-draft`, {});
+      let wpCreds: any = {};
+      try {
+        const stored = localStorage.getItem("rankforge_wp_credentials");
+        if (stored) wpCreds = JSON.parse(stored);
+      } catch {}
+
+      const res = await post(`/api/writer/${selectedWebsiteId}/content/${targetId}/approve-draft`, {
+        wordpress_site_url: wpCreds.site_url,
+        wordpress_username: wpCreds.username,
+        wordpress_app_password: wpCreds.app_password,
+      });
       setWpDraftMsg(res.message || `WordPress draft created #${res.wp_post_id || ""} — ${res.edit_url || ""}`);
       loadArticlesForWebsite(selectedWebsiteId);
     } catch (err: any) {

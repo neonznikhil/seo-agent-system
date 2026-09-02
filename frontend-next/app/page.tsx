@@ -154,6 +154,9 @@ export default function HomePage() {
   const intervalMinsRef = useRef<number>(3);
   const runGenerationRef = useRef<() => void>(() => {});
   const [blogSettingsSaving, setBlogSettingsSaving] = useState<boolean>(false);
+  const [wpAppPass, setWpAppPass] = useState<string>("");
+  const [wpConnected, setWpConnected] = useState<boolean>(false);
+  const [wpTesting, setWpTesting] = useState<boolean>(false);
   // Developer Mode - bypass daily limits
   const [developerMode, setDeveloperMode] = useState<boolean>(false);
   const [devModeSaving, setDevModeSaving] = useState<boolean>(false);
@@ -264,7 +267,49 @@ export default function HomePage() {
   useEffect(() => {
     fetchBlogSettings();
     fetchReadinessCheck();
+    try {
+      const stored = localStorage.getItem("rankforge_wp_credentials");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.app_password) {
+          setWpConnected(true);
+          setWpAppPass(parsed.app_password);
+        }
+      }
+    } catch {}
   }, [fetchBlogSettings, fetchReadinessCheck]);
+
+  const handleVerifyAndSaveWp = async () => {
+    if (!wpAppPass.trim()) return;
+    setWpTesting(true);
+    try {
+      const res = await post("/api/wordpress/connect", {
+        site_url: "https://accident.innovatcs.com",
+        wp_username: "admin",
+        wp_app_password: wpAppPass.trim(),
+      });
+      if (res.connected) {
+        setWpConnected(true);
+        try {
+          localStorage.setItem(
+            "rankforge_wp_credentials",
+            JSON.stringify({
+              site_url: "https://accident.innovatcs.com",
+              username: "admin",
+              app_password: wpAppPass.trim(),
+            })
+          );
+        } catch {}
+        showToast("✓ WordPress connected! Drafts will sync directly to accident.innovatcs.com WP Admin.");
+      } else {
+        showToast(`WordPress: ${res.message || "Credentials stored"}`);
+      }
+    } catch (e: any) {
+      showToast(`Verification failed: ${e.message}`);
+    } finally {
+      setWpTesting(false);
+    }
+  };
 
   const runAutonomousBlogGeneration = useCallback(async () => {
     if (isGenerating) return;
@@ -278,6 +323,13 @@ export default function HomePage() {
       const stored = localStorage.getItem("rankforge_wp_credentials");
       if (stored) wpCreds = JSON.parse(stored);
     } catch {}
+    if (!wpCreds.app_password && wpAppPass.trim()) {
+      wpCreds = {
+        site_url: "https://accident.innovatcs.com",
+        username: "admin",
+        app_password: wpAppPass.trim(),
+      };
+    }
 
     try {
       const res: any = await post(`/api/writer/${wid}/generate`, {
@@ -992,6 +1044,56 @@ export default function HomePage() {
             >
               <span style={{ position: "absolute", top: "2px", left: autoTopicSelection ? "22px" : "2px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 0.2s", display: "inline-block" }} />
             </button>
+          </div>
+
+          {/* WordPress Direct Integration Card */}
+          <div style={{ padding: "10px 12px", background: "var(--panel-inner)", border: wpConnected ? "1px solid var(--green)" : "1px solid var(--accent)", borderRadius: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700 }}>
+                WordPress Destination: accident.innovatcs.com (admin)
+              </span>
+              <span className={`badge ${wpConnected ? "badge-green" : "badge-amber"}`} style={{ fontSize: "10px" }}>
+                {wpConnected ? "✓ Connected (Real WP Drafts Active)" : "⚠️ App Password Required"}
+              </span>
+            </div>
+
+            {!wpConnected ? (
+              <div style={{ marginTop: "8px" }}>
+                <div style={{ fontSize: "10px", color: "var(--muted)", marginBottom: "6px" }}>
+                  Paste your WordPress Application Password below so autonomous generation creates real drafts in your WP Admin:
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    type="password"
+                    value={wpAppPass}
+                    onChange={(e) => setWpAppPass(e.target.value)}
+                    placeholder="Enter WP Application Password (e.g. abcd efgh ijkl mnop)"
+                    style={{ flex: 1, padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
+                  />
+                  <button
+                    onClick={handleVerifyAndSaveWp}
+                    disabled={wpTesting || !wpAppPass.trim()}
+                    className="btn btn-accent"
+                    style={{ padding: "8px 14px", fontSize: "11px", whiteSpace: "nowrap" }}
+                  >
+                    {wpTesting ? "Verifying..." : "Save & Verify"}
+                  </button>
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px" }}>
+                  Generate in WP Admin &gt; Users &gt; Profile &gt; Application Passwords
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--green)", marginTop: "4px" }}>
+                <span>✓ Active — generated blogs will automatically post as drafts directly into accident.innovatcs.com/wp-admin!</span>
+                <button
+                  onClick={() => setWpConnected(false)}
+                  style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "10px", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Change Password
+                </button>
+              </div>
+            )}
           </div>
 
           <button
