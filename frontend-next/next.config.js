@@ -22,10 +22,12 @@ const nextConfig = {
     ];
   },
   async rewrites() {
+    // Proxy /api to backend — use env var if set, fallback to Render backend
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "") || "https://rankforge-backend.onrender.com";
     return [
       {
         source: "/api/:path*",
-        destination: "https://seo-agent-system-production.up.railway.app:8080/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

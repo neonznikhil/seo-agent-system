@@ -244,12 +244,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="RankForge API", lifespan=lifespan)
 
-# Request logging and timing
+# Request logging and timing — must be INNERMOST so CORS runs first
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     request_id = str(uuid.uuid4())
     start_time = time.time()
-    
+    # Never block OPTIONS preflight — let CORS middleware handle it
+    if request.method == "OPTIONS":
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time"] = "0"
+        return response
     try:
         response = await call_next(request)
         process_time = time.time() - start_time
@@ -262,11 +267,31 @@ async def request_logging_middleware(request: Request, call_next):
         raise
 
 
-# Enforce global JWT auth & session validation
+# Enforce global JWT auth & session validation — added BEFORE CORS so CORS is outermost
+# Middleware execution order is LIFO: last added = outermost = runs first
 app.add_middleware(AuthMiddleware)
 
-# CORS configuration — custom permissive middleware reflecting request Origin
+# CORS configuration — custom permissive middleware reflecting request Origin — MUST be added LAST to be outermost
 app.add_middleware(PermissiveCORSMiddleware)
+
+# Fallback explicit OPTIONS handler — guarantees 204 even if middleware stack is misordered on some ASGI servers
+@app.options("/{full_path:path}")
+async def catch_all_options(full_path: str, request: Request):
+    origin = request.headers.get("origin") or "*"
+    req_headers = request.headers.get("access-control-request-headers") or "Content-Type, X-User-Id, X-Website-Id, Authorization, X-Requested-With"
+    return JSONResponse(
+        content={},
+        status_code=204,
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD",
+            "Access-Control-Allow-Headers": req_headers,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "600",
+            "Vary": "Origin",
+            "Content-Length": "0",
+        },
+    )
 
 
 @app.exception_handler(Exception)
