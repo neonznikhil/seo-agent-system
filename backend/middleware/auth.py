@@ -102,9 +102,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware validating X-User-Id against users table, 403 on invalid."""
 
     async def dispatch(self, request: Request, call_next):
-        # Allow health/docs without auth
         path = request.url.path or ""
-        if path in ("/health", "/api/health", "/docs", "/openapi.json", "/", "/dashboard", "/app"):
+        method = request.method or ""
+        if method == "OPTIONS" or path in ("/health", "/api/health", "/docs", "/openapi.json", "/", "/dashboard", "/app"):
             request.state.account_id = DEFAULT_ACCOUNT_ID
             request.state.account = {
                 "id": DEFAULT_ACCOUNT_ID,

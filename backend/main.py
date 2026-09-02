@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
 from database import get_supabase, set_account_context, call_nim_llm
 from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
+from middleware.cors import PermissiveCORSMiddleware
 from services.autonomous_health_service import autonomous_health_service
 
 from routers.websites import router as websites_router
@@ -265,15 +266,8 @@ async def request_logging_middleware(request: Request, call_next):
 # Enforce global JWT auth & session validation
 app.add_middleware(AuthMiddleware)
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_CORS_ORIGINS or ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    max_age=600,
-)
+# CORS configuration — permissive middleware allowing all origins
+app.add_middleware(PermissiveCORSMiddleware)
 
 
 @app.exception_handler(Exception)
