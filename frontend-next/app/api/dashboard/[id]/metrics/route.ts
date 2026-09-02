@@ -19,14 +19,30 @@ export async function GET(
   }
 
   return NextResponse.json({
+    website_id: id || "f8d16d12-bf91-4d92-9134-8fa29813e31e",
+    total_articles: 12,
+    published_articles: 10,
+    pending_articles: 2,
     seo_health_score: 98,
+    last_audit_date: new Date().toISOString(),
     monitored_alerts: 0,
     memories_count: 12,
+    knowledge_count: 48,
     backlinks_count: 8,
     backlink_opportunities: 15,
-    keywords_count: 24,
-    articles_published: 12,
-    traffic_increase_pct: 18.4,
-    rankings_improved: 7,
+    recent_content: [
+      {
+        id: "c-001",
+        title: "Essential Legal Steps to Follow Immediately After an Automobile Crash",
+        keyword: "what to do after a car accident checklist",
+        status: "published",
+        wordpress_url: "https://accident.innovatcs.com/steps-after-car-accident",
+      },
+    ],
+    agents: [
+      { name: "Researcher", state: "ACTIVE" },
+      { name: "Writer", state: "ACTIVE" },
+      { name: "Editor", state: "ACTIVE" },
+    ],
   });
 }

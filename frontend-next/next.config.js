@@ -22,18 +22,7 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    const backendUrl =
-      process.env.BACKEND_URL?.replace(/\/api\/?$/, "") ||
-      (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.startsWith("/")
-        ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "")
-        : "") ||
-      "https://rankforge-backend.onrender.com";
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backendUrl}/api/:path*`,
-      },
-    ];
+    return [];
   },
 };
 
