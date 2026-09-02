@@ -1,8 +1,8 @@
 """Permissive CORS middleware for RankForge.
 
-Allows all origins, methods, and headers. Security is enforced at the
-application layer via X-User-Id, Supabase RLS, and auth checks, so browser
-CORS is not a security boundary here.
+Reflects the request Origin header so preflight always succeeds.
+Security is enforced at the application layer via X-User-Id, Supabase RLS,
+and auth checks, so browser CORS is not the security boundary.
 """
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger("backend.middleware.cors")
 
 
 class PermissiveCORSMiddleware(BaseHTTPMiddleware):
-    """Custom CORS middleware that allows all origins."""
+    """Custom CORS middleware that reflects the request Origin."""
 
     def __init__(self, app: Callable):
         super().__init__(app)
@@ -33,7 +33,7 @@ class PermissiveCORSMiddleware(BaseHTTPMiddleware):
         response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-User-Id, Authorization, X-Requested-With"
         response.headers["Access-Control-Max-Age"] = "600"
 
         return response
