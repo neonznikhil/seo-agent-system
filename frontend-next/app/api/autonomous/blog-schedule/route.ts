@@ -1,55 +1,39 @@
 import { NextResponse } from "next/server";
+import { getSchedule, updateSchedule } from "../schedule-store";
 
-export async function GET(req: Request) {
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
-  try {
-    const url = new URL(req.url);
-    const wid = url.searchParams.get("website_id") || "";
-    const res = await fetch(`${backendUrl}/api/autonomous/blog-schedule${wid ? `?website_id=${wid}` : ""}`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
-  }
-
+export async function GET() {
+  const current = getSchedule();
   return NextResponse.json({
     success: true,
     enabled: true,
-    frequency: "daily",
-    cron: "0 9 * * *",
-    posts_per_day: 1,
-    timezone: "Asia/Kolkata",
-    preferred_hour: 9,
-    auto_publish: true,
-    next_run: new Date(Date.now() + 3600000).toISOString(),
+    frequency: current.frequency,
+    generation_interval_minutes: current.generation_interval_minutes,
+    schedule_label: current.schedule_label,
+    daily_blog_target: current.daily_blog_target,
+    next_run: new Date(current.next_run_timestamp).toISOString(),
+    next_blog_seconds: current.next_blog_seconds,
   });
 }
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
-  try {
-    const res = await fetch(`${backendUrl}/api/autonomous/blog-schedule`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
-  }
+  const minutes = Number(body.interval_minutes || body.generation_interval_minutes || 3);
+  const daily = Number(body.daily_target || body.daily_blog_target || 10);
+  const label = body.label || (minutes <= 60 ? `Every ${minutes} min` : `Every ${Math.round(minutes / 60)} hours`);
+
+  const updated = updateSchedule({
+    generation_interval_minutes: minutes,
+    daily_blog_target: daily,
+    schedule_label: label,
+  });
 
   return NextResponse.json({
     success: true,
-    message: "Blog schedule updated successfully",
-    ...body,
+    message: `Blog schedule set to ${label}`,
+    generation_interval_minutes: minutes,
+    schedule_label: label,
+    daily_blog_target: daily,
+    next_run: new Date(updated.next_run_timestamp).toISOString(),
+    next_blog_seconds: minutes * 60,
   });
 }

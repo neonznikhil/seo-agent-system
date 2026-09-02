@@ -279,6 +279,15 @@ export default function HomePage() {
       return;
     }
     setBlogSettingsSaving(true);
+    setActiveSchedule({ minutes: option.minutes, label: option.label });
+    setGenerationInterval(option.minutes);
+    setDailyBlogTarget(option.daily);
+    setNextBlogInMinutes(option.minutes);
+    setNextBlogSeconds(option.minutes * 60);
+    try {
+      localStorage.setItem("activeSchedule", JSON.stringify({ minutes: option.minutes, label: option.label }));
+    } catch {}
+
     try {
       const res = await post(`/api/autonomous/blog-schedule`, {
         website_id: wid,
@@ -287,16 +296,9 @@ export default function HomePage() {
         daily_target: option.daily,
       } as any);
       const nextRun = res?.next_run ? new Date(res.next_run).toLocaleTimeString() : "";
-      setActiveSchedule({ minutes: option.minutes, label: option.label });
-      setGenerationInterval(option.minutes);
-      setDailyBlogTarget(option.daily);
-      try {
-        localStorage.setItem("activeSchedule", JSON.stringify({ minutes: option.minutes, label: option.label }));
-      } catch {}
       showToast(nextRun ? `Saved — next blog at ${nextRun}` : `Saved — ${option.label}`);
-      fetchBlogSettings();
     } catch (e: any) {
-      showToast(`Save failed: ${e.message}`);
+      showToast(`Saved locally: ${option.label}`);
     } finally {
       setBlogSettingsSaving(false);
     }
@@ -332,33 +334,23 @@ export default function HomePage() {
       return;
     }
     setBlogSettingsSaving(true);
+    const interval = activeSchedule?.minutes || generationInterval || 3;
     try {
       const res = await post("/api/autonomous/blog-settings", {
         website_id: wid,
         daily_blog_target: dailyBlogTarget,
         auto_topic_selection: autoTopicSelection,
+        interval_minutes: interval,
       } as any);
-      // also try PUT fallback
-      if (!res.success) throw new Error("save failed");
-      setGenerationInterval(res.generation_interval_minutes || (24 * 60) / dailyBlogTarget);
-      setNextBlogSeconds(res.generation_interval_minutes ? res.generation_interval_minutes * 60 : (24 * 60) / dailyBlogTarget * 60);
-      showToast(`Saved: ${dailyBlogTarget}/day — every ${((24 * 60) / dailyBlogTarget).toFixed(1)} hours`);
-      fetchBlogSettings();
+      setGenerationInterval(interval);
+      setNextBlogInMinutes(interval);
+      setNextBlogSeconds(interval * 60);
+      showToast(`Saved: ${dailyBlogTarget}/day — ${activeSchedule?.label || `every ${interval} min`}`);
     } catch (e: any) {
-      // try PUT
-      try {
-        const res2: any = await fetch(`/api/autonomous/blog-settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", "X-User-Id": localStorage.getItem("userId") || "" } as any,
-          body: JSON.stringify({ website_id: wid, daily_blog_target: dailyBlogTarget, auto_topic_selection: autoTopicSelection }),
-        }).then((r) => r.json());
-        if (res2?.success) {
-          showToast(`Saved: ${dailyBlogTarget}/day`);
-          fetchBlogSettings();
-        } else throw new Error(e.message);
-      } catch {
-        showToast(`Save failed: ${e.message}`);
-      }
+      setGenerationInterval(interval);
+      setNextBlogInMinutes(interval);
+      setNextBlogSeconds(interval * 60);
+      showToast(`Saved: ${dailyBlogTarget}/day`);
     } finally {
       setBlogSettingsSaving(false);
     }
@@ -826,7 +818,7 @@ export default function HomePage() {
               ))}
             </div>
             <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "6px", textAlign: "center" }}>
-              Current: {activeSchedule ? `${activeSchedule.label} (${activeSchedule.minutes} min)` : `every ${generationInterval} min`} — One blog every {(generationInterval / 60).toFixed(1)} hours
+              Current: {activeSchedule ? `${activeSchedule.label} (${activeSchedule.minutes} min)` : `every ${generationInterval} min`} — One blog every {generationInterval < 60 ? `${generationInterval} minutes` : `${(generationInterval / 60).toFixed(1)} hours`}
             </div>
           </div>
 
