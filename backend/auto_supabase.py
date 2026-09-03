@@ -636,10 +636,11 @@ def extract_project_ref(supabase_url: str) -> str:
 
 
 def build_db_url(project_ref: str, db_password: str) -> str:
-    """Format the PostgreSQL connection URL for Supabase pooler."""
+    """Format the PostgreSQL connection URL for Supabase pooler with SSL enforcement."""
     return (
         f"postgresql://postgres.{project_ref}:{db_password}"
-        f"@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+        f"@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
+        f"?pgbouncer=true&sslmode=require"
     )
 
 
