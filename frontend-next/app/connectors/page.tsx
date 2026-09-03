@@ -90,7 +90,7 @@ export default function ConnectorsPage() {
       const res: ConnectorStatus = await get(`/api/connectors/status${wid ? `?website_id=${wid}` : ""}`);
       setStatus(res);
     } catch (err: any) {
-      console.warn("Could not load connector status:", err);
+      // warn removed
     } finally {
       setLoading(false);
     }
@@ -104,14 +104,14 @@ export default function ConnectorsPage() {
         const parsed = JSON.parse(stored);
         if (parsed.site_url) setWpUrl(parsed.site_url);
         if (parsed.username && parsed.username !== "admin") setWpUser(parsed.username);
-        else setWpUser("nikhil_d");
+        else setWpUser("");
         if (parsed.app_password) {
           delete parsed.app_password;
           try { localStorage.setItem("rankforge_wp_credentials", JSON.stringify(parsed)); } catch {}
         }
       } else {
-        setWpUrl("https://accident.innovatcs.com");
-        setWpUser("nikhil_d");
+        setWpUrl("https://your-wordpress-site.com");
+        setWpUser("");
       }
     } catch {}
   }, [loadStatus]);

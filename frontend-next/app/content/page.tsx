@@ -109,7 +109,7 @@ export default function ContentPage() {
 
       setArticles(Array.from(combinedMap.values()));
     } catch (e: any) {
-      console.warn("Articles load error:", e);
+      // warn removed
       setError(e.message || "Failed to load content log");
       setArticles([]);
     } finally {
@@ -127,7 +127,7 @@ export default function ContentPage() {
         setRankings(res.rankings);
       }
     } catch (err) {
-      console.warn("Rankings fetch note:", err);
+      // warn removed
     } finally {
       setRankingsLoading(false);
     }

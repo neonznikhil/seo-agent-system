@@ -49,7 +49,7 @@ export default function MemoryPage() {
         setMemoryItems([]);
       }
     } catch (err: any) {
-      console.warn("Memory fetch error:", err);
+      // warn removed
       setError(err.message || "Failed to load memory data");
       setMemoryItems([]);
     } finally {

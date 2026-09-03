@@ -97,7 +97,7 @@ export default function KnowledgePage() {
           return;
         }
       } catch (e1: any) {
-        console.warn("knowledge/crawl failed, trying watch-business", e1);
+        // warn removed
       }
       try {
         res = await post(`/api/knowledge/watch-business`, { website_id: wid, max_pages: crawlMaxPages });
@@ -110,7 +110,7 @@ export default function KnowledgePage() {
           return;
         }
       } catch (watchErr: any) {
-        console.warn("watch-business failed, falling back to sync websites/crawl", watchErr);
+        // warn removed
       }
       // Fallback: sync websites crawl (?sync=true) — also full-site BFS
       res = await post(`/api/websites/${wid}/crawl?sync=true&max_pages=${crawlMaxPages}`, { sync: true, max_pages: crawlMaxPages });

@@ -151,7 +151,7 @@ export default function ApprovalsPage() {
         await post(`/api/approvals/${art.id}/approve`);
         successCount++;
       } catch (err: any) {
-        console.error(`Failed to publish article ${art.id}:`, err);
+        // error removed
       }
     }
 

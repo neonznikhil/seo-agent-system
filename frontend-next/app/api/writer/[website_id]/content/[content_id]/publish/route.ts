@@ -22,7 +22,7 @@ export async function POST(
   }
 
   const postId = 1045;
-  const postUrl = `https://accident.innovatcs.com/steps-after-car-accident`;
+  const postUrl = `https://your-wordpress-site.com/steps-after-car-accident`;
 
   return NextResponse.json({
     success: true,

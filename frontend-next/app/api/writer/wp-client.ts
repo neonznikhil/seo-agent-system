@@ -150,11 +150,8 @@ export async function createRealWordPressDraft(
   error?: string;
 }> {
   const currentCreds = loadStoredCredentials();
-  const siteUrl = (overrideCreds?.site_url || currentCreds.site_url || process.env.WORDPRESS_URL || "https://accident.innovatcs.com").trim().replace(/\/+$/, "");
-  let username = (overrideCreds?.username || currentCreds.username || "nikhil_d").trim();
-  if (username === "admin") {
-    username = "nikhil_d";
-  }
+  const siteUrl = (overrideCreds?.site_url || currentCreds.site_url || process.env.WORDPRESS_URL || "").trim().replace(/\/+$/, "");
+  let username = (overrideCreds?.username || currentCreds.username || "").trim();
   const appPassword = (overrideCreds?.app_password || currentCreds.app_password || "").trim();
 
   if (!siteUrl || !username || !appPassword || appPassword.includes("••••")) {

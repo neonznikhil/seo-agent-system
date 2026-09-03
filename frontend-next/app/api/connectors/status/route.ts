@@ -65,7 +65,7 @@ export async function GET(req: Request) {
       connected: true,
       is_configured: true,
       role: "administrator",
-      site_url: "https://accident.innovatcs.com",
+      site_url: "https://your-wordpress-site.com",
     },
     slack: {
       connected: false,

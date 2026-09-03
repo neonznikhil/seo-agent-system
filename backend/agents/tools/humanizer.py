@@ -258,9 +258,5 @@ if __name__ == "__main__":
     test_text = """
     In today's fast-paced world, it's important to note that leveraging a comprehensive CRM solution can revolutionize your business—unlocking unparalleled growth. Delve into our cutting-edge strategies to elevate your operations. Remember that the landscape of technology has transformed dramatically.
     """
-    
-    print("Original AI text:")
-    print(test_text[:200])
-    print("\nDetected AI patterns:", detect_ai_patterns(test_text))
-    print("\nHumanized text:")
-    print(humanize_content(test_text))
+)
+)

@@ -39,7 +39,7 @@ export default function ClustersPage() {
       const list = Array.isArray(data) ? data : data?.clusters || [];
       setClusters(list);
     } catch (e: any) {
-      console.warn("Clusters fetch error:", e);
+      // warn removed
       setError(e.message || "Failed to load keyword clusters");
       setClusters([]);
     } finally {

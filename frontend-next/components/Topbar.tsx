@@ -169,7 +169,7 @@ export function Topbar() {
         setHealth(res.health);
       }
     } catch (e) {
-      console.error(e);
+      // error removed
     } finally {
       setRunningHealthCheck(false);
     }

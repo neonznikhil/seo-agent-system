@@ -185,7 +185,7 @@ export default function WriterPage() {
         niche: data?.niche || "Personal Injury & Vehicle Accidents",
         domain: data?.domain || "accident.innovatcs.com",
         wordpress_connected: data?.wordpress_connected ?? true,
-        wordpress_url: data?.wordpress_url || "https://accident.innovatcs.com",
+        wordpress_url: data?.wordpress_url || "https://your-wordpress-site.com",
       });
       // Autonomous prefill: if input empty, select highest volume suggestion (use functional check to avoid dep loop)
       setKeywordsInput((prev) => {
@@ -211,7 +211,7 @@ export default function WriterPage() {
         niche: "Personal Injury & Vehicle Accidents",
         domain: "accident.innovatcs.com",
         wordpress_connected: true,
-        wordpress_url: "https://accident.innovatcs.com",
+        wordpress_url: "https://your-wordpress-site.com",
       });
     } finally {
       setLoadingKeywords(false);

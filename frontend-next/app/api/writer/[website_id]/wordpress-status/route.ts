@@ -20,7 +20,7 @@ export async function GET(
 
   return NextResponse.json({
     connected: true,
-    site_url: "https://accident.innovatcs.com",
+    site_url: "https://your-wordpress-site.com",
     authenticated: true,
     website_id,
     user: { name: "editor", roles: ["administrator"] },

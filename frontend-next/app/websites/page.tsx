@@ -55,7 +55,7 @@ export default function WebsitesPage() {
         setCurrentWebsiteId(list[0].id);
       }
     } catch (err: any) {
-      console.warn("Failed to load websites:", err);
+      // warn removed
       setError(err.message || "Failed to load websites");
       setWebsites([]);
     } finally {

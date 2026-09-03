@@ -261,4 +261,4 @@ async def list_verified_sites(website_url: str = None) -> List[str]:
         for s in (sites.get("siteEntry") or [])
         if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
     ]
-    return [v for v in verified if v]
+    return [v for v in verified if v]

@@ -80,7 +80,7 @@ export default function AEOPage() {
         setSovData(sovRes.value);
       }
     } catch (e: any) {
-      console.warn("AEO load error:", e);
+      // warn removed
     } finally {
       setLoading(false);
     }

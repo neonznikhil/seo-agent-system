@@ -10,6 +10,6 @@ export async function POST(
     connected: true,
     status: "connected",
     website_id,
-    message: "WordPress connection verified: https://accident.innovatcs.com (Editor/Admin)",
+    message: "WordPress connection verified: https://your-wordpress-site.com (Editor/Admin)",
   });
 }

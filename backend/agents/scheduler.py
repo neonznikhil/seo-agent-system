@@ -1302,7 +1302,6 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
         raise ValueError("target_keyword cannot be empty — cannot generate blog without a keyword")
     if len(target_keyword.strip()) < 5:
         raise ValueError(f"target_keyword '{target_keyword}' is too short — must be a real search query")
-    print(f"[WRITER] Starting blog generation for keyword: '{target_keyword}'")
     target_keyword = target_keyword.strip()
     # FIX autonomous unrelated: denylist + grounding gate at scheduler entry
     if _is_keyword_denied(target_keyword):
@@ -1365,18 +1364,15 @@ async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[WRITER] Attempt {attempt}/{max_retries} for keyword: '{target_keyword}'")
             result = await run_crew_blog_writer(
                 website_id=website_id,
                 target_keyword=target_keyword,
                 tone=tone,
                 word_count_target=word_count_target
             )
-            print(f"[WRITER] Success on attempt {attempt}")
             return result
         except ValueError as e:
             error_msg = str(e)
-            print(f"[WRITER] Attempt {attempt} failed: {error_msg}")
             if attempt == max_retries:
                 await log_autonomous_decision(
                     website_id=website_id,
@@ -1388,7 +1384,6 @@ async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, 
             await asyncio.sleep(5)
             continue
         except Exception as e:
-            print(f"[WRITER] Unexpected error on attempt {attempt}: {e}")
             raise
 
 
@@ -1866,7 +1861,6 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
         return keyword
 
     except Exception as e:
-        print(f"[TOPIC PICKER] JSON parse error: {e}. Raw response: {ai_response[:200] if ai_response else ''}")
         return None
 
 

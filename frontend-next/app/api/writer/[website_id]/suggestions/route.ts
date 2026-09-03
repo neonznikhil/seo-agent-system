@@ -25,7 +25,7 @@ export async function GET(
     niche: "Personal Injury & Vehicle Accidents",
     domain: "accident.innovatcs.com",
     wordpress_connected: true,
-    wordpress_url: "https://accident.innovatcs.com",
+    wordpress_url: "https://your-wordpress-site.com",
     suggestions: [
       { keyword: "what to do immediately after a car accident in California", volume: 14200, difficulty: 28, intent: "Informational", opportunity: "High" },
       { keyword: "motorcycle lane splitting accident liability laws", volume: 8900, difficulty: 34, intent: "Commercial", opportunity: "High" },

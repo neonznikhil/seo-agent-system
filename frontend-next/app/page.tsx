@@ -89,7 +89,7 @@ export default function HomePage() {
         setReadinessData(res);
       }
     } catch (e) {
-      console.warn("Readiness check note:", e);
+      // warn removed
     } finally {
       setReadinessLoading(false);
     }
@@ -124,7 +124,7 @@ export default function HomePage() {
         throw new Error(res?.detail || "Demo flow did not complete successfully");
       }
     } catch (err: any) {
-      console.error("Demo flow error:", err);
+      // error removed
       setDemoError(err.message || "Demo run encountered an error");
     } finally {
       setIsDemoRunning(false);
@@ -155,7 +155,7 @@ export default function HomePage() {
   const runGenerationRef = useRef<() => void>(() => {});
   const [blogSettingsSaving, setBlogSettingsSaving] = useState<boolean>(false);
   const [wpAppPass, setWpAppPass] = useState<string>("");
-  const [wpUser, setWpUser] = useState<string>("nikhil_d");
+  const [wpUser, setWpUser] = useState<string>("");
   const [wpConnected, setWpConnected] = useState<boolean>(false);
   const [wpTesting, setWpTesting] = useState<boolean>(false);
   // Developer Mode - bypass daily limits
@@ -279,7 +279,7 @@ export default function HomePage() {
         if (parsed.username && parsed.username !== "admin") {
           setWpUser(parsed.username);
         } else {
-          setWpUser("nikhil_d");
+          setWpUser("");
         }
       }
     } catch {}
@@ -288,10 +288,10 @@ export default function HomePage() {
   const handleVerifyAndSaveWp = async () => {
     if (!wpAppPass.trim()) return;
     setWpTesting(true);
-    const targetUser = wpUser.trim() || "nikhil_d";
+    const targetUser = wpUser.trim() || "";
     try {
       const res = await post("/api/wordpress/connect", {
-        site_url: "https://accident.innovatcs.com",
+        site_url: "https://your-wordpress-site.com",
         wp_username: targetUser,
         wp_app_password: wpAppPass.trim(),
       });
@@ -301,7 +301,7 @@ export default function HomePage() {
           localStorage.setItem(
             "rankforge_wp_credentials",
             JSON.stringify({
-              site_url: "https://accident.innovatcs.com",
+              site_url: "https://your-wordpress-site.com",
               username: targetUser,
             })
           );
@@ -330,10 +330,10 @@ export default function HomePage() {
       if (stored) wpCreds = JSON.parse(stored);
     } catch {}
     if (!wpCreds.username || wpCreds.username === "admin") {
-      wpCreds.username = wpUser.trim() || "nikhil_d";
+      wpCreds.username = wpUser.trim() || "";
     }
     if (!wpCreds.site_url) {
-      wpCreds.site_url = "https://accident.innovatcs.com";
+      wpCreds.site_url = "https://your-wordpress-site.com";
     }
 
     try {
@@ -352,7 +352,7 @@ export default function HomePage() {
       setBlogsGeneratedToday((prev) => prev + 1);
       fetchDashboardData();
     } catch (e: any) {
-      console.warn("Autonomous generation triggered:", e);
+      // warn removed
       showToast("✓ Generated article & queued to WordPress draft approvals.");
       setBlogsGeneratedToday((prev) => prev + 1);
       fetchDashboardData();
@@ -528,7 +528,7 @@ export default function HomePage() {
       // Even if API failed, keep optimistic local toggle and inform
       showToast(newVal ? "Developer mode ON (local) — backend will sync on next restart" : "Developer mode OFF (local)");
       // Try to persist via direct file write hint - schedule will also check env
-      console.warn("Developer mode API failed, using local fallback", lastErr);
+      // warn removed
     }
     setDevModeSaving(false);
     // Refresh after toggle
@@ -683,7 +683,7 @@ export default function HomePage() {
         title: "Essential Legal Steps to Follow Immediately After an Automobile Crash",
         keyword: "what to do after a car accident checklist",
         status: "published",
-        wordpress_url: "https://accident.innovatcs.com/steps-after-car-accident",
+        wordpress_url: "https://your-wordpress-site.com/steps-after-car-accident",
       },
     ],
     agents: [
@@ -1071,7 +1071,7 @@ export default function HomePage() {
                     type="text"
                     value={wpUser}
                     onChange={(e) => setWpUser(e.target.value)}
-                    placeholder="Username (e.g. nikhil_d)"
+                    placeholder="Username (e.g. )"
                     style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
                   />
                   <input
@@ -1091,7 +1091,7 @@ export default function HomePage() {
                   </button>
                 </div>
                 <div style={{ fontSize: "10px", color: "var(--muted)" }}>
-                  Hint: Verified user on site is <strong style={{ color: "var(--accent)" }}>nikhil_d</strong>. You can use your WordPress admin login password or an Application Password.
+                  Hint: Verified user on site is <strong style={{ color: "var(--accent)" }}></strong>. You can use your WordPress admin login password or an Application Password.
                 </div>
               </div>
             ) : (

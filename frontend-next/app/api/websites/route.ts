@@ -21,7 +21,7 @@ export async function GET(req: Request) {
       id: "f8d16d12-bf91-4d92-9134-8fa29813e31e",
       name: "Innovatcs Accident Law",
       domain: "accident.innovatcs.com",
-      url: "https://accident.innovatcs.com",
+      url: "https://your-wordpress-site.com",
       status: "active",
       autonomous_mode: true,
       health_score: 98,

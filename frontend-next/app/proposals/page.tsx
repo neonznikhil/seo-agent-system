@@ -35,7 +35,7 @@ export default function ProposalsPage() {
       const list = data?.proposals || (Array.isArray(data) ? data : []);
       setProposals(list);
     } catch (err: any) {
-      console.warn("Proposals fetch error:", err);
+      // warn removed
       setError(err.message || "Failed to load proposals");
       setProposals([]);
     } finally {

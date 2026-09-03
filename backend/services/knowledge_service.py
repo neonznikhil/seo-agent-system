@@ -1189,8 +1189,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
         "chunks_saved": 0,
         "errors": []
     }
-
-    print(f"[CRAWL] Starting crawl for {site_url}")
     logger.info(f"[CRAWL] Starting crawl for {site_url} (website_id={website_id})")
 
     # STEP 1: Update website status to crawling
@@ -1199,11 +1197,9 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
             "status": "crawling",
             "updated_at": datetime.utcnow().isoformat()
         }).eq("id", website_id).execute()
-        print("[CRAWL] Website status set to crawling")
     except Exception as e:
         err = f"Failed to update website status: {e}"
         results["errors"].append(err)
-        print(f"[CRAWL] {err}")
         logger.error(f"[CRAWL] {err}")
 
     # STEP 2: Discover pages
@@ -1251,7 +1247,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                         if txt and not txt.endswith('.xml'):
                             page_urls.append(txt)
             except Exception as e:
-                print(f"[CRAWL] Sitemap parse error {s_url}: {e}")
                 logger.warning(f"[CRAWL] Sitemap parse error {s_url}: {e}")
             return page_urls
 
@@ -1267,13 +1262,12 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                                     '.jpg', '.png', '.pdf',
                                     'attachment', 'feed', 'tag/',
                                     'author/', 'page/2', 'page/3'])]
-                print(f"[CRAWL] Found {len(pages)} pages in {sitemap_url}")
+} pages in {sitemap_url}")
                 logger.info(f"[CRAWL] Found {len(pages)} pages in {sitemap_url}")
                 break
 
         # If no sitemap worked, crawl homepage and find links
         if not pages:
-            print("[CRAWL] No sitemap found. Crawling homepage for links.")
             try:
                 r = await client.get(site_url)
                 if r.status_code == 200:
@@ -1294,21 +1288,18 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                                 seen.add(href)
                                 pages.append(href)
                     pages = list(set(pages))[:30]
-                    print(f"[CRAWL] Found {len(pages)} pages from homepage links")
+} pages from homepage links")
                     logger.info(f"[CRAWL] Found {len(pages)} pages from homepage links")
                 else:
-                    print(f"[CRAWL] Homepage returned HTTP {r.status_code}")
             except Exception as e:
                 err = f"Homepage crawl failed: {e}"
                 results["errors"].append(err)
-                print(f"[CRAWL] {err}")
                 logger.error(f"[CRAWL] {err}")
 
         results["pages_found"] = len(pages)
 
         if not pages:
             pages = [site_url]
-            print("[CRAWL] Using homepage only as last resort")
 
         # STEP 3: Crawl each page and extract content
         all_chunks = []
@@ -1317,7 +1308,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
             try:
                 r = await client.get(page_url)
                 if r.status_code != 200:
-                    print(f"[CRAWL] Skip {page_url} — HTTP {r.status_code}")
                     continue
 
                 soup = BeautifulSoup(r.text, 'html.parser')
@@ -1354,11 +1344,11 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                 text = re.sub(r'\s+', ' ', text).strip()
 
                 if len(text) < 200:
-                    print(f"[CRAWL] Skip {page_url} — too little content ({len(text)} chars)")
+} chars)")
                     continue
 
                 results["pages_crawled"] += 1
-                print(f"[CRAWL] Crawled {page_url} — {len(text)} chars")
+} chars")
 
                 # STEP 4: Chunk the content
                 chunk_size = 1500
@@ -1385,16 +1375,14 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
 
                 all_chunks.extend(chunks)
                 results["chunks_created"] += len(chunks)
-                print(f"[CRAWL] Created {len(chunks)} chunks from {page_url}")
+} chunks from {page_url}")
 
             except Exception as e:
                 err = f"Failed to crawl {page_url}: {e}"
                 results["errors"].append(err)
-                print(f"[CRAWL] {err}")
                 logger.error(f"[CRAWL] {err}")
                 continue
-
-        print(f"[CRAWL] Total chunks created: {len(all_chunks)}")
+}")
         logger.info(f"[CRAWL] Total chunks created: {len(all_chunks)}")
 
         if not all_chunks:
@@ -1417,14 +1405,12 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                     try:
                         embedding = await nim_embed(chunk["fact"])
                         if not embedding or len(embedding) == 0:
-                            print(f"[CRAWL] Embedding empty for chunk from {chunk['source_url']}")
                             embedding = None
                         elif len(embedding) > 1024:
                             # Truncate to match DB column dimension (1024)
                             embedding = embedding[:1024]
-                            print(f"[CRAWL] Truncated embedding from {len(embedding)} to 1024 dims")
+} to 1024 dims")
                     except Exception as emb_err:
-                        print(f"[CRAWL] Embedding API error: {emb_err}")
                         logger.warning(f"[CRAWL] Embedding failed for chunk: {emb_err}")
                         embedding = None
 
@@ -1443,21 +1429,16 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                         if insert_result.data:
                             results["chunks_saved"] += 1
                         else:
-                            print(f"[CRAWL] Insert returned no data for chunk from {chunk['source_url']}")
                     except Exception as ins_err:
                         err = f"DB insert failed for chunk from {chunk['source_url']}: {ins_err}"
                         results["errors"].append(err)
-                        print(f"[CRAWL] {err}")
                         logger.error(f"[CRAWL] {err}")
 
                 except Exception as e:
                     err = f"Failed to save chunk from {chunk['source_url']}: {e}"
                     results["errors"].append(err)
-                    print(f"[CRAWL] {err}")
                     logger.error(f"[CRAWL] {err}")
                     continue
-
-            print(f"[CRAWL] Saved batch {i//batch_size + 1}: {results['chunks_saved']} chunks saved so far")
 
     # STEP 6: Update website status
     final_status = "active" if results["chunks_saved"] >= 3 else "error"
@@ -1467,7 +1448,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
             "updated_at": datetime.utcnow().isoformat()
         }).eq("id", website_id).execute()
     except Exception as e:
-        print(f"[CRAWL] Failed to update final status: {e}")
 
     # STEP 7: Log the decision
     try:
@@ -1478,9 +1458,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
             job="knowledge_crawl"
         )
     except Exception as e:
-        print(f"[CRAWL] log_autonomous_decision failed: {e}")
-
-    print(f"[CRAWL] Done. Status: {final_status}. Saved {results['chunks_saved']} chunks.")
     logger.info(f"[CRAWL] Done. Status: {final_status}. Saved {results['chunks_saved']} chunks.")
 
     return results

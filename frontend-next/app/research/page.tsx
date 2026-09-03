@@ -61,7 +61,7 @@ export default function ResearchPage() {
       const kwList = Array.isArray(data) ? data : data?.keywords || [];
       setKeywords(kwList);
     } catch (e: any) {
-      console.warn("Keywords fetch error:", e);
+      // warn removed
       setError(e.message || "Failed to fetch keyword opportunities");
       setKeywords([]);
     } finally {

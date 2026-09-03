@@ -2551,7 +2551,6 @@ async def validate_outline_for_audience(outline: dict, target_reader: str = "car
         is_invalid = any(kw in heading_lower for kw in invalid_section_keywords)
         
         if is_invalid:
-            print(f"[PLANNER VALIDATION] Removed invalid section: {section['heading']}")
             # Do not add to valid sections
         else:
             valid_sections.append(section)
@@ -4045,7 +4044,6 @@ async def _log_autonomous_failed(website_id: str, reason: str):
 async def _direct_nim_crew_fallback(topic: str, website_id: str, business_name: str, knowledge_hits: List[Dict], tone: str, analytics_learnings: List[Dict], content_id: str, word_count_target: int = 2500) -> Dict[str, Any]:
     """Execute end-to-end multi-agent pipeline: Planner -> Writer -> 15-Point Process Blog Output."""
     _validate_keyword_input(topic)
-    print(f"[WRITER] Starting blog generation for keyword: '{topic}'")
     
     # 1. Planner
     planner_outline = await run_planner(
@@ -4164,7 +4162,6 @@ async def generate_blog_autonomous(
     # FIX Problem 2 — VALIDATION: keyword must be non-empty and >=5 chars
     _validate_keyword_input(topic)
     topic = topic.strip()
-    print(f"[WRITER] Starting blog generation for keyword: '{topic}'")
     await publish_phase("init", "running", f"Starting blog generation for '{topic}'")
 
     # 1. Knowledge base count check (<5 auto-trigger crawl and fallback)
@@ -5655,7 +5652,6 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     
     # Check word count BEFORE internal links and TL;DR
     is_valid, word_count = validate_word_count(step7)
-    print(f"[WORD COUNT] After processing: {word_count} words")
     
     if not is_valid and word_count < 2400:
         step7 = await ensure_minimum_word_count(
@@ -5667,7 +5663,6 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
             min_words=2400
         )
         _, new_count = validate_word_count(step7)
-        print(f"[WORD COUNT] After expansion: {new_count} words")
         step7 = fix_broken_year_in_content(step7)
         step7 = detect_duplicate_examples(step7)
         step7 = enforce_keyword_density(step7, pk, max_count=8)
@@ -5712,7 +5707,6 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     # Final word count check
     is_valid, final_count = validate_word_count(final)
     if not is_valid and final_count < 2400:
-        print(f"[WORD COUNT] WARNING: Final count is {final_count} words — below minimum 2400")
         # Try one more expansion pass
         final = await ensure_minimum_word_count(
             html_content=final,
@@ -5723,7 +5717,6 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
             min_words=2450
         )
         _, final_count = validate_word_count(final)
-        print(f"[WORD COUNT] After final expansion: {final_count} words")
         
         if final_count < 2300:
             raise ValueError(
@@ -5731,9 +5724,6 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
                 f"Minimum is 2400. Regenerating."
             )
     elif final_count > 3200:
-        print(f"[WORD COUNT] Article slightly over limit: {final_count} words. Acceptable.")
-    
-    print(f"[WORD COUNT] Final: {final_count} words [OK]")
     
     # Final sanitization pass (remove <br> from style, fix placeholders, fix FAQ)
     final = sanitize_blog_html(final)
@@ -5758,7 +5748,6 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
     # Log what we are about to write
     date_ctx = _get_date_context()
     target_keyword = sanitize_keyword(target_keyword, date_ctx[1])
-    print(f"[WRITER] Starting blog generation for keyword: '{target_keyword}'")
     # FIX autonomous unrelated: denylist + grounding gate — prevent unrelated blog at entry
     DENYLIST_CW = ["how to start a blog", "start a blog", "generic marketing", "autonomous seo", "digital marketing", "content calendar", "save money", "business plan", "keyword research", "empty content"]
     if any(d in target_keyword.lower() for d in DENYLIST_CW):
@@ -5892,18 +5881,15 @@ async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[WRITER] Attempt {attempt}/{max_retries} for keyword: '{target_keyword}'")
             result = await run_crew_blog_writer(
                 website_id=website_id,
                 target_keyword=target_keyword,
                 tone=tone,
                 word_count_target=word_count_target
             )
-            print(f"[WRITER] Success on attempt {attempt}")
             return result
         except ValueError as e:
             error_msg = str(e)
-            print(f"[WRITER] Attempt {attempt} failed: {error_msg}")
             if attempt == max_retries:
                 await _log_autonomous_failed(website_id=website_id, reason=f"All {max_retries} attempts failed for '{target_keyword}': {error_msg}")
                 # Also log via scheduler's helper if available
@@ -5916,5 +5902,4 @@ async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, 
             await asyncio.sleep(5)
             continue
         except Exception as e:
-            print(f"[WRITER] Unexpected error on attempt {attempt}: {e}")
             raise

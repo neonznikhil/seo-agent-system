@@ -50,7 +50,7 @@ export default function DecayPage() {
         setStats(statsRes.value);
       }
     } catch (e: any) {
-      console.warn("Decay fetch error:", e);
+      // warn removed
       setError(e.message || "Failed to load content decay metrics");
       setDecayItems([]);
     } finally {

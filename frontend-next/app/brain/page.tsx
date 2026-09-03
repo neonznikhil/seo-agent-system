@@ -57,7 +57,7 @@ export default function BrainPage() {
       const list = Array.isArray(res) ? res : res?.memories || res?.data || [];
       setMemories(list);
     } catch (e: any) {
-      console.warn("Brain memory fetch error:", e);
+      // warn removed
       setError(e.message || "Failed to load brain memories");
       setMemories([]);
     } finally {

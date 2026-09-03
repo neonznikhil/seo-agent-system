@@ -10,7 +10,7 @@ export async function GET(
     connected: true,
     website_id,
     site: {
-      url: "https://accident.innovatcs.com",
+      url: "https://your-wordpress-site.com",
       name: "Innovatcs Accident Law",
     },
     user: {

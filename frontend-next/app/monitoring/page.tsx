@@ -73,7 +73,7 @@ export default function MonitoringPage() {
         setStats(statsRes.value);
       }
     } catch (e: any) {
-      console.error("Monitoring fetch error:", e);
+      // error removed
       setError(e.message || "Failed to connect to monitoring service");
     } finally {
       setLoading(false);

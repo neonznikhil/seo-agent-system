@@ -36,7 +36,7 @@ export async function GET(
         title: "Essential Legal Steps to Follow Immediately After an Automobile Crash",
         keyword: "what to do after a car accident checklist",
         status: "published",
-        wordpress_url: "https://accident.innovatcs.com/steps-after-car-accident",
+        wordpress_url: "https://your-wordpress-site.com/steps-after-car-accident",
       },
     ],
     agents: [

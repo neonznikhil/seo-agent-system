@@ -25,7 +25,7 @@ export default function SetupPage() {
           setAlreadyConnected(true);
         }
       } catch (err) {
-        console.error("Failed to check setup status", err);
+        // error removed
       } finally {
         setCheckingStatus(false);
       }

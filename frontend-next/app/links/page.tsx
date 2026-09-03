@@ -68,7 +68,7 @@ export default function LinksPage() {
         setProspects([]);
       }
     } catch (e: any) {
-      console.warn("Links fetch error:", e);
+      // warn removed
       setError(e.message || "Failed to load link structure");
     } finally {
       setLoading(false);

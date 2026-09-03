@@ -84,7 +84,7 @@ export default function BacklinksPage() {
         });
       }
     } catch (e: any) {
-      console.warn("Backlinks load notice:", e);
+      // warn removed
     } finally {
       setLoading(false);
     }

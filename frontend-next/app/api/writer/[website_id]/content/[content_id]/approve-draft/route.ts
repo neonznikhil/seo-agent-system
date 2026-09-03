@@ -37,8 +37,8 @@ export async function POST(
   );
 
   const draftId = wpDraftResult.wp_post_id || 1046;
-  const editUrl = wpDraftResult.edit_url || `https://accident.innovatcs.com/wp-admin/post.php?post=${draftId}&action=edit`;
-  const wpDraftUrl = wpDraftResult.link || `https://accident.innovatcs.com/?p=${draftId}&preview=true`;
+  const editUrl = wpDraftResult.edit_url || `https://your-wordpress-site.com/wp-admin/post.php?post=${draftId}&action=edit`;
+  const wpDraftUrl = wpDraftResult.link || `https://your-wordpress-site.com/?p=${draftId}&preview=true`;
 
   if (article && wpDraftResult.wp_post_id) {
     article.wp_post_id = wpDraftResult.wp_post_id;
