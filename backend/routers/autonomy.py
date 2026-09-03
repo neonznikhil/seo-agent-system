@@ -259,8 +259,8 @@ async def get_autonomous_settings():
 @router.get("/autonomous/blog-settings")
 async def get_blog_settings(website_id: Optional[str] = None):
     """Get daily blog target + today's progress + next blog timer."""
-    from ..services.website_service import get_default_website_id
-    from ..agents.scheduler import get_autonomous_settings, get_last_blog_time
+    from services.website_service import get_default_website_id
+    from agents.scheduler import get_autonomous_settings, get_last_blog_time
     wid = website_id if website_id and website_id not in ("default", "all") else get_default_website_id()
     if not wid:
         # fallback to first website
@@ -302,7 +302,7 @@ async def get_blog_settings(website_id: Optional[str] = None):
         total_blogs = t.count if t.count is not None else len(t.data or [])
     except Exception:
         try:
-            from ..services.local_store import list_local_content
+            from services.local_store import list_local_content
             total_blogs = len([c for c in list_local_content() if c.get("website_id") == wid])
         except Exception:
             pass
@@ -353,7 +353,7 @@ async def update_blog_settings(payload: BlogSettingsRequest):
     import json as _json
     import os as _os
     from pathlib import Path as _Path
-    from ..services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id
     supabase = get_supabase()
     wid = payload.website_id if payload.website_id and payload.website_id not in ("default", "all") else get_default_website_id()
     # fallback to first website if still not resolved
@@ -366,7 +366,7 @@ async def update_blog_settings(payload: BlogSettingsRequest):
             pass
         if not wid:
             try:
-                from ..services.local_store import list_local_websites
+                from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     wid = local[0].get("id")
@@ -440,7 +440,7 @@ async def update_blog_settings(payload: BlogSettingsRequest):
                 supabase.table("autonomous_settings").insert(row2).execute()
         # APScheduler interval stays 10m check loop — logic enforces actual interval via DB, reschedule to ensure immediate uptake
         try:
-            from ..agents.scheduler import scheduler
+            from agents.scheduler import scheduler
             try:
                 scheduler.reschedule_job("job_auto_blog_10min", trigger="interval", minutes=10)
             except Exception:
@@ -480,7 +480,7 @@ async def update_blog_settings(payload: BlogSettingsRequest):
 @router.get("/autonomous/blog-schedule")
 async def get_blog_schedule(request: Request, website_id: Optional[str] = None):
     """Return saved generation interval and label for website — survives refresh/restart."""
-    from ..services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id
     supabase = get_supabase()
     wid = website_id or request.query_params.get("website_id") or request.headers.get("X-Website-Id")
     if not wid or wid in ("default", "all", "", "null", "undefined"):
@@ -494,7 +494,7 @@ async def get_blog_schedule(request: Request, website_id: Optional[str] = None):
             pass
         if not wid:
             try:
-                from ..services.local_store import list_local_websites
+                from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     wid = local[0].get("id")
@@ -551,8 +551,8 @@ async def save_blog_schedule(request: Request):
     body = await request.json() if request.headers.get("content-type","").startswith("application/json") else {}
     # Support both JSON body and query
     website_id = body.get("website_id") or request.query_params.get("website_id") or request.headers.get("X-Website-Id")
-    from ..services.website_service import get_default_website_id
-    from ..database import get_supabase
+    from services.website_service import get_default_website_id
+    from database import get_supabase
     supabase = get_supabase()
     if not website_id or website_id in ("default", "all", "", "null", "undefined"):
         website_id = get_default_website_id()
@@ -565,7 +565,7 @@ async def save_blog_schedule(request: Request):
             pass
         if not website_id:
             try:
-                from ..services.local_store import list_local_websites
+                from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     website_id = local[0].get("id")
@@ -749,7 +749,7 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
 @router.post("/autonomy/run-cycle")
 async def run_autonomous_cycle(body: Optional[dict] = None):
     """Trigger the entire 8-job autonomous pipeline for the active site."""
-    from ..agents.scheduler import run_all_jobs_cycle
+    from agents.scheduler import run_all_jobs_cycle
     try:
         res = await run_all_jobs_cycle()
         return {"success": True, "result": res}
@@ -883,7 +883,7 @@ def _set_developer_mode_state(enabled: bool):
         logger.debug(f"DB developer_mode persist note: {e}")
     # Reschedule scheduler jobs for 1 blog per 2 min in dev mode
     try:
-        from ..agents.scheduler import scheduler
+        from agents.scheduler import scheduler
         from apscheduler.triggers.interval import IntervalTrigger
         if enabled:
             try:

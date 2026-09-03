@@ -16,6 +16,13 @@ from agents.rules import (
     log_successful_approval,
     check_homepage_cooldown
 )
+try:
+    from security import decrypt_secret
+except (ImportError, ValueError):
+    try:
+        from security import decrypt_secret
+    except (ImportError, ValueError):
+        from backend.security import decrypt_secret
 import httpx
 
 logger = logging.getLogger("backend.routers.proposals")
@@ -81,7 +88,7 @@ async def list_proposals(website_id: str):
 
 @router.post("/proposals/{website_id}/approve/{proposal_id}")
 async def approve_proposal_by_website(website_id: str, proposal_id: str, request: Request):
-    from ..middleware.human_gate import require_human_for_request
+    from middleware.human_gate import require_human_for_request
     user_id = await require_human_for_request(request)
     supabase = get_supabase()
     
@@ -163,7 +170,7 @@ async def approve_proposal(audit_id: str, body: HomepageConfirmIn = HomepageConf
     try:
         wp_result = None
         if issue_type in ("missing_meta", "duplicate_title", "low_ctr_title", "missing_h1"):
-            from ..agents.tools.shared_utils import _get_wp_auth
+            from agents.tools.shared_utils import _get_wp_auth
             wp_resp = (
                 get_supabase()
                 .table("audits")
@@ -268,7 +275,6 @@ async def approve_blog(blog_id: str, user_id: str = Depends(_get_current_user)):
         or site_row.get("wordpress_password")
         or ""
     )
-    from ..security import decrypt_secret
     wp_pass = decrypt_secret(stored_secret) if stored_secret else ""
     
     updated = get_supabase().table("content_log").update({
@@ -277,7 +283,6 @@ async def approve_blog(blog_id: str, user_id: str = Depends(_get_current_user)):
         "approval_timestamp": __import__("datetime").datetime.utcnow().isoformat()
     }).eq("id", blog_id).execute()
     
-    from ..agents.rules import log_successful_approval
     log_successful_approval(website_id, "human", "publish_blog_to_wordpress", user_id, get_supabase())
     
     try:
@@ -346,7 +351,7 @@ async def critical_logs(website_id: str):
 
 
 def _get_wp_auth():
-    from ..config import WORDPRESS_URL
+    from config import WORDPRESS_URL
     wp_user = os.getenv("WORDPRESS_USER", "")
     wp_pass = os.getenv("WORDPRESS_APP_PASSWORD", "")
     return (wp_user, wp_pass)

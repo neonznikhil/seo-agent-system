@@ -56,7 +56,7 @@ class OpportunityScoutAgent:
             {"type": "Tier 5 — Resource Hubs", "query": f'"{niche_keyword}" resources OR "{niche_keyword}" tools'}
         ]
 
-        from ..services.event_bus import publish
+        from services.event_bus import publish
 
         discovered_opportunities = []
 

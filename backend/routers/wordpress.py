@@ -7,6 +7,30 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("backend.routers.wordpress")
 
+try:
+    from database import get_supabase
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase
+    except (ImportError, ValueError):
+        from backend.database import get_supabase
+
+try:
+    from security import encrypt_secret, decrypt_secret
+except (ImportError, ValueError):
+    try:
+        from security import encrypt_secret, decrypt_secret
+    except (ImportError, ValueError):
+        from backend.security import encrypt_secret, decrypt_secret
+
+try:
+    from services.wordpress_service import WordPressService
+except (ImportError, ValueError):
+    try:
+        from services.wordpress_service import WordPressService
+    except (ImportError, ValueError):
+        from backend.services.wordpress_service import WordPressService
+
 router = APIRouter()
 
 
@@ -57,7 +81,7 @@ class CreateDraftIn(BaseModel):
 async def connect_wordpress(website_id: str, request: Request):
     import base64
     import httpx
-    from ..database import get_supabase
+    from database import get_supabase
     
     try:
         data = await request.json()
@@ -90,7 +114,6 @@ async def connect_wordpress(website_id: str, request: Request):
             
             # Save to Supabase
             supabase = get_supabase()
-            from ..security import encrypt_secret
             encrypted_pass = encrypt_secret(wp_pass)
             supabase.table("websites").update({
                 "wordpress_url": wp_url,
@@ -129,7 +152,7 @@ async def create_wp_draft(website_id: str, request: Request):
     import base64
     import httpx
     from datetime import datetime
-    from ..database import get_supabase
+    from database import get_supabase
     
     user_id = request.headers.get("X-User-Id")
     if not user_id or user_id.strip() == "":
@@ -158,7 +181,7 @@ async def create_wp_draft(website_id: str, request: Request):
     if not content:
         raise HTTPException(status_code=400, detail="No content found to publish")
     
-    from ..services.wordpress_service import WordPressService
+    from services.wordpress_service import WordPressService
     wp_svc = WordPressService(website_id)
     wp_result = await wp_svc.create_draft(website_id, title, content)
     
@@ -198,7 +221,7 @@ async def create_wp_draft(website_id: str, request: Request):
 @router.post("/api/wordpress/save-connection")
 async def save_wordpress_connection(body: WordPressCredentialsIn):
     """Save and verify WordPress REST connection credentials."""
-    from ..services.wordpress_service import WordPressService
+    from services.wordpress_service import WordPressService
     site_url = body.get_url()
     username = body.get_username()
     password = body.get_password()
@@ -212,7 +235,6 @@ async def save_wordpress_connection(body: WordPressCredentialsIn):
 
     try:
         supabase = get_supabase()
-        from ..security import encrypt_secret
         supabase.table("wordpress_connections").upsert({
             "site_url": clean_url,
             "username": username,
@@ -249,7 +271,7 @@ async def direct_publish_wp_post(payload: Dict[str, Any], request: Request):
     if not title or not content:
         raise HTTPException(status_code=400, detail="title and content are required")
 
-    from ..services.wordpress_service import WordPressService
+    from services.wordpress_service import WordPressService
     wp_svc = WordPressService(website_id)
     result = await wp_svc.create_draft(website_id, title, content)
     
@@ -276,8 +298,8 @@ async def direct_publish_wp_post(payload: Dict[str, Any], request: Request):
 @router.post("/wordpress/{website_id}/test")
 async def test_wordpress_connection(website_id: str, body: WordPressCredentialsIn):
     """Test WordPress credentials directly with detailed diagnostics."""
-    from ..services.wordpress_service import WordPressService
-    from ..database import get_supabase
+    from services.wordpress_service import WordPressService
+    from database import get_supabase
     from datetime import datetime
 
     url = (body.url or body.wordpress_url or "").strip()
@@ -298,7 +320,6 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
     if is_connected:
         try:
             supabase = get_supabase()
-            from ..security import encrypt_secret
             encrypted = encrypt_secret(password)
             if wid and wid not in ("default", "all", ""):
                 supabase.table("websites").update({
@@ -361,7 +382,7 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
 @router.post("/wordpress/{website_id}/credentials")
 async def save_wordpress_credentials(website_id: str, body: WordPressCredentialsIn):
     """Save WordPress URL, username, and application password into websites table."""
-    from ..database import get_supabase
+    from database import get_supabase
     from datetime import datetime
 
     supabase = get_supabase()
@@ -387,7 +408,6 @@ async def save_wordpress_credentials(website_id: str, body: WordPressCredentials
         update_data["cms_user"] = username
         update_data["wordpress_user"] = username
     if password:
-        from ..security import encrypt_secret
         encrypted = encrypt_secret(password)
         update_data["app_password"] = encrypted
         update_data["wordpress_password"] = encrypted
@@ -416,7 +436,7 @@ async def save_wordpress_credentials(website_id: str, body: WordPressCredentials
 @router.post("/wordpress/{website_id}/draft")
 async def create_wordpress_draft(website_id: str, body: CreateDraftIn):
     """Create a draft post on WordPress."""
-    from ..services.wordpress_service import WordPressService
+    from services.wordpress_service import WordPressService
 
     ws = WordPressService(website_id)
     result = await ws.create_draft(website_id, body.title, body.content, body.keywords or [])
@@ -426,7 +446,7 @@ async def create_wordpress_draft(website_id: str, body: CreateDraftIn):
 @router.get("/wordpress/{website_id}/info")
 async def wordpress_info(website_id: str):
     """Verify the WordPress connection and return site info."""
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     info = await ws.get_site_info()
@@ -442,7 +462,7 @@ async def wordpress_posts(
     search: Optional[str] = None,
 ):
     """Fetch real posts from the connected WordPress site."""
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     posts = await ws.get_posts(per_page=per_page, page=page, status=status, search=search)
@@ -458,7 +478,7 @@ async def wordpress_pages(
     search: Optional[str] = None,
 ):
     """Fetch real pages from the connected WordPress site."""
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     pages = await ws.get_pages(per_page=per_page, page=page, status=status, search=search)
@@ -468,7 +488,7 @@ async def wordpress_pages(
 @router.get("/wordpress/{website_id}/posts/{post_id}")
 async def wordpress_post(website_id: str, post_id: str):
     """Fetch a single real post by id from WordPress."""
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     post = await ws.get_post(post_id)
@@ -480,8 +500,8 @@ async def wordpress_post(website_id: str, post_id: str):
 @router.post("/wordpress/{website_id}/sync")
 async def wordpress_sync(website_id: str, per_page: int = 20):
     """Pull real published content from WordPress into the local content_log so agents can act on it."""
-    from ..database import get_supabase
-    from ..services.wordpress_service import get_wordpress_service
+    from database import get_supabase
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     posts = await ws.get_posts(per_page=per_page, status="publish")
@@ -525,7 +545,7 @@ async def oauth_authorize(
     Get WordPress OAuth authorization URL.
     Requires an OAuth server plugin on the WordPress site (e.g., OAuth Server for WordPress).
     """
-    from ..database import get_supabase
+    from database import get_supabase
 
     website = get_supabase().table("websites").select("cms_url, domain").eq("id", website_id).single().execute().data
     if not website:
@@ -564,7 +584,7 @@ async def oauth_callback(
     if error:
         raise HTTPException(400, f"OAuth error: {error}")
 
-    from ..database import get_supabase
+    from database import get_supabase
 
     website = get_supabase().table("websites").select("cms_url, domain").eq("id", website_id).single().execute().data
     if not website:
@@ -630,7 +650,7 @@ async def oauth_callback(
 @router.post("/wordpress/{website_id}/oauth/refresh")
 async def oauth_refresh(website_id: str):
     """Refresh OAuth access token using stored refresh token."""
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     token_data = ws._get_oauth_token()
@@ -651,7 +671,7 @@ async def oauth_refresh(website_id: str):
 @router.delete("/wordpress/{website_id}/oauth")
 async def oauth_disconnect(website_id: str):
     """Disconnect WordPress OAuth and remove stored tokens."""
-    from ..database import get_supabase
+    from database import get_supabase
 
     try:
         get_supabase().table("wordpress_oauth_tokens").delete().eq("website_id", website_id).eq("provider", "wordpress").execute()
@@ -665,7 +685,7 @@ async def oauth_disconnect(website_id: str):
 @router.get("/wordpress/{website_id}/oauth/status", response_model=OAuthStatusResponse)
 async def oauth_status(website_id: str):
     """Check WordPress OAuth connection status."""
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
 
     ws = get_wordpress_service(website_id)
     token_data = ws._get_oauth_token()

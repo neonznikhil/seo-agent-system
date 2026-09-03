@@ -22,7 +22,7 @@ class BrainService:
 
     def _get_supabase(self):
         if not self.supabase:
-            from ..database import get_supabase
+            from database import get_supabase
             self.supabase = get_supabase()
         return self.supabase
 

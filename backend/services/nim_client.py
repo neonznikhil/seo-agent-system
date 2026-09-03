@@ -42,10 +42,12 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
 LLM_MODELS: List[str] = [
-    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
-    os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b"),
+    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
+    os.getenv("NIM_LLM_FALLBACK", "openai/gpt-oss-20b"),
     "nvidia/nemotron-3-super-120b-a12b",
-    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "openai/gpt-oss-20b",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nvidia/nemotron-3-ultra-550b-a55b",
 ]
 # Add OpenRouter free model as final fallback if key available
 _or_key = os.getenv("OPENROUTER_API_KEY", "")
@@ -239,7 +241,7 @@ def _record_failure():
 def _log_nim_cost(agent_name: str, tokens: int, cost_usd: float):
     """Log NIM API usage and cost to daily_costs table."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         sb = get_supabase()
         from datetime import datetime
         today = datetime.utcnow().strftime("%Y-%m-%d")

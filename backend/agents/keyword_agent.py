@@ -20,9 +20,9 @@ class KeywordAgent:
         self.website_id = website_id
 
     async def run(self, research_output: Dict[str, Any]) -> Dict[str, Any]:
-        from ..database import call_nim_llm, get_supabase
-        from ..services.brain_service import BrainService
-        from ..agents.brain_autopilot_agent import get_active_strategic_patterns
+        from database import call_nim_llm, get_supabase
+        from services.brain_service import BrainService
+        from agents.brain_autopilot_agent import get_active_strategic_patterns
 
         brain = BrainService(website_id=self.website_id)
         topic = research_output.get("topic", "general")

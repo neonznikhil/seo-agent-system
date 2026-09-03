@@ -150,7 +150,7 @@ async def get_dashboard_metrics(website_id: str, request: Request):
         raise HTTPException(status_code=404, detail="No websites connected yet")
 
     # --- Parallel counts for exact existing tables + local store fallback ---
-    from ..services.local_store import (
+    from services.local_store import (
         list_local_content, list_local_approvals, list_local_knowledge, list_local_brain_memory
     )
 
@@ -282,7 +282,7 @@ async def get_dashboard_metrics(website_id: str, request: Request):
 @router.get("/api/dashboard/{website_id}/live")
 async def dashboard_live_stream(website_id: str, request: Request):
     """SSE stream pushing refreshed metrics."""
-    from ..services.event_bus import stream as bus_stream
+    from services.event_bus import stream as bus_stream
 
     async def event_generator():
         try:

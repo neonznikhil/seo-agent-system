@@ -15,7 +15,7 @@ router = APIRouter()
 @router.get("/tech_seo/{website_id}")
 async def get_tech_seo(website_id: str):
     """Fetch latest technical audit for a website or run initial audit."""
-    from ..services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id
     resolved_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
     if not resolved_id:
         return {
@@ -312,6 +312,7 @@ async def execute_tech_audit(website_id: str) -> dict:
     completed_at = datetime.utcnow().isoformat()
     audit_record = {
         "website_id": website_id,
+        "url": base_url,
         "health_score": health_score,
         "issues": issues,
         "metrics": {"checks": checks, "crawled_urls": crawled_urls},
@@ -326,6 +327,7 @@ async def execute_tech_audit(website_id: str) -> dict:
         try:
             supabase.table("technical_audits").insert({
                 "website_id": website_id,
+                "url": base_url,
                 "health_score": health_score,
                 "issues": issues,
                 "created_at": completed_at,
@@ -370,8 +372,8 @@ class FixIssueRequest(BaseModel):
 async def queue_fix_issue(website_id: str, body: FixIssueRequest):
     """Create a pending_fixes row and queue StrategyAgent self-healing action."""
     import uuid
-    from ..database import get_supabase
-    from ..agents.strategy_agent import StrategyAgent
+    from database import get_supabase
+    from agents.strategy_agent import StrategyAgent
     
     supabase = get_supabase()
     fix_id = str(uuid.uuid4())

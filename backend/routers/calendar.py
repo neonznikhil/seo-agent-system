@@ -134,7 +134,7 @@ async def get_calendar(website_id: str):
 
         # 4. Scheduled agent runs from APScheduler next-run times
         try:
-            from ..agents.scheduler import get_scheduler_status
+            from agents.scheduler import get_scheduler_status
             sched = get_scheduler_status()
             for job in sched.get("jobs", []):
                 nrt = job.get("next_run")

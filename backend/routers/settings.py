@@ -5,6 +5,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from database import get_supabase
+try:
+    from security import encrypt_secret, decrypt_secret
+except (ImportError, ValueError):
+    try:
+        from security import encrypt_secret, decrypt_secret
+    except (ImportError, ValueError):
+        from backend.security import encrypt_secret, decrypt_secret
 
 logger = logging.getLogger("backend.routers.settings")
 router = APIRouter()
@@ -86,21 +93,31 @@ def _mask_setting_value(key: str, value: str) -> str:
 
 @router.get("/settings")
 async def list_settings(website_id: Optional[str] = None):
-    query = get_supabase().table("settings").select("*")
-    if website_id:
-        query = query.eq("website_id", website_id)
-    res = query.execute()
     rows = []
-    for row in (res.data or []):
-        key = row.get("key", "")
-        if key in CREDENTIAL_SETTING_KEYS:
+    try:
+        query = get_supabase().table("settings").select("*")
+        if website_id:
+            query = query.eq("website_id", website_id)
+        res = query.execute()
+        for row in (res.data or []):
+            key = row.get("key", "")
+            if key in CREDENTIAL_SETTING_KEYS:
+                rows.append({
+                    **row,
+                    "value": _mask_setting_value(key, row.get("value") or ""),
+                    "is_configured": bool(row.get("value")),
+                })
+            else:
+                rows.append(row)
+    except Exception as e:
+        logger.warning(f"Settings table query note: {e}")
+        for k, v in _MEMORY_SETTINGS.items():
             rows.append({
-                **row,
-                "value": _mask_setting_value(key, row.get("value") or ""),
-                "is_configured": bool(row.get("value")),
+                "key": k,
+                "value": _mask_setting_value(k, v) if k in CREDENTIAL_SETTING_KEYS else v,
+                "is_configured": bool(v),
+                "website_id": website_id,
             })
-        else:
-            rows.append(row)
     return rows
 
 
@@ -168,8 +185,6 @@ async def get_setting(key: str, website_id: Optional[str] = None):
 
 @router.put("/settings/website/{website_id}")
 async def update_website_settings(website_id: str, body: dict):
-    from ..security import encrypt_secret
-
     website_fields = {k: v for k, v in body.items() if k in ("domain", "cms_url", "cms_user", "app_password", "gsc_property", "status")}
     settings_fields = {k: v for k, v in body.items() if k not in website_fields}
     result = {}

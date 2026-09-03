@@ -49,7 +49,7 @@ def _get_user_id(request: Request) -> str:
 async def authorize(request: Request, website_id: str = Query(...)):
     user_id = _get_user_id(request)
 
-    from ..database import get_supabase
+    from database import get_supabase
 
     website = get_supabase().table("websites").select("cms_url, domain").eq("id", website_id).single().execute().data
     if not website:

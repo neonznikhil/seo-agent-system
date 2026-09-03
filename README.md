@@ -1,5 +1,13 @@
 # RANKFORGE - Autonomous SEO Agent System
 
+> [!WARNING]
+> ### CRITICAL SECURITY & DEPLOYMENT NOTICE: ROTATE PREVIOUSLY USED SECRETS
+> **Prior to production deployment, immediately rotate any credentials used during development:**
+> 1. **Supabase Keys**: Rotate your Supabase Service Role and Anon keys via the Supabase Dashboard (`Project Settings > API > JWT Settings > Generate new secret`). Verify **Row Level Security (RLS)** is enabled on all tables. The Service Role key must **NEVER** be exposed to client-side code or public variables.
+> 2. **WordPress Application Passwords**: Revoke and regenerate all Application Passwords in `WP Admin > Users > Profile > Application Passwords`.
+> 3. **AI & API Keys**: Rotate your NVIDIA NIM API key (`build.nvidia.com`) and search keys (Serper, Tavily).
+> 4. **Git History Notice**: If any secret was committed in earlier revisions, git history preserves those values. You must treat any previously committed development keys as compromised and rotate them immediately.
+
 ## Setup
 
 1. Clone repo

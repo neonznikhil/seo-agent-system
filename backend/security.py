@@ -15,6 +15,7 @@ import os
 import re
 from typing import Any, Dict, Optional
 
+import bleach
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger("backend.security")
@@ -180,3 +181,59 @@ def sanitize_website_row(row: Dict[str, Any]) -> Dict[str, Any]:
         safe["slack_connected"] = False
         safe["slack_workspace_name"] = None
     return safe
+
+
+ALLOWED_HTML_TAGS = [
+    "p", "br", "hr", "pre", "blockquote",
+    "ul", "ol", "li",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "table", "thead", "tbody", "tr", "td", "th",
+    "strong", "b", "em", "i", "u", "s", "del", "ins",
+    "a", "span", "div",
+    "img",
+    "code", "pre",
+    "details", "summary",
+    "figure", "figcaption",
+    "dl", "dt", "dd",
+    "sup", "sub",
+]
+
+ALLOWED_HTML_ATTRIBUTES = {
+    "*": ["class", "id", "style", "aria-label", "role"],
+    "a": ["href", "title", "target", "rel"],
+    "img": ["src", "alt", "title", "loading", "width", "height"],
+    "td": ["colspan", "rowspan", "align", "valign"],
+    "th": ["colspan", "rowspan", "align", "valign"],
+    "tr": ["align", "valign"],
+    "table": ["border", "cellpadding", "cellspacing", "align", "valign", "width"],
+}
+
+ALLOWED_HTML_STYLES = [
+    "color", "background-color", "font-size", "font-weight", "font-style",
+    "text-align", "text-decoration", "margin", "margin-left", "margin-right",
+    "margin-top", "margin-bottom", "padding", "padding-left", "padding-right",
+    "padding-top", "padding-bottom", "border", "border-radius", "width", "height",
+    "display", "flex", "grid", "gap", "line-height", "letter-spacing",
+]
+
+
+def sanitize_html(html_content: str) -> str:
+    """Sanitize HTML content to prevent XSS attacks.
+
+    Uses bleach to strip dangerous tags/attributes while preserving safe formatting.
+    """
+    if not html_content or not isinstance(html_content, str):
+        return ""
+    try:
+        cleaned = bleach.clean(
+            html_content,
+            tags=ALLOWED_HTML_TAGS,
+            attributes=ALLOWED_HTML_ATTRIBUTES,
+            styles=ALLOWED_HTML_STYLES,
+            strip=True,
+            strip_comments=True,
+        )
+        return cleaned
+    except Exception as e:
+        logger.warning(f"[Security] HTML sanitization failed: {e}")
+        return ""

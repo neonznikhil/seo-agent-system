@@ -14,7 +14,7 @@ class DecayDiagnosisService:
     
     async def diagnose(self, decay_log_id: str) -> Dict[str, Any]:
         """Full diagnosis of decay with Crawlee live SERP comparison."""
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         
         decay = supabase.table("content_decay_logs").select("*").eq("id", decay_log_id).eq("website_id", self.website_id).single().execute().data
@@ -68,7 +68,7 @@ class DecayDiagnosisService:
         
         from .crawlee_service import CrawleeService
         from .gsc_service import GSCService
-        from ..database import get_supabase
+        from database import get_supabase
         
         supabase = get_supabase()
         crawler = CrawleeService()

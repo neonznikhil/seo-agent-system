@@ -4,11 +4,21 @@ import json
 from typing import Optional, List, Dict, Any
 import os
 
-from database import get_supabase
+try:
+    from database import get_supabase
+except (ImportError, ValueError):
+    try:
+        from ...database import get_supabase
+    except (ImportError, ValueError):
+        from backend.database import get_supabase
+
 try:
     from services.serper_service import serper_service
-except ImportError:
-    from ..serper_service import serper_service
+except (ImportError, ValueError):
+    try:
+        from ..serper_service import serper_service
+    except (ImportError, ValueError):
+        from backend.services.serper_service import serper_service
 
 
 logger = logging.getLogger("backend.services.monitors.serp_monitor")

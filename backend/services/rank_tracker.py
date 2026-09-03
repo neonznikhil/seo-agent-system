@@ -210,7 +210,7 @@ async def check_all_rankings() -> Dict[str, Any]:
     """
     Master job scheduled every 6 hours across all websites.
     """
-    from ..services.local_store import list_local_websites
+    from services.local_store import list_local_websites
     websites = []
     try:
         supabase = get_supabase()

@@ -41,7 +41,7 @@ class BacklinkAgent:
         modules: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """Search live SERP via Serper.dev with 60% effort allocated to the strategic winning prospect type."""
-        from ..agents.brain_autopilot_agent import get_active_strategic_patterns
+        from agents.brain_autopilot_agent import get_active_strategic_patterns
         
         strategic_defaults = await get_active_strategic_patterns(self.website_id or "default")
         top_prospect_type = strategic_defaults.get("preferred_backlink_type", "broken_link")

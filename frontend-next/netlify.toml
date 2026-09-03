@@ -3,10 +3,11 @@
   publish = ".next"
 
 [build.environment]
-  NEXT_PUBLIC_API_URL = "https://seo-agent-system-production.up.railway.app:8080/api"
-  NEXT_PUBLIC_SUPABASE_URL = "https://evpgxcuvcpihpasptcjk.supabase.co"
-  NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV2cGd4Y3V2Y3BpaHBhc3B0Y2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczODI2NDAsImV4cCI6MjEwMjk1ODY0MH0.SQaeY4sFYt-fZXNYmEvjGt9v4N5aU2dfneu3e4fAyIo"
-  SECRETS_SCAN_ENABLED = "false"
+  NODE_VERSION = "20"
+  # Configure sensitive environment variables in Netlify Dashboard:
+  # - NEXT_PUBLIC_API_URL
+  # - NEXT_PUBLIC_SUPABASE_URL
+  # - NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 [build.processing]
   skip_processing = true
@@ -14,9 +15,8 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Update the Railway backend URL below to match your Railway service domain
 [[redirects]]
   from = "/api/*"
-  to = "https://seo-agent-system-production.up.railway.app:8080/api/:splat"
+  to = "https://rankforge-backend.onrender.com/api/:splat"
   status = 200
   force = true

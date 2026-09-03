@@ -132,7 +132,7 @@ EM_DASH = "—"
 
 def get_pipeline_progress(content_id: str, website_id: str) -> Dict:
     """Get current pipeline progress for a content item."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     supabase = get_supabase()
     logs = supabase.table("content_pipeline_logs").select("*").eq("content_id", content_id).eq("website_id", website_id).order("step_number").execute().data or []

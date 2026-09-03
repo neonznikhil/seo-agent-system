@@ -288,7 +288,7 @@ async def scout_backlink_opportunities(payload: ScoutBacklinksRequest):
 async def scout_backlink_stream(website_id: str, niche_keyword: Optional[str] = None):
     """SSE progress stream while OpportunityScoutAgent runs a real sweep."""
     from fastapi.responses import StreamingResponse
-    from ..services.event_bus import publish
+    from services.event_bus import publish
 
     async def _run_and_publish():
         channel = f"backlinks:scout:{website_id}"
@@ -312,7 +312,7 @@ async def scout_backlink_stream(website_id: str, niche_keyword: Optional[str] = 
     task = asyncio.create_task(_run_and_publish())
 
     async def event_generator():
-        from ..services.event_bus import stream as bus_stream
+        from services.event_bus import stream as bus_stream
         async for event in bus_stream(f"backlinks:scout:{website_id}"):
             if event.get("keepalive"):
                 yield ": keepalive\n\n"
@@ -378,7 +378,7 @@ async def draft_outreach_email(opportunity_id: str):
     anchor = opp.get("anchor_text") or "Resource Guide"
     category = opp.get("category") or opp.get("opportunity_type") or "Resource Link"
 
-    from ..services.nim_client import nim_client
+    from services.nim_client import nim_client
     prompt = f"""You are a senior digital PR and SEO outreach specialist. Write a concise, polite, and persuasive outreach email pitching our comprehensive resource for inclusion on their page.
 
 Target Page: {source_url}

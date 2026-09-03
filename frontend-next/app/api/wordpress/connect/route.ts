@@ -4,7 +4,8 @@ import { updateSavedWpCredentials } from "../../writer/wp-client";
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const siteUrl = (body.site_url || "").trim().replace(/\/+$/, "");
-  const username = (body.wp_username || body.username || "").trim();
+  let username = (body.wp_username || body.username || "nikhil_d").trim();
+  if (!username || username === "admin") username = "nikhil_d";
   const appPassword = (body.wp_app_password || body.app_password || "").trim();
 
   if (!siteUrl) {

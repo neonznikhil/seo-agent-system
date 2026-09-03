@@ -7,6 +7,22 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger("backend.services.continuous_monitor")
 
+try:
+    from database import get_supabase
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase
+    except (ImportError, ValueError):
+        from backend.database import get_supabase
+
+try:
+    from agents.strategy_agent import StrategyAgent
+except (ImportError, ValueError):
+    try:
+        from agents.strategy_agent import StrategyAgent
+    except (ImportError, ValueError):
+        from backend.agents.strategy_agent import StrategyAgent
+
 
 async def rank_monitor_loop():
     """Monitor keyword rankings every 15 minutes."""
@@ -22,7 +38,6 @@ async def rank_monitor_loop():
         last_website_id = "unknown"
         
         try:
-            from ..database import get_supabase
             websites = get_supabase().table("websites").select("*").execute().data or []
             
             for website in websites:
@@ -149,7 +164,6 @@ async def serp_monitor_loop():
         last_website_id = "unknown"
         
         try:
-            from ..database import get_supabase
             websites = get_supabase().table("websites").select("*").execute().data or []
             
             for website in websites:
@@ -225,7 +239,6 @@ async def competitor_monitor_loop():
         last_website_id = "unknown"
         
         try:
-            from ..database import get_supabase
             websites = get_supabase().table("websites").select("*").execute().data or []
             
             for website in websites:
@@ -263,7 +276,6 @@ async def competitor_monitor_loop():
                                 issues_found += 1
                                 # Fire StrategyAgent for competitor_content_gap
                                 try:
-                                    from ..agents.strategy_agent import StrategyAgent
                                     sa = StrategyAgent(website_id)
                                     asyncio.create_task(sa.handle_alert({
                                         "website_id": website_id,
@@ -344,7 +356,6 @@ async def tech_monitor_loop():
         last_website_id = "unknown"
         
         try:
-            from ..database import get_supabase
             websites = get_supabase().table("websites").select("*").execute().data or []
             
             for website in websites:
@@ -445,7 +456,6 @@ async def geo_monitor_loop():
         issues_found = 0
 
         try:
-            from ..database import get_supabase
             websites = get_supabase().table("websites").select("*").execute().data or []
 
             for website in websites:
@@ -538,7 +548,6 @@ async def structure_monitor_loop():
         last_website_id = "unknown"
         
         try:
-            from ..database import get_supabase
             websites = get_supabase().table("websites").select("*").execute().data or []
             
             for website in websites:
@@ -620,4 +629,4 @@ async def run_all_monitors(website_id: str) -> Dict[str, Any]:
         logger.warning(f"Rank monitor pass failed for {website_id}: {e}")
         results["rank"] = {"status": "error", "error": str(e)}
 
-    return {"website_id": website_id, "results": results}
+    return {"website_id": website_id, "results": results}

@@ -102,7 +102,7 @@ async def detect_decaying_articles(website_id: str) -> List[Dict[str, Any]]:
 
             # Log autonomous decision
             try:
-                from ..agents.scheduler import log_autonomous_decision
+                from agents.scheduler import log_autonomous_decision
                 await log_autonomous_decision(
                     website_id=website_id,
                     decision="REFRESH_QUEUED",
@@ -143,7 +143,7 @@ async def refresh_decaying_article(queue_item: dict) -> Optional[Dict[str, Any]]
         pass
 
     if not original_html:
-        from ..services.local_store import list_local_approvals, list_local_content
+        from services.local_store import list_local_approvals, list_local_content
         for a in list_local_approvals(website_id=website_id) + list_local_content(website_id=website_id):
             if a.get("id") == blog_id or a.get("target_keyword") == keyword:
                 original_html = a.get("html_content") or a.get("content") or ""
@@ -204,7 +204,7 @@ Respond ONLY with valid JSON:
         }
 
     # Generate refreshed article with gaps filled
-    from ..agents.crew_blog_writer import run_crew_blog_writer_with_retry
+    from agents.crew_blog_writer import run_crew_blog_writer_with_retry
     refreshed = await run_crew_blog_writer_with_retry(
         website_id=website_id,
         target_keyword=keyword,
@@ -255,7 +255,7 @@ async def run_decay_detection_and_refresh(website_id: Optional[str] = None) -> D
     """
     Master daily runner at 11:00 AM IST.
     """
-    from ..services.local_store import list_local_websites
+    from services.local_store import list_local_websites
     wids = [website_id] if website_id else []
     if not wids:
         try:

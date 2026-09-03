@@ -40,7 +40,7 @@ class NIM_LLM:
     """LangChain-compatible NVIDIA NIM wrapper for CrewAI agents."""
 
     def __init__(self, model: str = "meta/llama-3.1-70b-instruct"):
-        from ..database import NIM_API_KEY
+        from database import NIM_API_KEY
 
         self.model = model
         self.llm = ChatOpenAI(
@@ -65,7 +65,7 @@ class NIM_LLM:
 
 
 def _build_nim_chat(model: str = "meta/llama-3.1-70b-instruct") -> ChatOpenAI:
-    from ..database import NIM_API_KEY
+    from database import NIM_API_KEY
 
     return ChatOpenAI(
         model=model,
@@ -274,7 +274,7 @@ def plan_blogs_for_website(website_id: str) -> str:
     result = crew.kickoff()
 
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         get_supabase().table("agent_thoughts").insert({
             "website_id": website_id,
             "thought": f"CrewAI kickoff completed (SEO/AEO/GEO): {str(result)[:1000]}",

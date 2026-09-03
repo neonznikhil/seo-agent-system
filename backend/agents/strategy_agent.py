@@ -146,7 +146,7 @@ class StrategyAgent:
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
             
-            from ..services.reporting_service import report_problem
+            from services.reporting_service import report_problem
             await report_problem(
                 website_id=self.website_id,
                 alert_type="content_gap",
@@ -211,7 +211,7 @@ class StrategyAgent:
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
             
-            from ..services.reporting_service import report_problem
+            from services.reporting_service import report_problem
             await report_problem(
                 website_id=self.website_id,
                 alert_type="content_gap",
@@ -250,7 +250,7 @@ class StrategyAgent:
             
             self.supabase.table("pending_fixes").insert(fix_data).execute()
             
-            from ..services.reporting_service import report_problem
+            from services.reporting_service import report_problem
             await report_problem(
                 website_id=self.website_id,
                 alert_type="content_gap",

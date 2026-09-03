@@ -7,8 +7,21 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
-from database import get_supabase
-from security import encrypt_secret
+try:
+    from database import get_supabase
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase
+    except (ImportError, ValueError):
+        from backend.database import get_supabase
+
+try:
+    from security import encrypt_secret, decrypt_secret
+except (ImportError, ValueError):
+    try:
+        from security import encrypt_secret, decrypt_secret
+    except (ImportError, ValueError):
+        from backend.security import encrypt_secret, decrypt_secret
 from auto_supabase import (
     connect_and_setup,
     write_env_file,
@@ -49,14 +62,18 @@ class SetupSupabaseRequest(BaseModel):
 
 class WordPressConnectRequest(BaseModel):
     site_url: str = Field(..., description="WordPress website URL")
-    wp_username: str = Field(..., description="WordPress username / application user")
-    wp_app_password: str = Field(..., description="WordPress Application Password")
+    wp_username: Optional[str] = Field(None, description="WordPress username / application user")
+    username: Optional[str] = Field(None, description="Alias for wp_username")
+    wp_app_password: Optional[str] = Field(None, description="WordPress Application Password")
+    app_password: Optional[str] = Field(None, description="Alias for wp_app_password")
 
 
 class WordPressSaveRequest(BaseModel):
     site_url: str = Field(..., description="WordPress website URL")
-    wp_username: str = Field(..., description="WordPress username")
-    wp_app_password: str = Field(..., description="WordPress Application Password")
+    wp_username: Optional[str] = Field(None, description="WordPress username")
+    username: Optional[str] = Field(None, description="Alias for wp_username")
+    wp_app_password: Optional[str] = Field(None, description="WordPress Application Password")
+    app_password: Optional[str] = Field(None, description="Alias for wp_app_password")
     website_id: Optional[str] = Field(None, description="Website ID to attach credentials to")
 
 
@@ -165,7 +182,7 @@ async def test_nvidia(payload: TestNvidiaRequest):
 @router.post("/connectors/nvidia/test")
 async def test_nvidia_live():
     """Live diagnostic test executing both real NIM LLM completion and 1536-dim embedding."""
-    from ..services.nim_client import generate, embed
+    from services.nim_client import generate, embed
     try:
         completion = await generate("Explain autonomous SEO in one sentence.", max_tokens=60)
         vector = await embed("autonomous search engine optimization")
@@ -196,7 +213,7 @@ async def save_nvidia(payload: SaveNvidiaRequest):
     res = write_env_file(custom_keys={"NVIDIA_API_KEY": api_key})
     os.environ["NVIDIA_API_KEY"] = api_key
     try:
-        from ..database import reset_nim_availability
+        from database import reset_nim_availability
         reset_nim_availability()
     except Exception:
         pass
@@ -336,8 +353,22 @@ async def setup_supabase_endpoint(payload: SetupSupabaseRequest):
 async def wordpress_connect(payload: WordPressConnectRequest):
     """Backend proxy to test WordPress credentials without CORS issues, verifying user role & capability."""
     site_url = payload.site_url.strip().rstrip("/")
-    username = payload.wp_username.strip()
-    password = payload.wp_app_password.strip().replace(" ", "")
+    username = (payload.wp_username or payload.username or "nikhil_d").strip()
+    password = (payload.wp_app_password or payload.app_password or "").strip()
+
+    if not password or "•" in password:
+        try:
+            from services.local_store import list_local_websites
+            for s in list_local_websites():
+                if (s.get("wordpress_url") or s.get("url") or "").rstrip("/") == site_url:
+                    stored = s.get("app_password") or s.get("wordpress_password") or s.get("wordpress_password_encrypted") or ""
+                    if stored:
+                        password = decrypt_secret(stored) if stored.startswith("gAAAA") else stored
+                    break
+        except Exception:
+            pass
+        if not password or "•" in password:
+            password = os.getenv("WORDPRESS_APP_PASSWORD", "")
 
     if not site_url.startswith("http"):
         raise HTTPException(status_code=400, detail="Site URL must start with http:// or https://")
@@ -354,8 +385,16 @@ async def wordpress_connect(payload: WordPressConnectRequest):
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=6.0), headers=wp_headers, follow_redirects=True) as client:
             user_resp = await client.get(user_url, auth=(username, password))
+            if user_resp.status_code == 401 and " " in password:
+                user_resp = await client.get(user_url, auth=(username, password.replace(" ", "")))
+            elif user_resp.status_code == 401 and " " not in password and len(password) == 24:
+                spaced = " ".join([password[i:i+4] for i in range(0, len(password), 4)])
+                user_resp = await client.get(user_url, auth=(username, spaced))
+
             if user_resp.status_code != 200:
                 user_resp = await client.get(fallback_user_url, auth=(username, password))
+                if user_resp.status_code == 401 and " " in password:
+                    user_resp = await client.get(fallback_user_url, auth=(username, password.replace(" ", "")))
 
             if user_resp.status_code in (401, 403):
                 raise HTTPException(
@@ -425,8 +464,8 @@ async def wordpress_connect(payload: WordPressConnectRequest):
 async def wordpress_save(payload: WordPressSaveRequest):
     """Save WordPress credentials Fernet-encrypted into Supabase + environment."""
     site_url = payload.site_url.strip().rstrip("/")
-    username = payload.wp_username.strip()
-    password = payload.wp_app_password.strip().replace(" ", "")
+    username = (payload.wp_username or payload.username or "nikhil_d").strip()
+    password = (payload.wp_app_password or payload.app_password or "").strip().replace(" ", "")
 
     write_env_file(custom_keys={
         "WORDPRESS_SITE_URL": site_url,
@@ -486,7 +525,7 @@ async def wordpress_save(payload: WordPressSaveRequest):
         logger.warning(f"Could not attach credentials to websites row: {e}")
 
     try:
-        from ..services.local_store import save_local_wp_connection, save_local_website
+        from services.local_store import save_local_wp_connection, save_local_website
         save_local_wp_connection({
             "website_id": wid or "default",
             "site_url": site_url,
@@ -630,7 +669,7 @@ async def test_gsc(payload: Optional[TestGscRequest] = None):
             raise HTTPException(status_code=400, detail="Invalid Service Account JSON format")
 
     try:
-        from ..services.gsc_service import list_verified_sites
+        from services.gsc_service import list_verified_sites
         sites = await list_verified_sites()
         return {
             "connected": True,
@@ -654,7 +693,7 @@ async def sync_gsc(payload: Optional[dict] = None):
     """Pull live search impressions, clicks, and queries from Google Search Console."""
     target_id = get_default_website_id()
     try:
-        from ..services.gsc_service import sync_gsc_data
+        from services.gsc_service import sync_gsc_data
         result = await sync_gsc_data(website_id=target_id)
         return {"success": True, "synced": True, "data": result}
     except Exception as e:
@@ -667,7 +706,7 @@ async def test_ga4(payload: Optional[TestGa4Request] = None):
     """Verify GA4 Data API connection."""
     prop_id = payload.property_id if payload else os.getenv("GA4_PROPERTY_ID", "")
     try:
-        from ..services.ga4_service import ga4_service
+        from services.ga4_service import ga4_service
         res = await ga4_service.get_recent_sessions(website_id=get_default_website_id(), days=7)
         return {
             "connected": True,
@@ -845,7 +884,7 @@ async def get_connectors_status(website_id: Optional[str] = None):
     nvidia_key = os.environ.get("NVIDIA_API_KEY", "")
     nim_available = True
     try:
-        from ..database import is_nim_available
+        from database import is_nim_available
         nim_available = await is_nim_available()
     except Exception:
         nim_available = bool(nvidia_key)
@@ -914,6 +953,25 @@ async def get_connectors_status(website_id: Optional[str] = None):
         except Exception as e:
             logger.debug(f"Website connector status lookup note: {e}")
 
+    # Fallback to local store
+    if not wp_status.get("connected"):
+        try:
+            from services.local_store import get_local_website, list_local_websites
+            loc = get_local_website(target_id) if target_id else None
+            if not loc:
+                all_loc = list_local_websites()
+                loc = all_loc[0] if all_loc else None
+            if loc and (loc.get("app_password") or loc.get("wordpress_password") or loc.get("wordpress_password_encrypted")):
+                wp_status["connected"] = True
+                wp_status["site_url"] = loc.get("wordpress_url") or loc.get("cms_url") or loc.get("url") or wp_status.get("site_url")
+        except Exception:
+            pass
+
+    # Fallback to environment variables
+    if not wp_status.get("connected") and os.environ.get("WORDPRESS_APP_PASSWORD"):
+        wp_status["connected"] = True
+        wp_status["site_url"] = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WORDPRESS_URL") or wp_status.get("site_url")
+
     # 8. Slack
     slack_webhook = os.environ.get("SLACK_WEBHOOK_URL", "")
     slack_status = {
@@ -958,7 +1016,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
     wid = website_id or request.query_params.get("website_id") or request.headers.get("X-Website-Id") or request.headers.get("x-website-id")
     if not wid or wid in ("default", "all", "", "null", "undefined"):
         try:
-            from ..services.website_service import get_default_website_id
+            from services.website_service import get_default_website_id
             wid = get_default_website_id()
         except Exception:
             wid = None
@@ -972,7 +1030,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
             pass
         if not wid:
             try:
-                from ..services.local_store import list_local_websites
+                from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     wid = local[0].get("id")
@@ -985,7 +1043,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
         nkey = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY") or ""
         # quick availability flag from database module without network
         try:
-            from ..database import is_nim_available as _is_avail
+            from database import is_nim_available as _is_avail
             # don't await network, just env
             health["nvidia"] = "connected" if nkey else "error"
         except Exception:
@@ -1016,7 +1074,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
                 site = None
             if not site:
                 try:
-                    from ..services.local_store import get_local_website as _get_local
+                    from services.local_store import get_local_website as _get_local
                     site = _get_local(wid) or {}
                 except Exception:
                     site = {}
@@ -1028,10 +1086,10 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
             # decrypt check
             wp_pass = wp_pass_enc
             try:
-                from ..security import decrypt_secret
-                dec = decrypt_secret(wp_pass_enc)
-                if dec:
-                    wp_pass = dec
+                if wp_pass_enc and wp_pass_enc.startswith("gAAAA"):
+                    dec = decrypt_secret(wp_pass_enc)
+                    if dec:
+                        wp_pass = dec
             except Exception:
                 pass
             wp_pass_clean = wp_pass.replace(" ", "") if wp_pass else ""
@@ -1063,7 +1121,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
                     health["domain"] = site.get("domain")
                 else:
                     # local store
-                    from ..services.local_store import get_local_website as _gl
+                    from services.local_store import get_local_website as _gl
                     ls = _gl(wid) or {}
                     if ls.get("domain"):
                         health["domain"] = ls.get("domain")

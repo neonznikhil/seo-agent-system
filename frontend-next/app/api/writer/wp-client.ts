@@ -12,7 +12,7 @@ const CREDENTIALS_FILE = path.join(process.cwd(), ".wp_credentials.json");
 function loadStoredCredentials(): WpCredentials {
   const fallback: WpCredentials = {
     site_url: process.env.WORDPRESS_SITE_URL || "https://accident.innovatcs.com",
-    username: process.env.WORDPRESS_USERNAME || "admin",
+    username: process.env.WORDPRESS_USERNAME || "nikhil_d",
     app_password: process.env.WORDPRESS_APP_PASSWORD || "",
   };
 
@@ -98,24 +98,25 @@ async function postViaXmlRpc(
 
     const bodyText = await res.text();
 
-    // Check for success: <value><string>1234</string></value> or <value><int>1234</int></value>
-    const match = bodyText.match(/<value>\s*<(?:string|int)>(\d+)<\/(?:string|int)>\s*<\/value>/);
-    if (match && match[1]) {
-      const draftId = parseInt(match[1], 10);
+    // 1. Check for XML-RPC Fault FIRST (Do not confuse faultCode 403 with post ID!)
+    if (bodyText.includes("<fault>")) {
+      const faultMatch = bodyText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/i);
+      const errorMsg = faultMatch ? faultMatch[1].trim() : "WordPress authentication failed (incorrect username or password).";
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+
+    // 2. Check for real post ID inside <params><param><value>
+    const paramMatch = bodyText.match(/<params>\s*<param>\s*<value>\s*<(?:string|int)>(\d+)<\/(?:string|int)>/i);
+    if (paramMatch && paramMatch[1]) {
+      const draftId = parseInt(paramMatch[1], 10);
       return {
         success: true,
         wp_post_id: draftId,
         edit_url: `${siteUrl}/wp-admin/post.php?post=${draftId}&action=edit`,
         link: `${siteUrl}/?p=${draftId}&preview=true`,
-      };
-    }
-
-    // Check for faultString
-    const faultMatch = bodyText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/);
-    if (faultMatch && faultMatch[1]) {
-      return {
-        success: false,
-        error: faultMatch[1].trim(),
       };
     }
   } catch (err: any) {
@@ -149,8 +150,11 @@ export async function createRealWordPressDraft(
   error?: string;
 }> {
   const currentCreds = loadStoredCredentials();
-  const siteUrl = (overrideCreds?.site_url || currentCreds.site_url || "https://accident.innovatcs.com").trim().replace(/\/+$/, "");
-  const username = (overrideCreds?.username || currentCreds.username || "admin").trim();
+  const siteUrl = (overrideCreds?.site_url || currentCreds.site_url || process.env.WORDPRESS_URL || "https://accident.innovatcs.com").trim().replace(/\/+$/, "");
+  let username = (overrideCreds?.username || currentCreds.username || "nikhil_d").trim();
+  if (username === "admin") {
+    username = "nikhil_d";
+  }
   const appPassword = (overrideCreds?.app_password || currentCreds.app_password || "").trim();
 
   if (!siteUrl || !username || !appPassword || appPassword.includes("••••")) {

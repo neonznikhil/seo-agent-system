@@ -4,7 +4,7 @@ services:
     runtime: docker
     region: singapore
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: backend/Dockerfile
     dockerContext: .
     branch: main
     healthCheckPath: /health
@@ -35,9 +35,9 @@ services:
           type: redis
           property: connectionString
       - key: ALLOWED_CORS_ORIGINS
-        value: https://rankforge-frontend.onrender.com,https://rankforge-backend.onrender.com,http://localhost:3000,http://localhost:8000,https://seo-agent-system-production.up.railway.app:8080,https://*.netlify.app,https://*.onrender.com
+        value: https://rankforge-frontend.onrender.com,https://seo-agent-system.netlify.app,http://localhost:3000
       - key: CORS_ORIGINS
-        value: https://rankforge-frontend.onrender.com,https://rankforge-backend.onrender.com,http://localhost:3000,http://localhost:8000,https://seo-agent-system-production.up.railway.app:8080,https://*.netlify.app,https://*.onrender.com
+        value: https://rankforge-frontend.onrender.com,https://seo-agent-system.netlify.app,http://localhost:3000
       - key: FRONTEND_URL
         value: https://rankforge-frontend.onrender.com
       - key: BACKEND_URL
@@ -58,7 +58,7 @@ services:
       - key: BACKEND_URL
         value: https://rankforge-backend.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        value: ""
+        value: https://rankforge-backend.onrender.com/api
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY

@@ -208,7 +208,7 @@ Requirements:
 """
             expansion = ""
             try:
-                from ..services.nim_client import nim_generate_with_feedback
+                from services.nim_client import nim_generate_with_feedback
                 expansion = await nim_generate_with_feedback(
                     prompt=expansion_prompt,
                     system_prompt="You write 3-4 detailed HTML paragraphs only. Start directly with <p>. No other output.",
@@ -1279,7 +1279,7 @@ def _enforce_year_correctness(html: str, target_keyword: str) -> str:
 
 # Central NIM client - no hardcoded EOL models, use nim_client LLM_MODELS
 try:
-    from ..services.nim_client import get_llm_model as _nim_get_llm_model, LLM_MODELS as _LLM_MODELS
+    from services.nim_client import get_llm_model as _nim_get_llm_model, LLM_MODELS as _LLM_MODELS
     NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", _LLM_MODELS[0] if _LLM_MODELS else "nvidia/nemotron-3-ultra-550b-a55b")
     NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", _LLM_MODELS[1] if len(_LLM_MODELS) > 1 else "nvidia/nemotron-3-nano-30b-a3b")
 except Exception:
@@ -1324,7 +1324,7 @@ async def _call_nvidia_with_fallback(prompt: str, system: str = "", primary: boo
     """Direct NIM call with tenacity retry 3 (1s/5s/15s) and 410 EOL fallback via nim_client."""
     model = NVIDIA_PRIMARY if primary else NVIDIA_FALLBACK
     try:
-        from ..database import call_nim_llm as nim_call
+        from database import call_nim_llm as nim_call
         # call_nim_llm already has internal retry + fallback models; we add explicit model param via env
         os.environ["NIM_LLM_MODEL"] = model
         result = await nim_call(prompt, system=system, max_tokens=8192, temperature=0.7, fail_silently=False)
@@ -1338,7 +1338,7 @@ async def _call_nvidia_with_fallback(prompt: str, system: str = "", primary: boo
             return await _call_nvidia_with_fallback(prompt, system, primary=False)
         # If fallback also fails, try central client directly
         try:
-            from ..services.nim_client import call_llm_central
+            from services.nim_client import call_llm_central
             logger.warning(f"[Crew] Both primary/fallback failed, trying nim_client.call_llm_central")
             return await call_llm_central(prompt, system=system, max_tokens=8192, temperature=0.7)
         except Exception as e2:
@@ -3023,7 +3023,7 @@ class KnowledgeRAGTool(BaseTool):
     website_id: Optional[str] = Field(default=None)
 
     def __init__(self, website_id: Optional[str] = None, **kwargs):
-        from ..services.website_service import get_default_website_id
+        from services.website_service import get_default_website_id
         wid = website_id if website_id and website_id not in ("default", "all") else (get_default_website_id() or "")
         try:
             super().__init__(website_id=wid, **kwargs)
@@ -3056,7 +3056,7 @@ class KnowledgeRAGTool(BaseTool):
 
     async def _aretrieve(self, query: str) -> str:
         try:
-            from ..services.rag_service import RAGService
+            from services.rag_service import RAGService
             rag = RAGService(website_id=self.website_id)
             hits = await rag.retrieve(query=query, top_k=5, filters={"type": "all"})
             # If no hits with filter, try broader
@@ -3093,7 +3093,7 @@ class SerperTavilyTool(BaseTool):
         serp_data = {"organic": [], "peopleAlsoAsk": [], "relatedSearches": [], "source": "none"}
         # 1. Serper
         try:
-            from ..services.serper_service import serper_service
+            from services.serper_service import serper_service
             serp_data = await serper_service.search(query=search_query, num=10, auto_fallback=False)
             if serp_data.get("organic"):
                 return json.dumps({
@@ -3146,7 +3146,7 @@ class WordPressTool(BaseTool):
     website_id: Optional[str] = Field(default=None)
 
     def __init__(self, website_id: Optional[str] = None, **kwargs):
-        from ..services.website_service import get_default_website_id
+        from services.website_service import get_default_website_id
         wid = website_id if website_id and website_id not in ("default", "all") else (get_default_website_id() or "")
         try:
             super().__init__(website_id=wid, **kwargs)
@@ -3172,7 +3172,7 @@ class WordPressTool(BaseTool):
 
     async def _apublish(self, title: str, html: str, meta: str, slug: str) -> str:
         try:
-            from ..services.wordpress_service import WordPressService
+            from services.wordpress_service import WordPressService
             svc = WordPressService(website_id=self.website_id)
             # Check auto_publish setting
             supabase = get_supabase()
@@ -3336,7 +3336,7 @@ async def _log_phase(website_id: str, content_id: str, phase: str, step: int, st
     except Exception as e:
         logger.debug(f"pipeline log note: {e}")
     try:
-        from ..services.event_bus import publish
+        from services.event_bus import publish
         publish(f"crew:{content_id}", {"event": "phase", "phase": phase, "status": status, "output": str(output)[:500] if output else ""})
     except Exception:
         pass
@@ -3359,14 +3359,14 @@ async def run_planner_agent(topic: str, website_id: str, business_name: str, ton
     # 1. Knowledge Base Chunks (top 10)
     kb_chunks = []
     try:
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
         kb_chunks = await ks.retrieve_relevant_hybrid(keyword=topic, top_k=10)
     except Exception as e:
         logger.debug(f"[Planner] KB retrieve note: {e}")
     if not kb_chunks:
         try:
-            from ..services.rag_service import RAGService
+            from services.rag_service import RAGService
             rag = RAGService(website_id=website_id)
             kb_chunks = await rag.retrieve(query=topic, top_k=10)
         except Exception:
@@ -4015,7 +4015,7 @@ def _validate_writer_on_topic(writer_html: str, target_keyword: str):
 async def _log_autonomous_failed(website_id: str, reason: str):
     """Log FAILED decision to autonomous_decisions — used by retry wrapper."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         supabase.table("autonomous_decisions").insert({
             "id": str(uuid.uuid4()),
@@ -4029,7 +4029,7 @@ async def _log_autonomous_failed(website_id: str, reason: str):
         pass
     # Also log to local file
     try:
-        from ..services.local_store import save_local_brain_memory
+        from services.local_store import save_local_brain_memory
         save_local_brain_memory({
             "website_id": website_id,
             "memory_type": "decision",
@@ -4139,7 +4139,7 @@ async def generate_blog_autonomous(
     # Event bus helper for real-time frontend updates
     async def publish_phase(phase: str, status: str, message: str, data: dict = None):
         try:
-            from ..services.event_bus import publish
+            from services.event_bus import publish
             publish(f"crew:{blog_id}", {
                 "event": "phase_update",
                 "phase": phase,
@@ -4154,8 +4154,8 @@ async def generate_blog_autonomous(
         except Exception:
             pass
 
-    from ..services.website_service import get_default_website_id
-    from ..services.local_store import list_local_knowledge
+    from services.website_service import get_default_website_id
+    from services.local_store import list_local_knowledge
     if not website_id or website_id in ("default", "default-website-id", "all", "", "null", "undefined"):
         website_id = get_default_website_id()
     if not website_id:
@@ -4186,7 +4186,7 @@ async def generate_blog_autonomous(
         await publish_phase("knowledge", "running", f"Knowledge base has {kb_count} entries — crawling website...")
         logger.info(f"[Crew] Knowledge base count is {kb_count}/5 for site {website_id} — triggering automated knowledge crawl fallback...")
         try:
-            from ..services.knowledge_service import KnowledgeService
+            from services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=website_id)
             crawl_res = await asyncio.wait_for(ks.watch_business_website(), timeout=30.0)
             logger.info(f"[Crew] Auto-crawl completed: {crawl_res}")
@@ -4204,7 +4204,7 @@ async def generate_blog_autonomous(
                 site_info = supabase.table("websites").select("domain, business_name, niche").eq("id", website_id).single().execute().data or {}
                 dom = site_info.get("domain") or "example.com"
                 niche = site_info.get("niche") or "professional authority"
-                from ..services.knowledge_service import KnowledgeService
+                from services.knowledge_service import KnowledgeService
                 ks = KnowledgeService(website_id=website_id)
                 synth_chunks = [
                     (f"Business Overview: {dom} is a specialized portal providing authoritative guidance and services in {niche}.", "business_info"),
@@ -4239,7 +4239,7 @@ async def generate_blog_autonomous(
     tone = "authoritative, professional, helpful"
     analytics_learnings = []
     try:
-        from ..services.brain_service import BrainService
+        from services.brain_service import BrainService
         brain = BrainService(website_id=website_id)
         brain_hits = await brain.recall(website_id=website_id, query=topic, top_k=3)
         # tone from tone_profiles
@@ -4253,7 +4253,7 @@ async def generate_blog_autonomous(
         logger.debug(f"[Crew] brain recall note: {e}")
 
     try:
-        from ..services.analytics_service import AnalyticsService
+        from services.analytics_service import AnalyticsService
         # get top performing keywords from analytics_data
         try:
             ana_rows = supabase.table("analytics_data").select("keyword, clicks, impressions, position").eq("website_id", website_id).order("impressions", desc=True).limit(5).execute().data or []
@@ -4275,14 +4275,14 @@ async def generate_blog_autonomous(
     # knowledge_hits hybrid top 5
     knowledge_hits = []
     try:
-        from ..services.rag_service import RAGService
+        from services.rag_service import RAGService
         rag = RAGService(website_id=website_id)
         retrieved = await rag.retrieve(query=topic, top_k=5, filters={"type": "all"})
         reranked = await rag.rerank(query=topic, hits=retrieved, top_k=5)
         knowledge_hits = reranked or retrieved[:5]
         if not knowledge_hits:
             # fallback to knowledge_service
-            from ..services.knowledge_service import KnowledgeService
+            from services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=website_id)
             knowledge_hits = await ks.retrieve_relevant_hybrid(keyword=topic, top_k=5)
     except Exception as e:
@@ -4443,7 +4443,7 @@ async def generate_blog_autonomous(
     await publish_phase("editor", "running", "Editor quality gate: SEO, validation, grounding checks...")
     # If crew already produced scores, verify with independent checks
     try:
-        from ..services.seo_quality_gate import SEOQualityGate
+        from services.seo_quality_gate import SEOQualityGate
         gate = SEOQualityGate()
         # independent SEO score (title/meta/H2/FAQ checks)
         meta_title = (planner_outline.get("meta_title") or topic)[:60]
@@ -4468,7 +4468,7 @@ async def generate_blog_autonomous(
 
     # Validation via RAG hallucination check
     try:
-        from ..services.rag_service import RAGService
+        from services.rag_service import RAGService
         rag = RAGService(website_id=website_id)
         # Use RAG generate's hallucination check on final HTML snippet
         hall = await rag.generate(query=f"Fact-check this article about {topic}", hits=knowledge_hits[:3], require_citations=False, anti_hallucination=True)
@@ -4570,7 +4570,7 @@ async def generate_blog_autonomous(
         if not duplicate_found:
             try:
                 # Check local store
-                from ..services.local_store import list_local_content
+                from services.local_store import list_local_content
                 local_posts = list_local_content(website_id) or []
                 for post in local_posts:
                     post_title_norm = normalize_title(post.get("title", ""))
@@ -4585,7 +4585,7 @@ async def generate_blog_autonomous(
         if not duplicate_found:
             try:
                 # Check WordPress directly via API - ALL statuses
-                from ..services.wordpress_service import WordPressService
+                from services.wordpress_service import WordPressService
                 _wp_check = WordPressService(website_id)
                 # Check multiple statuses
                 for wp_status in ['draft', 'publish', 'pending', 'future']:
@@ -4607,7 +4607,7 @@ async def generate_blog_autonomous(
         
         if not duplicate_found:
             try:
-                from ..services.wordpress_service import WordPressService
+                from services.wordpress_service import WordPressService
                 _wp_svc = WordPressService(website_id)
                 _base = _wp_svc.get_base_url()
                 if _base:
@@ -4648,7 +4648,7 @@ async def generate_blog_autonomous(
             pass
         if auto_publish and wp_post_id:
             try:
-                from ..services.wordpress_service import WordPressService
+                from services.wordpress_service import WordPressService
                 _wp2 = WordPressService(website_id)
                 pub = await _wp2.publish_post(website_id=website_id, wp_post_id=wp_post_id, user_id=user_id or "autonomous")
                 wordpress_url = wordpress_url or wp_draft_url
@@ -4729,7 +4729,7 @@ async def generate_blog_autonomous(
         "wordpress_url": wordpress_url,
         "created_at": datetime.utcnow().isoformat(),
     }
-    from ..services.local_store import save_local_content, save_local_approval
+    from services.local_store import save_local_content, save_local_approval
 
     cl_payload = {
         "id": content_id,
@@ -4815,7 +4815,7 @@ async def generate_blog_autonomous(
     # TASK D1: Write 3 new memories to brain_memory — ONLY for published blogs
     if status == "published":
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(website_id=website_id)
             # 1. Target keyword memory
             await brain.remember(
@@ -5550,7 +5550,7 @@ async def extract_website_facts(website_id: str) -> dict:
     from datetime import datetime
     current_year = datetime.utcnow().year
 
-    from ..services.nim_client import nim_generate_with_feedback
+    from services.nim_client import nim_generate_with_feedback
     facts_response = await nim_generate_with_feedback(
         system_prompt="You respond only with valid JSON. No other text.",
         prompt=f"""
@@ -5674,7 +5674,7 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     
     # 9. Inject internal links
     try:
-        from ..services.internal_links import inject_internal_links
+        from services.internal_links import inject_internal_links
         step8 = await inject_internal_links(step7, website_id)
     except Exception as e:
         logger.debug(f"[InternalLinks] injection note: {e}")
@@ -5765,7 +5765,7 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
         # Allow only if website is actually about blogging (check KB grounding >0.75 via hybrid or fallback text overlap)
         _denied_allowed = False
         try:
-            from ..services.knowledge_service import KnowledgeService as _KSDeny
+            from services.knowledge_service import KnowledgeService as _KSDeny
             _ksd = _KSDeny(website_id=website_id)
             _hitsd = await _ksd.retrieve_relevant_hybrid(target_keyword, top_k=3)
             if _hitsd:
@@ -5774,7 +5774,7 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
                     _denied_allowed = True
             else:
                 # Fallback legal core check for local KB (denylist requires strong grounding)
-                from ..services.local_store import list_local_knowledge as _LLK
+                from services.local_store import list_local_knowledge as _LLK
                 import re as _reD
                 _kbD = _LLK(website_id)
                 _kbfD = [k for k in _kbD if 'Hello world' not in (k.get('fact') or k.get('content') or '') and (k.get('fact') or k.get('content') or '').strip()]
@@ -5808,7 +5808,7 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
     # Grounding check — with fallback to text overlap for local KB without embeddings (FIX autonomous)
     _grounded_ok = False
     try:
-        from ..services.knowledge_service import KnowledgeService as _KSG
+        from services.knowledge_service import KnowledgeService as _KSG
         _ksg = _KSG(website_id=website_id)
         _hitsg = await _ksg.retrieve_relevant_hybrid(target_keyword, top_k=3)
         if _hitsg:
@@ -5819,7 +5819,7 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
                 raise ValueError(f"Keyword '{target_keyword}' similarity {_avgg:.2f} <0.55 — not grounded, aborting unrelated blog")
         else:
             # Fallback legal core check for local KB
-            from ..services.local_store import list_local_knowledge
+            from services.local_store import list_local_knowledge
             import re
             _kb = list_local_knowledge(website_id)
             _kbf = [k for k in _kb if 'Hello world' not in (k.get('fact') or k.get('content') or '') and (k.get('fact') or k.get('content') or '').strip()]

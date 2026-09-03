@@ -127,7 +127,7 @@ async def run_pattern_recognition_engine(website_id: str) -> Dict[str, Any]:
     )
 
     try:
-        raw = await call_nim_llm(prompt, system="You are an autonomous SEO data intelligence engine. Return ONLY valid JSON.", website_id=website_id)
+        raw = await call_nim_llm(prompt, system="You are an autonomous SEO data intelligence engine. Return ONLY valid JSON.", website_id=website_id, max_tokens=500, temperature=0.2)
         cleaned = raw.strip()
         if "```json" in cleaned:
             cleaned = cleaned.split("```json")[1].split("```")[0]
@@ -253,38 +253,38 @@ async def get_active_strategic_patterns(website_id: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 async def _daily_search_job(website_id: str) -> Dict[str, Any]:
-    from ..services.daily_search_service import daily_search_job
+    from services.daily_search_service import daily_search_job
     return await daily_search_job(website_id)
 
 
 async def _daily_cluster_build_job(website_id: str) -> Dict[str, Any]:
-    from ..services.daily_search_service import daily_cluster_build_job
+    from services.daily_search_service import daily_cluster_build_job
     return await daily_cluster_build_job(website_id)
 
 
 async def _daily_geo_check_job(website_id: str) -> Dict[str, Any]:
-    from ..services.daily_search_service import daily_geo_check_job
+    from services.daily_search_service import daily_geo_check_job
     return await daily_geo_check_job(website_id)
 
 
 async def _daily_refresh_check_job(website_id: str) -> Dict[str, Any]:
-    from ..services.daily_search_service import daily_refresh_check_job
+    from services.daily_search_service import daily_refresh_check_job
     return await daily_refresh_check_job(website_id)
 
 
 async def _daily_new_page_suggestion_job(website_id: str) -> Dict[str, Any]:
-    from ..services.daily_search_service import daily_new_page_suggestion_job
+    from services.daily_search_service import daily_new_page_suggestion_job
     return await daily_new_page_suggestion_job(website_id)
 
 
 async def _daily_backlink_check_job(website_id: str) -> Dict[str, Any]:
-    from ..services.daily_search_service import daily_backlink_check_job
+    from services.daily_search_service import daily_backlink_check_job
     return await daily_backlink_check_job(website_id)
 
 
 async def _run_all_jobs():
     """Run all daily autopilot jobs across all registered websites."""
-    from ..database import get_supabase
+    from database import get_supabase
     try:
         websites = get_supabase().table("websites").select("id").execute().data or []
     except Exception as e:

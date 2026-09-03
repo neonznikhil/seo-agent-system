@@ -25,7 +25,7 @@ def _strip_tags(html: str) -> str:
 
 async def _collect_grounding(website_id: str, keyword: str) -> Dict[str, Any]:
     """Gather KB facts + brain memories relevant to this post's keyword."""
-    from ..database import get_supabase
+    from database import get_supabase
     from .brain_service import BrainService
 
     supabase = get_supabase()
@@ -57,7 +57,7 @@ async def _collect_grounding(website_id: str, keyword: str) -> Dict[str, Any]:
 
 async def _refresh_html(keyword: str, title: str, old_html: str, grounding: Dict[str, Any]) -> str:
     """Ask NIM to refresh the post. Grounded only on provided facts."""
-    from ..database import call_nim_llm
+    from database import call_nim_llm
 
     facts_block = "\n".join(f"- {f}" for f in grounding["facts"][:20]) or "- (no stored facts)"
     memory_block = "\n".join(f"- {m}" for m in grounding["memories"]) or "- (none)"
@@ -93,7 +93,7 @@ Return ONLY the HTML article."""
 
 async def run_daily_refresh(website_id: str) -> Dict[str, Any]:
     """Analyze + refresh up to MAX_REFRESH_PER_RUN old posts; stages for approval."""
-    from ..database import get_supabase
+    from database import get_supabase
     from .seo_quality_gate import validate_content
     from .brain_service import BrainService
     from .auto_publisher_service import _stage_for_approval

@@ -8,7 +8,13 @@ import tenacity
 from supabase import create_client, Client
 from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
+try:
+    from config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
+except (ImportError, ValueError):
+    try:
+        from .config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
+    except (ImportError, ValueError):
+        from backend.config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
 
 logger = logging.getLogger("backend.database")
 
@@ -86,13 +92,13 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
-NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-ultra-550b-a55b")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "openai/gpt-oss-20b")
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Fallback lists for central client (used by call_nim_llm)
-_LLM_MODELS = [NIM_LLM_MODEL, NIM_LLM_FALLBACK, "nvidia/nemotron-3-super-120b-a12b"]
+_LLM_MODELS = [NIM_LLM_MODEL, NIM_LLM_FALLBACK, "nvidia/nemotron-3-super-120b-a12b", "openai/gpt-oss-20b", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"]
 _EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nvidia-embed-qa-4", "nvidia/nv-embedqa-e5-v5"]
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 if LLM_PROVIDER == "openrouter":
@@ -217,6 +223,8 @@ async def validate_nim_connection(force: bool = False) -> dict:
 
 async def is_nim_available() -> bool:
     """Boolean gate used by routers to refuse agent triggers when NIM is down."""
+    if _nim_state.get("available") is True:
+        return True
     state = await validate_nim_connection()
     return bool(state.get("available"))
 

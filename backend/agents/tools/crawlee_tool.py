@@ -65,7 +65,7 @@ class CrawleeTool(BaseTool):
         """Fallback crawler using httpx + BeautifulSoup."""
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RankForge/2.0"}
-            async with httpx.AsyncClient(follow_redirects=True, verify=False, timeout=12.0) as client:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=12.0) as client:
                 response = await client.get(url, headers=headers)
                 
             soup = BeautifulSoup(response.text, "html.parser")

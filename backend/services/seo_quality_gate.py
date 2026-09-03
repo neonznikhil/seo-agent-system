@@ -101,7 +101,7 @@ async def check_grounding(
     threshold OR meaningful token overlap). If KB is empty, grounding passes
     with a warning (nothing to contradict), so first-run sites are not blocked.
     """
-    from ..database import get_supabase, get_embedding, NIMEmbeddingError
+    from database import get_supabase, get_embedding, NIMEmbeddingError
 
     supabase = get_supabase()
     try:

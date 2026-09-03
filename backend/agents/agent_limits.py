@@ -40,7 +40,7 @@ AGENT_LIMITS = {
 
 
 def should_run_agent(agent_name: str, website_id: str) -> tuple[bool, str]:
-    from ..database import get_supabase
+    from database import get_supabase
     from datetime import datetime, timedelta
     import time
 

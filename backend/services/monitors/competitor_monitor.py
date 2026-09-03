@@ -7,11 +7,29 @@ import hashlib
 import json
 from datetime import datetime
 
-from database import get_supabase
+try:
+    from database import get_supabase, call_nim_llm
+except (ImportError, ValueError):
+    try:
+        from ...database import get_supabase, call_nim_llm
+    except (ImportError, ValueError):
+        from backend.database import get_supabase, call_nim_llm
+
 try:
     from services.serper_service import serper_service
-except ImportError:
-    from ..serper_service import serper_service
+except (ImportError, ValueError):
+    try:
+        from ..serper_service import serper_service
+    except (ImportError, ValueError):
+        from backend.services.serper_service import serper_service
+
+try:
+    from services.crawlee_service import CrawleeService
+except (ImportError, ValueError):
+    try:
+        from ..crawlee_service import CrawleeService
+    except (ImportError, ValueError):
+        from backend.services.crawlee_service import CrawleeService
 
 
 logger = logging.getLogger("backend.services.monitors.competitor_monitor")
@@ -143,7 +161,6 @@ class CompetitorMonitor:
     async def _scrape_page(self, url: str) -> str:
         """Scrape page content using Crawlee service."""
         try:
-            from ..crawlee_service import CrawleeService
             crawler = CrawleeService()
             result = await crawler.crawl_site_structure([url], max_requests=1)
             
@@ -157,7 +174,6 @@ class CompetitorMonitor:
     
     async def _extract_pricing(self, content: str) -> Dict:
         """Extract pricing using NVIDIA NIM."""
-        from ...database import call_nim_llm
         prompt = f"""Extract pricing plan data from this webpage content. Return JSON:
 {{"plans": [{{"name": string, "price": number, "features": [string]}}]}}
 

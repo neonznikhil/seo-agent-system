@@ -83,7 +83,7 @@ class SerperService:
     def _log_failure_to_supabase(self, action: str, payload: Dict[str, Any], error: str):
         """Persist API failures to tasks table for self-healing and observability."""
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             supabase = get_supabase()
             supabase.table("tasks").insert({
                 "agent_name": "serper_service",
@@ -587,7 +587,7 @@ class SerperService:
     def _log_cost_to_daily_costs(self, cost_usd: float = 0.001, website_id: Optional[str] = None):
         """Log Serper API call cost to daily_costs table."""
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             sb = get_supabase()
             today = datetime.utcnow().strftime("%Y-%m-%d")
             payload = {
@@ -659,7 +659,7 @@ async def serper_search_safe(query: str, num_results: int = 10) -> list:
         error_str = str(e)
         if "403" in error_str or "quota" in error_str.lower():
             try:
-                from ..database import get_supabase
+                from database import get_supabase
                 get_supabase().table("monitoring_alerts").insert({
                     "alert_type": "api_quota",
                     "severity": "warning",
@@ -674,7 +674,7 @@ async def serper_search_safe(query: str, num_results: int = 10) -> list:
             return []
         elif "401" in error_str or "unauthorized" in error_str.lower():
             try:
-                from ..database import get_supabase
+                from database import get_supabase
                 get_supabase().table("monitoring_alerts").insert({
                     "alert_type": "api_auth",
                     "severity": "critical",

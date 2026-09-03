@@ -12,7 +12,7 @@ router = APIRouter()
 @router.post("/api/decay/{website_id}/detect")
 async def detect_decay(website_id: str, manual: bool = False):
     """Detect content decay from live GSC data."""
-    from ..services.decay_detector_service import DecayDetectorService
+    from services.decay_detector_service import DecayDetectorService
     
     service = DecayDetectorService(website_id)
     result = await service.detect_decay(website_id, auto_alert=True)
@@ -25,7 +25,7 @@ async def detect_decay(website_id: str, manual: bool = False):
 @router.get("/api/decay")
 async def list_decay(website_id: Optional[str] = None, status: str = "detected"):
     """List decay logs by status."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     supabase = get_supabase()
     q = supabase.table("content_decay_logs").select("*")
@@ -48,7 +48,7 @@ async def list_decay(website_id: Optional[str] = None, status: str = "detected")
 @router.post("/api/decay/{decay_id}/diagnose")
 async def diagnose_decay(decay_id: str, website_id: str):
     """Run full diagnosis on decayed content."""
-    from ..services.decay_diagnosis_service import DecayDiagnosisService
+    from services.decay_diagnosis_service import DecayDiagnosisService
     
     service = DecayDiagnosisService(website_id)
     result = await service.diagnose(decay_id)
@@ -59,7 +59,7 @@ async def diagnose_decay(decay_id: str, website_id: str):
 @router.post("/api/decay/{decay_id}/refresh")
 async def queue_refresh(decay_id: str, website_id: str):
     """Queue content for auto-refresh - starts 10-phase pipeline."""
-    from ..agents.refresh_agent import run_refresh_pipeline
+    from agents.refresh_agent import run_refresh_pipeline
     
     result = await run_refresh_pipeline(decay_id, website_id)
     
@@ -77,14 +77,14 @@ async def queue_refresh(decay_id: str, website_id: str):
 @router.get("/decay/{website_id}/pipeline/{content_id}")
 async def get_refresh_pipeline(website_id: str, content_id: str):
     """Get full pipeline progress (111 steps) for refresh."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     supabase = get_supabase()
     logs = supabase.table("content_pipeline_logs").select("*").eq("content_id", content_id).eq("website_id", website_id).order("step_number").execute().data or []
     
     expert_reviews = supabase.table("content_expert_reviews").select("*").eq("content_id", content_id).execute().data or []
     
-    from ..agents.pipeline_config import TOTAL_STEPS, PHASES
+    from agents.pipeline_config import TOTAL_STEPS, PHASES
     completed_steps = len([l for l in logs if l.get("status") == "completed"])
     
     phase_progress = {}
@@ -110,8 +110,8 @@ async def get_refresh_pipeline(website_id: str, content_id: str):
 @router.post("/decay/{decay_id}/approve-publish", dependencies=[])
 async def approve_publish(decay_id: str, website_id: str, request: Request = None):
     """Approve and publish refresh - requires X-User-Id."""
-    from ..database import get_supabase
-    from ..middleware.human_gate import require_human_for_request
+    from database import get_supabase
+    from middleware.human_gate import require_human_for_request
     
     user_id = await require_human_for_request(request)
     
@@ -126,7 +126,7 @@ async def approve_publish(decay_id: str, website_id: str, request: Request = Non
     if not content_id:
         raise HTTPException(400, "No content ID found - run refresh first")
     
-    from ..services.wordpress_service import get_wordpress_service
+    from services.wordpress_service import get_wordpress_service
     wp_service = get_wordpress_service(website_id)
     
     wp_post_id = decay.get("wordpress_post_id")
@@ -151,7 +151,7 @@ async def approve_publish(decay_id: str, website_id: str, request: Request = Non
 @router.get("/decay/{website_id}/stats")
 async def decay_stats(website_id: str):
     """Get decay statistics."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     supabase = get_supabase()
     

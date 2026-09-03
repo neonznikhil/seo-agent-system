@@ -333,7 +333,7 @@ async def _auto_publish_inline(website_id: Optional[str] = None):
                 if seo >= 85 and val >= 0.8 and ground >= 0.75:
                     # Publish via wordpress_service
                     try:
-                        from ..services.wordpress_service import WordPressService
+                        from services.wordpress_service import WordPressService
                         svc = WordPressService(website_id=target_id)
                         site = svc._get_site_config()
                         # Direct publish via crew tool method

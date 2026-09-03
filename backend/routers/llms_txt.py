@@ -373,7 +373,7 @@ async def generate_and_save_llms(website_id: Optional[str] = None, request: Requ
 @router.post("/api/llms-txt/{website_id}/deploy-wordpress")
 async def deploy_llms_to_wordpress(website_id: str):
     """One-click deployment: create/update an 'llms-txt' page on WordPress."""
-    from ..routers.websites import get_decrypted_wordpress_credentials
+    from routers.websites import get_decrypted_wordpress_credentials
     import httpx
 
     content = await generate_llms_txt_content(website_id=website_id)

@@ -41,7 +41,7 @@ async def handle_chat(body: ChatMessageIn):
             sites = supabase.table("websites").select("id").limit(1).execute().data or []
             website_id = sites[0]["id"] if sites else "03b7febf-0c44-4830-a42a-cfcd84ae6464"
 
-        from ..agents.writer_agent import generate_content
+        from agents.writer_agent import generate_content
         asyncio.create_task(generate_content(website_id, topic, topic.lower()))
 
         return {

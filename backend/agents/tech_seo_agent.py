@@ -18,7 +18,7 @@ class TechSEOAgent:
     """
 
     def __init__(self, website_id: Optional[str] = None):
-        from ..services.website_service import get_default_website_id
+        from services.website_service import get_default_website_id
         self.website_id = website_id if website_id and website_id not in ("default", "all") else get_default_website_id()
 
     async def check_sitemap(self, url: str) -> Dict[str, Any]:
@@ -54,9 +54,9 @@ class TechSEOAgent:
 
     async def run_audit(self, website_id: str) -> Dict[str, Any]:
         """Execute full technical audit with memory recall and write-back."""
-        from ..database import get_supabase
-        from ..services.brain_service import BrainService
-        from ..routers.tech_seo import execute_tech_audit
+        from database import get_supabase
+        from services.brain_service import BrainService
+        from routers.tech_seo import execute_tech_audit
 
         brain = BrainService(website_id=website_id)
 

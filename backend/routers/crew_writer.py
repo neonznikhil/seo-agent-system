@@ -28,7 +28,7 @@ class CrewAutonomousRequest(BaseModel):
 
 async def _run_generation(payload: CrewGenerateRequest):
     """Background task for blog generation."""
-    from ..agents.crew_blog_writer import generate_blog_with_self_healing
+    from agents.crew_blog_writer import generate_blog_with_self_healing
     try:
         await generate_blog_with_self_healing(
             topic=payload.topic,
@@ -49,7 +49,7 @@ async def crew_generate(payload: CrewGenerateRequest, request: Request, backgrou
         raise HTTPException(status_code=400, detail="topic required")
     website_id = payload.website_id or request.headers.get("X-Website-Id")
     if not website_id or website_id in ("default-website-id", "default", "all", "", "null", "undefined"):
-        from ..services.website_service import get_default_website_id
+        from services.website_service import get_default_website_id
         website_id = get_default_website_id()
     if not website_id:
         raise HTTPException(status_code=400, detail="No website connected — Go to /websites to connect your domain first.")
@@ -67,8 +67,8 @@ async def crew_generate_autonomous(payload: CrewAutonomousRequest, request: Requ
         raise HTTPException(status_code=400, detail="website_id required")
     gap_keyword = None
     try:
-        from ..services.analytics_service import AnalyticsService
-        from ..database import get_supabase
+        from services.analytics_service import AnalyticsService
+        from database import get_supabase
         supabase = get_supabase()
         gaps = await AnalyticsService.get_content_gaps(website_id=website_id)
         existing = set()
@@ -84,7 +84,7 @@ async def crew_generate_autonomous(payload: CrewAutonomousRequest, request: Requ
                 gap_keyword = kw
                 break
         if not gap_keyword:
-            from ..agents.autonomous_decision_engine import AutonomousDecisionEngine
+            from agents.autonomous_decision_engine import AutonomousDecisionEngine
             engine = AutonomousDecisionEngine(website_id=website_id)
             gap_keyword = await engine.get_next_target_keyword()
     except Exception as e:
@@ -92,7 +92,7 @@ async def crew_generate_autonomous(payload: CrewAutonomousRequest, request: Requ
         logger.warning(f"[CrewAPI] gap derivation fallback: {e}")
 
     try:
-        from ..agents.crew_blog_writer import generate_blog_with_self_healing
+        from agents.crew_blog_writer import generate_blog_with_self_healing
         result = await generate_blog_with_self_healing(topic=gap_keyword, website_id=website_id, user_id=payload.user_id)
         return {"success": True, "gap_keyword": gap_keyword, **result}
     except Exception as e:
@@ -129,7 +129,7 @@ async def crew_status(blog_id: str):
             pass
 
     if not blog:
-        from ..services.local_store import get_local_content, get_local_approval
+        from services.local_store import get_local_content, get_local_approval
         blog = get_local_content(blog_id) or get_local_approval(blog_id)
 
     if not blog:
@@ -160,7 +160,7 @@ async def crew_status(blog_id: str):
 @router.get("/status/{blog_id}/stream")
 async def crew_status_stream(blog_id: str):
     """SSE streaming for real-time Planner->Writer->Editor progress."""
-    from ..services.event_bus import stream as bus_stream
+    from services.event_bus import stream as bus_stream
     import json as _json
 
     async def event_generator():
@@ -189,7 +189,7 @@ async def crew_health():
     except Exception:
         pass
     try:
-        from ..database import get_nim_state
+        from database import get_nim_state
         has_nvidia = bool(get_nim_state().get("available"))
     except Exception:
         has_nvidia = bool(__import__("os").getenv("NVIDIA_API_KEY"))

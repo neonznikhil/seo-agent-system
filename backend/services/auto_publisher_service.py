@@ -21,7 +21,7 @@ MAX_GENERATION_ATTEMPTS = 3
 
 
 async def _get_setting(key: str, default: str) -> str:
-    from ..routers.settings import get_global_setting
+    from routers.settings import get_global_setting
 
     value = get_global_setting(key, default)
     return value if value is not None else default
@@ -76,10 +76,10 @@ async def _stage_for_approval(
 
 async def generate_queued_pages(website_id: str, limit: int = 2) -> Dict[str, Any]:
     """Process queued keywords into PENDING APPROVALS (never publishes)."""
-    from ..database import get_supabase
+    from database import get_supabase
     from .seo_quality_gate import validate_content
-    from ..agents.writer_agent import generate_content
-    from ..agents.seo_agent import SEOAgent
+    from agents.writer_agent import generate_content
+    from agents.seo_agent import SEOAgent
     from .brain_service import BrainService
 
     supabase = get_supabase()

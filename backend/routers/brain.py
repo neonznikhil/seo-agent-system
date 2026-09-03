@@ -58,7 +58,7 @@ async def create_brain_memory(body: BrainMemoryIn, request: Request):
     supabase = get_supabase()
     set_account_context(supabase, account_id)
     
-    from ..database import get_embedding
+    from database import get_embedding
 
     wid = body.website_id
     if wid in ("brain", "default", "default-website-id", "all", "", "null", "undefined"):
@@ -163,7 +163,7 @@ async def get_memories(
     supabase = get_supabase()
     set_account_context(supabase, account_id)
 
-    from ..services.brain_service import BrainService
+    from services.brain_service import BrainService
 
     brain = BrainService(website_id)
     if query:
@@ -189,7 +189,7 @@ async def get_brand_brain(website_id: str, request: Request):
     account_id = get_current_account_id(request)
     set_account_context(get_supabase(), account_id)
 
-    from ..services.brain_service import BrainService
+    from services.brain_service import BrainService
     brain = BrainService(website_id)
     return await brain.get_brand_brain(website_id)
 
@@ -198,7 +198,7 @@ async def get_brand_brain(website_id: str, request: Request):
 @router.get("/api/brain/{website_id}/patterns")
 @router.get("/api/brain/patterns")
 async def get_strategic_patterns(website_id: Optional[str] = None, request: Request = None):
-    from ..agents.brain_autopilot_agent import get_active_strategic_patterns
+    from agents.brain_autopilot_agent import get_active_strategic_patterns
     
     wid = website_id or "default"
     patterns = await get_active_strategic_patterns(wid)
@@ -233,7 +233,7 @@ async def get_strategic_patterns(website_id: Optional[str] = None, request: Requ
 @router.post("/api/brain/{website_id}/patterns/run")
 @router.post("/api/brain/patterns/run")
 async def trigger_pattern_engine(website_id: Optional[str] = None):
-    from ..agents.brain_autopilot_agent import run_pattern_recognition_engine
+    from agents.brain_autopilot_agent import run_pattern_recognition_engine
     wid = website_id or "default"
     res = await run_pattern_recognition_engine(wid)
     return res

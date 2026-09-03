@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from auto_supabase import connect_and_setup
 
 try:
-    from ..database import get_supabase
+    from database import get_supabase
 except ImportError:
     get_supabase = None
 

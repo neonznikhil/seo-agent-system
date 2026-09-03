@@ -46,6 +46,7 @@ export default function ConnectorsPage() {
   const [wpUser, setWpUser] = useState("");
   const [wpPass, setWpPass] = useState("");
   const [wpTesting, setWpTesting] = useState(false);
+  const [wpSaving, setWpSaving] = useState(false);
   const [wpPosts, setWpPosts] = useState<any[]>([]);
 
   // Section B: Search APIs
@@ -102,11 +103,12 @@ export default function ConnectorsPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed.site_url) setWpUrl(parsed.site_url);
-        if (parsed.username) setWpUser(parsed.username);
+        if (parsed.username && parsed.username !== "admin") setWpUser(parsed.username);
+        else setWpUser("nikhil_d");
         if (parsed.app_password) setWpPass(parsed.app_password);
       } else {
         setWpUrl("https://accident.innovatcs.com");
-        setWpUser("admin");
+        setWpUser("nikhil_d");
       }
     } catch {}
   }, [loadStatus]);
@@ -200,12 +202,50 @@ export default function ConnectorsPage() {
       if (res.connected) {
         setWpPosts(res.recent_posts || []);
         showToast(`✓ WordPress connected as ${res.user?.name || wpUser} (Role: ${res.user?.roles?.join(", ") || "Editor"})`);
+        try {
+          await post("/api/wordpress/save", {
+            site_url: wpUrl,
+            wp_username: wpUser,
+            wp_app_password: wpPass,
+            website_id: websiteId || undefined,
+          });
+        } catch {}
         loadStatus();
       }
     } catch (e: any) {
       setErrorMsg(`WordPress Connection Error: ${e.message}`);
     } finally {
       setWpTesting(false);
+    }
+  };
+
+  // Save WordPress credentials directly
+  const handleSaveWp = async () => {
+    if (!wpUrl) {
+      setErrorMsg("Please enter WordPress site URL first.");
+      return;
+    }
+    setWpSaving(true);
+    setErrorMsg(null);
+    try {
+      try {
+        localStorage.setItem(
+          "rankforge_wp_credentials",
+          JSON.stringify({ site_url: wpUrl, username: wpUser, app_password: wpPass })
+        );
+      } catch {}
+      const res = await post("/api/wordpress/save", {
+        site_url: wpUrl,
+        wp_username: wpUser,
+        wp_app_password: wpPass,
+        website_id: websiteId || undefined,
+      });
+      showToast(res.message || "✓ WordPress credentials saved successfully!");
+      loadStatus();
+    } catch (e: any) {
+      setErrorMsg(`WordPress Save Error: ${e.message}`);
+    } finally {
+      setWpSaving(false);
     }
   };
 
@@ -586,8 +626,11 @@ export default function ConnectorsPage() {
                   </div>
 
                   <div style={{ display: "flex", gap: "10px" }}>
-                    <button type="button" onClick={handleTestWp} disabled={wpTesting} className="btn btn-accent" style={{ padding: "8px 16px", fontSize: "11px" }}>
+                    <button type="button" onClick={handleTestWp} disabled={wpTesting || wpSaving} className="btn" style={{ padding: "8px 16px", fontSize: "11px" }}>
                       {wpTesting ? "Testing WP REST..." : "Test WordPress & Role"}
+                    </button>
+                    <button type="button" onClick={handleSaveWp} disabled={wpTesting || wpSaving} className="btn btn-accent" style={{ padding: "8px 16px", fontSize: "11px" }}>
+                      {wpSaving ? "Saving..." : "Save WordPress Connection"}
                     </button>
                   </div>
 

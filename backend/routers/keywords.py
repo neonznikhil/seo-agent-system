@@ -95,7 +95,7 @@ async def cluster_keywords(payload: ClusterKeywordsRequest):
     if not payload.keywords:
         raise HTTPException(status_code=400, detail="keywords list cannot be empty")
 
-    from ..services.cluster_engine import ClusterEngine
+    from services.cluster_engine import ClusterEngine
     engine = ClusterEngine(website_id=payload.website_id or "default")
     clusters = await engine.cluster_keywords_list(payload.keywords)
     return {"success": True, "clusters": clusters}

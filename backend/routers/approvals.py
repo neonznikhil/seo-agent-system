@@ -9,7 +9,70 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from database import get_supabase, set_account_context
+try:
+    from database import get_supabase, set_account_context
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase, set_account_context
+    except (ImportError, ValueError):
+        from backend.database import get_supabase, set_account_context
+
+try:
+    from services.local_store import save_local_approval, list_local_approvals, get_local_approval
+except (ImportError, ValueError):
+    try:
+        from services.local_store import save_local_approval, list_local_approvals, get_local_approval
+    except (ImportError, ValueError):
+        from backend.services.local_store import save_local_approval, list_local_approvals, get_local_approval
+
+try:
+    from services.wordpress_service import get_wordpress_service
+except (ImportError, ValueError):
+    try:
+        from services.wordpress_service import get_wordpress_service
+    except (ImportError, ValueError):
+        from backend.services.wordpress_service import get_wordpress_service
+
+try:
+    from agents.crew_blog_writer import calculate_seo_quality_score, _call_nvidia_with_fallback, _clean_pure_html
+except (ImportError, ValueError):
+    try:
+        from agents.crew_blog_writer import calculate_seo_quality_score, _call_nvidia_with_fallback, _clean_pure_html
+    except (ImportError, ValueError):
+        from backend.agents.crew_blog_writer import calculate_seo_quality_score, _call_nvidia_with_fallback, _clean_pure_html
+
+try:
+    from services.rank_tracker import track_published_post
+except (ImportError, ValueError):
+    try:
+        from services.rank_tracker import track_published_post
+    except (ImportError, ValueError):
+        from backend.services.rank_tracker import track_published_post
+
+try:
+    from services.internal_links import index_blog_for_linking
+except (ImportError, ValueError):
+    try:
+        from services.internal_links import index_blog_for_linking
+    except (ImportError, ValueError):
+        from backend.services.internal_links import index_blog_for_linking
+
+try:
+    from services.brain_service import BrainService
+except (ImportError, ValueError):
+    try:
+        from services.brain_service import BrainService
+    except (ImportError, ValueError):
+        from backend.services.brain_service import BrainService
+
+try:
+    from services.slack_intelligence_service import notify_content_published
+except (ImportError, ValueError):
+    try:
+        from services.slack_intelligence_service import notify_content_published
+    except (ImportError, ValueError):
+        from backend.services.slack_intelligence_service import notify_content_published
+
 from middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.approvals")
@@ -28,7 +91,6 @@ class ApprovalEdit(BaseModel):
 
 
 def _update_approval(approval_id: str, updates: dict):
-    from ..services.local_store import save_local_approval
     safe_updates = {"id": approval_id}
     for k, v in updates.items():
         if k == "html_content":
@@ -195,7 +257,6 @@ async def list_approvals(
         logger.warning(f"[Approvals] list query failed: {e}")
         rows = []
 
-    from ..services.local_store import list_local_approvals
     local_apps = list_local_approvals(website_id=website_id, status=status if status != "all" else None)
     known_ids = {str(r.get("id")) for r in rows if r.get("id")}
     for la in local_apps:
@@ -310,7 +371,6 @@ async def get_approval(approval_id: str, request: Request):
         pass
 
     if not row:
-        from ..services.local_store import get_local_approval
         row = get_local_approval(approval_id)
 
     if not row:
@@ -385,7 +445,6 @@ async def reject_approval(approval_id: str, request: Request, body: Optional[dic
 
     # Save reason to agent_memory type feedback for brain learn
     try:
-        from ..services.brain_service import BrainService
         wid = res.data.get("website_id")
         brain = BrainService(website_id=wid)
         await brain.remember(
@@ -431,7 +490,6 @@ async def request_revision(approval_id: str, request: Request, body: Optional[di
 
     async def _do_revision():
         try:
-            from ..agents.crew_blog_writer import calculate_seo_quality_score, _call_nvidia_with_fallback, _clean_pure_html
             row = res.data
             topic = row.get("keyword") or row.get("target_keyword") or "Strategic SEO"
             current_html = row.get("html_content") or ""
@@ -500,7 +558,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
         raise HTTPException(status_code=401, detail="user_id required and must exist in users table")
     user_id = candidate_user_id
     import json
-    from ..services.wordpress_service import get_wordpress_service
 
     account_id = get_current_account_id(request)
     supabase = get_supabase()
@@ -514,7 +571,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
         row = None
 
     if not row:
-        from ..services.local_store import get_local_approval
         row = get_local_approval(approval_id)
 
     if not row:
@@ -579,7 +635,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
 
         # 1. Post-Publish Rank Tracking
         try:
-            from ..services.rank_tracker import track_published_post
             await track_published_post(
                 website_id=website_id,
                 wp_post_id=str(wp_post_id),
@@ -593,7 +648,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
 
         # 2. Index blog for internal linking
         try:
-            from ..services.internal_links import index_blog_for_linking
             await index_blog_for_linking(
                 blog_id=row.get("blog_id") or approval_id,
                 website_id=website_id,
@@ -607,8 +661,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
 
         # 3. AI Brain Learning — ONLY learns from posted and published blogs
         try:
-            from ..services.brain_service import BrainService
-
             await BrainService(website_id).remember(
                 website_id=website_id,
                 memory_type="published_post",
@@ -635,7 +687,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
             logger.debug(f"critical_action_logs approve note: {e}")
 
         try:
-            from ..services.slack_intelligence_service import notify_content_published
             await notify_content_published(website_id=website_id, title=title, wordpress_url=wordpress_url)
         except Exception:
             pass

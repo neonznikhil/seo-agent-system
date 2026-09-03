@@ -16,7 +16,7 @@ router = APIRouter(prefix="/scheduler", tags=["Scheduler"])
 async def get_scheduler_status_endpoint():
     """APScheduler jobs status — single authority Asia/Kolkata."""
     try:
-        from ..agents.scheduler import get_scheduler_status
+        from agents.scheduler import get_scheduler_status
         status = get_scheduler_status()
         return {"success": True, **status}
     except Exception as e:
@@ -28,7 +28,7 @@ async def get_scheduler_status_endpoint():
 async def get_scheduler_logs_endpoint(limit: int = Query(20, ge=1, le=100)):
     """Circular log buffer for dashboard polling."""
     try:
-        from ..agents.scheduler import get_scheduler_logs
+        from agents.scheduler import get_scheduler_logs
         logs = get_scheduler_logs(limit=limit)
         return {"success": True, "logs": logs}
     except Exception as e:
@@ -40,7 +40,7 @@ async def get_scheduler_overview(website_id: Optional[str] = Query(None)):
     """Scheduler overview with pending tasks."""
     supabase = get_supabase()
     try:
-        from ..agents.scheduler import get_scheduler_status
+        from agents.scheduler import get_scheduler_status
         sched = get_scheduler_status()
     except Exception:
         sched = {"running": False, "jobs": []}

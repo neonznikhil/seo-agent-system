@@ -226,7 +226,7 @@ async def login(body: LoginRequest):
     password = body.password
 
     # Instant demo fallback for dev/demo accounts if requested
-    if (email == "admin@rankforge.ai" or email == "demo@rankforge.ai") and password == "demo":
+    if os.getenv("ENVIRONMENT") != "production" and (email == "admin@rankforge.ai" or email == "demo@rankforge.ai") and password == "demo":
         token = _create_jwt(
             account_id="a0000000-0000-0000-0000-000000000001",
             email=email,

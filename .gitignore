@@ -1,7 +1,26 @@
-# Environment files
-backend/.env
-frontend-next/.env.local
+# Environment files — all permutations
 .env
+.env.*
+*.env
+*.env.*
+backend/.env
+backend/.env.*
+frontend-next/.env
+frontend-next/.env.*
+frontend-next/.env.local
+frontend-next/.env.development.local
+frontend-next/.env.test.local
+frontend-next/.env.production.local
+!.env.example
+!backend/.env.example
+!frontend-next/.env.example
+
+# Local Data & SQLite / JSON runtime caches
+data/
+backend/local_data/
+*.sqlite
+*.db
+backend/storage/
 
 # Dependencies
 node_modules/
@@ -10,29 +29,25 @@ __pycache__/
 .venv/
 venv/
 
-# Local data (contains cached/fallback data)
-backend/local_data/
-data/
-
-# Test/diagnostic scripts
+# Test / Diagnostic / Scratch scripts
 check_*.py
 cleanup_*.py
 test_*.py
-blog_sample.html
 debug_*.py
 fix_*.py
-diagnose_crawl.py
+diagnose_*.py
+blog_sample.html
+scratch/
 
-# IDE
+# IDE & OS
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Build
+# Build Artifacts
 .next/
 out/
-
-.next/
+dist/
+build/
+*.tsbuildinfo

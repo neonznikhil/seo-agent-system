@@ -26,7 +26,7 @@ async def report_problem(
     ALWAYS report user - nothing is silent.
     Creates realtime_alerts row and pushes to all channels.
     """
-    from ..database import get_supabase
+    from database import get_supabase
     from .slack_service import send_slack_alert
     from .email_service import send_email_alert
     from .sse_service import push_sse_alert
@@ -86,7 +86,7 @@ async def log_monitoring(
     error_message: str = None
 ) -> None:
     """Log monitor execution for metrics."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     try:
         import uuid
@@ -116,7 +116,7 @@ async def log_monitoring(
 
 async def generate_strategy_from_alert(alert: Dict[str, Any], website_id: str) -> Dict[str, Any]:
     """Auto-generate strategy and content based on alert."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     try:
         if alert["alert_type"] in ("rank_drop", "rank_opportunity", "keyword_opportunity"):
@@ -124,7 +124,7 @@ async def generate_strategy_from_alert(alert: Dict[str, Any], website_id: str) -
             if not kw:
                 return {"status": "no_keyword"}
             
-            from ..agents.crew import NIM_LLM
+            from agents.crew import NIM_LLM
             llm = NIM_LLM()
             
             prompt = f"""You are SEO strategist. Generate topic clusters for keyword "{kw}" based on knowledge_base and gsc_keywords. Return JSON with pillar_topic, pillar_keyword, clusters (list of title/keyword/word_count)."""
@@ -160,7 +160,7 @@ async def generate_strategy_from_alert(alert: Dict[str, Any], website_id: str) -
 @router.get("/api/monitoring/{website_id}/alerts")
 async def get_alerts(website_id: str, filter: str = "unread"):
     """Get alerts for website."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     query = get_supabase().table("realtime_alerts").select("*").eq("website_id", website_id)
     
@@ -177,7 +177,7 @@ async def get_alerts(website_id: str, filter: str = "unread"):
 @router.post("/api/monitoring/{website_id}/alerts/{alert_id}/read")
 async def mark_read(website_id: str, alert_id: str, request: Request):
     """Mark alert as read - requires human."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     user_id = request.headers.get("X-User-Id")
     if not user_id:
@@ -195,7 +195,7 @@ async def mark_read(website_id: str, alert_id: str, request: Request):
 @router.get("/api/monitoring/{website_id}/live")
 async def live_alerts(website_id: str):
     """SSE stream of new alerts."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     async def event_generator():
         yield "event: connected\n\n"
@@ -217,7 +217,7 @@ async def live_alerts(website_id: str):
 @router.get("/api/monitoring/{website_id}/logs")
 async def get_logs(website_id: str):
     """Get recent monitoring logs."""
-    from ..database import get_supabase
+    from database import get_supabase
     
     return get_supabase().table("monitoring_logs").select("*").eq("website_id", website_id).order("created_at", desc=True).limit(100).execute().data or []
 
@@ -225,7 +225,7 @@ async def get_logs(website_id: str):
 @router.get("/api/monitoring/{website_id}/stats")
 async def get_stats(website_id: str):
     """Get monitoring stats."""
-    from ..database import get_supabase
+    from database import get_supabase
     from datetime import datetime, timedelta
     
     since = datetime.utcnow() - timedelta(hours=24)

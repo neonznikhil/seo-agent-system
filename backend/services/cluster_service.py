@@ -16,9 +16,9 @@ class ClusterService:
     
     async def build_clusters(self, max_clusters: int = 6) -> Dict[str, Any]:
         """Build topic clusters from live GSC / DB keywords with cosine similarity clustering."""
-        from ..database import get_supabase
-        from ..services.gsc_service import GSCService
-        from ..services.knowledge_service import KnowledgeService
+        from database import get_supabase
+        from services.gsc_service import GSCService
+        from services.knowledge_service import KnowledgeService
         
         supabase = get_supabase()
         keywords: List[Dict[str, Any]] = []
@@ -173,7 +173,7 @@ class ClusterService:
         """Cluster arbitrary list of keywords using semantic embeddings and cosine similarity."""
         if not keywords_list:
             return []
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         kw_records = [{"keyword": kw, "impressions": 100, "position": 10.0} for kw in keywords_list]
         embeddings = await KnowledgeService.create_embeddings_batch(keywords_list[:50])
         return await self._cluster_keywords(kw_records, embeddings)

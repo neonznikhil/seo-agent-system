@@ -354,3 +354,54 @@ def get_local_wp_connection(website_id: Optional[str] = None) -> Optional[Dict[s
     return conns[-1]
 
 
+# ============================================================================
+# DAILY COSTS & AUTONOMOUS SETTINGS
+# ============================================================================
+
+def save_local_cost(cost_item: Dict[str, Any]) -> Dict[str, Any]:
+    costs = _load_json("daily_costs.json")
+    item_id = cost_item.get("id") or str(uuid.uuid4())
+    cost_item["id"] = item_id
+    if "date" not in cost_item:
+        cost_item["date"] = datetime.utcnow().strftime("%Y-%m-%d")
+    if "created_at" not in cost_item:
+        cost_item["created_at"] = datetime.utcnow().isoformat()
+    costs.append(cost_item)
+    _save_json("daily_costs.json", costs)
+    return cost_item
+
+
+def list_local_costs(website_id: Optional[str] = None, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
+    costs = _load_json("daily_costs.json")
+    filtered = []
+    for c in costs:
+        if website_id and c.get("website_id") and c.get("website_id") != website_id:
+            continue
+        if date_str and c.get("date") != date_str:
+            continue
+        filtered.append(c)
+    return filtered
+
+
+def save_local_autonomous_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    current = _load_json("autonomous_settings.json")
+    if current and isinstance(current, list):
+        current_dict = current[0] if len(current) > 0 else {}
+    else:
+        current_dict = {}
+    updated = {**current_dict, **settings, "updated_at": datetime.utcnow().isoformat()}
+    _save_json("autonomous_settings.json", [updated])
+    return updated
+
+
+def get_local_autonomous_settings() -> Dict[str, Any]:
+    current = _load_json("autonomous_settings.json")
+    if current and isinstance(current, list) and len(current) > 0:
+        return current[0]
+    return {
+        "daily_limit": 10,
+        "daily_blog_target": 5,
+        "generation_interval": 288,
+        "auto_topic_selection": True,
+        "auto_publish": True,
+    }

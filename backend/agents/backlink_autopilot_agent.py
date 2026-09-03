@@ -52,8 +52,8 @@ async def _run_one_backlink_cycle() -> None:
                     pass
 
             try:
-                from ..services.gsc_miner_service import GSCMinerService
-                from ..services.gsc_service import GSCService
+                from services.gsc_miner_service import GSCMinerService
+                from services.gsc_service import GSCService
 
                 miner = GSCMinerService(website_id)
                 gsc_data = await miner.mine_and_cluster(max_clusters=5, row_limit=2000)

@@ -15,7 +15,7 @@ class OutlineAgent:
         self.website_id = website_id
 
     async def run(self, keyword: str, research_data: Dict[str, Any] = None) -> Dict[str, Any]:
-        from ..database import call_nim_llm, get_supabase
+        from database import call_nim_llm, get_supabase
 
         research_data = research_data or {}
         questions = research_data.get("questions", [

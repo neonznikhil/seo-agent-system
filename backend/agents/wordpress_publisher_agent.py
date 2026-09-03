@@ -16,8 +16,8 @@ class WordPressPublisherAgent:
         self.website_id = website_id
 
     async def run(self, title: str, content_html: str, status: str = "draft", meta: Dict[str, Any] = None) -> Dict[str, Any]:
-        from ..services.wordpress_oauth_service import get_oauth_status, publish_with_oauth
-        from ..services.wordpress_service import get_wordpress_service
+        from services.wordpress_oauth_service import get_oauth_status, publish_with_oauth
+        from services.wordpress_service import get_wordpress_service
 
         oauth_status = get_oauth_status(self.website_id, user_id="test-user")
         meta = meta or {}
@@ -73,7 +73,7 @@ class WordPressPublisherAgent:
         }
 
     def _build_oauth_url(self) -> str:
-        from ..config import WP_OAUTH_AUTHORIZE_URL, WP_OAUTH_CLIENT_ID, REDIRECT_URI
+        from config import WP_OAUTH_AUTHORIZE_URL, WP_OAUTH_CLIENT_ID, REDIRECT_URI
         if not WP_OAUTH_AUTHORIZE_URL:
             return ""
         return (

@@ -254,7 +254,7 @@ async def suggest_internal_links(
     except Exception:
         pass
 
-    from ..services.brain_service import BrainService
+    from services.brain_service import BrainService
 
     brain = BrainService(website_id)
     brain_memories = await brain.recall(website_id, "internal links that boosted ranking", top_k=3)

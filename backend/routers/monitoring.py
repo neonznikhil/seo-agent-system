@@ -15,8 +15,8 @@ router = APIRouter()
 @router.get("/monitoring/{website_id}/alerts")
 @router.get("/api/monitoring/{website_id}/alerts")
 async def get_alerts(website_id: str, filter: str = "unread"):
-    from ..database import get_supabase
-    from ..services.website_service import get_default_website_id
+    from database import get_supabase
+    from services.website_service import get_default_website_id
     
     target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
     if not target_id:
@@ -60,7 +60,7 @@ async def get_alerts(website_id: str, filter: str = "unread"):
 @router.post("/api/monitoring/{website_id}/test-alert")
 async def create_test_alert(website_id: str):
     """Trigger a live test alert for SSE stream and real-time dashboard verification."""
-    from ..database import get_supabase
+    from database import get_supabase
     import uuid
     sb = get_supabase()
     
@@ -86,7 +86,7 @@ async def create_test_alert(website_id: str):
 
 @router.post("/monitoring/{website_id}/alerts/{alert_id}/read")
 async def mark_read(website_id: str, alert_id: str, request: Request):
-    from ..database import get_supabase
+    from database import get_supabase
     
     user_id = request.headers.get("X-User-Id")
     if not user_id:
@@ -104,8 +104,8 @@ async def mark_read(website_id: str, alert_id: str, request: Request):
 
 @router.post("/monitoring/{website_id}/alerts/{alert_id}/approve")
 async def approve_alert(website_id: str, alert_id: str, request: Request):
-    from ..database import get_supabase
-    from ..agents.strategy_agent import StrategyAgent
+    from database import get_supabase
+    from agents.strategy_agent import StrategyAgent
     
     user_id = request.headers.get("X-User-Id")
     if not user_id:
@@ -132,7 +132,7 @@ async def approve_alert(website_id: str, alert_id: str, request: Request):
 @router.get("/monitoring/{website_id}/live")
 @router.get("/api/monitoring/{website_id}/live")
 async def live_alerts(website_id: str):
-    from ..database import get_supabase
+    from database import get_supabase
     
     async def event_generator():
         last_seen_ids = set()
@@ -176,7 +176,7 @@ async def live_alerts(website_id: str):
 
 @router.get("/monitoring/{website_id}/logs")
 async def get_logs(website_id: str, hours: int = 24):
-    from ..database import get_supabase
+    from database import get_supabase
     from datetime import datetime, timedelta
     
     since = datetime.utcnow() - timedelta(hours=hours)
@@ -187,8 +187,8 @@ async def get_logs(website_id: str, hours: int = 24):
 @router.get("/monitoring/{website_id}/stats")
 @router.get("/api/monitoring/{website_id}/stats")
 async def get_stats(website_id: str):
-    from ..database import get_supabase
-    from ..services.website_service import get_default_website_id
+    from database import get_supabase
+    from services.website_service import get_default_website_id
     from datetime import datetime, timedelta
     
     target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
@@ -245,8 +245,8 @@ async def get_stats(website_id: str):
 @router.get("/api/monitoring/{website_id}/predictions")
 async def get_ranking_predictions(website_id: str):
     """Retrieve preemptive ranking predictions sorted by confidence descending."""
-    from ..services.rank_prediction_service import RankPredictionService
-    from ..services.website_service import get_default_website_id
+    from services.rank_prediction_service import RankPredictionService
+    from services.website_service import get_default_website_id
     target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all") else get_default_website_id()
     svc = RankPredictionService(website_id=target_id)
     predictions = await svc.list_predictions()
@@ -257,8 +257,8 @@ async def get_ranking_predictions(website_id: str):
 @router.post("/api/monitoring/predictions/{prediction_id}/act")
 async def act_on_prediction(prediction_id: str, website_id: Optional[str] = None, action: Optional[str] = None):
     """Take immediate preemptive action on predicted ranking movement."""
-    from ..services.rank_prediction_service import RankPredictionService
-    from ..services.website_service import get_default_website_id
+    from services.rank_prediction_service import RankPredictionService
+    from services.website_service import get_default_website_id
     target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all") else get_default_website_id()
     svc = RankPredictionService(website_id=target_id)
     result = await svc.execute_prediction_action(prediction_id=prediction_id, action=action)
@@ -269,7 +269,7 @@ async def act_on_prediction(prediction_id: str, website_id: Optional[str] = None
 @router.post("/api/monitoring/{website_id}/predictions/run")
 async def run_predictions_now(website_id: str):
     """Execute live time-series rank prediction analysis."""
-    from ..services.rank_prediction_service import RankPredictionService
+    from services.rank_prediction_service import RankPredictionService
     svc = RankPredictionService(website_id=website_id)
     result = await svc.run_weekly_prediction_engine()
     return result
@@ -277,16 +277,16 @@ async def run_predictions_now(website_id: str):
 
 @router.get("/monitoring/{website_id}/pending-fixes")
 async def get_pending_fixes(website_id: str):
-    from ..database import get_supabase
+    from database import get_supabase
     
     return get_supabase().table("pending_fixes").select("*").eq("website_id", website_id).eq("status", "pending_approval").order("created_at", desc=True).execute().data or []
 
 
 @router.post("/monitoring/{website_id}/pending-fixes/{fix_id}/approve")
 async def approve_fix(website_id: str, fix_id: str, request: Request):
-    from ..database import get_supabase
-    from ..services.wordpress_service import get_wordpress_service
-    from ..middleware.human_gate import require_human_for_request
+    from database import get_supabase
+    from services.wordpress_service import get_wordpress_service
+    from middleware.human_gate import require_human_for_request
     
     user_id = await require_human_for_request(request)
     
@@ -332,7 +332,7 @@ async def approve_fix(website_id: str, fix_id: str, request: Request):
 
 @router.get("/monitoring/{website_id}/topic-clusters")
 async def get_topic_clusters(website_id: str, pending_only: bool = True):
-    from ..database import get_supabase
+    from database import get_supabase
     
     query = get_supabase().table("topic_clusters").select("*").eq("website_id", website_id)
     if pending_only:

@@ -21,18 +21,12 @@ SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
 NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# Custom Auth JWT Secret (Minimum 32 characters)
+# Custom Auth JWT Secret (Minimum 32 characters) — REQUIRED, no fallback
 _raw_jwt = os.getenv("JWT_SECRET")
 if not _raw_jwt:
-    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
-        _raw_jwt = "rankforge-super-secret-jwt-key-2026-production-ready-32-chars-min"
-    else:
-        raise ValueError("JWT_SECRET environment variable is required and must be at least 32 characters.")
+    raise ValueError("JWT_SECRET environment variable is required and must be at least 32 characters.")
 if len(_raw_jwt) < 32:
-    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
-        _raw_jwt = _raw_jwt.ljust(32, "x")
-    else:
-        raise ValueError("JWT_SECRET must be at least 32 characters long.")
+    raise ValueError("JWT_SECRET must be at least 32 characters long.")
 
 JWT_SECRET: str = _raw_jwt
 JWT_ALGORITHM: str = "HS256"
@@ -68,7 +62,7 @@ WP_OAUTH_CLIENT_SECRET: str = os.getenv("WP_OAUTH_CLIENT_SECRET", "")
 WP_OAUTH_AUTHORIZE_URL: str = os.getenv("WP_OAUTH_AUTHORIZE_URL", "https://public-api.wordpress.com/oauth2/authorize")
 WP_OAUTH_TOKEN_URL: str = os.getenv("WP_OAUTH_TOKEN_URL", "https://public-api.wordpress.com/oauth2/token")
 
-# Token Encryption — ENCRYPTION_KEY required in production (no hardcoded fallback)
+# Token Encryption — ENCRYPTION_KEY required (no hardcoded fallback)
 import base64
 import hashlib
 import secrets
@@ -79,11 +73,7 @@ _raw_secret = (
     or os.getenv("ENCRYPTION_SECRET")
 )
 if not _raw_secret:
-    if os.getenv("TESTING"):
-        _raw_secret = "rankforge-test-key-32bytes-do-not-use-in-prod"
-    else:
-        _raw_secret = os.getenv("SUPABASE_KEY", "") or os.getenv("JWT_SECRET", "") or "rankforge-production-fallback-key-32b"
-        logger.warning("[Security] ENCRYPTION_KEY not explicitly set — using deterministic fallback key")
+    raise ValueError("ENCRYPTION_KEY environment variable is required. Generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
 
 # Always ensure exactly 32 url-safe base64-encoded bytes for Fernet
 TOKEN_ENCRYPTION_KEY: str = base64.urlsafe_b64encode(hashlib.sha256(_raw_secret.encode()).digest()).decode()

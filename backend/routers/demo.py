@@ -53,7 +53,7 @@ async def run_demo_flow(request: Request, body: Optional[DemoRunRequest] = None)
     if kb_count < 5:
         steps.append({"step": "crawl", "status": "running", "message": "Analyzing site pages and knowledge base..."})
         try:
-            from ..agents.tools.crawlee_tool import CrawleeFullSiteTool
+            from agents.tools.crawlee_tool import CrawleeFullSiteTool
             tool = CrawleeFullSiteTool(website_id=wid)
             # Quick crawl
             steps[-1]["status"] = "done"
@@ -147,7 +147,7 @@ async def demo_readiness_check(
     # Check 2: NVIDIA NIM
     nvidia_ok = False
     try:
-        from ..services.nim_client import nim_generate_with_feedback
+        from services.nim_client import nim_generate_with_feedback
         test = await nim_generate_with_feedback(
             "Say OK", "Say OK", max_tokens=5, timeout_seconds=10, job_label="NIM readiness check"
         )
@@ -165,7 +165,7 @@ async def demo_readiness_check(
     # Check 3: Serper
     serper_ok = False
     try:
-        from ..services.serper_service import serper_search_safe
+        from services.serper_service import serper_search_safe
         serper_results = await serper_search_safe("test search", num_results=1)
         serper_ok = bool(serper_results and len(serper_results) > 0)
     except Exception:
@@ -186,7 +186,7 @@ async def demo_readiness_check(
     except Exception:
         pass
     if not site:
-        from ..services.local_store import get_local_website
+        from services.local_store import get_local_website
         site = get_local_website(wid)
 
     wp_ok = bool(site and (site.get("wordpress_url") or site.get("url")) and (site.get("status") == "active" or site.get("wordpress_user")))
@@ -198,7 +198,7 @@ async def demo_readiness_check(
     })
 
     # Check 5: Content Ready
-    from ..services.local_store import list_local_approvals
+    from services.local_store import list_local_approvals
     total_articles = 0
     pending_articles = 0
     published_articles = 0

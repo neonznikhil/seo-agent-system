@@ -23,7 +23,7 @@ def require_human(func):
         ip = request.client.host if request.client else "unknown"
         
         if not user_id:
-            from ..database import get_supabase
+            from database import get_supabase
             try:
                 get_supabase().table("critical_action_logs").insert({
                     "action": request.url.path,
@@ -71,7 +71,7 @@ def human_approval_required():
         ip = request.client.host if request.client else "unknown"
         
         if not user_id:
-            from ..database import get_supabase
+            from database import get_supabase
             try:
                 get_supabase().table("critical_action_logs").insert({
                     "action": request.url.path,

@@ -37,7 +37,7 @@ async def get_keywords(website_id: str):
     
     # 2. Try GSC if configured
     try:
-        from ..services.gsc_service import GSCService
+        from services.gsc_service import GSCService
         gsc = GSCService()
         keywords = await gsc.fetch_keywords(website_id)
         if keywords:

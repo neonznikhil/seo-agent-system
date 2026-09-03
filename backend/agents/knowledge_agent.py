@@ -18,7 +18,7 @@ async def run_knowledge_agent(website_id: str, homepage_url: str, max_pages: int
     """
     logger.info(f"[KnowledgeAgent] Starting full-site crawl for {website_id} ({homepage_url}) max_pages={max_pages}")
     try:
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
         crawl_res = await ks.watch_business_website(target_site=homepage_url, max_pages=max_pages)
         pages_saved = int(crawl_res.get("new_pages_ingested", 0) + crawl_res.get("updated_pages", 0))

@@ -83,7 +83,7 @@ async def run_content_strategy_async(website_id: str, query: str) -> str:
 
 
 async def run_full_site_optimization_async(website_id: str) -> dict:
-    from ..database import get_supabase
+    from database import get_supabase
     
     results = {
         "website_id": website_id,

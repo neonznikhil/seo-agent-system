@@ -155,6 +155,7 @@ export default function HomePage() {
   const runGenerationRef = useRef<() => void>(() => {});
   const [blogSettingsSaving, setBlogSettingsSaving] = useState<boolean>(false);
   const [wpAppPass, setWpAppPass] = useState<string>("");
+  const [wpUser, setWpUser] = useState<string>("nikhil_d");
   const [wpConnected, setWpConnected] = useState<boolean>(false);
   const [wpTesting, setWpTesting] = useState<boolean>(false);
   // Developer Mode - bypass daily limits
@@ -275,6 +276,11 @@ export default function HomePage() {
           setWpConnected(true);
           setWpAppPass(parsed.app_password);
         }
+        if (parsed.username && parsed.username !== "admin") {
+          setWpUser(parsed.username);
+        } else {
+          setWpUser("nikhil_d");
+        }
       }
     } catch {}
   }, [fetchBlogSettings, fetchReadinessCheck]);
@@ -282,10 +288,11 @@ export default function HomePage() {
   const handleVerifyAndSaveWp = async () => {
     if (!wpAppPass.trim()) return;
     setWpTesting(true);
+    const targetUser = wpUser.trim() || "nikhil_d";
     try {
       const res = await post("/api/wordpress/connect", {
         site_url: "https://accident.innovatcs.com",
-        wp_username: "admin",
+        wp_username: targetUser,
         wp_app_password: wpAppPass.trim(),
       });
       if (res.connected) {
@@ -295,14 +302,14 @@ export default function HomePage() {
             "rankforge_wp_credentials",
             JSON.stringify({
               site_url: "https://accident.innovatcs.com",
-              username: "admin",
+              username: targetUser,
               app_password: wpAppPass.trim(),
             })
           );
         } catch {}
-        showToast("✓ WordPress connected! Drafts will sync directly to accident.innovatcs.com WP Admin.");
+        showToast(`✓ Connected to accident.innovatcs.com as ${targetUser}!`);
       } else {
-        showToast(`WordPress: ${res.message || "Credentials stored"}`);
+        showToast(res.error || `WordPress: ${res.message || "Could not verify credentials"}`);
       }
     } catch (e: any) {
       showToast(`Verification failed: ${e.message}`);
@@ -326,9 +333,11 @@ export default function HomePage() {
     if (!wpCreds.app_password && wpAppPass.trim()) {
       wpCreds = {
         site_url: "https://accident.innovatcs.com",
-        username: "admin",
+        username: wpUser.trim() || "nikhil_d",
         app_password: wpAppPass.trim(),
       };
+    } else if (!wpCreds.username || wpCreds.username === "admin") {
+      wpCreds.username = wpUser.trim() || "nikhil_d";
     }
 
     try {
@@ -1048,27 +1057,34 @@ export default function HomePage() {
 
           {/* WordPress Direct Integration Card */}
           <div style={{ padding: "10px 12px", background: "var(--panel-inner)", border: wpConnected ? "1px solid var(--green)" : "1px solid var(--accent)", borderRadius: "4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <span style={{ fontSize: "11px", fontWeight: 700 }}>
-                WordPress Destination: accident.innovatcs.com (admin)
+                WordPress Destination: accident.innovatcs.com ({wpUser})
               </span>
               <span className={`badge ${wpConnected ? "badge-green" : "badge-amber"}`} style={{ fontSize: "10px" }}>
-                {wpConnected ? "✓ Connected (Real WP Drafts Active)" : "⚠️ App Password Required"}
+                {wpConnected ? `✓ Connected (${wpUser})` : "⚠️ Credentials Required"}
               </span>
             </div>
 
             {!wpConnected ? (
-              <div style={{ marginTop: "8px" }}>
-                <div style={{ fontSize: "10px", color: "var(--muted)", marginBottom: "6px" }}>
-                  Paste your WordPress Application Password below so autonomous generation creates real drafts in your WP Admin:
+              <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ fontSize: "10px", color: "var(--muted)" }}>
+                  Enter your WordPress Username and Password / Application Password:
                 </div>
-                <div style={{ display: "flex", gap: "8px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "8px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    value={wpUser}
+                    onChange={(e) => setWpUser(e.target.value)}
+                    placeholder="Username (e.g. nikhil_d)"
+                    style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
+                  />
                   <input
                     type="password"
                     value={wpAppPass}
                     onChange={(e) => setWpAppPass(e.target.value)}
-                    placeholder="Enter WP Application Password (e.g. abcd efgh ijkl mnop)"
-                    style={{ flex: 1, padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
+                    placeholder="WP Password or Application Password"
+                    style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
                   />
                   <button
                     onClick={handleVerifyAndSaveWp}
@@ -1079,18 +1095,18 @@ export default function HomePage() {
                     {wpTesting ? "Verifying..." : "Save & Verify"}
                   </button>
                 </div>
-                <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "4px" }}>
-                  Generate in WP Admin &gt; Users &gt; Profile &gt; Application Passwords
+                <div style={{ fontSize: "10px", color: "var(--muted)" }}>
+                  Hint: Verified user on site is <strong style={{ color: "var(--accent)" }}>nikhil_d</strong>. You can use your WordPress admin login password or an Application Password.
                 </div>
               </div>
             ) : (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--green)", marginTop: "4px" }}>
-                <span>✓ Active — generated blogs will automatically post as drafts directly into accident.innovatcs.com/wp-admin!</span>
+                <span>✓ Active — generated blogs will automatically post as drafts directly into accident.innovatcs.com/wp-admin under <strong>{wpUser}</strong>!</span>
                 <button
                   onClick={() => setWpConnected(false)}
                   style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "10px", cursor: "pointer", textDecoration: "underline" }}
                 >
-                  Change Password
+                  Change Credentials
                 </button>
               </div>
             )}

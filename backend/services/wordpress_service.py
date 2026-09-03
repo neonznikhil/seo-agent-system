@@ -7,7 +7,29 @@ from datetime import datetime
 from typing import Dict, Optional, List, Any
 import httpx
 from fastapi import HTTPException
-from database import get_supabase
+try:
+    from database import get_supabase
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase
+    except (ImportError, ValueError):
+        from backend.database import get_supabase
+
+try:
+    from security import decrypt_secret, encrypt_secret
+except (ImportError, ValueError):
+    try:
+        from security import decrypt_secret, encrypt_secret
+    except (ImportError, ValueError):
+        from backend.security import decrypt_secret, encrypt_secret
+
+try:
+    from services.local_store import get_local_website, list_local_websites, get_local_wp_connection
+except (ImportError, ValueError):
+    try:
+        from .local_store import get_local_website, list_local_websites, get_local_wp_connection
+    except (ImportError, ValueError):
+        from backend.services.local_store import get_local_website, list_local_websites, get_local_wp_connection
 
 logger = logging.getLogger("backend.services.wordpress_service")
 
@@ -28,7 +50,6 @@ class WordPressService:
         except Exception:
             pass
         if not site or not site.get("wordpress_url"):
-            from .local_store import get_local_website, list_local_websites
             local = get_local_website(self.website_id) or {}
             if not local:
                 all_loc = list_local_websites()
@@ -71,7 +92,6 @@ class WordPressService:
         # Fallback to local store wordpress connections
         if not site.get("wordpress_url") or not (site.get("app_password") or site.get("wordpress_password")):
             try:
-                from .local_store import get_local_wp_connection
                 loc_conn = get_local_wp_connection(self.website_id)
                 if loc_conn:
                     if not site.get("wordpress_url"):
@@ -113,7 +133,14 @@ class WordPressService:
         return url.rstrip("/")
 
     def _get_auth_tuple(self) -> tuple:
-        user = self.site.get("wordpress_user") or self.site.get("cms_user") or self.site.get("wp_username") or os.getenv("WORDPRESS_USERNAME") or ""
+        user = (
+            self.site.get("wordpress_user")
+            or self.site.get("cms_user")
+            or self.site.get("wp_username")
+            or os.getenv("WORDPRESS_USERNAME")
+            or os.getenv("WORDPRESS_USER")
+            or ""
+        )
         stored = (
             self.site.get("wordpress_password_encrypted")
             or self.site.get("wp_app_password_encrypted")
@@ -126,11 +153,24 @@ class WordPressService:
         )
         if not stored:
             return (user, "")
-        try:
-            from ..security import decrypt_secret
-            return (user, decrypt_secret(stored))
-        except Exception:
-            return (user, stored)
+
+        # If password is encrypted (Fernet ciphertext starting with gAAAA), decrypt it
+        if isinstance(stored, str) and stored.startswith("gAAAA"):
+            try:
+                decrypted = decrypt_secret(stored)
+                if decrypted:
+                    return (user, decrypted.strip())
+            except Exception as e:
+                logger.warning(f"Failed to decrypt stored WordPress password: {e}")
+
+        # Check if stored password has bullet masks (from masked .env)
+        stored_clean = str(stored).strip()
+        if "•" in stored_clean:
+            env_fallback = os.getenv("WORDPRESS_APP_PASSWORD", "")
+            if env_fallback and "•" not in env_fallback:
+                return (user, env_fallback.strip())
+
+        return (user, stored_clean)
 
     def _get_request_headers(self, additional: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         # Spec: RankForge header for Hostinger bypass
@@ -400,12 +440,22 @@ class WordPressService:
 
         last_error_msg = "Unknown error"
         try:
-            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, verify=False, headers=headers) as client:
+            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, headers=headers) as client:
                 for ep in endpoints:
                     try:
                         response = await client.post(ep, auth=(user, password), json=payload)
                         if response.status_code == 401 and " " in password:
                             response = await client.post(ep, auth=(user, password.replace(" ", "")), json=payload)
+                        elif response.status_code == 401 and " " not in password and len(password) == 24:
+                            spaced_pwd = " ".join([password[i:i+4] for i in range(0, len(password), 4)])
+                            response = await client.post(ep, auth=(user, spaced_pwd), json=payload)
+
+                        # If 400 Bad Request and meta is present, retry without meta (some WP themes/setups disallow custom meta)
+                        if response.status_code == 400 and "meta" in payload:
+                            clean_payload = {k: v for k, v in payload.items() if k != "meta"}
+                            response = await client.post(ep, auth=(user, password), json=clean_payload)
+                            if response.status_code == 401 and " " in password:
+                                response = await client.post(ep, auth=(user, password.replace(" ", "")), json=clean_payload)
 
                         if response.status_code in (200, 201):
                             draft = response.json()
@@ -413,6 +463,22 @@ class WordPressService:
                             edit_url = f"{base_url}/wp-admin/post.php?post={draft_id}&action=edit"
                             link = draft.get("link") or edit_url
                             logger.info(f"Successfully created WordPress draft {draft_id} at {edit_url}")
+
+                            # Sync to Supabase content_log & blog_approvals if matching row
+                            try:
+                                supabase = get_supabase()
+                                supabase.table("content_log").update({
+                                    "wp_post_id": draft_id,
+                                    "wp_draft_url": link,
+                                    "status": "draft"
+                                }).eq("website_id", website_id).eq("title", title).execute()
+                                supabase.table("blog_approvals").update({
+                                    "wordpress_post_id": draft_id,
+                                    "wordpress_url": link,
+                                }).eq("website_id", website_id).eq("title", title).execute()
+                            except Exception:
+                                pass
+
                             return {
                                 "success": True,
                                 "wp_post_id": draft_id,
@@ -457,7 +523,7 @@ class WordPressService:
 
         headers = self._get_request_headers({"Content-Type": "application/json"})
         try:
-            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
                 response = await client.post(
                     f"{base_url}/wp-json/wp/v2/posts/{wp_post_id}",
                     auth=(user, password),
@@ -506,7 +572,7 @@ class WordPressService:
             ]
             for ep in endpoints:
                 try:
-                    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, verify=False, headers=headers) as client:
+                    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True, headers=headers) as client:
                         response = await client.post(
                             ep,
                             auth=(user, password),
@@ -556,7 +622,7 @@ class WordPressService:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
         try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 auth = (user, password) if user and password else None
                 resp = await client.get(f"{base_url}/wp-json/wp/v2/posts", params=params, auth=auth, headers=headers)
                 if resp.status_code == 200:
@@ -564,6 +630,52 @@ class WordPressService:
         except Exception as e:
             logger.warning(f"Error fetching WP posts: {e}")
         return []
+
+    async def get_pages(self, per_page: int = 10, page: int = 1, status: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
+        """Fetch pages from WordPress."""
+        base_url = self.get_base_url()
+        user, password = self._get_auth_tuple()
+        if not base_url:
+            return []
+
+        params = {"per_page": per_page, "page": page}
+        if status:
+            params["status"] = status
+        if search:
+            params["search"] = search
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                auth = (user, password) if user and password else None
+                resp = await client.get(f"{base_url}/wp-json/wp/v2/pages", params=params, auth=auth, headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as e:
+            logger.warning(f"Error fetching WP pages: {e}")
+        return []
+
+    async def get_post(self, post_id: int) -> Optional[dict]:
+        """Fetch a single post by ID from WordPress."""
+        base_url = self.get_base_url()
+        user, password = self._get_auth_tuple()
+        if not base_url:
+            return None
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                auth = (user, password) if user and password else None
+                resp = await client.get(f"{base_url}/wp-json/wp/v2/posts/{post_id}", auth=auth, headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as e:
+            logger.warning(f"Error fetching WP post {post_id}: {e}")
+        return None
 
     def get_connection(self, website_id: str) -> dict:
         """SELECT site_url wp_username wp_app_password_encrypted FROM wordpress_connections WHERE website_id AND is_active ORDER BY created_at DESC LIMIT 1 decrypt via Fernet ENCRYPTION_KEY env required no fallback."""
@@ -581,7 +693,6 @@ class WordPressService:
         enc = row.get("wp_app_password_encrypted") or ""
         if not enc:
             raise HTTPException(status_code=400, detail="No encrypted password stored")
-        from ..security import decrypt_secret
         try:
             pwd = decrypt_secret(enc)
         except Exception as e:
@@ -610,8 +721,10 @@ class WordPressService:
         user = site.get("wordpress_user") or site.get("cms_user") or ""
         stored = site.get("wordpress_password_encrypted") or site.get("app_password") or site.get("wordpress_password") or ""
         try:
-            from ..security import decrypt_secret
-            password = decrypt_secret(stored) if stored else ""
+            if isinstance(stored, str) and stored.startswith("gAAAA"):
+                password = decrypt_secret(stored)
+            else:
+                password = stored or ""
         except Exception:
             password = stored or ""
         if not base_url or not user or not password:
@@ -823,7 +936,7 @@ class WordPressService:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         }
         try:
-            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
                 resp = await client.get(f"{base_url}/wp-json/", headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -859,7 +972,7 @@ class WordPressService:
         }
         url = f"{base_url}/wp-json/wp/v2/media"
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 resp = await client.post(url, auth=(user, password), headers=headers, content=image_bytes)
                 if resp.status_code in (200, 201):
                     data = resp.json()
@@ -878,7 +991,7 @@ class WordPressService:
             return []
         url = f"{base_url}/wp-json/wp/v2/categories?per_page=100"
         try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 auth = (user, password) if user and password else None
                 resp = await client.get(url, auth=auth, headers=self._get_wp_headers())
                 if resp.status_code == 200:
@@ -895,7 +1008,7 @@ class WordPressService:
             return []
         url = f"{base_url}/wp-json/wp/v2/tags?per_page=100"
         try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 auth = (user, password) if user and password else None
                 resp = await client.get(url, auth=auth, headers=self._get_wp_headers())
                 if resp.status_code == 200:

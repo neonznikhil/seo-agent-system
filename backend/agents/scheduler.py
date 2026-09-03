@@ -19,6 +19,31 @@ except ImportError:
     from .autonomous_decision_engine import AutonomousDecisionEngine
 
 
+try:
+    from database import get_supabase, call_nim_llm
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase, call_nim_llm
+    except (ImportError, ValueError):
+        from backend.database import get_supabase, call_nim_llm
+
+try:
+    from services.local_store import (
+        list_local_websites, list_local_knowledge, get_local_website,
+        list_local_approvals, list_local_content, save_local_brain_memory
+    )
+except (ImportError, ValueError):
+    try:
+        from services.local_store import (
+            list_local_websites, list_local_knowledge, get_local_website,
+            list_local_approvals, list_local_content, save_local_brain_memory
+        )
+    except (ImportError, ValueError):
+        from backend.services.local_store import (
+            list_local_websites, list_local_knowledge, get_local_website,
+            list_local_approvals, list_local_content, save_local_brain_memory
+        )
+
 logger = logging.getLogger("backend.agents.scheduler")
 
 IST = "Asia/Kolkata"
@@ -46,7 +71,7 @@ def _add_log(job_name: str, status: str, message: str, details: Optional[Dict] =
 async def is_auto_publish_enabled() -> bool:
     """Check if autonomous direct publishing is ON."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         res = get_supabase().table("autonomous_settings").select("auto_publish").limit(1).execute().data
         if res and res[0].get("auto_publish") is not None:
             return bool(res[0]["auto_publish"])
@@ -60,7 +85,7 @@ async def _get_target_website_ids(website_id: Optional[str] = None) -> List[str]
     if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined"):
         return [website_id]
     try:
-        from ..services.website_service import list_active_website_ids, get_default_website_id
+        from services.website_service import list_active_website_ids, get_default_website_id
         ids = list_active_website_ids()
         if ids:
             return ids
@@ -81,7 +106,7 @@ async def job_business_website_watch(website_id: Optional[str] = None):
         engine = AutonomousDecisionEngine(website_id=target_id)
         _add_log(job_name, "running", f"KnowledgeAgent scanning sitemap on {target_id}")
         try:
-            from ..services.knowledge_service import KnowledgeService
+            from services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=target_id)
             res = await ks.watch_business_website()
             await engine.track_cost("KnowledgeAgent", 4500)
@@ -105,7 +130,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
             _add_log(job_name, "skipped", f"Decision Engine skipped on {target_id}: {decision.get('reason')}")
             # Log to agent_memory type decision
             try:
-                from ..services.brain_service import BrainService
+                from services.brain_service import BrainService
                 brain = BrainService(website_id=target_id)
                 await brain.remember(website_id=target_id, memory_type="decision", title=f"Decision: {job_name}", content=f"skipped: {decision.get('reason')}", source_type="autonomous_decision_engine", confidence=0.7)
             except Exception:
@@ -113,7 +138,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
             continue
         # Log decision
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(website_id=target_id)
             await brain.remember(website_id=target_id, memory_type="decision", title=f"Decision: {job_name}", content=f"should_run True: {decision.get('reason')}", source_type="autonomous_decision_engine", confidence=0.85)
         except Exception:
@@ -121,9 +146,9 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
 
         _add_log(job_name, "running", f"Checking content gaps for {target_id}")
         try:
-            from ..services.analytics_service import AnalyticsService
-            from ..services.knowledge_service import KnowledgeService
-            from ..database import get_supabase
+            from services.analytics_service import AnalyticsService
+            from services.knowledge_service import KnowledgeService
+            from database import get_supabase
             supabase = get_supabase()
             # Real query per spec: SELECT keyword, search_volume, clicks, impressions FROM daily_searches WHERE website_id AND search_volume>800 AND keyword NOT IN (SELECT keyword FROM blogs) AND focus_keywords overlap ORDER BY search_volume DESC LIMIT 1
             # Fallback to analytics_service if daily_searches empty
@@ -295,7 +320,7 @@ async def job_daily_search(website_id: Optional[str] = None):
         _add_log(job_name, "running", f"ResearchAgent mining SERP trends on {target_id} via Serper.dev")
         try:
             from .research_agent import ResearchAgent
-            from ..database import get_supabase
+            from database import get_supabase
             
             agent = ResearchAgent(website_id=target_id)
             trends = await agent.run(topic="Legal rights, statutory frameworks and SEO trends 2026")
@@ -331,7 +356,7 @@ async def job_knowledge_sync(website_id: Optional[str] = None):
 
         _add_log(job_name, "running", f"KnowledgeAgent applying freshness decay on {target_id}")
         try:
-            from ..services.knowledge_service import KnowledgeService
+            from services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=target_id)
             
             decay_res = await ks.apply_freshness_decay()
@@ -361,7 +386,7 @@ async def job_brain_learn(website_id: Optional[str] = None):
         engine = AutonomousDecisionEngine(website_id=target_id)
         _add_log(job_name, "running", f"SupervisorAgent analyzing 14-day outcomes for {target_id}")
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(website_id=target_id)
             res = await brain.synthesize_14day_learnings(website_id=target_id)
             await engine.track_cost("SupervisorAgent", 5500)
@@ -385,9 +410,9 @@ async def job_content_refresh(website_id: Optional[str] = None):
 
         _add_log(job_name, "running", f"RefreshAgent executing refresh on decaying articles for {target_id}")
         try:
-            from ..services.analytics_service import AnalyticsService
+            from services.analytics_service import AnalyticsService
             from .refresh_agent import RefreshAgent
-            from ..database import get_supabase
+            from database import get_supabase
             supabase = get_supabase()
             
             decaying_list = await AnalyticsService.get_decaying_content(website_id=target_id)
@@ -458,7 +483,7 @@ async def job_auto_new_page(website_id: Optional[str] = None):
         _add_log(job_name, "running", f"Goal-Driven Writer Pipeline generating article for '{target_kw}' on {target_id}")
         try:
             from .writer_agent import WriterPipeline
-            from ..services.knowledge_service import KnowledgeService
+            from services.knowledge_service import KnowledgeService
             
             ks = KnowledgeService(website_id=target_id)
             knowledge_hits = await ks.retrieve_relevant_hybrid(target_kw, top_k=5)
@@ -529,8 +554,8 @@ async def job_auto_blog_writer_crew(website_id: Optional[str] = None):
         # Get gap keyword: high volume search_volume >800 not in blogs
         gap_keyword = None
         try:
-            from ..services.analytics_service import AnalyticsService
-            from ..database import get_supabase
+            from services.analytics_service import AnalyticsService
+            from database import get_supabase
             supabase = get_supabase()
             gaps = await AnalyticsService.get_content_gaps(website_id=target_id)
             # Filter high volume >800 and not in existing blogs
@@ -646,8 +671,6 @@ async def job_auto_blog_writer_crew(website_id: Optional[str] = None):
 # ---------------------------------------------------------
 async def get_all_active_websites() -> List[Dict[str, Any]]:
     """Retrieve all active websites from database + local fallback."""
-    from ..database import get_supabase
-    from ..services.local_store import list_local_websites
     supabase = get_supabase()
     sites = []
     try:
@@ -667,8 +690,8 @@ async def get_all_active_websites() -> List[Dict[str, Any]]:
 
 async def count_knowledge_base_rows(website_id: str) -> int:
     """Count knowledge base rows in database + local fallback."""
-    from ..database import get_supabase
-    from ..services.local_store import list_local_knowledge
+    from database import get_supabase
+    from services.local_store import list_local_knowledge
     supabase = get_supabase()
     count = 0
     try:
@@ -687,7 +710,7 @@ async def count_knowledge_base_rows(website_id: str) -> int:
 async def trigger_auto_crawl(website_id: str, url: str):
     """Trigger background sitemap crawl for website."""
     try:
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
         asyncio.create_task(ks.watch_business_website())
     except Exception as e:
@@ -696,7 +719,7 @@ async def trigger_auto_crawl(website_id: str, url: str):
 
 async def count_blogs_in_status(website_id: str, status: str) -> int:
     """Count blogs currently in given status."""
-    from ..database import get_supabase
+    from database import get_supabase
     supabase = get_supabase()
     try:
         res = supabase.table("content_log").select("id").eq("website_id", website_id).eq("status", status).limit(5).execute()
@@ -709,7 +732,7 @@ async def count_blogs_in_status(website_id: str, status: str) -> int:
 
 async def get_today_spend(website_id: str) -> float:
     """Get total spend for website today."""
-    from ..database import get_supabase
+    from database import get_supabase
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
     try:
         supabase = get_supabase()
@@ -723,7 +746,7 @@ async def get_today_spend(website_id: str) -> float:
 
 async def get_daily_budget_limit(website_id: str) -> float:
     """Get daily budget limit in USD."""
-    from ..database import get_supabase
+    from database import get_supabase
     try:
         supabase = get_supabase()
         res = supabase.table("autonomous_settings").select("daily_budget_usd, goals").eq("website_id", website_id).limit(1).execute()
@@ -742,7 +765,7 @@ async def get_daily_budget_limit(website_id: str) -> float:
 async def is_keyword_too_similar(new_keyword: str, website_id: str) -> bool:
     """Check if new keyword overlaps >60% words with last 50 blogs."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         existing = supabase.table("blogs").select("target_keyword, primary_keyword").eq("website_id", website_id).order("created_at", desc=True).limit(50).execute()
         rows = existing.data or []
@@ -832,7 +855,7 @@ def is_developer_mode_enabled() -> bool:
             pass
     # DB flag
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         sup = get_supabase()
         rows = sup.table("autonomous_settings").select("developer_mode").limit(1).execute().data or []
         if rows and rows[0].get("developer_mode") is True:
@@ -885,7 +908,7 @@ async def _is_keyword_grounded_in_kb(keyword: str, website_id: str, threshold: f
     """
     # Accident-site strict grounding: keyword must contain accident-specific term
     try:
-        from ..services.local_store import get_local_website
+        from services.local_store import get_local_website
         site = get_local_website(website_id) or {}
         domain = (site.get("domain") or site.get("url") or "").lower()
         is_accident_site = any(k in domain for k in ["accident", "injury", "attorney", "law"])
@@ -910,7 +933,7 @@ async def _is_keyword_grounded_in_kb(keyword: str, website_id: str, threshold: f
         threshold = max(threshold, 0.75)
     # Primary: hybrid vector search
     try:
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
         hits = await ks.retrieve_relevant_hybrid(keyword=keyword, top_k=3)
         if hits:
@@ -922,12 +945,12 @@ async def _is_keyword_grounded_in_kb(keyword: str, website_id: str, threshold: f
         logger.debug(f"[GroundedCheck] hybrid failed for '{keyword}': {e}")
     # Fallback: bigram phrase check with KB (for local JSON without embeddings)
     try:
-        from ..services.local_store import list_local_knowledge
+        from services.local_store import list_local_knowledge
         import re
         kb = list_local_knowledge(website_id)
         kb_filtered = [k for k in kb if 'Hello world' not in (k.get('fact') or k.get('content') or '') and (k.get('fact') or k.get('content') or '').strip()]
         if not kb_filtered:
-            from ..database import get_supabase
+            from database import get_supabase
             try:
                 sup = get_supabase()
                 rows = sup.table("knowledge_base").select("content,fact").eq("website_id", website_id).limit(30).execute().data or []
@@ -944,7 +967,7 @@ async def _is_keyword_grounded_in_kb(keyword: str, website_id: str, threshold: f
             return True
         # For accident sites, use strict accident core; otherwise generic legal core
         try:
-            from ..services.local_store import get_local_website as _glw
+            from services.local_store import get_local_website as _glw
             _site = _glw(website_id) or {}
             _dom = (_site.get("domain") or _site.get("url") or "").lower()
             _is_acc = any(k in _dom for k in ["accident","injury","attorney","law"])
@@ -989,7 +1012,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
     """
     import json as _json
     from datetime import datetime as _dt
-    from ..database import get_supabase
+    from database import get_supabase
     supabase = get_supabase()
 
     # Helper to check existing to avoid repetition
@@ -1077,27 +1100,19 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
 
     # Step 2: Get niche from knowledge base (NOT the domain name) — handle `fact` column
     kb_result = None
-    for sel in ["content", "fact", "*"]:
+    for sel in ["fact", "*"]:
         try:
-            kb_result = supabase.table("knowledge_base").select(sel).eq("website_id", website_id).order("credibility_score", desc=True).limit(5).execute()
+            kb_result = supabase.table("knowledge_base").select(sel).eq("website_id", website_id).limit(5).execute()
             if kb_result and kb_result.data:
                 break
         except Exception:
             continue
-    if not kb_result or not kb_result.data:
-        for sel in ["content", "fact", "*"]:
-            try:
-                kb_result = supabase.table("knowledge_base").select(sel).eq("website_id", website_id).limit(5).execute()
-                if kb_result and kb_result.data:
-                    break
-            except Exception:
-                continue
 
     # Also merge local_store knowledge if DB empty
     kb_rows = kb_result.data if kb_result and kb_result.data else []
     if not kb_rows:
         try:
-            from ..services.local_store import list_local_knowledge
+            from services.local_store import list_local_knowledge
             local_kb = list_local_knowledge(website_id)[:5]
             kb_rows = [{"content": (k.get("content") or k.get("fact") or "")} for k in local_kb]
         except Exception:
@@ -1113,7 +1128,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
     keywords = []
     niche = ""
     try:
-        from ..database import call_nim_llm
+        from database import call_nim_llm
         niche_response = await call_nim_llm(
             prompt=f"""
         Based on this website content, identify the main topic niche and suggest 10 specific SEO blog keywords that real people search for on Google. These must be real search queries, not the website domain or URL.
@@ -1163,7 +1178,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
     # Step 3: Verify keywords have real search volume using Serper + not already used + not too similar
     real_keywords = []
     try:
-        from ..services.serper_service import serper_service
+        from services.serper_service import serper_service
         serper_available = True
     except Exception:
         serper_available = False
@@ -1293,7 +1308,7 @@ async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str =
     if _is_keyword_denied(target_keyword):
         # Check if actually blogging niche with high grounding — allow if KB strongly grounds
         try:
-            from ..services.knowledge_service import KnowledgeService as _KSD2
+            from services.knowledge_service import KnowledgeService as _KSD2
             _ksd2 = _KSD2(website_id=website_id)
             _hitsd2 = await _ksd2.retrieve_relevant_hybrid(target_keyword, top_k=3)
             _avgd2 = sum(float(h.get("final_score", 0)) for h in _hitsd2)/len(_hitsd2) if _hitsd2 else 0
@@ -1380,7 +1395,7 @@ async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, 
 async def log_autonomous_decision(website_id: str, decision: str, reason: str, job: str = "auto_blog_10min"):
     import uuid
     _add_log(job, decision.lower(), f"[{website_id[:8]}] {decision}: {reason}")
-    from ..database import get_supabase
+    from database import get_supabase
     try:
         supabase = get_supabase()
         supabase.table("autonomous_decisions").insert({
@@ -1393,7 +1408,7 @@ async def log_autonomous_decision(website_id: str, decision: str, reason: str, j
         }).execute()
     except Exception:
         try:
-            from ..services.local_store import save_local_brain_memory
+            from services.local_store import save_local_brain_memory
             save_local_brain_memory({
                 "website_id": website_id,
                 "memory_type": "decision",
@@ -1409,7 +1424,7 @@ async def log_autonomous_decision(website_id: str, decision: str, reason: str, j
 # --- helpers for Problem 4.2 / 4.3 ---
 async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
     """Fetch autonomous_settings for website, with defaults for Problem 4."""
-    from ..database import get_supabase
+    from database import get_supabase
     supabase = get_supabase()
     defaults = {
         "auto_generate_enabled": True,
@@ -1484,7 +1499,7 @@ async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
 
 async def get_last_blog_time(website_id: str) -> Optional[datetime]:
     """Return datetime of last blog for website (content_log or blog_approvals)."""
-    from ..database import get_supabase
+    from database import get_supabase
     supabase = get_supabase()
     try:
         # content_log latest
@@ -1507,7 +1522,7 @@ async def get_last_blog_time(website_id: str) -> Optional[datetime]:
     return None
 
 async def get_knowledge_base_sample(website_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-    from ..database import get_supabase
+    from database import get_supabase
     supabase = get_supabase()
     # Try supabase with content/fact handling — actual DB may use `fact` column (legacy ingest) not `content`
     for sel in ["content, title", "fact, title", "*"]:
@@ -1525,7 +1540,7 @@ async def get_knowledge_base_sample(website_id: str, limit: int = 5) -> List[Dic
         except Exception:
             continue
     try:
-        from ..services.local_store import list_local_knowledge
+        from services.local_store import list_local_knowledge
         # Prefer accident-relevant facts for niche detection (avoid generic business overview)
         all_local = list_local_knowledge(website_id)
         # Filter out generic Hello world and vague overview that lacks accident terms
@@ -1573,7 +1588,7 @@ async def identify_niche(kb_sample: List[Dict[str, Any]]) -> str:
     # handle both `content` and `fact` keys
     content_snip = " ".join([((r.get("content") or r.get("fact") or r.get("title") or ""))[:250] for r in kb_sample[:5]])
     try:
-        from ..database import call_nim_llm
+        from database import call_nim_llm
         resp = await call_nim_llm(
             prompt=f"Identify the main business niche/topic in 2-3 words from this content: {content_snip[:1500]}. Respond with ONLY the niche phrase, nothing else.",
             system="You are a keyword researcher. Respond with ONLY the niche phrase.",
@@ -1593,33 +1608,22 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
     then picks a keyword that is directly relevant to that content.
     """
     import json as _json
-    from ..database import get_supabase, call_nim_llm
+    from database import get_supabase, call_nim_llm
     supabase = get_supabase()
 
     # STEP 1: Read actual website content from knowledge base
     # Get the most credible chunks — these represent what the site is actually about
     kb_result = None
     kb_data = []
-    # Try supabase with credibility_score ordering, fallback gradually
-    for sel in ["content, source_url, credibility_score", "content, source_url", "content, title", "fact, title", "*"]:
+    for sel in ["fact, source_url, created_at", "fact, source_url", "fact", "*"]:
         try:
-            try:
-                kb_result = supabase.table("knowledge_base")\
-                    .select(sel)\
-                    .eq("website_id", website_id)\
-                    .order("credibility_score", desc=True)\
-                    .limit(15)\
-                    .execute()
-            except Exception:
-                # If ordering by credibility_score fails, try without order
-                kb_result = supabase.table("knowledge_base")\
-                    .select(sel)\
-                    .eq("website_id", website_id)\
-                    .limit(15)\
-                    .execute()
+            kb_result = supabase.table("knowledge_base")\
+                .select(sel)\
+                .eq("website_id", website_id)\
+                .limit(15)\
+                .execute()
             if kb_result and kb_result.data:
                 kb_data = kb_result.data
-                # need at least 1 chunk to check; but spec requires 3
                 if len(kb_data) >= 1:
                     break
         except Exception:
@@ -1627,7 +1631,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
     # Also merge local_store if supabase has insufficient data
     if len(kb_data) < 3:
         try:
-            from ..services.local_store import list_local_knowledge
+            from services.local_store import list_local_knowledge
             local_kb = list_local_knowledge(website_id)
             # Filter empty and hello world
             filtered_local = [k for k in local_kb if (k.get("content") or k.get("fact") or "").strip() and 'Hello world' not in (k.get("content") or k.get("fact") or '')]
@@ -1900,7 +1904,7 @@ async def run_autonomous_blog_generation():
         last_reset_str = str(last_reset)[:10] if last_reset else ""
         if last_reset_str != today:
             try:
-                from ..database import get_supabase
+                from database import get_supabase
                 supabase = get_supabase()
                 # Try column update; if column missing, store in goals JSON
                 try:
@@ -2089,7 +2093,7 @@ async def run_autonomous_blog_generation():
             
             # Increment counter — also persist to local_data/blog_settings.json for when table not in cache
             try:
-                from ..database import get_supabase
+                from database import get_supabase
                 supabase = get_supabase()
                 try:
                     supabase.table("autonomous_settings").update({
@@ -2200,7 +2204,7 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
             continue
         # Check auto_publish flag
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             supabase = get_supabase()
             settings = supabase.table("autonomous_settings").select("auto_publish").eq("website_id", target_id).limit(1).execute().data
             # Also check general table without website_id filter
@@ -2219,8 +2223,8 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
 
         _add_log(job_name, "running", f"Processing pending approvals for auto-publish on {target_id}")
         try:
-            from ..database import get_supabase
-            from ..services.wordpress_service import WordPressService
+            from database import get_supabase
+            from services.wordpress_service import WordPressService
             supabase = get_supabase()
             pending = supabase.table("blog_approvals").select("*").eq("website_id", target_id).eq("status", "pending").limit(10).execute().data or []
             if not pending:
@@ -2309,7 +2313,7 @@ async def _enhanced_refresh_with_crew(website_id: str, old_title: str, old_conte
         # Save as blog_approvals type refresh_update handled inside crew
         # Ensure type is refresh_update
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             supabase = get_supabase()
             # Update last blog_approvals type if needed
             # The crew already creates blog_approvals; we patch type
@@ -2330,7 +2334,7 @@ async def job_rank_tracker():
     """Every 6h Rank Position Checker via Serper API."""
     logger.info("[Scheduler] Executing job_rank_tracker (6h Rank Position Checker)...")
     try:
-        from ..services.rank_tracker import check_all_rankings
+        from services.rank_tracker import check_all_rankings
         res = await check_all_rankings()
         logger.info(f"[Scheduler] job_rank_tracker completed: {res}")
         return res
@@ -2343,7 +2347,7 @@ async def job_content_refresh_daily():
     """11:00 Daily Content Decay Detection & Refresh Check."""
     logger.info("[Scheduler] Executing job_content_refresh_daily...")
     try:
-        from ..services.content_refresh import run_decay_detection_and_refresh
+        from services.content_refresh import run_decay_detection_and_refresh
         res = await run_decay_detection_and_refresh()
         logger.info(f"[Scheduler] job_content_refresh_daily completed: {res}")
         return res
@@ -2520,7 +2524,7 @@ def setup_scheduler() -> AsyncIOScheduler:
     # ---------------------------------------------------------
     # Daily 03:00 IST - KnowledgeEvolutionService (Living Knowledge & Statute Decay)
     async def _job_knowledge_evolution():
-        from ..services.knowledge_evolution_service import KnowledgeEvolutionService
+        from services.knowledge_evolution_service import KnowledgeEvolutionService
         svc = KnowledgeEvolutionService()
         await svc.run_daily_evolution_jobs()
 
@@ -2534,7 +2538,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Daily 08:00 IST - Slack Morning Brief
     async def _job_slack_morning():
-        from ..services.slack_intelligence_service import slack_intelligence_service
+        from services.slack_intelligence_service import slack_intelligence_service
         await slack_intelligence_service.send_morning_brief()
 
     scheduler.add_job(
@@ -2547,7 +2551,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Daily 20:00 IST - Slack Evening Summary
     async def _job_slack_evening():
-        from ..services.slack_intelligence_service import slack_intelligence_service
+        from services.slack_intelligence_service import slack_intelligence_service
         await slack_intelligence_service.send_evening_summary()
 
     scheduler.add_job(
@@ -2560,7 +2564,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Monday 07:00 IST - OpportunityScoutAgent (5 Parallel Serper Sweeps)
     async def _job_opportunity_scout():
-        from ..agents.opportunity_scout_agent import OpportunityScoutAgent
+        from agents.opportunity_scout_agent import OpportunityScoutAgent
         agent = OpportunityScoutAgent()
         await agent.run()
 
@@ -2574,7 +2578,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Monday 10:00 IST - AssetEngineerAgent (Linkable Asset Briefing)
     async def _job_asset_engineer():
-        from ..agents.asset_engineer_agent import AssetEngineerAgent
+        from agents.asset_engineer_agent import AssetEngineerAgent
         agent = AssetEngineerAgent()
         await agent.run()
 
@@ -2588,8 +2592,8 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Thursday 09:00 IST - AcquisitionMonitorAgent & Slack Report
     async def _job_acquisition_monitor():
-        from ..agents.acquisition_monitor_agent import AcquisitionMonitorAgent
-        from ..services.slack_intelligence_service import slack_intelligence_service
+        from agents.acquisition_monitor_agent import AcquisitionMonitorAgent
+        from services.slack_intelligence_service import slack_intelligence_service
         agent = AcquisitionMonitorAgent()
         await agent.run()
         await slack_intelligence_service.send_backlink_intelligence_report()
@@ -2604,7 +2608,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Sunday 01:00 IST - RankingSignalHarvester (500-URL Niche Harvest)
     async def _job_niche_harvest():
-        from ..services.ranking_signal_harvester import RankingSignalHarvester
+        from services.ranking_signal_harvester import RankingSignalHarvester
         harvester = RankingSignalHarvester()
         await harvester.run_niche_harvest()
 
@@ -2618,7 +2622,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Sunday 03:00 IST - SelfTrainingService (Meta-Training & Prompts Evolution)
     async def _job_self_training():
-        from ..services.self_training_service import SelfTrainingService
+        from services.self_training_service import SelfTrainingService
         svc = SelfTrainingService()
         await svc.run_self_training_cycle()
 
@@ -2632,8 +2636,8 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Sunday 21:00 IST - AuthorityCalibrationAgent & Slack Weekly Report
     async def _job_authority_calibration():
-        from ..agents.authority_calibration_agent import AuthorityCalibrationAgent
-        from ..services.slack_intelligence_service import slack_intelligence_service
+        from agents.authority_calibration_agent import AuthorityCalibrationAgent
+        from services.slack_intelligence_service import slack_intelligence_service
         agent = AuthorityCalibrationAgent()
         await agent.run()
         await slack_intelligence_service.send_weekly_intelligence_report()
@@ -2669,7 +2673,7 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Every 6 Hours - SerpVolatilityService
     async def _job_serp_volatility():
-        from ..services.serp_volatility_service import SerpVolatilityService
+        from services.serp_volatility_service import SerpVolatilityService
         svc = SerpVolatilityService()
         await svc.check_serp_volatility()
 
@@ -2752,7 +2756,10 @@ def setup_scheduler() -> AsyncIOScheduler:
     # Start 6 continuous monitoring loops if event loop is running
     try:
         loop = asyncio.get_running_loop()
-        from ..services.continuous_monitor import start_all_monitors
+        try:
+            from services.continuous_monitor import start_all_monitors
+        except (ImportError, ValueError):
+            from services.continuous_monitor import start_all_monitors
         start_all_monitors()
         logger.info("[Scheduler] Continuous monitoring loops (6) started ✅")
     except RuntimeError:
@@ -2808,7 +2815,7 @@ def get_scheduler_logs(limit: int = 20) -> List[Dict[str, Any]]:
 def _has_run_today(job_name: str) -> bool:
     """Check brain_daily_jobs for a successful run of this job today."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         today = datetime.utcnow().strftime("%Y-%m-%d")
         res = (
             get_supabase().table("brain_daily_jobs")
@@ -2825,8 +2832,8 @@ def _has_run_today(job_name: str) -> bool:
 
 def _record_job_run(job_name: str, website_id: Optional[str], status: str = "completed") -> None:
     try:
-        from ..database import get_supabase
-        from ..services.website_service import get_default_website_id
+        from database import get_supabase
+        from services.website_service import get_default_website_id
         resolved_id = website_id if website_id and website_id not in ("default", "all") else get_default_website_id()
         payload = {
             "job_name": job_name,
@@ -2885,11 +2892,11 @@ async def run_first_time_setup(website_id: str) -> Dict[str, Any]:
 
     # Step 1: Knowledge ingestion (runs inline-ish first — everything else depends on it)
     async def _knowledge():
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=website_id)
         site_row = None
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             site_row = (
                 get_supabase().table("websites").select("cms_url, url, domain")
                 .eq("id", website_id).single().execute().data or {}
@@ -2975,7 +2982,7 @@ class WriterPipelineLocal:
 async def job_cleanup_stuck_content():
     """Every 10 minutes: mark content_log rows stuck in_progress >15min as failed."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         cutoff = (datetime.utcnow().timestamp() - 15 * 60)
         cutoff_iso = datetime.utcfromtimestamp(cutoff).isoformat()
         supabase = get_supabase()
@@ -3002,7 +3009,7 @@ async def job_cleanup_stuck_content():
 async def job_cleanup_junk_drafts():
     """Hourly: delete failed/junk drafts and their approval rows."""
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         deleted = 0
         try:

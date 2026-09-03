@@ -397,3 +397,13 @@ class SlackIntelligenceService:
 
 # Global Singleton
 slack_intelligence_service = SlackIntelligenceService()
+
+
+async def notify_content_published(website_id: str, title: str, wordpress_url: Optional[str] = None) -> bool:
+    """Module-level wrapper for publishing notification."""
+    try:
+        return await slack_intelligence_service.notify_content_published(website_id, title, wordpress_url)
+    except Exception as e:
+        logger.debug(f"Slack notification error: {e}")
+        return False
+

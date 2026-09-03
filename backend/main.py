@@ -31,7 +31,9 @@ from pydantic import BaseModel, Field
 from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
 from database import get_supabase, set_account_context, call_nim_llm
 from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
-from middleware.cors import PermissiveCORSMiddleware
+from middleware.cors import StrictCORSMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
+from middleware.sanitize_response import SanitizeResponseMiddleware
 from services.autonomous_health_service import autonomous_health_service
 
 from routers.websites import router as websites_router
@@ -276,33 +278,17 @@ async def request_logging_middleware(request: Request, call_next):
         raise
 
 
-# Enforce global JWT auth & session validation — added BEFORE CORS so CORS is outermost
-# Middleware execution order is LIFO: last added = outermost = runs first
+# Enforce global JWT auth & session validation
 app.add_middleware(AuthMiddleware)
 
-# CORS configuration — custom permissive middleware reflecting request Origin — MUST be added LAST to be outermost
-app.add_middleware(PermissiveCORSMiddleware)
+# CORS configuration — strict allow-list middleware
+app.add_middleware(StrictCORSMiddleware)
 
-# Fallback explicit OPTIONS handler — guarantees 204 even if middleware stack is misordered on some ASGI servers
-@app.options("/{full_path:path}")
-async def catch_all_options(full_path: str, request: Request):
-    origin = request.headers.get("origin") or "*"
-    req_headers = request.headers.get("access-control-request-headers") or "Content-Type, X-User-Id, X-Website-Id, Authorization, X-Requested-With, *"
-    headers = {
-        "Access-Control-Allow-Origin": origin,
-        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD",
-        "Access-Control-Allow-Headers": req_headers,
-        "Access-Control-Max-Age": "600",
-        "Vary": "Origin",
-        "Content-Length": "0",
-    }
-    if origin != "*":
-        headers["Access-Control-Allow-Credentials"] = "true"
-    return JSONResponse(
-        content={},
-        status_code=204,
-        headers=headers,
-    )
+# Security headers — added outermost so they apply to all responses including CORS preflight
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Response sanitization — sanitizes HTML fields in JSON responses to prevent XSS
+app.add_middleware(SanitizeResponseMiddleware)
 
 
 @app.exception_handler(Exception)

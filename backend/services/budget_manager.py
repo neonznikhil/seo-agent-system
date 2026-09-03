@@ -38,9 +38,9 @@ class BudgetManager:
             except ValueError:
                 pass
         if wid and wid != 'default':
-            supabase = get_supabase()
             try:
-                site = supabase.table('websites').select('daily_budget_usd').eq('id', wid).single().execute().data
+                from services.local_store import get_local_website
+                site = get_local_website(wid)
                 if site and site.get('daily_budget_usd'):
                     return float(site['daily_budget_usd'])
             except Exception:

@@ -115,7 +115,7 @@ class AutonomousDecisionEngine:
         # Job: Content Refresh
         if clean_name == "content_refresh":
             try:
-                from ..services.analytics_service import AnalyticsService
+                from services.analytics_service import AnalyticsService
                 decaying = await AnalyticsService.get_decaying_content(self.website_id)
                 if decaying:
                     return {
@@ -134,7 +134,7 @@ class AutonomousDecisionEngine:
             target_kw = await self.get_next_target_keyword()
             if target_kw:
                 # Verify knowledge base has grounded context
-                from ..services.knowledge_service import KnowledgeService
+                from services.knowledge_service import KnowledgeService
                 ks = KnowledgeService(website_id=self.website_id)
                 hits = await ks.retrieve_relevant_hybrid(target_kw, top_k=3)
                 if hits:
@@ -174,7 +174,7 @@ class AutonomousDecisionEngine:
                 except Exception:
                     pass
                 # New gap found?
-                from ..services.analytics_service import AnalyticsService
+                from services.analytics_service import AnalyticsService
                 gaps = await AnalyticsService.get_content_gaps(self.website_id)
                 has_new_gap = bool(gaps)
                 if (avg_fresh < 0.7) or has_new_gap:
@@ -192,7 +192,7 @@ class AutonomousDecisionEngine:
         # Job: Content Refresh (10:30)
         if clean_name == "content_refresh":
             try:
-                from ..services.analytics_service import AnalyticsService
+                from services.analytics_service import AnalyticsService
                 decaying = await AnalyticsService.get_decaying_content(self.website_id)
                 if decaying and len(decaying) > 0:
                     return {"should_run": True, "reason": f"Decaying content exists ({len(decaying)} articles >30% drop)"}
@@ -227,7 +227,7 @@ class AutonomousDecisionEngine:
 
         # Log decision to agent_memory type decision
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(website_id=self.website_id)
             await brain.remember(
                 website_id=self.website_id,
@@ -279,7 +279,7 @@ class AutonomousDecisionEngine:
                     continue
                 # Grounding check: ensure keyword is relevant to KB
                 try:
-                    from ..services.knowledge_service import KnowledgeService
+                    from services.knowledge_service import KnowledgeService
                     ks = KnowledgeService(website_id=self.website_id)
                     hits = await ks.retrieve_relevant_hybrid(kw, top_k=3)
                     if hits:
@@ -302,7 +302,7 @@ class AutonomousDecisionEngine:
                     if any(denied in kw_low for denied in DENYLIST):
                         continue
                     try:
-                        from ..services.knowledge_service import KnowledgeService
+                        from services.knowledge_service import KnowledgeService
                         ks = KnowledgeService(website_id=self.website_id)
                         hits = await ks.retrieve_relevant_hybrid(kw, top_k=3)
                         if hits:
@@ -326,7 +326,7 @@ class AutonomousDecisionEngine:
                 if niche and niche.lower() not in ["professional services", "strategy and best practices", "autonomous seo optimization strategy"]:
                     # Validate niche grounding
                     try:
-                        from ..services.knowledge_service import KnowledgeService
+                        from services.knowledge_service import KnowledgeService
                         ks = KnowledgeService(website_id=self.website_id)
                         hits = await ks.retrieve_relevant_hybrid(niche, top_k=3)
                         if hits and sum(float(h.get("final_score", 0)) for h in hits)/len(hits) >= 0.55:
@@ -403,13 +403,13 @@ class AutonomousDecisionEngine:
         """Record token usage and estimated cost per agent per day."""
         cost_per_1k = 0.002
         cost_usd = round((tokens / 1000.0) * cost_per_1k, 5)
-        from ..services.budget_manager import BudgetManager
+        from services.budget_manager import BudgetManager
         bm = BudgetManager(website_id=self.website_id)
         await bm.record_spend(agent_name=agent_name, tokens=tokens, cost_usd=cost_usd)
 
     async def check_budget_availability(self, estimated_cost: float = 0.0) -> Dict[str, Any]:
         """Check if today's spend allows running next autonomous task."""
-        from ..services.budget_manager import BudgetManager
+        from services.budget_manager import BudgetManager
         bm = BudgetManager(website_id=self.website_id)
         return await bm.check_budget(website_id=self.website_id, estimated_cost=estimated_cost)
 
@@ -420,7 +420,7 @@ class AutonomousDecisionEngine:
         """Persist decision results to agent_memory and update overall success rate."""
         supabase = get_supabase()
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(website_id=self.website_id)
             
             insight = (

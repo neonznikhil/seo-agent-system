@@ -178,14 +178,14 @@ class RankPredictionService:
         dispatch_result = {}
 
         if rec_action == "refresh_content":
-            from ..agents.refresh_agent import run_refresh_pipeline
+            from agents.refresh_agent import run_refresh_pipeline
             dispatch_result = {"agent": "RefreshAgent", "status": "queued_for_refresh", "keyword": pred.get("keyword")}
         elif rec_action == "build_backlinks":
-            from ..agents.backlink_agent import BacklinkAgent
+            from agents.backlink_agent import BacklinkAgent
             agent = BacklinkAgent(website_id=self.website_id)
             dispatch_result = await agent.run_prospecting_loop(keyword=pred.get("keyword"))
         elif rec_action == "update_schema":
-            from ..agents.tech_seo_agent import TechSEOAgent
+            from agents.tech_seo_agent import TechSEOAgent
             agent = TechSEOAgent(website_id=self.website_id)
             dispatch_result = await agent.run_audit(website_id=self.website_id)
         else:

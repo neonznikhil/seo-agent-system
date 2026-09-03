@@ -106,7 +106,7 @@ def _extract_schema_types(html: str) -> List[str]:
 async def _fetch_wp_post_html(website_id: str, wp_post_id) -> Optional[str]:
     """Fetch rendered/RAW post HTML from the connected WordPress site."""
     try:
-        from ..routers.websites import get_decrypted_wordpress_credentials
+        from routers.websites import get_decrypted_wordpress_credentials
         base_url, user, password = get_decrypted_wordpress_credentials(website_id)
         if not base_url:
             return None
@@ -495,7 +495,7 @@ async def inject_schema(body: InjectSchemaRequest):
     )
 
     # Fetch current WP content and append schema block idempotently
-    from ..routers.websites import get_decrypted_wordpress_credentials
+    from routers.websites import get_decrypted_wordpress_credentials
     base_url, user, password = get_decrypted_wordpress_credentials(website_id)
     if not base_url or not user or not password:
         raise HTTPException(400, "WordPress not connected for this website")

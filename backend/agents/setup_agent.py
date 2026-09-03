@@ -233,7 +233,7 @@ In my {self.industry} career, I have seen these mistakes cost clients time and m
         }
         
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             get_supabase().table("knowledge_base").insert(entry).execute()
             entry["status"] = "saved"
         except Exception as e:

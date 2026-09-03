@@ -133,7 +133,7 @@ async def serper_save_key(payload: SerperSaveKeyPayload, website_id: Optional[st
     credits_remaining = None
     wid = website_id
     try:
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         if not wid or wid in ("default", "all", ""):
             sites = supabase.table("websites").select("id").order("created_at").limit(1).execute().data or []

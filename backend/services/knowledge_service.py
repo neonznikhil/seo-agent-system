@@ -1167,7 +1167,7 @@ async def get_verified_facts(topic: str, website_id: Optional[str] = None) -> Li
 # ---------------------------------------------------------
 # NEW ROBUST CRAWL FUNCTION — cannot fail silently
 # ---------------------------------------------------------
-async def crawl_and_index_website(website_id: str, site_url: str) -> dict:
+async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int = 5) -> dict:
     """
     Crawls a website and indexes content into knowledge_base.
     Cannot fail silently — every step logs result.
@@ -1175,9 +1175,9 @@ async def crawl_and_index_website(website_id: str, site_url: str) -> dict:
     
     Schema: knowledge_base(id, website_id, fact, fact_type, source_url, embedding, created_at, account_id)
     """
-    from ..database import get_supabase
+    from database import get_supabase
     from .nim_client import embed as nim_embed
-    from ..agents.scheduler import log_autonomous_decision
+    from agents.scheduler import log_autonomous_decision
 
     supabase = get_supabase()
     results = {
@@ -1313,7 +1313,7 @@ async def crawl_and_index_website(website_id: str, site_url: str) -> dict:
         # STEP 3: Crawl each page and extract content
         all_chunks = []
 
-        for page_url in pages[:50]:
+        for page_url in pages[:max_pages]:
             try:
                 r = await client.get(page_url)
                 if r.status_code != 200:

@@ -84,7 +84,7 @@ async def get_serp_volatility():
     except Exception:
         pass
     try:
-        from ..services.monitoring_service import MonitoringService
+        from services.monitoring_service import MonitoringService
         ms = MonitoringService(website_id="default")
         vol = await ms.get_serp_volatility_index()
         return {"success": True, "volatility": vol}

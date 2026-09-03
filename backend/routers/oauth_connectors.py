@@ -350,7 +350,7 @@ async def verify_ahrefs_key(payload: VerifyApiKeyRequest):
 @router.post("/connectors/serper/verify")
 async def verify_serper_key(payload: VerifyApiKeyRequest):
     """Real Serper.dev verification through the shared service."""
-    from ..services.serper_service import serper_service
+    from services.serper_service import serper_service
 
     valid = await serper_service.verify_key(payload.api_key)
     if not valid:

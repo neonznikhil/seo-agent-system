@@ -22,7 +22,7 @@ class RefreshAgent:
         if website_id:
             self.website_id = website_id
         
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         
         decay = supabase.table("content_decay_logs").select("*").eq("id", decay_log_id).single().execute().data
@@ -69,7 +69,7 @@ class RefreshAgent:
                   status: str, input_data: Any = None, output_data: Any = None,
                   thought: str = None):
         """Log pipeline step."""
-        from ..database import get_supabase
+        from database import get_supabase
         
         supabase = get_supabase()
         supabase.table("content_pipeline_logs").insert({
@@ -87,7 +87,7 @@ class RefreshAgent:
     
     def _log_pipeline_start(self, decay_data: Dict):
         """Initialize content log for refresh."""
-        from ..database import get_supabase
+        from database import get_supabase
         
         supabase = get_supabase()
         supabase.table("content_log").insert({
@@ -111,7 +111,7 @@ class RefreshAgent:
         return {"status": "completed"}
     
     async def _run_phase_2_serp_competitor(self, diagnosis: Dict) -> Dict:
-        from ..services.crawlee_service import CrawleeService
+        from services.crawlee_service import CrawleeService
         crawler = CrawleeService()
         
         serp_landscape = await crawler.extract_serp_landscape(self.primary_keyword)
@@ -192,7 +192,7 @@ class RefreshAgent:
         ]:
             score = 85
             scores[expert] = score
-            from ..database import get_supabase
+            from database import get_supabase
             supabase = get_supabase()
             supabase.table("content_expert_reviews").insert({
                 "content_id": self.content_id,
@@ -210,7 +210,7 @@ class RefreshAgent:
         return {"status": "completed" if min_score >= 70 else "needs_revision", "scores": scores}
     
     async def _run_phase_10_humanizer_gate(self, decay: Dict) -> Dict:
-        from ..services.wordpress_service import get_wordpress_service
+        from services.wordpress_service import get_wordpress_service
         
         content = "Refreshed content with updated insights and data.\n\n"
         content += "Last updated: " + datetime.utcnow().strftime("%Y-%m-%d")
@@ -246,7 +246,7 @@ class RefreshAgent:
         }
     
     def _finalize_content_log(self, wp_result: Dict):
-        from ..database import get_supabase
+        from database import get_supabase
         supabase = get_supabase()
         
         updates = {

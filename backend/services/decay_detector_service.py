@@ -17,7 +17,7 @@ class DecayDetectorService:
     
     def _get_supabase(self):
         if not self.supabase:
-            from ..database import get_supabase
+            from database import get_supabase
             self.supabase = get_supabase()
         return self.supabase
     
@@ -232,7 +232,7 @@ class DecayDetectorService:
                 diagnosis["new_competitors"] = [p.get("url") for p in top_pages if "competitor" in p.get("url", "").lower()][:3]
                 
                 year_ago = (datetime.utcnow() - timedelta(days=365)).strftime("%Y-%m-%d")
-                from ..database import get_supabase
+                from database import get_supabase
                 supabase = get_supabase()
                 old_ranks = supabase.table("rank_tracking").select("created_at").eq("page_url", page_url).gte("created_at", year_ago).execute().data or []
                 diagnosis["freshness_issue"] = len(old_ranks) == 0

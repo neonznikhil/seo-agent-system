@@ -146,7 +146,7 @@ async def get_active_website(request: Request):
         pass
     # Local fallback
     try:
-        from ..services.local_store import list_local_websites
+        from services.local_store import list_local_websites
         local = list_local_websites(account_id)
         # also try user_id store
         if not local and user_id != account_id:
@@ -183,7 +183,7 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
             return
 
         # Use the new robust crawl function
-        from ..services.knowledge_service import crawl_and_index_website
+        from services.knowledge_service import crawl_and_index_website
         res = await crawl_and_index_website(website_id, site_url)
 
         count = res.get("chunks_saved", 0)
@@ -383,7 +383,7 @@ async def crawl_website_on_demand(website_id: str, request: Request, background_
         except Exception:
             pass
         try:
-            from ..services.knowledge_service import KnowledgeService
+            from services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=website_id, account_id=account_id)
             res = await ks.watch_business_website(target_site=site_url_override, max_pages=max_pages)
             # Mark active after crawl

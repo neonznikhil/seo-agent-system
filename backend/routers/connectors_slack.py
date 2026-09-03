@@ -228,7 +228,7 @@ async def slack_oauth_callback(code: Optional[str] = None, state: Optional[str] 
 
     # Auto-create the 4 channels using the fresh bot token
     try:
-        from ..services.slack_app_service import slack_app_service
+        from services.slack_app_service import slack_app_service
         result = await slack_app_service.initialize_channels(website_id)
         logger.info(f"[SlackOAuth] Channels initialized: {result}")
     except Exception as e:
@@ -236,7 +236,7 @@ async def slack_oauth_callback(code: Optional[str] = None, state: Optional[str] 
 
     # Welcome message to #rankforge-daily
     try:
-        from ..services.slack_app_service import slack_app_service, SLACK_CHANNELS
+        from services.slack_app_service import slack_app_service, SLACK_CHANNELS
         blocks = [{
             "type": "section",
             "text": {

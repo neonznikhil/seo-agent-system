@@ -1,9 +1,8 @@
 """RankForge Auth Middleware with X-User-Id validation (Phase 1 Hardened).
 
-Validates X-User-Id header against users table; 401 if invalid.
-No hardcoded admin fallback — account context is derived exclusively from
-the validated header or the configured DEFAULT_ACCOUNT_ID only when no
-header is supplied and the request is in non-strict demo mode.
+Validates X-User-Id header against users table; 403 if invalid.
+In production, missing X-User-Id is rejected. In development, a default
+account is used for demo compatibility.
 """
 
 import logging
@@ -19,6 +18,7 @@ from database import get_supabase, set_account_context
 logger = logging.getLogger("backend.middleware.auth")
 
 DEFAULT_ACCOUNT_ID = "a0000000-0000-0000-0000-000000000001"
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development") == "production"
 
 
 def _validate_user_exists(user_id: str) -> bool:
@@ -27,23 +27,17 @@ def _validate_user_exists(user_id: str) -> bool:
         return False
     try:
         supabase = get_supabase()
-        # Primary table: users, fallback to auth.users via website ownership check
         res = supabase.table("users").select("id").eq("id", user_id).limit(1).execute()
         if res.data:
             return True
-        # Fallback: check websites ownership as proof account exists
         w_res = supabase.table("websites").select("id").eq("account_id", user_id).limit(1).execute()
-        # If any website references this account, consider it valid
-        # Also allow DEFAULT_ACCOUNT_ID explicitly for demo bootstrap
         if user_id == DEFAULT_ACCOUNT_ID:
             return True
-        # If users table empty (fresh DB), allow but log
         if not res.data and user_id == DEFAULT_ACCOUNT_ID:
             return True
         return False
     except Exception as e:
         logger.debug(f"User validation query note: {e}")
-        # If users table does not exist yet, allow DEFAULT for bootstrap
         if user_id == DEFAULT_ACCOUNT_ID:
             return True
         return False
@@ -54,7 +48,6 @@ def get_current_account_id(request: Request) -> str:
     account_id = getattr(request.state, "account_id", None)
     if account_id:
         return str(account_id)
-    # Fallback only when middleware has not run (e.g. in tests)
     header_val = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
     if header_val:
         return str(header_val).strip()
@@ -64,13 +57,16 @@ def get_current_account_id(request: Request) -> str:
 async def authenticate_request(request: Request) -> Dict[str, Any]:
     """Validate X-User-Id header if present, else use DEFAULT for demo compatibility.
 
-    Strict mode: if X-User-Id is supplied, it MUST exist in users table else 401.
-    If no header, DEFAULT_ACCOUNT_ID is used (allows unauthenticated demo access
-    to pass while still enforcing validation when header is used).
+    In production, X-User-Id is required. In development, DEFAULT_ACCOUNT_ID is used
+    when no header is supplied.
     """
     raw_user_id = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
-    account_id = DEFAULT_ACCOUNT_ID
-    if raw_user_id:
+    
+    if not raw_user_id:
+        if IS_PRODUCTION:
+            raise HTTPException(status_code=401, detail="X-User-Id header required")
+        account_id = DEFAULT_ACCOUNT_ID
+    else:
         candidate = raw_user_id.strip()
         if not candidate:
             raise HTTPException(status_code=403, detail="X-User-Id header empty")
@@ -104,6 +100,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path or ""
         method = request.method or ""
+
         if method == "OPTIONS" or path in ("/health", "/api/health", "/docs", "/openapi.json", "/", "/dashboard", "/app"):
             request.state.account_id = DEFAULT_ACCOUNT_ID
             request.state.account = {
@@ -115,12 +112,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         raw_user_id = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
-        if raw_user_id is not None:
-            candidate = raw_user_id.strip()
-            if candidate and not _validate_user_exists(candidate):
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden: Invalid X-User-Id '{candidate}' not found in users table"})
 
-        account_id = (raw_user_id.strip() if raw_user_id and raw_user_id.strip() else DEFAULT_ACCOUNT_ID)
+        if not raw_user_id:
+            if IS_PRODUCTION:
+                return JSONResponse(status_code=401, content={"detail": "X-User-Id header required"})
+            account_id = DEFAULT_ACCOUNT_ID
+        else:
+            candidate = raw_user_id.strip()
+            if not candidate:
+                return JSONResponse(status_code=403, content={"detail": "X-User-Id header empty"})
+            if not _validate_user_exists(candidate):
+                return JSONResponse(status_code=403, content={"detail": f"Forbidden: Invalid X-User-Id '{candidate}' not found in users table"})
+            account_id = candidate
+
         request.state.account_id = account_id
         request.state.account = {
             "id": account_id,
@@ -133,3 +137,4 @@ class AuthMiddleware(BaseHTTPMiddleware):
         except Exception:
             pass
         return await call_next(request)
+

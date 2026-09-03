@@ -10,12 +10,12 @@ logger = logging.getLogger("backend.services.daily_search")
 
 async def daily_search_job(website_id: str) -> Dict[str, Any]:
     """Mine GSC for new striking-distance keywords, analyze SERPs, update brain."""
-    from ..database import get_supabase, call_nim_llm
-    from ..services.gsc_service import GSCService
-    from ..services.crawlee_service import CrawleeService, extract_serp_landscape
-    from ..services.serper_service import serper_service
-    from ..services.brain_service import BrainService
-    from ..services.reporting_service import report_problem
+    from database import get_supabase, call_nim_llm
+    from services.gsc_service import GSCService
+    from services.crawlee_service import CrawleeService, extract_serp_landscape
+    from services.serper_service import serper_service
+    from services.brain_service import BrainService
+    from services.reporting_service import report_problem
 
     supabase = get_supabase()
     brain = BrainService(website_id)
@@ -144,10 +144,10 @@ async def daily_search_job(website_id: str) -> Dict[str, Any]:
 
 async def daily_cluster_build_job(website_id: str) -> Dict[str, Any]:
     """Rebuild topic clusters from latest GSC and detect coverage gaps."""
-    from ..database import get_supabase
-    from ..services.gsc_miner_service import mine_gsc_keywords
-    from ..services.brain_service import BrainService
-    from ..services.reporting_service import report_problem
+    from database import get_supabase
+    from services.gsc_miner_service import mine_gsc_keywords
+    from services.brain_service import BrainService
+    from services.reporting_service import report_problem
 
     supabase = get_supabase()
     brain = BrainService(website_id)
@@ -222,9 +222,9 @@ async def daily_cluster_build_job(website_id: str) -> Dict[str, Any]:
 
 async def daily_geo_check_job(website_id: str) -> Dict[str, Any]:
     """Check GEO visibility for top pillar keywords and update brain."""
-    from ..database import get_supabase, call_nim_llm
-    from ..services.brain_service import BrainService
-    from ..services.reporting_service import report_problem
+    from database import get_supabase, call_nim_llm
+    from services.brain_service import BrainService
+    from services.reporting_service import report_problem
 
     supabase = get_supabase()
     brain = BrainService(website_id)
@@ -345,9 +345,9 @@ async def daily_geo_check_job(website_id: str) -> Dict[str, Any]:
 
 async def daily_refresh_check_job(website_id: str) -> Dict[str, Any]:
     """Detect decayed content and auto-queue refreshes."""
-    from ..database import get_supabase
-    from ..services.decay_detector_service import DecayDetectorService
-    from ..services.brain_service import BrainService
+    from database import get_supabase
+    from services.decay_detector_service import DecayDetectorService
+    from services.brain_service import BrainService
 
     supabase = get_supabase()
     brain = BrainService(website_id)
@@ -400,9 +400,9 @@ async def daily_refresh_check_job(website_id: str) -> Dict[str, Any]:
 
 async def daily_backlink_check_job(website_id: str) -> Dict[str, Any]:
     """Monitor backlinks and learn from gains/losses."""
-    from ..database import get_supabase
-    from ..services.brain_service import BrainService
-    from ..services.reporting_service import report_problem
+    from database import get_supabase
+    from services.brain_service import BrainService
+    from services.reporting_service import report_problem
 
     supabase = get_supabase()
     brain = BrainService(website_id)
@@ -464,10 +464,10 @@ async def daily_backlink_check_job(website_id: str) -> Dict[str, Any]:
 
 async def daily_new_page_suggestion_job(website_id: str) -> Dict[str, Any]:
     """Auto-queue approved pages for writing."""
-    from ..database import get_supabase
-    from ..services.brain_service import BrainService
-    from ..agents.writer_agent import generate_content
-    from ..services.reporting_service import report_problem
+    from database import get_supabase
+    from services.brain_service import BrainService
+    from agents.writer_agent import generate_content
+    from services.reporting_service import report_problem
 
     supabase = get_supabase()
     result = {"approved": 0, "writing_started": 0, "failed": 0}

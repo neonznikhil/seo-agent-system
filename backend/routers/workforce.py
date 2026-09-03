@@ -534,7 +534,7 @@ async def _agent_real_stats(supabase, agent_name: str, website_id: Optional[str]
     # Next scheduled run from APScheduler registry where applicable
     next_run = None
     try:
-        from ..agents.scheduler import get_scheduler_status
+        from agents.scheduler import get_scheduler_status
         sched = get_scheduler_status()
         mapping = {
             "WriterPipeline": "auto_new_page",
@@ -596,7 +596,7 @@ async def run_workforce_agent(agent_id: str, payload: AgentDirectRunRequest):
     wid = payload.website_id or "default"
 
     # 1. NIM availability gate
-    from ..database import is_nim_available, get_nim_state
+    from database import is_nim_available, get_nim_state
     nim_ok = await is_nim_available()
     if not nim_ok:
         state = get_nim_state()
@@ -622,7 +622,7 @@ async def run_workforce_agent(agent_id: str, payload: AgentDirectRunRequest):
                        "(it runs automatically after connecting, or ingest documents on /knowledge).",
             )
 
-        from ..agents.writer_agent import generate_content
+        from agents.writer_agent import generate_content
         topic = payload.topic or instruction.replace("write", "").replace("Write", "").strip() or "Primary service guide"
         import asyncio
         asyncio.create_task(generate_content(wid, topic, payload.primary_keyword or topic.lower()))
@@ -696,7 +696,7 @@ async def _log_agent_thought(website_id: str, agent_name: str, thought: str) -> 
     except Exception as e:
         logger.debug(f"[Workforce] thought log failed: {e}")
     try:
-        from ..services.event_bus import publish
+        from services.event_bus import publish
         publish(f"agent:{agent_name.lower().replace(' ', '_')}:thoughts",
                 {"event": "thought", "agent": agent_name, "thought": entry["thought"]})
     except Exception:
@@ -714,7 +714,7 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
         await _log_agent_thought(wid, agent_label, summary)
         if slack_fn:
             try:
-                from ..services.slack_intelligence_service import slack_intelligence_service
+                from services.slack_intelligence_service import slack_intelligence_service
                 if slack_fn == "success":
                     await slack_intelligence_service.notify_agent_completion(wid, agent_label, summary, items_count)
                 else:
@@ -733,7 +733,7 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
         }
 
     if agent_id in ("research_agent", "ResearchAgent"):
-        from ..agents.research_agent import ResearchAgent
+        from agents.research_agent import ResearchAgent
         agent = ResearchAgent(website_id=wid)
         trends = await agent.run(topic="primary services and customer questions")
         count = len(trends.get("keywords", []) or []) if isinstance(trends, dict) else 0
@@ -741,7 +741,7 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
                              {"trends_summary": str(trends)[:300]}, count)
 
     if agent_id in ("tech_seo_agent", "TechSEOAgent"):
-        from ..agents.tech_seo_agent import TechSEOAgent
+        from agents.tech_seo_agent import TechSEOAgent
         agent = TechSEOAgent(website_id=wid)
         res = await agent.run_audit(wid)
         health = (res or {}).get("health_score")
@@ -750,7 +750,7 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
                              {"health_score": health}, pages)
 
     if agent_id in ("backlink_agent", "BacklinkAgent"):
-        from ..agents.backlink_agent import BacklinkAgent
+        from agents.backlink_agent import BacklinkAgent
         agent = BacklinkAgent(website_id=wid)
         res = await agent.run_prospecting_loop(keyword="primary service resources")
         found = (res or {}).get("opportunities_found", 0)
@@ -758,7 +758,7 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
                              res if isinstance(res, dict) else {}, int(found or 0))
 
     if agent_id in ("knowledge_agent", "KnowledgeAgent"):
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         ks = KnowledgeService(website_id=wid)
         res = await ks.watch_business_website()
         new_pages = (res or {}).get("new_pages_ingested", 0)
@@ -773,7 +773,7 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
 async def stream_agent_thoughts(agent_id: str, poll_seconds: float = 2.0):
     """SSE stream of an agent's thoughts: replays DB history then streams live events."""
     from fastapi.responses import StreamingResponse
-    from ..services.event_bus import stream as bus_stream
+    from services.event_bus import stream as bus_stream
 
     channel = f"agent:{agent_id.lower().replace(' ', '_')}:thoughts"
 
@@ -809,7 +809,7 @@ async def stream_agent_thoughts(agent_id: str, poll_seconds: float = 2.0):
 @router.get("/workforce/nim-status")
 async def workforce_nim_status():
     """Real NVIDIA NIM availability + diagnostic for the workforce page banner."""
-    from ..database import validate_nim_connection
+    from database import validate_nim_connection
     state = await validate_nim_connection(force=False)
     return {
         "available": bool(state.get("available")),
@@ -862,18 +862,18 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
 
     # 1. Dispatch to specialized agent logic if parameters present
     if match["id"] == "setup_agent" and params.get("url"):
-        from ..agents.setup_agent import SetupAgent
+        from agents.setup_agent import SetupAgent
         agent = SetupAgent(website_id=params.get("website_id", "default"))
         result = await agent.setup_website_profile(url=params["url"])
         reply = f"âœ… Setup completed for {params['url']}:\n\nâ€¢ Business Profile: {result.get('profile_summary', 'Extracted')}\nâ€¢ Tone: {result.get('tone', 'Authoritative')}\nâ€¢ Services: {len(result.get('services', []))} detected."
         
     elif match["id"] == "crew_manager" and params.get("website_id"):
-        from ..agents.crew_manager import run_full_site_optimization_async
+        from agents.crew_manager import run_full_site_optimization_async
         job = await run_full_site_optimization_async(website_id=params["website_id"])
         reply = f"ðŸš€ Launched Full Site Multi-Agent Optimization (Job ID: {job.get('job_id')}). CrewAI Auditor, Editor, and TechSEO agents are processing."
         
     elif match["id"] in ["writer_pipeline", "crew_writer"] and (params.get("topic") or user_msg.lower().startswith("write")):
-        from ..agents.writer_agent import WriterPipeline
+        from agents.writer_agent import WriterPipeline
         topic = params.get("topic") or user_msg.replace("write", "").strip()
         writer = WriterPipeline(website_id=params.get("website_id", "default"))
         res = await writer.generate(topic=topic, primary_keyword=params.get("primary_keyword"))
@@ -881,7 +881,7 @@ async def chat_with_agent(agent_id: str, payload: AgentChatRequest):
         
     else:
         # Retrieve RAG Knowledge Context for this query
-        from ..services.rag_service import RAGService
+        from services.rag_service import RAGService
         rag_service = RAGService(website_id=params.get("website_id"))
         
         # Determine RAG filters based on agent specialization
@@ -954,7 +954,7 @@ async def run_agent_task(agent_id: str, payload: AgentRunRequest):
         return {**executed, "task_id": str(uuid.uuid4())}
 
     # No concrete mapping -> run a real LLM-backed task with telemetry
-    from ..database import is_nim_available, get_nim_state
+    from database import is_nim_available, get_nim_state
     if not await is_nim_available():
         state = get_nim_state()
         raise HTTPException(status_code=503,

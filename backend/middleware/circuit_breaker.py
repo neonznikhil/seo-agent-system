@@ -65,7 +65,7 @@ class CircuitBreaker:
             
             # Post alert
             try:
-                from ..database import get_supabase
+                from database import get_supabase
                 get_supabase().table("realtime_alerts").insert({
                     "alert_type": "circuit_open",
                     "severity": "critical",

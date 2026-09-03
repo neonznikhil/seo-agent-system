@@ -8,10 +8,32 @@ from fastapi import APIRouter, Request, HTTPException, Depends, Body, Background
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from database import get_supabase, call_nim_llm
+try:
+    from database import get_supabase, call_nim_llm
+except (ImportError, ValueError):
+    try:
+        from database import get_supabase, call_nim_llm
+    except (ImportError, ValueError):
+        from backend.database import get_supabase, call_nim_llm
+
 from agents.writer_agent import WriterPipeline
 from agents.human_writer import HumanWriterAgent
-from services.wordpress_service import WordPressService
+
+try:
+    from services.wordpress_service import WordPressService
+except (ImportError, ValueError):
+    try:
+        from services.wordpress_service import WordPressService
+    except (ImportError, ValueError):
+        from backend.services.wordpress_service import WordPressService
+
+try:
+    from services.local_store import list_local_content, list_local_approvals
+except (ImportError, ValueError):
+    try:
+        from services.local_store import list_local_content, list_local_approvals
+    except (ImportError, ValueError):
+        from backend.services.local_store import list_local_content, list_local_approvals
 
 logger = logging.getLogger("backend.routers.writer")
 router = APIRouter()
@@ -41,6 +63,10 @@ class GenerateContentIn(BaseModel):
     keywords: Optional[List[str]] = None
     primary_keyword: Optional[str] = None
     tone: Optional[str] = "authoritative, engaging and SEO-optimized"
+    autonomous: Optional[bool] = False
+    wordpress_site_url: Optional[str] = None
+    wordpress_username: Optional[str] = None
+    wordpress_app_password: Optional[str] = None
 
 
 @router.get("/writer/{website_id}/suggestions")
@@ -50,8 +76,8 @@ async def get_writer_suggestions(website_id: str):
     Autonomous: aggregates research, GSC, daily_searches, then NIM-generated gap topics if DB sparse.
     Also reports WordPress connectivity so UI can drive draft creation.
     """
-    from ..services.website_service import get_website_details
-    from ..database import get_supabase
+    from services.website_service import get_website_details
+    from database import get_supabase
     
     supabase = get_supabase()
     site = get_website_details(website_id) or {}
@@ -168,7 +194,7 @@ async def get_writer_suggestions(website_id: str):
     # 4. NIM autonomous generation if still sparse (<6) — ask LLM for fresh gap topics
     if len(suggestions) < 6:
         try:
-            from ..database import call_nim_llm
+            from database import call_nim_llm
             ai_prompt = f"For business '{business_name}' domain '{domain}' niche '{niche}', suggest 4 distinct high-value SEO blog topics for 2026. Each should target a specific commercial or informational keyword. Return JSON list [{{'title':'...','keyword':'...','category':'...'}}] only."
             raw = await call_nim_llm(ai_prompt, system="You output only valid JSON array.", max_tokens=600, temperature=0.7, fail_silently=True) or ""
             import json as _json, re as _re
@@ -197,7 +223,7 @@ async def get_writer_suggestions(website_id: str):
             wordpress_connected = bool(site.get("wordpress_url") or site.get("app_password") or site.get("wordpress_password_encrypted"))
         # also check wordpress_connections table is_active
         try:
-            from ..services.wordpress_service import WordPressService
+            from services.wordpress_service import WordPressService
             ws = WordPressService(website_id)
             base = ws.get_base_url()
             if base:
@@ -223,8 +249,8 @@ async def get_writer_suggestions(website_id: str):
 @router.get("/api/writer/{website_id}/wordpress-status")
 async def get_writer_wordpress_status(website_id: str):
     """Check WordPress connectivity for writer studio banner — friendly demo handling."""
-    from ..services.wordpress_service import WordPressService
-    from ..services.website_service import get_website_details
+    from services.wordpress_service import WordPressService
+    from services.website_service import get_website_details
     site = get_website_details(website_id) or {}
     svc = WordPressService(website_id)
     base = svc.get_base_url()
@@ -288,6 +314,24 @@ async def generate_content_endpoint(
     """
     raw_title = (body.title or body.topic or "").strip()
 
+    # Autonomous fallback: if title not provided, automatically select topic from engine / KB
+    if not raw_title or getattr(body, "autonomous", False):
+        try:
+            import asyncio
+            from agents.autonomous_decision_engine import AutonomousDecisionEngine
+            engine = AutonomousDecisionEngine(website_id=website_id)
+            raw_title = await asyncio.wait_for(engine.get_next_target_keyword(), timeout=2.0)
+        except Exception as e:
+            logger.debug(f"[WriterAPI] Autonomous topic derivation note: {e}")
+        if not raw_title:
+            try:
+                from services.website_service import get_website_details
+                site = get_website_details(website_id) or {}
+                business = site.get("business_name") or site.get("domain") or "Personal Injury & Accident Law"
+                raw_title = f"Comprehensive Guide to {business} 2026"
+            except Exception:
+                raw_title = "Comprehensive Car Accident Settlement Guide 2026"
+
     # 1. Placeholder validation — UI suggestion chips must never become articles.
     validation_error = validate_title(raw_title)
     if validation_error:
@@ -295,7 +339,7 @@ async def generate_content_endpoint(
 
     # 2. NIM availability gate
     try:
-        from ..database import is_nim_available, get_nim_state
+        from database import is_nim_available, get_nim_state
         if not await is_nim_available():
             state = get_nim_state()
             raise HTTPException(
@@ -319,7 +363,7 @@ async def generate_content_endpoint(
             logger.info(f"[WriterAPI] Pipeline finished for {result.get('content_id')}: {result.get('status')}")
         except Exception as e:
             logger.exception(f"[WriterAPI] Background pipeline crashed: {e}")
-            from ..services.event_bus import publish
+            from services.event_bus import publish
             channel = getattr(pipeline, "sse_channel", None)
             if channel:
                 publish(channel, {"event": "pipeline_failed", "error": str(e)[:300]})
@@ -340,7 +384,7 @@ async def generate_content_endpoint(
 @router.get("/api/writer/job/{job_id}/stream")
 async def stream_writer_job(job_id: str):
     """Server-Sent Events stream of live article generation progress."""
-    from ..services.event_bus import stream as bus_stream, get_history
+    from services.event_bus import stream as bus_stream, get_history
 
     async def event_generator():
         async for event in bus_stream(f"writer:{job_id}"):
@@ -440,7 +484,7 @@ async def approve_draft_endpoint(
     """Creates a DRAFT in WordPress (status: draft) upon human approval."""
     user_id = "a0000000-0000-0000-0000-000000000001"
     try:
-        from ..middleware.human_gate import require_human_for_request
+        from middleware.human_gate import require_human_for_request
         if request:
             user_id = await require_human_for_request(request) or user_id
     except Exception:
@@ -463,13 +507,26 @@ async def approve_draft_endpoint(
         except Exception:
             pass
     if not content:
-        from ..services.local_store import list_local_content, list_local_approvals
         all_local = list_local_content(website_id) + list_local_approvals(website_id)
         content = next((i for i in all_local if i.get("id") == content_id or i.get("blog_id") == content_id or i.get("content_id") == content_id), None)
     if not content:
         raise HTTPException(404, "Content not found")
 
     wp_service = WordPressService(website_id)
+
+    # Allow custom credentials from request body if passed
+    try:
+        if request:
+            req_body = await request.json()
+            if req_body.get("wordpress_site_url"):
+                wp_service.site["wordpress_url"] = req_body["wordpress_site_url"]
+            if req_body.get("wordpress_username"):
+                wp_service.site["wordpress_user"] = req_body["wordpress_username"]
+            if req_body.get("wordpress_app_password"):
+                wp_service.site["app_password"] = req_body["wordpress_app_password"]
+    except Exception:
+        pass
+
     title = content.get("title", "Autonomous SEO Article")
     content_text = content.get("content") or content.get("html_content") or ""
     keywords = [content.get("keyword") or content.get("primary_keyword") or content.get("target_keyword") or "SEO"]
@@ -479,9 +536,10 @@ async def approve_draft_endpoint(
         wp_result = await wp_service.create_draft(website_id, title, content_text, keywords)
     except Exception as e:
         logger.warning(f"WordPress draft creation attempt error: {e}")
+        wp_result = {"success": False, "message": str(e)}
 
     wp_post_id = wp_result.get("wp_post_id") if wp_result else None
-    wp_draft_url = wp_result.get("edit_url") if wp_result else None
+    wp_draft_url = wp_result.get("edit_url") or wp_result.get("link") if wp_result else None
 
     update_payload = {
         "status": "draft",
@@ -505,11 +563,18 @@ async def approve_draft_endpoint(
     except Exception:
         pass
 
+    msg = (
+        f"Draft created in WordPress (Post ID #{wp_post_id})"
+        if wp_post_id
+        else (wp_result.get("message") if wp_result and not wp_result.get("success") else "Article saved as local draft")
+    )
+
     return {
         "status": "draft",
         "wp_post_id": wp_post_id,
         "edit_url": wp_draft_url,
-        "message": f"Draft created in WordPress (Post ID #{wp_post_id})" if wp_post_id else "Article saved as local draft",
+        "message": msg,
+        "success": bool(wp_post_id),
     }
 
 
@@ -522,7 +587,7 @@ async def publish_content_endpoint(
     """Publishes the post live to WordPress upon human approval."""
     user_id = "a0000000-0000-0000-0000-000000000001"
     try:
-        from ..middleware.human_gate import require_human_for_request
+        from middleware.human_gate import require_human_for_request
         if request:
             user_id = await require_human_for_request(request) or user_id
     except Exception:
@@ -545,7 +610,6 @@ async def publish_content_endpoint(
         except Exception:
             pass
     if not content:
-        from ..services.local_store import list_local_content, list_local_approvals
         all_local = list_local_content(website_id) + list_local_approvals(website_id)
         content = next((i for i in all_local if i.get("id") == content_id or i.get("blog_id") == content_id or i.get("content_id") == content_id), None)
     if not content:
@@ -587,7 +651,7 @@ async def publish_content_endpoint(
         logger.warning(f"Could not mark content as published: {e}")
 
     try:
-        from ..services.slack_intelligence_service import notify_content_published
+        from services.slack_intelligence_service import notify_content_published
         await notify_content_published(
             website_id=website_id,
             title=content.get("title", ""),

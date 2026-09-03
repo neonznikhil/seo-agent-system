@@ -177,7 +177,7 @@ class SupervisorAgent:
 
     async def _run_wordpress(self, title: str, content_html: str, meta: Dict[str, Any]) -> Dict[str, Any]:
         """HUMAN APPROVAL GATE - stages post with status 'pending' in blog_approvals table."""
-        from ..services.auto_publisher_service import _stage_for_approval
+        from services.auto_publisher_service import _stage_for_approval
         seo = meta.get("seo_meta") or {}
         return await _stage_for_approval(
             website_id=self.website_id,

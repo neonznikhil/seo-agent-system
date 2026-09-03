@@ -78,7 +78,7 @@ async def generate_article_title(website_id: str, topic: str, keyword: str) -> s
     Retries 3 times with exponential backoff; raises after final failure so the
     pipeline can mark itself failed instead of storing a placeholder title.
     """
-    from ..database import call_nim_llm, get_nim_state
+    from database import call_nim_llm, get_nim_state
 
     date_block = _writer_get_date_block()
     keyword_lock = _writer_get_keyword_lock(keyword)
@@ -174,7 +174,7 @@ class WriterPipeline:
         except Exception:
             self.website_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(website_id or "default")))
         self.supabase = None
-        self.content_id = None
+        self.content_id = str(uuid.uuid4())
         self.topic = None
         self.primary_keyword = None
         self.current_phase = None
@@ -188,7 +188,7 @@ class WriterPipeline:
 
     async def check_duplicate_title(self, website_id: str, title: str) -> bool:
         if not self.supabase:
-            from ..database import get_supabase
+            from database import get_supabase
             self.supabase = get_supabase()
         try:
             existing = self.supabase.table("content_log")\
@@ -202,13 +202,13 @@ class WriterPipeline:
 
     async def generate(self, topic: str, primary_keyword: str = None) -> Dict[str, Any]:
         """Main entry point - starts the 12-phase pipeline with knowledge grounding and brain recall/learn."""
-        from ..services.event_bus import publish
+        from services.event_bus import publish
 
         self.topic = (topic or "").strip()
         self.primary_keyword = (primary_keyword or self.topic).strip()
 
         if not self.supabase:
-            from ..database import get_supabase
+            from database import get_supabase
             self.supabase = get_supabase()
 
         # FIX autonomous unrelated: validate keyword before any generation
@@ -220,7 +220,7 @@ class WriterPipeline:
             # Allow denylist only if KB strongly grounds it (blogging niche site) — check hybrid then fallback text overlap
             _denied_ok = False
             try:
-                from ..services.knowledge_service import KnowledgeService as _KSd
+                from services.knowledge_service import KnowledgeService as _KSd
                 _ksd = _KSd(website_id=self.website_id)
                 _hitsd = await _ksd.retrieve_relevant_hybrid(self.primary_keyword, top_k=3)
                 if _hitsd:
@@ -229,7 +229,7 @@ class WriterPipeline:
                         _denied_ok = True
                 else:
                     # Fallback legal core check for local KB
-                    from ..services.local_store import list_local_knowledge as _LLK
+                    from services.local_store import list_local_knowledge as _LLK
                     import re as _reD2
                     _kbD = _LLK(self.website_id)
                     _kbfD = [k for k in _kbD if 'Hello world' not in (k.get('fact') or k.get('content') or '') and (k.get('fact') or k.get('content') or '').strip()]
@@ -262,7 +262,7 @@ class WriterPipeline:
                     return {"status": "failed", "error_message": f"Denied unrelated keyword '{self.primary_keyword}' (denylist)"}
         # Grounding check: keyword must be relevant to KB — hybrid or fallback text overlap
         try:
-            from ..services.knowledge_service import KnowledgeService as _KS
+            from services.knowledge_service import KnowledgeService as _KS
             _ks = _KS(website_id=self.website_id)
             _hits = await _ks.retrieve_relevant_hybrid(self.primary_keyword, top_k=3)
             _grounded = False
@@ -274,7 +274,7 @@ class WriterPipeline:
                     return {"status": "failed", "error_message": f"Keyword '{self.primary_keyword}' similarity {_avg:.2f} <0.55 — not grounded, aborting unrelated blog"}
             if not _grounded:
                 # Fallback legal core check for local KB
-                from ..services.local_store import list_local_knowledge as _LLKG
+                from services.local_store import list_local_knowledge as _LLKG
                 import re as _reG
                 _kbG = _LLKG(self.website_id)
                 _kbfG = [k for k in _kbG if 'Hello world' not in (k.get('fact') or k.get('content') or '') and (k.get('fact') or k.get('content') or '').strip()]
@@ -344,7 +344,7 @@ class WriterPipeline:
         self.generated_title = generated_title
 
         # 2. Anti-hallucination Knowledge Base Verification Gate
-        from ..services.knowledge_service import KnowledgeService
+        from services.knowledge_service import KnowledgeService
         knowledge_service = KnowledgeService(self.website_id)
         kb_count = 0
         try:
@@ -355,6 +355,12 @@ class WriterPipeline:
             kb_count = kb_res.count if kb_res.count is not None else len(kb_res.data or [])
         except Exception:
             pass
+        if kb_count == 0:
+            try:
+                from services.local_store import list_local_knowledge
+                kb_count = len(list_local_knowledge(self.website_id))
+            except Exception:
+                pass
 
         knowledge_chunks = await knowledge_service.retrieve_relevant_hybrid(self.primary_keyword, top_k=5)
         if not knowledge_chunks and kb_count == 0:
@@ -375,13 +381,6 @@ class WriterPipeline:
 
         analytics_learnings = []
         seo_rules = []
-        try:
-            a_res = self.supabase.table("knowledge_base").select("content").eq("type", "analytics_learning").limit(3).execute().data
-            analytics_learnings = [r["content"] for r in (a_res or [])]
-            r_res = self.supabase.table("knowledge_base").select("content").eq("type", "seo_rule").limit(5).execute().data
-            seo_rules = [r["content"] for r in (r_res or [])]
-        except Exception:
-            pass
 
         self.knowledge_context = {
             "chunks": knowledge_chunks,
@@ -494,7 +493,7 @@ class WriterPipeline:
                                      error_message=error_msg)
             publish(channel, {"event": "pipeline_failed",
                               "error": error_msg})
-            from ..services.reporting_service import report_problem
+            from services.reporting_service import report_problem
             await report_problem(
                 website_id=self.website_id,
                 alert_type='writer_failure',
@@ -529,7 +528,7 @@ class WriterPipeline:
             return {"status": "failed", "error_message": err}
         # Grounding check: content must be grounded in KB (if KB exists)
         try:
-            from ..services.knowledge_service import KnowledgeService as _KS2
+            from services.knowledge_service import KnowledgeService as _KS2
             _ks2 = _KS2(website_id=self.website_id)
             _hits2 = await _ks2.retrieve_relevant_hybrid(self.primary_keyword, top_k=3)
             if _hits2:
@@ -583,6 +582,22 @@ class WriterPipeline:
                 "created_at": datetime.utcnow().isoformat(),
             }).execute()
             approval_id = True
+            try:
+                from services.local_store import save_local_approval
+                save_local_approval({
+                    "id": str(uuid.uuid4()),
+                    "blog_id": self.content_id,
+                    "title": self.generated_title,
+                    "html_content": html_content,
+                    "keyword": self.primary_keyword,
+                    "seo_score": round(seo_score, 1),
+                    "slug": self._slugify(self.generated_title),
+                    "status": "pending",
+                    "website_id": self.website_id,
+                    "created_at": datetime.utcnow().isoformat(),
+                })
+            except Exception:
+                pass
 
             # Calendar entry: scheduled publish = NOW + 48h review window
             scheduled = (datetime.utcnow().timestamp() + 48 * 3600)
@@ -624,7 +639,7 @@ class WriterPipeline:
             "ready_for_approval": True,
         })
 
-        from ..services.reporting_service import report_problem
+        from services.reporting_service import report_problem
         await report_problem(
             website_id=self.website_id,
             alert_type='content_gap',
@@ -636,7 +651,7 @@ class WriterPipeline:
         )
 
         try:
-            from ..services.slack_intelligence_service import notify_content_generated
+            from services.slack_intelligence_service import notify_content_generated
             await notify_content_generated(
                 website_id=self.website_id,
                 title=self.generated_title,
@@ -753,7 +768,7 @@ class WriterPipeline:
         self._log_step(phase, 1, 'brain_recall', 'running', None, thought='Recalling brand brain and past experiences')
 
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(self.website_id)
             brand_brain = await brain.get_brand_brain(self.website_id)
             topic_memories = await brain.recall(self.website_id, self.topic or self.primary_keyword or '', top_k=5)
@@ -778,7 +793,7 @@ class WriterPipeline:
         self._log_step(phase, 1, 'brain_learn', 'running', None, thought='Learning from this article for future runs')
 
         try:
-            from ..services.brain_service import BrainService
+            from services.brain_service import BrainService
             brain = BrainService(self.website_id)
             learn_result = await brain.learn_from_content(self.content_id, status=status)
             self._log_step(phase, 1, 'brain_learn', 'completed', None, learn_result)
@@ -868,6 +883,17 @@ class WriterPipeline:
 
         self.supabase.table('content_log').insert(insert_payload).execute()
 
+    VALID_CONTENT_LOG_COLS = {
+        'id', 'website_id', 'title', 'content', 'status', 'keyword', 'use_case',
+        'embedding', 'faq_schema', 'internal_links', 'similarity_score', 'published_url',
+        'quality_checked', 'pipeline_status', 'eeat_data', 'ai_search_score',
+        'information_gain_score', 'info_gain_score', 'wordpress_draft_id', 'business_potential',
+        'business_potential_score', 'winning_patterns', 'is_refresh', 'original_page_url',
+        'decay_log_id', 'mode', 'human_score', 'seo_score', 'eeat_score', 'human_user_id',
+        'approval_timestamp', 'created_at', 'final_scores', 'phase_results', 'wp_post_id',
+        'wp_draft_url', 'word_count', 'account_id'
+    }
+
     def _update_content_log(self, **kwargs):
         """Update the content_log entry."""
         if not self.supabase:
@@ -876,7 +902,11 @@ class WriterPipeline:
             kwargs['final_scores'] = json.dumps(kwargs['final_scores'], default=str)
         if 'phase_results' in kwargs and not isinstance(kwargs['phase_results'], str):
             kwargs['phase_results'] = json.dumps(kwargs['phase_results'], default=str)
-        self.supabase.table('content_log').update(kwargs).eq('id', self.content_id).execute()
+        safe_kwargs = {k: v for k, v in kwargs.items() if k in self.VALID_CONTENT_LOG_COLS}
+        try:
+            self.supabase.table('content_log').update(safe_kwargs).eq('id', self.content_id).execute()
+        except Exception as e:
+            logger.debug(f"[_update_content_log] Supabase update note: {e}")
 
     # ==================== PHASE 1: AUDIENCE DEMAND ANALYSIS (Steps 1-10) ====================
 
@@ -904,7 +934,7 @@ class WriterPipeline:
             self._log_step(phase, 2, 'business_potential_scoring', 'blocked',
                            {'topic': self.topic}, {'score': score},
                            thought='Topic below business potential threshold')
-            from ..services.reporting_service import report_problem
+            from services.reporting_service import report_problem
             await report_problem(
                 website_id=self.website_id,
                 alert_type='content_gap',
@@ -1173,7 +1203,7 @@ class WriterPipeline:
 
     async def _phase_multi_step_content_writing(self) -> Dict[str, Any]:
         """Phase 4: Multi-Step Content Writing - section-by-section NVIDIA NIM generation."""
-        from ..services.event_bus import publish
+        from services.event_bus import publish
         channel = getattr(self, 'sse_channel', f'writer:{self.content_id}')
 
         phase = 'multi_step_content_writing'
@@ -1667,7 +1697,7 @@ class WriterPipeline:
         return [k for k in (result.data or []) if k.get('impressions', 0) > 500]
 
     async def _score_business_potential(self, topic: str, kb: List[Dict]) -> int:
-        from ..database import call_nim_llm
+        from database import call_nim_llm
         prompt = f"Score 0-3: Does '{topic}' match our business? KB: {json.dumps(kb[:10], default=str)}"
         result = await call_nim_llm(prompt, website_id=self.website_id)
         try: return int(result.strip().split()[0])
@@ -1713,7 +1743,7 @@ class WriterPipeline:
         }
 
     async def _extract_serp_data(self) -> Dict:
-        from ..services.crawlee_service import CrawleeService
+        from services.crawlee_service import CrawleeService
         crawler = CrawleeService(website_id=self.website_id)
         query = self.primary_keyword or self.topic
         try:
@@ -1891,7 +1921,7 @@ class WriterPipeline:
         return await self._call_llm(prompt)
 
     async def _call_llm(self, prompt: str, system: str = "You are an expert SEO content writer. Write concise, high-quality content. No banned phrases: Delve, Unlock, Elevate, Comprehensive guide, Plethora, Leverage, Utilize, Harness, Maximize, Streamline, Revolutionary, Game-changing, Seamless integration, Powerful, Transform your.") -> str:
-        from ..database import call_nim_llm
+        from database import call_nim_llm
         return await call_nim_llm(prompt, system, website_id=self.website_id)
 
     async def _write_intro(self) -> str:
@@ -2258,7 +2288,7 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
         blog_approvals insertion is handled centrally by generate() so this only
         touches WordPress + the blogs mirror table.
         """
-        from ..services.wordpress_service import get_wordpress_service
+        from services.wordpress_service import get_wordpress_service
         ws = get_wordpress_service(self.website_id)
         result = await ws.draft_post(
             title=getattr(self, 'generated_title', None) or f"{self.primary_keyword or self.topic}",
@@ -2268,7 +2298,7 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
 
         # Persist blog post mirror with RAG citations
         try:
-            from ..database import get_supabase
+            from database import get_supabase
             sb = get_supabase()
             existing_blog = (
                 sb.table("blogs").select("id").eq("primary_keyword", self.primary_keyword or self.topic)

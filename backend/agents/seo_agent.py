@@ -20,8 +20,8 @@ class SEOAgent:
         self.website_id = website_id
 
     async def run(self, raw_html: str, keyword: str = "", target_links: int = 3) -> Dict[str, Any]:
-        from ..database import call_nim_llm, get_supabase
-        from ..services.brain_service import BrainService
+        from database import call_nim_llm, get_supabase
+        from services.brain_service import BrainService
 
         brain = BrainService(website_id=self.website_id)
 

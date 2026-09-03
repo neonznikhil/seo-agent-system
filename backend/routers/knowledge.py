@@ -51,6 +51,31 @@ class CrawlSiteRequest(BaseModel):
 # Knowledge Base List & Search Endpoints
 # ---------------------------------------------------------
 
+@router.get("/api/knowledge/stats")
+@router.get("/knowledge/stats")
+async def get_knowledge_stats(website_id: Optional[str] = None):
+    """Return knowledge base summary metrics (total items, local cache, last updated)."""
+    from services.local_store import list_local_knowledge
+    total = 0
+    try:
+        q = supabase.table("knowledge_base").select("id", count="exact")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        res = q.execute()
+        total = res.count or len(res.data or [])
+    except Exception:
+        pass
+    local_kb = list_local_knowledge(website_id)
+    total = max(total, len(local_kb))
+    return {
+        "success": True,
+        "total_facts": total,
+        "local_cached": len(local_kb),
+        "website_id": website_id,
+        "status": "ready"
+    }
+
+
 @router.get("/api/knowledge")
 @router.get("/knowledge")
 async def get_knowledge(
@@ -61,7 +86,7 @@ async def get_knowledge(
     limit: int = 50
 ):
     """List knowledge base documents with entities, credibility, and validation states."""
-    from ..services.local_store import list_local_knowledge
+    from services.local_store import list_local_knowledge
 
     data = []
     try:
@@ -231,7 +256,7 @@ async def crawl_full_site_endpoint(payload: CrawlSiteRequest):
 @router.get("/knowledge/crawl/status")
 async def crawl_status(website_id: Optional[str] = None):
     """Quick status: counts of knowledge chunks per source_url to show crawl breadth."""
-    from ..services.local_store import list_local_knowledge
+    from services.local_store import list_local_knowledge
     supabase = get_supabase()
     data = []
     try:
