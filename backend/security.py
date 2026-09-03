@@ -15,7 +15,10 @@ import os
 import re
 from typing import Any, Dict, Optional
 
-import bleach
+try:
+    import bleach
+except ImportError:
+    bleach = None
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger("backend.security")
@@ -225,15 +228,23 @@ def sanitize_html(html_content: str) -> str:
     if not html_content or not isinstance(html_content, str):
         return ""
     try:
-        cleaned = bleach.clean(
-            html_content,
-            tags=ALLOWED_HTML_TAGS,
-            attributes=ALLOWED_HTML_ATTRIBUTES,
-            styles=ALLOWED_HTML_STYLES,
-            strip=True,
-            strip_comments=True,
-        )
-        return cleaned
+        if bleach:
+            cleaned = bleach.clean(
+                html_content,
+                tags=ALLOWED_HTML_TAGS,
+                attributes=ALLOWED_HTML_ATTRIBUTES,
+                styles=ALLOWED_HTML_STYLES,
+                strip=True,
+                strip_comments=True,
+            )
+            return cleaned
+        else:
+            # High-security regex fallback stripping script, iframe, object, event handlers, and javascript: URIs
+            cleaned = re.sub(r"<(script|iframe|object|embed|applet)[\s\S]*?/\1>", "", html_content, flags=re.I)
+            cleaned = re.sub(r"<(script|iframe|object|embed|applet)[^>]*>", "", cleaned, flags=re.I)
+            cleaned = re.sub(r"\son\w+\s*=\s*(?:'[^']*'|\"[^\"]*\"|[^\s>]+)", "", cleaned, flags=re.I)
+            cleaned = re.sub(r"javascript\s*:", "", cleaned, flags=re.I)
+            return cleaned
     except Exception as e:
         logger.warning(f"[Security] HTML sanitization failed: {e}")
         return ""

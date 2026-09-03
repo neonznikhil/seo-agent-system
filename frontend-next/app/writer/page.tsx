@@ -357,7 +357,6 @@ export default function WriterPage() {
         blog_id: blogId,
         wordpress_site_url: wpCreds.site_url,
         wordpress_username: wpCreds.username,
-        wordpress_app_password: wpCreds.app_password,
       };
 
       // Start SSE connection for real-time progress
@@ -432,7 +431,6 @@ export default function WriterPage() {
           const dres: any = await post(`/api/writer/${selectedWebsiteId}/content/${blogId}/approve-draft`, {
             wordpress_site_url: wpCreds.site_url,
             wordpress_username: wpCreds.username,
-            wordpress_app_password: wpCreds.app_password,
           });
           if (dres?.real_wp_draft_created || dres?.wp_post_id) {
             setWpDraftMsg(`✓ Real WordPress Draft created #${dres.wp_post_id} in WP Admin!`);
@@ -497,7 +495,6 @@ export default function WriterPage() {
       const res = await post(`/api/writer/${selectedWebsiteId}/content/${targetId}/approve-draft`, {
         wordpress_site_url: wpCreds.site_url,
         wordpress_username: wpCreds.username,
-        wordpress_app_password: wpCreds.app_password,
       });
       setWpDraftMsg(res.message || `WordPress draft created #${res.wp_post_id || ""} — ${res.edit_url || ""}`);
       loadArticlesForWebsite(selectedWebsiteId);

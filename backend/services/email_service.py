@@ -65,7 +65,7 @@ async def _send_resend_email(to_email: str, alert: dict) -> bool:
             )
             
             if resp.status == 201:
-                logger.info(f"Email alert sent to {to_email}: {alert.get('id')}")
+                logger.info(f"Email alert sent successfully: alert_id={alert.get('id')}")
                 return True
             else:
                 data = await resp.text()

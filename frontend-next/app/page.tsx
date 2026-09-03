@@ -273,8 +273,8 @@ export default function HomePage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed.app_password) {
-          setWpConnected(true);
-          setWpAppPass(parsed.app_password);
+          delete parsed.app_password;
+          try { localStorage.setItem("rankforge_wp_credentials", JSON.stringify(parsed)); } catch {}
         }
         if (parsed.username && parsed.username !== "admin") {
           setWpUser(parsed.username);
@@ -303,7 +303,6 @@ export default function HomePage() {
             JSON.stringify({
               site_url: "https://accident.innovatcs.com",
               username: targetUser,
-              app_password: wpAppPass.trim(),
             })
           );
         } catch {}
@@ -330,14 +329,11 @@ export default function HomePage() {
       const stored = localStorage.getItem("rankforge_wp_credentials");
       if (stored) wpCreds = JSON.parse(stored);
     } catch {}
-    if (!wpCreds.app_password && wpAppPass.trim()) {
-      wpCreds = {
-        site_url: "https://accident.innovatcs.com",
-        username: wpUser.trim() || "nikhil_d",
-        app_password: wpAppPass.trim(),
-      };
-    } else if (!wpCreds.username || wpCreds.username === "admin") {
+    if (!wpCreds.username || wpCreds.username === "admin") {
       wpCreds.username = wpUser.trim() || "nikhil_d";
+    }
+    if (!wpCreds.site_url) {
+      wpCreds.site_url = "https://accident.innovatcs.com";
     }
 
     try {
@@ -346,7 +342,6 @@ export default function HomePage() {
         website_id: wid,
         wordpress_site_url: wpCreds.site_url,
         wordpress_username: wpCreds.username,
-        wordpress_app_password: wpCreds.app_password,
       });
       const artTitle = res?.title || res?.article?.title || res?.topic || "Autonomous SEO Article";
       if (res?.real_wp_draft_created) {

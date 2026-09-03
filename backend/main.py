@@ -30,8 +30,10 @@ from pydantic import BaseModel, Field
 
 from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
 from database import get_supabase, set_account_context, call_nim_llm
+from error_handling import safe_error_response, log_server_error, get_correlation_id
 from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
 from middleware.cors import StrictCORSMiddleware
+from middleware.rate_limit import RateLimitMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
 from middleware.sanitize_response import SanitizeResponseMiddleware
 from services.autonomous_health_service import autonomous_health_service
@@ -253,7 +255,14 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="RankForge API", lifespan=lifespan)
+is_prod = os.getenv("ENVIRONMENT") == "production"
+app = FastAPI(
+    title="RankForge API",
+    lifespan=lifespan,
+    docs_url=None if is_prod else "/docs",
+    redoc_url=None if is_prod else "/redoc",
+    openapi_url=None if is_prod else "/openapi.json",
+)
 
 # Request logging and timing — must be INNERMOST so CORS runs first
 @app.middleware("http")
@@ -281,6 +290,9 @@ async def request_logging_middleware(request: Request, call_next):
 # Enforce global JWT auth & session validation
 app.add_middleware(AuthMiddleware)
 
+# Enforce route and IP rate limiting (brute-force and DDoS defense)
+app.add_middleware(RateLimitMiddleware)
+
 # CORS configuration — strict allow-list middleware
 app.add_middleware(StrictCORSMiddleware)
 
@@ -293,19 +305,15 @@ app.add_middleware(SanitizeResponseMiddleware)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception: %s", traceback.format_exc())
-    try:
-        get_supabase().table("tasks").insert({
-            "agent_name": "api",
-            "action": "global_exception",
-            "payload": {"path": str(request.url.path)},
-            "result": {"error": str(exc)[:500]},
-            "status": "failed",
-            "real_api_called": "supabase",
-        }).execute()
-    except Exception:
-        pass
-    return JSONResponse(status_code=500, content={"detail": f"Internal server error: {str(exc)}"})
+    correlation_id = log_server_error(exc, request, context="unhandled_exception")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An internal server error occurred. Please try again later.",
+            "correlation_id": correlation_id,
+        },
+        headers={"X-Request-ID": correlation_id},
+    )
 
 
 # ---------------------------------------------------------------------------

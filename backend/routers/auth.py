@@ -130,7 +130,7 @@ class ProfileUpdateRequest(BaseModel):
 async def signup(body: SignupRequest):
     """Register a new tenant account with bcrypt hashing and JWT session."""
     email = body.email.strip().lower()
-    full_name = (body.full_name or "User").strip()
+    full_name = re.sub(r"<[^>]*>", "", (body.full_name or "User")).strip()
     password = body.password
 
     # Validation
@@ -179,7 +179,7 @@ async def signup(body: SignupRequest):
         raise
     except Exception as e:
         logger.error(f"Account creation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
+        raise HTTPException(status_code=500, detail="Account creation failed. Please try again later.")
 
     # Generate JWT
     token = _create_jwt(account_id=account_id, email=email, plan="free")
@@ -224,36 +224,6 @@ async def login(body: LoginRequest):
     """Authenticate account with email and password."""
     email = body.email.strip().lower()
     password = body.password
-
-    # Instant demo fallback for dev/demo accounts if requested
-    if os.getenv("ENVIRONMENT") != "production" and (email == "admin@rankforge.ai" or email == "demo@rankforge.ai") and password == "demo":
-        token = _create_jwt(
-            account_id="a0000000-0000-0000-0000-000000000001",
-            email=email,
-            plan="agency",
-        )
-        token_hash = _hash_token(token)
-        try:
-            get_supabase().table("user_sessions").upsert({
-                "account_id": "a0000000-0000-0000-0000-000000000001",
-                "token_hash": token_hash,
-                "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
-            }).execute()
-        except Exception:
-            pass
-        user_info = {
-            "id": "a0000000-0000-0000-0000-000000000001",
-            "email": email,
-            "full_name": "Lead SEO Architect",
-            "plan": "agency",
-            "role": "owner",
-        }
-        return {
-            "success": True,
-            "token": token,
-            "account": user_info,
-            "user": user_info,
-        }
 
     supabase = get_supabase()
 
@@ -353,10 +323,10 @@ async def get_me(authorization: Optional[str] = Header(None)):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"success": False, "error": "Invalid token payload"},
             )
-    except JWTError as e:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"success": False, "error": f"Invalid or expired token: {str(e)}"},
+            detail={"success": False, "error": "Invalid or expired token"},
         )
 
     supabase = get_supabase()
@@ -520,7 +490,7 @@ async def forgot_password(body: ForgotPasswordRequest):
             }).eq("id", account["id"]).execute()
 
             reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
-            logger.info(f"Password reset link generated for {email}: {reset_link}")
+            logger.info("Password reset link generated and dispatched successfully.")
 
             # Send email via Resend if configured
             if RESEND_API_KEY:
@@ -628,7 +598,7 @@ async def update_profile(
     updates: Dict[str, Any] = {"updated_at": datetime.utcnow().isoformat()}
 
     if body.full_name is not None and body.full_name.strip():
-        updates["full_name"] = body.full_name.strip()
+        updates["full_name"] = re.sub(r"<[^>]*>", "", body.full_name).strip()
     if body.avatar_url is not None:
         updates["avatar_url"] = body.avatar_url.strip()
 
@@ -665,3 +635,50 @@ async def update_profile(
     except Exception as e:
         logger.error(f"Profile update error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update profile")
+
+
+# ---------------------------------------------------------------------------
+# 9. DELETE ACCOUNT & DATA ERASURE (GDPR / CCPA RIGHT TO BE FORGOTTEN)
+# ---------------------------------------------------------------------------
+@router.delete("/auth/account")
+@router.delete("/api/auth/account")
+async def delete_account(
+    authorization: Optional[str] = Header(None),
+):
+    """Permanently delete user account, active sessions, and personal data."""
+    raw_token = _extract_token_from_header(authorization)
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        payload = jwt.decode(raw_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        account_id = payload.get("account_id")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    supabase = get_supabase()
+
+    try:
+        # 1. Terminate all active sessions for this tenant
+        try:
+            supabase.table("user_sessions").delete().eq("account_id", account_id).execute()
+        except Exception:
+            pass
+
+        # 2. Anonymize/delete websites and associated records
+        try:
+            supabase.table("websites").delete().eq("account_id", account_id).execute()
+        except Exception:
+            pass
+
+        # 3. Delete account record
+        supabase.table("accounts").delete().eq("id", account_id).execute()
+
+        logger.info(f"Account {account_id} and associated personal data deleted.")
+        return {
+            "success": True,
+            "message": "Your account and all associated personal data have been permanently deleted.",
+        }
+    except Exception as e:
+        logger.error(f"Account deletion error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process account deletion")

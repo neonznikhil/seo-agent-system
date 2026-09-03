@@ -82,6 +82,35 @@ def _resolve_app_password(row: dict) -> str:
     return decrypted
 
 
+def _verify_website_ownership(website_id: str, account_id: str, supabase) -> dict:
+    """Verify that website exists and belongs to the authenticated account."""
+    if not website_id:
+        raise HTTPException(status_code=400, detail="website_id is required")
+    try:
+        res = supabase.table("websites").select("*").eq("id", website_id).execute()
+        rows = res.data or []
+        if rows:
+            site = rows[0]
+            site_account = site.get("account_id")
+            if site_account and str(site_account) != str(account_id):
+                logger.warning(f"[Security] IDOR attempt: account {account_id} tried to access website {website_id} owned by {site_account}")
+                raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to access this website.")
+            return site
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"Ownership check query note: {e}")
+
+    local = get_local_website(website_id)
+    if local:
+        local_account = local.get("account_id")
+        if local_account and str(local_account) != str(account_id):
+            logger.warning(f"[Security] IDOR attempt (local): account {account_id} tried to access website {website_id} owned by {local_account}")
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to access this website.")
+        return local
+    raise HTTPException(status_code=404, detail="Website not found")
+
+
 @router.get("/websites")
 @router.get("/websites/list")
 @router.get("/api/websites/list")
@@ -90,7 +119,7 @@ async def list_websites(request: Request):
     supabase = get_supabase()
     rows = []
     try:
-        res = supabase.table("websites").select("*").order("created_at", desc=False).execute()
+        res = supabase.table("websites").select("*").eq("account_id", account_id).order("created_at", desc=False).execute()
         rows = res.data or []
     except Exception as e:
         logger.debug(f"[Websites] Supabase query note: {e}")
@@ -259,10 +288,27 @@ async def create_or_update_website(website: WebsiteIn, request: Request, backgro
 
     # 1. Try Supabase
     try:
+        # Check plan limit on max websites for new domain additions
+        acc_res = supabase.table("accounts").select("max_websites").eq("id", account_id).single().execute()
+        if acc_res.data:
+            max_sites = acc_res.data.get("max_websites", 1)
+            existing_count_res = supabase.table("websites").select("id").eq("account_id", account_id).execute()
+            existing_count = len(existing_count_res.data or [])
+            if existing_count >= max_sites and not website.id:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Plan limit reached: your plan allows up to {max_sites} website(s). Please upgrade to add more."
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"Plan website limit check note: {e}")
+
+    try:
         existing = supabase.table("websites").select("id").eq("domain", resolved_domain).execute().data
         if existing and len(existing) > 0:
             target_id = existing[0]["id"]
-            res = supabase.table("websites").update(payload).eq("id", target_id).execute()
+            res = supabase.table("websites").update(payload).eq("id", target_id).eq("account_id", account_id).execute()
             created_website_id = target_id
             if res.data:
                 res_obj = sanitize_website_row(res.data[0])
@@ -292,18 +338,8 @@ async def get_website(website_id: str, request: Request):
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
-
-    try:
-        res = supabase.table("websites").select("*").eq("id", website_id).execute()
-        if res.data and len(res.data) > 0:
-            return sanitize_website_row(res.data[0])
-    except Exception as e:
-        logger.debug(f"[Websites] Supabase get note: {e}")
-
-    local = get_local_website(website_id)
-    if local:
-        return sanitize_website_row(local)
-    raise HTTPException(status_code=404, detail="Website not found")
+    site = _verify_website_ownership(website_id, account_id, supabase)
+    return sanitize_website_row(site)
 
 
 @router.put("/websites/{website_id}")
@@ -311,6 +347,7 @@ async def update_website(website_id: str, update: WebsiteUpdate, request: Reques
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
+    _verify_website_ownership(website_id, account_id, supabase)
 
     payload = {k: v for k, v in update.model_dump().items() if v is not None}
     if not payload:
@@ -326,7 +363,7 @@ async def update_website(website_id: str, update: WebsiteUpdate, request: Reques
     payload["id"] = website_id
 
     try:
-        supabase.table("websites").update(payload).eq("id", website_id).execute()
+        supabase.table("websites").update(payload).eq("id", website_id).eq("account_id", account_id).execute()
     except Exception:
         pass
 
@@ -340,6 +377,7 @@ async def crawl_website_on_demand(website_id: str, request: Request, background_
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
+    _verify_website_ownership(website_id, account_id, supabase)
 
     # Support sync full-site crawl via query ?sync=true or JSON body {sync:true, max_pages:50, site_url:"..."}
     sync = False
@@ -431,9 +469,10 @@ async def delete_website(website_id: str, request: Request):
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
+    _verify_website_ownership(website_id, account_id, supabase)
 
     try:
-        supabase.table("websites").delete().eq("id", website_id).execute()
+        supabase.table("websites").delete().eq("id", website_id).eq("account_id", account_id).execute()
     except Exception:
         pass
 

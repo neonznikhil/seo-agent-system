@@ -86,16 +86,16 @@ async def deep_health_check() -> Dict[str, Any]:
         sb = get_supabase()
         res = sb.table("websites").select("id").limit(1).execute()
         checks["supabase"] = {"status": "pass", "latency_ms": 12, "details": "Read/write verified"}
-    except Exception as e:
-        checks["supabase"] = {"status": "fail", "error": str(e)}
+    except Exception:
+        checks["supabase"] = {"status": "fail", "error": "Supabase connection failed"}
         score -= 25
 
     # 2. NVIDIA NIM Inference (5-token completion test)
     try:
         nim_res = await call_nim_llm("ping", max_tokens=5, temperature=0.1)
         checks["nvidia_nim"] = {"status": "pass", "latency_ms": 145, "response": nim_res[:10]}
-    except Exception as e:
-        checks["nvidia_nim"] = {"status": "fail", "error": str(e)}
+    except Exception:
+        checks["nvidia_nim"] = {"status": "fail", "error": "NVIDIA NIM service unavailable"}
         score -= 20
 
     # 3. Serper.dev API
@@ -107,8 +107,8 @@ async def deep_health_check() -> Dict[str, Any]:
         }
         if not serper_st.get("connected"):
             score -= 10
-    except Exception as e:
-        checks["serper_dev"] = {"status": "fail", "error": str(e)}
+    except Exception:
+        checks["serper_dev"] = {"status": "fail", "error": "Serper API unavailable"}
         score -= 10
 
     # 4. WordPress Connection

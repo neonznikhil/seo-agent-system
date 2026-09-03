@@ -23,7 +23,7 @@ class SupabaseSetupRequest(BaseModel):
 
 
 @router.get("/status")
-async def setup_status():
+async def setup_status(request: Request):
     supabase_url = os.environ.get("SUPABASE_URL", "")
     connected = bool(supabase_url) and get_supabase is not None
     tables = []
@@ -36,12 +36,13 @@ async def setup_status():
             tables = []
         except Exception as exc:
             connected = False
-            error = str(exc)
+            error = "Database connection failed"
+            log_server_error(exc, request, context="setup_status")
             logger.exception("Failed to get Supabase status")
 
     return {
         "connected": connected,
-        "supabase_url": supabase_url,
+        "supabase_configured": bool(supabase_url),
         "tables": tables,
         "error": error,
     }

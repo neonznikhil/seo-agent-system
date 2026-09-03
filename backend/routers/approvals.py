@@ -350,32 +350,44 @@ async def approval_stats(request: Request, website_id: Optional[str] = None):
     }
 
 
+def _verify_approval_ownership(approval_id: str, account_id: str, supabase) -> dict:
+    """Verify that the approval exists and belongs to a website owned by the requesting account."""
+    row = None
+    try:
+        res = supabase.table("blog_approvals").select("*").eq("id", approval_id).maybe_single().execute()
+        row = res.data if res else None
+    except Exception:
+        pass
+    if isinstance(row, list):
+        row = row[0] if row else None
+    if not row:
+        row = get_local_approval(approval_id)
+    if not row or not isinstance(row, dict):
+        raise HTTPException(status_code=404, detail="Approval not found")
+
+    website_id = row.get("website_id")
+    if website_id:
+        try:
+            site_res = supabase.table("websites").select("account_id").eq("id", website_id).maybe_single().execute()
+            site = site_res.data if site_res else None
+            if isinstance(site, list):
+                site = site[0] if site else None
+            if site and isinstance(site, dict) and site.get("account_id") and str(site["account_id"]) != str(account_id):
+                logger.warning(f"[Security] IDOR attempt on approval {approval_id}: account {account_id} is not site owner {site.get('account_id')}")
+                raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to access this approval.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    return row
+
+
 @router.get("/{approval_id}")
 async def get_approval(approval_id: str, request: Request):
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
-
-    row = None
-    try:
-        res = (
-            supabase
-            .table("blog_approvals")
-            .select("*")
-            .eq("id", approval_id)
-            .maybe_single()
-            .execute()
-        )
-        row = res.data if res else None
-    except Exception:
-        pass
-
-    if not row:
-        row = get_local_approval(approval_id)
-
-    if not row:
-        raise HTTPException(404, "Approval not found")
-    return row
+    return _verify_approval_ownership(approval_id, account_id, supabase)
 
 
 @router.put("/{approval_id}")
@@ -384,17 +396,8 @@ async def edit_approval(approval_id: str, body: ApprovalEdit, request: Request):
     supabase = get_supabase()
     set_account_context(supabase, account_id)
 
-    res = (
-        supabase
-        .table("blog_approvals")
-        .select("status")
-        .eq("id", approval_id)
-        .maybe_single()
-        .execute()
-    )
-    if not (res and res.data):
-        raise HTTPException(404, "Approval not found")
-    if res.data.get("status") not in ("pending",):
+    existing_row = _verify_approval_ownership(approval_id, account_id, supabase)
+    if existing_row.get("status") not in ("pending",):
         raise HTTPException(400, "Only pending approvals can be edited")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -427,11 +430,9 @@ async def reject_approval(approval_id: str, request: Request, body: Optional[dic
     supabase = get_supabase()
     set_account_context(supabase, account_id)
 
-    res = supabase.table("blog_approvals").select("status,title,website_id").eq("id", approval_id).maybe_single().execute()
-    if not (res and res.data):
-        raise HTTPException(404, "Approval not found")
-    if res.data.get("status") != "pending":
-        raise HTTPException(400, f"Cannot reject status '{res.data.get('status')}'")
+    existing_row = _verify_approval_ownership(approval_id, account_id, supabase)
+    if existing_row.get("status") != "pending":
+        raise HTTPException(400, f"Cannot reject status '{existing_row.get('status')}'")
 
     reason = (body or {}).get("reason", "") or (body or {}).get("feedback") or ""
     _update_approval(approval_id, {"status": "rejected", "rejection_reason": reason[:500] or None})
@@ -477,9 +478,7 @@ async def request_revision(approval_id: str, request: Request, body: Optional[di
     supabase = get_supabase()
     set_account_context(supabase, account_id)
 
-    res = supabase.table("blog_approvals").select("*").eq("id", approval_id).maybe_single().execute()
-    if not (res and res.data):
-        raise HTTPException(404, "Approval not found")
+    res_data = _verify_approval_ownership(approval_id, account_id, supabase)
 
     notes = (body or {}).get("notes") or (body or {}).get("reason") or (body or {}).get("feedback") or "Improve readability, structure, and depth."
     
@@ -490,7 +489,7 @@ async def request_revision(approval_id: str, request: Request, body: Optional[di
 
     async def _do_revision():
         try:
-            row = res.data
+            row = res_data
             topic = row.get("keyword") or row.get("target_keyword") or "Strategic SEO"
             current_html = row.get("html_content") or ""
             
@@ -563,18 +562,7 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
     supabase = get_supabase()
     set_account_context(supabase, account_id)
 
-    res = None
-    try:
-        res = supabase.table("blog_approvals").select("*").eq("id", approval_id).maybe_single().execute()
-        row = res.data if res else None
-    except Exception:
-        row = None
-
-    if not row:
-        row = get_local_approval(approval_id)
-
-    if not row:
-        raise HTTPException(404, "Approval not found")
+    row = _verify_approval_ownership(approval_id, account_id, supabase)
     if row.get("status") not in ("pending", "revision_requested"):
         raise HTTPException(400, f"Cannot approve status '{row.get('status')}'")
 

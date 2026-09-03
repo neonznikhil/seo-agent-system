@@ -165,7 +165,7 @@ async def test_nvidia(payload: TestNvidiaRequest):
         else:
             raise HTTPException(
                 status_code=resp.status_code,
-                detail=f"NVIDIA API responded with status {resp.status_code}: {resp.text[:200]}",
+                detail="NVIDIA API request failed. Please check your API key and try again.",
             )
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Connection to NVIDIA NIM timed out after 12s")
@@ -173,7 +173,7 @@ async def test_nvidia(payload: TestNvidiaRequest):
         raise
     except Exception as e:
         logger.error(f"Error testing NVIDIA API: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to connect to NVIDIA: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to connect to NVIDIA. Please check your API key and try again.")
 
 
 @router.get("/api/connectors/nvidia/test")
@@ -198,7 +198,7 @@ async def test_nvidia_live():
         return {
             "success": False,
             "connected": False,
-            "error": str(e)
+            "error": "NVIDIA connection failed. Please check your API key."
         }
 
 
@@ -255,7 +255,7 @@ async def test_supabase_live_diagnostic():
         return {
             "success": False,
             "connected": False,
-            "error": str(e),
+            "error": "NVIDIA connection failed. Please check your API key.",
             "table_counts": counts,
             "timestamp": datetime.utcnow().isoformat()
         }
@@ -404,7 +404,7 @@ async def wordpress_connect(payload: WordPressConnectRequest):
             elif user_resp.status_code != 200:
                 raise HTTPException(
                     status_code=user_resp.status_code,
-                    detail=f"WordPress REST API error ({user_resp.status_code}): {user_resp.text[:200]}",
+                     detail="WordPress REST API error. Please check your WordPress credentials.",
                 )
 
             user_data = user_resp.json()
@@ -455,7 +455,7 @@ async def wordpress_connect(payload: WordPressConnectRequest):
         raise
     except Exception as e:
         logger.error(f"Error in WordPress connection test: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="WordPress connection test failed. Please check your credentials.")
 
 
 @router.post("/api/wordpress/save")
@@ -596,13 +596,13 @@ async def test_serper(payload: Optional[TestSerperRequest] = None):
         elif resp.status_code in (401, 403):
             raise HTTPException(status_code=401, detail="Invalid Serper API key")
         else:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text[:200])
+            raise HTTPException(status_code=resp.status_code, detail="External API request failed. Please try again.")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Connection to Serper timed out")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="WordPress connection test failed. Please check your credentials.")
 
 
 @router.post("/api/connectors/save-serper")
@@ -640,13 +640,13 @@ async def test_tavily(payload: Optional[TestTavilyRequest] = None):
         elif resp.status_code in (401, 403):
             raise HTTPException(status_code=401, detail="Invalid Tavily API key")
         else:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text[:200])
+            raise HTTPException(status_code=resp.status_code, detail="External API request failed. Please try again.")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Connection to Tavily timed out")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="WordPress connection test failed. Please check your credentials.")
 
 
 # ---------------------------------------------------------
@@ -682,7 +682,7 @@ async def test_gsc(payload: Optional[TestGscRequest] = None):
         return {
             "connected": is_conn,
             "status": "ready" if is_conn else "not_configured",
-            "message": "GSC credentials saved and ready for property sync" if is_conn else str(e),
+            "message": "GSC credentials saved and ready for property sync" if is_conn else "GSC configuration failed. Please check your credentials.",
             "properties": [payload.property_url] if payload and payload.property_url else [],
         }
 
@@ -697,7 +697,7 @@ async def sync_gsc(payload: Optional[dict] = None):
         result = await sync_gsc_data(website_id=target_id)
         return {"success": True, "synced": True, "data": result}
     except Exception as e:
-        return {"success": False, "synced": False, "message": f"GSC sync error: {str(e)}", "records_synced": 0}
+        return {"success": False, "synced": False, "message": "GSC sync failed. Please try again later.", "records_synced": 0}
 
 
 @router.post("/api/connectors/test-ga4")

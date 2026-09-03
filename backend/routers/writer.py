@@ -348,8 +348,30 @@ async def generate_content_endpoint(
             )
     except HTTPException:
         raise
-    except Exception as e:
-        logger.warning(f"NIM availability check error: {e}")
+    # 3. Monthly Article Quota Check
+    account_id = getattr(request.state, "account_id", None) if request else None
+    if account_id:
+        try:
+            from database import get_supabase
+            sb = get_supabase()
+            acc_res = sb.table("accounts").select("articles_used_this_month,max_articles_per_month,plan").eq("id", account_id).single().execute()
+            if acc_res.data:
+                used = acc_res.data.get("articles_used_this_month", 0)
+                max_allowed = acc_res.data.get("max_articles_per_month", 10)
+                if used >= max_allowed:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Monthly article quota reached ({used}/{max_allowed} used). Please upgrade your plan to generate more content."
+                    )
+                # Increment quota usage atomically
+                sb.table("accounts").update({
+                    "articles_used_this_month": used + 1,
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", account_id).execute()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"[WriterAPI] Quota check note: {e}")
 
     topic = raw_title
     keywords = body.keywords or ([body.primary_keyword] if body.primary_keyword else [topic])

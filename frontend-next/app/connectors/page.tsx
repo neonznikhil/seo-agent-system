@@ -105,7 +105,10 @@ export default function ConnectorsPage() {
         if (parsed.site_url) setWpUrl(parsed.site_url);
         if (parsed.username && parsed.username !== "admin") setWpUser(parsed.username);
         else setWpUser("nikhil_d");
-        if (parsed.app_password) setWpPass(parsed.app_password);
+        if (parsed.app_password) {
+          delete parsed.app_password;
+          try { localStorage.setItem("rankforge_wp_credentials", JSON.stringify(parsed)); } catch {}
+        }
       } else {
         setWpUrl("https://accident.innovatcs.com");
         setWpUser("nikhil_d");
@@ -191,7 +194,7 @@ export default function ConnectorsPage() {
       try {
         localStorage.setItem(
           "rankforge_wp_credentials",
-          JSON.stringify({ site_url: wpUrl, username: wpUser, app_password: wpPass })
+          JSON.stringify({ site_url: wpUrl, username: wpUser })
         );
       } catch {}
       const res = await post("/api/wordpress/connect", {
@@ -231,7 +234,7 @@ export default function ConnectorsPage() {
       try {
         localStorage.setItem(
           "rankforge_wp_credentials",
-          JSON.stringify({ site_url: wpUrl, username: wpUser, app_password: wpPass })
+          JSON.stringify({ site_url: wpUrl, username: wpUser })
         );
       } catch {}
       const res = await post("/api/wordpress/save", {
@@ -369,7 +372,7 @@ export default function ConnectorsPage() {
       try {
         localStorage.setItem(
           "rankforge_wp_credentials",
-          JSON.stringify({ site_url: wpUrl, username: wpUser, app_password: wpPass })
+          JSON.stringify({ site_url: wpUrl, username: wpUser })
         );
       } catch {}
       await post("/api/connectors/save-all", {
