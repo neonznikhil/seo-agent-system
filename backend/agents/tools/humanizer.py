@@ -258,5 +258,4 @@ if __name__ == "__main__":
     test_text = """
     In today's fast-paced world, it's important to note that leveraging a comprehensive CRM solution can revolutionize your business—unlocking unparalleled growth. Delve into our cutting-edge strategies to elevate your operations. Remember that the landscape of technology has transformed dramatically.
     """
-)
-)
+    print(optimize_for_human_readability(test_text))

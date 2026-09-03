@@ -2551,9 +2551,8 @@ async def validate_outline_for_audience(outline: dict, target_reader: str = "car
         is_invalid = any(kw in heading_lower for kw in invalid_section_keywords)
         
         if is_invalid:
-            # Do not add to valid sections
-        else:
-            valid_sections.append(section)
+            continue
+        valid_sections.append(section)
     
     # Ensure we still have at least 3-4 sections; if we removed too many, add victim-focused fallbacks
     if len(valid_sections) < 3:
@@ -5724,8 +5723,7 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
                 f"Minimum is 2400. Regenerating."
             )
     elif final_count > 3200:
-    
-    # Final sanitization pass (remove <br> from style, fix placeholders, fix FAQ)
+        logger.debug(f"Article word count {final_count} exceeds target ceiling; continuing.")
     final = sanitize_blog_html(final)
     
     # 12. Audience check

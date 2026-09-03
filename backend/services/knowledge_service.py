@@ -1262,7 +1262,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                                     '.jpg', '.png', '.pdf',
                                     'attachment', 'feed', 'tag/',
                                     'author/', 'page/2', 'page/3'])]
-} pages in {sitemap_url}")
                 logger.info(f"[CRAWL] Found {len(pages)} pages in {sitemap_url}")
                 break
 
@@ -1288,9 +1287,7 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                                 seen.add(href)
                                 pages.append(href)
                     pages = list(set(pages))[:30]
-} pages from homepage links")
                     logger.info(f"[CRAWL] Found {len(pages)} pages from homepage links")
-                else:
             except Exception as e:
                 err = f"Homepage crawl failed: {e}"
                 results["errors"].append(err)
@@ -1344,11 +1341,9 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                 text = re.sub(r'\s+', ' ', text).strip()
 
                 if len(text) < 200:
-} chars)")
                     continue
 
                 results["pages_crawled"] += 1
-} chars")
 
                 # STEP 4: Chunk the content
                 chunk_size = 1500
@@ -1375,14 +1370,13 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
 
                 all_chunks.extend(chunks)
                 results["chunks_created"] += len(chunks)
-} chunks from {page_url}")
 
             except Exception as e:
                 err = f"Failed to crawl {page_url}: {e}"
                 results["errors"].append(err)
                 logger.error(f"[CRAWL] {err}")
                 continue
-}")
+
         logger.info(f"[CRAWL] Total chunks created: {len(all_chunks)}")
 
         if not all_chunks:
@@ -1409,7 +1403,6 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                         elif len(embedding) > 1024:
                             # Truncate to match DB column dimension (1024)
                             embedding = embedding[:1024]
-} to 1024 dims")
                     except Exception as emb_err:
                         logger.warning(f"[CRAWL] Embedding failed for chunk: {emb_err}")
                         embedding = None
@@ -1426,9 +1419,8 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
 
                     try:
                         insert_result = supabase.table("knowledge_base").insert(row).execute()
-                        if insert_result.data:
+                        if insert_result and insert_result.data:
                             results["chunks_saved"] += 1
-                        else:
                     except Exception as ins_err:
                         err = f"DB insert failed for chunk from {chunk['source_url']}: {ins_err}"
                         results["errors"].append(err)
@@ -1440,24 +1432,27 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                     logger.error(f"[CRAWL] {err}")
                     continue
 
-    # STEP 6: Update website status
-    final_status = "active" if results["chunks_saved"] >= 3 else "error"
-    try:
-        supabase.table("websites").update({
-            "status": final_status,
-            "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", website_id).execute()
-    except Exception as e:
+        # STEP 6: Update website status
+        final_status = "active" if results["chunks_saved"] >= 3 else "error"
+        try:
+            supabase.table("websites").update({
+                "status": final_status,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", website_id).execute()
+        except Exception as e:
+            logger.warning(f"[CRAWL] Failed to update website status: {e}")
 
-    # STEP 7: Log the decision
-    try:
-        await log_autonomous_decision(
-            website_id=website_id,
-            decision="CRAWL_COMPLETE" if final_status == "active" else "CRAWL_FAILED",
-            reason=f"Pages found: {results['pages_found']}, Crawled: {results['pages_crawled']}, Chunks saved: {results['chunks_saved']}, Errors: {len(results['errors'])}",
-            job="knowledge_crawl"
-        )
-    except Exception as e:
-    logger.info(f"[CRAWL] Done. Status: {final_status}. Saved {results['chunks_saved']} chunks.")
+        # STEP 7: Log the decision
+        try:
+            await log_autonomous_decision(
+                website_id=website_id,
+                decision="CRAWL_COMPLETE" if final_status == "active" else "CRAWL_FAILED",
+                reason=f"Pages found: {results['pages_found']}, Crawled: {results['pages_crawled']}, Chunks saved: {results['chunks_saved']}, Errors: {len(results['errors'])}",
+                job="knowledge_crawl"
+            )
+        except Exception as e:
+            logger.warning(f"[CRAWL] Failed to log decision: {e}")
 
-    return results
+        logger.info(f"[CRAWL] Done. Status: {final_status}. Saved {results['chunks_saved']} chunks.")
+
+        return results

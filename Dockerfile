@@ -9,18 +9,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Stage source from build context (works seamlessly whether context is '.' or 'backend')
+COPY . /tmp/src/
 
-# Copy backend into /app/backend and set PYTHONPATH so both `backend.xxx` and `xxx` imports resolve
-COPY backend/ /app/backend/
-RUN mkdir -p /app/backend/local_data
+# Install requirements from whichever path exists
+RUN if [ -f /tmp/src/backend/requirements.txt ]; then \
+        pip install --no-cache-dir -r /tmp/src/backend/requirements.txt; \
+    else \
+        pip install --no-cache-dir -r /tmp/src/requirements.txt; \
+    fi
+
+# Ensure /app/backend is cleanly populated with backend files and main.py
+RUN mkdir -p /app/backend/local_data && \
+    if [ -d /tmp/src/backend ]; then \
+        cp -r /tmp/src/backend/* /app/backend/ && \
+        (cp -r /tmp/src/backend/.[!.]* /app/backend/ 2>/dev/null || true); \
+    else \
+        cp -r /tmp/src/* /app/backend/ && \
+        (cp -r /tmp/src/.[!.]* /app/backend/ 2>/dev/null || true); \
+    fi && \
+    rm -rf /tmp/src
 
 ENV PYTHONPATH="/app:/app/backend"
 WORKDIR /app/backend
 
-# Expose port for Fly.io and Render
-EXPOSE 8080
+EXPOSE 10000
 
-# Use PORT env var (Render sets this to 10000, Fly.io sets to 8080)
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
+CMD ["sh", "-c", "cd /app/backend && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]
