@@ -412,7 +412,7 @@ async def deploy_llms_to_wordpress(website_id: str):
         if resp.status_code not in (200, 201):
             raise HTTPException(
                 status_code=502,
-                detail=f"WordPress deployment failed ({resp.status_code}): {resp.text[:200]}",
+                detail="WordPress deployment failed. Please check your WordPress credentials and try again.",
             )
         page_data = resp.json()
 

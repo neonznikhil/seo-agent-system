@@ -71,19 +71,30 @@ class SanitizeResponseMiddleware(BaseHTTPMiddleware):
             async for chunk in response.body_iterator:
                 body += chunk
             
+            headers = dict(response.headers)
+            headers.pop("content-length", None)
+            headers.pop("Content-Length", None)
+
             if body:
-                data = json.loads(body.decode("utf-8"))
-                sanitized = _sanitize_value(data)
-                new_body = json.dumps(sanitized, default=str).encode("utf-8")
-                
-                new_response = Response(
-                    content=new_body,
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    media_type="application/json",
-                )
-                return new_response
+                try:
+                    data = json.loads(body.decode("utf-8"))
+                    sanitized = _sanitize_value(data)
+                    new_body = json.dumps(sanitized, default=str).encode("utf-8")
+                    return Response(
+                        content=new_body,
+                        status_code=response.status_code,
+                        headers=headers,
+                        media_type="application/json",
+                    )
+                except Exception:
+                    pass
+            
+            return Response(
+                content=body,
+                status_code=response.status_code,
+                headers=headers,
+                media_type="application/json",
+            )
         except Exception as e:
             logger.warning(f"[Sanitize] Failed to sanitize response: {e}")
-        
-        return response
+            return response

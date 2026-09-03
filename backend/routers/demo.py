@@ -1,9 +1,11 @@
 """Demo Flow Router.
 Provides a compressed 5-minute end-to-end demo execution for live presentations.
+Only available in non-production environments.
 """
 
 import asyncio
 import logging
+import os
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query
 from pydantic import BaseModel
@@ -16,6 +18,13 @@ from services.local_store import list_local_knowledge
 
 logger = logging.getLogger("backend.routers.demo")
 router = APIRouter(prefix="/demo", tags=["demo"])
+
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development") == "production"
+
+
+def _demo_blocked():
+    if IS_PRODUCTION:
+        raise HTTPException(status_code=404, detail="Demo endpoints are not available in production")
 
 
 class DemoRunRequest(BaseModel):
@@ -31,6 +40,7 @@ async def run_demo_flow(request: Request, body: Optional[DemoRunRequest] = None)
     3. Generates high-quality article with CrewAI studio (2-3 minutes)
     4. Stages in approvals with all quality checks passing
     """
+    _demo_blocked()
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
@@ -113,6 +123,7 @@ async def demo_readiness_check(
     request: Request,
     website_id: Optional[str] = Query(None, description="Website ID"),
 ):
+    _demo_blocked()
     """
     Evaluates 5 critical prerequisites before live demo presentation:
     1. Knowledge Base (>=5 chunks)
@@ -121,6 +132,7 @@ async def demo_readiness_check(
     4. WordPress Connection (configured & active)
     5. Content Ready (articles generated/published)
     """
+    _demo_blocked()
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)

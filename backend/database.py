@@ -170,7 +170,7 @@ async def validate_nim_connection(force: bool = False) -> dict:
             "available": False,
             "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "http_status": None,
-            "error": str(e)[:300],
+            "error": "NVIDIA NIM unreachable (network error).",
             "diagnostic": "NVIDIA NIM unreachable (network error).",
         })
         logger.error(f"[NIM] Network error during validation: {e}")

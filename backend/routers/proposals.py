@@ -216,9 +216,9 @@ async def approve_proposal(audit_id: str, body: HomepageConfirmIn = HomepageConf
         if "permission" in str(e).lower() or "403" in str(e):
             _log_task(
                 website_id, "writer", "approve_proposal", "blocked",
-                {"audit_id": audit_id, "error": str(e)}, {"wp_updated": False}, "wordpress"
+                {"audit_id": audit_id}, {"wp_updated": False}, "wordpress"
             )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Operation failed. Please try again.")
     
     return updated.data[0] if updated.data else {"status": "approved"}
 
@@ -292,8 +292,8 @@ async def approve_blog(blog_id: str, user_id: str = Depends(_get_current_user)):
     except CriticalActionBlockedError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
-        _log_task(website_id, "writer", "approve_blog", "failed", {"blog_id": blog_id}, {"error": str(e)}, "wordpress")
-        raise HTTPException(status_code=500, detail=str(e))
+        _log_task(website_id, "writer", "approve_blog", "failed", {"blog_id": blog_id}, {"error": "Operation failed"}, "wordpress")
+        raise HTTPException(status_code=500, detail="Operation failed. Please try again.")
 
 
 @router.post("/blogs/reject/{blog_id}")

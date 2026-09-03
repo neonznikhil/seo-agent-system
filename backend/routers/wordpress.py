@@ -142,7 +142,7 @@ async def connect_wordpress(website_id: str, request: Request):
             "message": f"Cannot reach {wp_url}. Check if the URL is correct and site is online."
         }
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": "WordPress connection failed. Please check your URL and credentials."}
 
 
 @router.post("/wordpress/{website_id}/create-draft")
@@ -428,7 +428,7 @@ async def save_wordpress_credentials(website_id: str, body: WordPressCredentials
                     wid = new_site[0]["id"]
     except Exception as e:
         logger.error(f"Error updating website credentials: {e}")
-        raise HTTPException(500, f"Failed to save credentials: {str(e)}")
+        raise HTTPException(500, "Failed to save credentials. Please try again.")
 
     return {"status": "saved", "website_id": wid}
 
@@ -644,7 +644,7 @@ async def oauth_callback(
         raise
     except Exception as e:
         logger.error(f"OAuth callback error: {e}")
-        raise HTTPException(500, f"OAuth callback failed: {str(e)}")
+        raise HTTPException(500, "OAuth callback failed. Please try again.")
 
 
 @router.post("/wordpress/{website_id}/oauth/refresh")
@@ -679,7 +679,7 @@ async def oauth_disconnect(website_id: str):
         return {"status": "disconnected"}
     except Exception as e:
         logger.error(f"OAuth disconnect error: {e}")
-        raise HTTPException(500, f"Failed to disconnect: {str(e)}")
+        raise HTTPException(500, "Failed to disconnect. Please try again.")
 
 
 @router.get("/wordpress/{website_id}/oauth/status", response_model=OAuthStatusResponse)

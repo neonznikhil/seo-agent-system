@@ -73,4 +73,4 @@ services:
     maxmemoryPolicy: allkeys-lru
     ipAllowList:
       - source: 0.0.0.0/0
-        description: Allow all connections
+        description: WARNING: Open to all. Restrict to backend service IP in production.

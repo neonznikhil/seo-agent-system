@@ -108,6 +108,20 @@ def get_current_account_id(request: Request) -> str:
     return DEFAULT_ACCOUNT_ID
 
 
+async def require_auth(request: Request) -> Dict[str, Any]:
+    """Dependency helper returning authenticated account from request state."""
+    account = getattr(request.state, "account", None)
+    if account:
+        return account
+    account_id = get_current_account_id(request)
+    return {
+        "id": account_id,
+        "email": f"user-{account_id[:8]}@rankforge.ai" if account_id != DEFAULT_ACCOUNT_ID else "admin@rankforge.ai",
+        "full_name": "Lead SEO Architect",
+        "plan": "agency" if account_id == DEFAULT_ACCOUNT_ID else "free",
+    }
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware validating JWT signature, expiration, and tenant identity."""
 

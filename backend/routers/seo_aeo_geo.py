@@ -525,7 +525,7 @@ async def inject_schema(body: InjectSchemaRequest):
             json={"content": new_content},
         )
         if update_resp.status_code not in (200, 201):
-            raise HTTPException(502, f"WordPress update failed ({update_resp.status_code}): {update_resp.text[:200]}")
+            raise HTTPException(502, "WordPress update failed. Please check your credentials and try again.")
 
     # Queue the action in pending_fixes for human visibility
     try:

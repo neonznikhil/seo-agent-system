@@ -164,7 +164,7 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None, account_
         rows = q.order("created_at", desc=True).limit(200).execute().data or []
     except Exception as e:
         logger.warning(f"[ApprovalsSync] content_log query failed: {e}")
-        return {"created": 0, "scanned": 0, "error": str(e)[:200]}
+        return {"created": 0, "scanned": 0, "error": "Approval sync failed. Please try again."}
 
     for row in rows:
         scanned += 1
@@ -726,4 +726,4 @@ async def delete_approval(approval_id: str, request: Request):
         return {"success": True, "deleted_id": approval_id, "detail": "Approval item and draft deleted."}
     except Exception as e:
         logger.error(f"Failed to delete approval {approval_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Delete failed. Please try again.")
