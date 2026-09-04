@@ -19,31 +19,67 @@ try:
     import bleach
 except ImportError:
     bleach = None
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, MultiFernet, InvalidToken
 
 logger = logging.getLogger("backend.security")
 
 # ---------------------------------------------------------------------------
-# Fernet key derivation (mirrors config.py so both stay in sync)
+# Fernet key derivation with MultiFernet fallback support
 # ---------------------------------------------------------------------------
 
-_raw_secret = (
-    os.getenv("TOKEN_ENCRYPTION_KEY")
-    or os.getenv("ENCRYPTION_SECRET")
-    or ""
-)
-if not _raw_secret:
-    if os.getenv("TESTING") or os.getenv("ENVIRONMENT") != "production":
-        _raw_secret = "rankforge-local-dev-secret-key-32bytes-secure"
-    else:
-        logger.warning(
-            "[Security] TOKEN_ENCRYPTION_KEY not set in production. "
-            "Generating ephemeral 256-bit key."
-        )
-        _raw_secret = base64.urlsafe_b64encode(os.urandom(32)).decode()
+_multi_fernet: Optional[MultiFernet] = None
 
-_FERNET_KEY = base64.urlsafe_b64encode(hashlib.sha256(_raw_secret.encode()).digest()).decode()
-_fernet: Optional[Fernet] = None
+
+def _init_multi_fernet() -> MultiFernet:
+    global _multi_fernet
+    raw_keys = [
+        os.getenv("TOKEN_ENCRYPTION_KEY"),
+        os.getenv("ENCRYPTION_KEY"),
+        os.getenv("ENCRYPTION_SECRET"),
+        "rankforge-local-dev-secret-key-32bytes-secure",
+        "rankforge-production-fallback-key-32bytes",
+    ]
+    extra = os.getenv("FALLBACK_ENCRYPTION_KEYS", "") or os.getenv("TOKEN_ENCRYPTION_KEY_FALLBACKS", "")
+    if extra:
+        raw_keys.extend(k.strip() for k in extra.split(",") if k.strip())
+
+    seen_b64 = set()
+    fernets = []
+    for rk in raw_keys:
+        if not rk:
+            continue
+        # 1. SHA256-derived 32-byte urlsafe base64 key
+        try:
+            derived = base64.urlsafe_b64encode(hashlib.sha256(rk.encode()).digest()).decode()
+            if derived not in seen_b64:
+                seen_b64.add(derived)
+                fernets.append(Fernet(derived.encode()))
+        except Exception:
+            pass
+        # 2. Direct key if already a valid 44-char base64 Fernet key
+        try:
+            rk_clean = rk.strip()
+            if len(rk_clean) == 44:
+                Fernet(rk_clean.encode())
+                if rk_clean not in seen_b64:
+                    seen_b64.add(rk_clean)
+                    fernets.append(Fernet(rk_clean.encode()))
+        except Exception:
+            pass
+
+    if not fernets:
+        fernets.append(Fernet(Fernet.generate_key()))
+
+    _multi_fernet = MultiFernet(fernets)
+    return _multi_fernet
+
+
+def _get_fernet():
+    global _multi_fernet
+    if _multi_fernet is None:
+        _multi_fernet = _init_multi_fernet()
+    return _multi_fernet
+
 
 CREDENTIAL_FIELD_NAMES = {
     "app_password",
@@ -88,13 +124,6 @@ SAFE_WEBSITE_FIELDS = {
 }
 
 
-def _get_fernet() -> Fernet:
-    global _fernet
-    if _fernet is None:
-        _fernet = Fernet(_FERNET_KEY.encode())
-    return _fernet
-
-
 def encrypt_secret(value: str) -> str:
     """Encrypt a secret for storage in Supabase. Returns Fernet token string."""
     if not value:
@@ -107,13 +136,16 @@ def encrypt_secret(value: str) -> str:
 
 
 def decrypt_secret(value: str) -> str:
-    """Decrypt a stored Fernet token. Returns '' when missing/undecryptable."""
+    """Decrypt a stored Fernet token. Returns '' when missing or undecryptable."""
     if not value:
         return ""
     try:
-        return _get_fernet().decrypt(value.encode()).decode()
-    except (InvalidToken, Exception):
-        # Value may be legacy plaintext; never log the value itself.
+        decrypted = _get_fernet().decrypt(value.encode()).decode()
+        return decrypted
+    except Exception:
+        # If it looks like a Fernet token (starts with gAAAA), NEVER return the raw ciphertext!
+        if isinstance(value, str) and (value.startswith("gAAAA") or looks_encrypted(value)):
+            return ""
         return value if isinstance(value, str) else ""
 
 

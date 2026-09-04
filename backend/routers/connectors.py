@@ -724,14 +724,37 @@ async def test_ga4(payload: Optional[TestGa4Request] = None):
 
 @router.post("/api/connectors/test-ga4-stream")
 @router.post("/connectors/test-ga4-stream")
-async def test_ga4_stream():
-    """Live stream GA4 realtime visitor count."""
-    return {
-        "connected": True,
-        "active_visitors": 4,
-        "top_locations": ["Houston, TX", "Austin, TX", "Dallas, TX"],
-        "stream_status": "live",
-    }
+async def test_ga4_stream(website_id: Optional[str] = Query(None)):
+    """Live GA4 realtime stream status for the selected website."""
+    prop_id = os.getenv("GA4_PROPERTY_ID", "")
+    if not prop_id:
+        return {
+            "connected": False,
+            "stream_status": "not_configured",
+            "message": "GA4 property not configured. Connect GA4 in Connectors to enable real-time analytics.",
+        }
+
+    try:
+        from services.ga4_service import GA4Service
+        svc = GA4Service(property_id=prop_id)
+        data = await svc.get_page_traffic(
+            start_date=(datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d"),
+            end_date=datetime.utcnow().strftime("%Y-%m-%d"),
+            limit=10,
+        )
+        sessions = int(data.get("sessions", 0) or 0)
+        return {
+            "connected": True,
+            "stream_status": "live",
+            "active_visitors": sessions,
+            "top_pages": data.get("top_pages", [])[:5],
+        }
+    except Exception as exc:
+        return {
+            "connected": bool(prop_id),
+            "stream_status": "error",
+            "message": str(exc)[:200],
+        }
 
 
 # ---------------------------------------------------------

@@ -3,6 +3,7 @@ from typing import Optional
 import json
 
 import httpx
+import requests
 
 from database import get_supabase
 from config import WORDPRESS_URL

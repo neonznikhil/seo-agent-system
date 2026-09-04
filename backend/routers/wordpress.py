@@ -98,19 +98,11 @@ async def connect_wordpress(website_id: str, request: Request):
             detail="wordpress_url, wordpress_user, and wordpress_password are all required"
         )
     
-    credentials = base64.b64encode(
-        f"{wp_user}:{wp_pass}".encode()
-    ).decode()
-    
+    wp_svc = WordPressService(website_id)
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            response = await client.get(
-                f"{wp_url}/wp-json/wp/v2/users/me",
-                headers={"Authorization": f"Basic {credentials}"}
-            )
-        
-        if response.status_code == 200:
-            user_info = response.json()
+        test_res = await wp_svc.test_connection(wp_url, wp_user, wp_pass)
+        if test_res.get("connected"):
+            user_name = test_res.get("user_name") or wp_user
             
             # Save to Supabase
             supabase = get_supabase()
@@ -124,16 +116,40 @@ async def connect_wordpress(website_id: str, request: Request):
                 "app_password": encrypted_pass,
             }).eq("id", website_id).execute()
             
+            try:
+                from services.local_store import save_local_website, save_local_wp_connection
+                save_local_website({
+                    "id": website_id,
+                    "wordpress_url": wp_url,
+                    "url": wp_url,
+                    "wordpress_user": wp_user,
+                    "app_password": encrypted_pass,
+                    "wordpress_password": encrypted_pass,
+                    "status": "active",
+                })
+                save_local_wp_connection({
+                    "website_id": website_id,
+                    "site_url": wp_url,
+                    "wp_username": wp_user,
+                    "wp_app_password_encrypted": encrypted_pass,
+                    "is_active": True,
+                })
+            except Exception:
+                pass
+
             return {
                 "success": True,
-                "message": f"Connected as {user_info.get('name', wp_user)}",
-                "wp_user_name": user_info.get('name'),
-                "wp_url": wp_url
+                "message": f"Connected as {user_name}",
+                "wp_user_name": user_name,
+                "wp_url": wp_url,
+                "roles": test_res.get("roles", []),
+                "can_publish": test_res.get("can_publish", True),
+                "warning": test_res.get("warning")
             }
         else:
             return {
                 "success": False,
-                "message": f"WordPress rejected credentials. Status: {response.status_code}. Make sure you're using Application Password, not login password."
+                "message": test_res.get("message") or f"WordPress rejected credentials. Status: {test_res.get('status_code', 'error')}. Make sure you're using Application Password, not login password."
             }
     
     except httpx.ConnectError:
@@ -142,11 +158,11 @@ async def connect_wordpress(website_id: str, request: Request):
             "message": f"Cannot reach {wp_url}. Check if the URL is correct and site is online."
         }
     except Exception as e:
+        logger.warning(f"connect_wordpress failed: {e}")
         return {"success": False, "message": "WordPress connection failed. Please check your URL and credentials."}
 
 
 @router.post("/wordpress/{website_id}/create-draft")
-@router.post("/api/wordpress/{website_id}/create-draft")
 async def create_wp_draft(website_id: str, request: Request):
     import json
     import base64
@@ -255,7 +271,6 @@ async def save_wordpress_connection(body: WordPressCredentialsIn):
 
 
 @router.post("/wordpress/publish")
-@router.post("/api/wordpress/publish")
 async def direct_publish_wp_post(payload: Dict[str, Any], request: Request):
     """Direct human-authorized publishing of content into WordPress."""
     user_id = request.headers.get("X-User-Id")

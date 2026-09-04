@@ -497,6 +497,35 @@ async def get_content_detail(website_id: str, content_id: str):
     }
 
 
+@router.get("/writer/{website_id}/wordpress-status")
+async def get_writer_wordpress_status(website_id: str):
+    """Check whether WordPress is connected and able to draft/publish for this website."""
+    wp_svc = WordPressService(website_id)
+    base_url = wp_svc.get_base_url()
+    user, password = wp_svc._get_auth_tuple()
+
+    if not base_url or not user or not password:
+        return {
+            "connected": False,
+            "wordpress_url": base_url or "",
+            "message": "WordPress credentials not configured. Connect in /websites.",
+            "can_publish": False,
+            "roles": [],
+        }
+
+    test_res = await wp_svc.test_connection(base_url, user, password)
+    return {
+        "connected": bool(test_res.get("connected")),
+        "wordpress_url": base_url,
+        "username": user,
+        "user_name": test_res.get("user_name", user),
+        "message": test_res.get("message", "Connected" if test_res.get("connected") else "Connection failed"),
+        "roles": test_res.get("roles", []),
+        "can_publish": test_res.get("can_publish", True),
+        "warning": test_res.get("warning"),
+    }
+
+
 @router.post("/writer/{website_id}/content/{content_id}/approve-draft")
 async def approve_draft_endpoint(
     website_id: str,
@@ -575,13 +604,33 @@ async def approve_draft_endpoint(
     try:
         supabase.table("content_log").update(update_payload).eq("id", content_id).execute()
     except Exception as e:
-        logger.warning(f"Could not update content_log on approval: {e}")
+        logger.debug(f"Could not update content_log with approved_by: {e}")
+        try:
+            safe_payload = {k: v for k, v in update_payload.items() if k != "approved_by"}
+            supabase.table("content_log").update(safe_payload).eq("id", content_id).execute()
+        except Exception as e2:
+            logger.warning(f"Could not update content_log: {e2}")
+
     try:
         supabase.table("blogs").update(update_payload).eq("id", content_id).execute()
     except Exception:
         pass
     try:
         supabase.table("blog_approvals").update(update_payload).eq("id", content_id).execute()
+    except Exception:
+        pass
+
+    # Update local store cache
+    try:
+        from services.local_store import save_local_approval, save_local_content
+        content_copy = dict(content)
+        content_copy.update({
+            "status": "draft",
+            "wp_post_id": wp_post_id,
+            "wp_draft_url": wp_draft_url,
+            "wordpress_url": wp_draft_url,
+        })
+        save_local_content(content_copy)
     except Exception:
         pass
 
@@ -595,6 +644,8 @@ async def approve_draft_endpoint(
         "status": "draft",
         "wp_post_id": wp_post_id,
         "edit_url": wp_draft_url,
+        "wordpress_url": wp_draft_url,
+        "real_wp_draft_created": bool(wp_post_id),
         "message": msg,
         "success": bool(wp_post_id),
     }

@@ -24,7 +24,7 @@ backend/storage/
 
 # Dependencies
 node_modules/
-__pycache__/
+**/__pycache__/**
 *.pyc
 .venv/
 venv/
@@ -38,6 +38,9 @@ fix_*.py
 diagnose_*.py
 blog_sample.html
 scratch/
+!backend/tests/**
+backend/tests/**/__pycache__/**
+backend/tests/**/*.pyc
 
 # IDE & OS
 .vscode/

@@ -147,30 +147,33 @@ class WordPressService:
             or self.site.get("encrypted_password")
             or self.site.get("app_password")
             or self.site.get("wordpress_password")
-            or os.getenv("WORDPRESS_APP_PASSWORD")
-            or os.getenv("WORDPRESS_PASSWORD")
             or ""
         )
-        if not stored:
-            return (user, "")
 
-        # If password is encrypted (Fernet ciphertext starting with gAAAA), decrypt it
-        if isinstance(stored, str) and stored.startswith("gAAAA"):
-            try:
-                decrypted = decrypt_secret(stored)
-                if decrypted:
-                    return (user, decrypted.strip())
-            except Exception as e:
-                logger.warning(f"Failed to decrypt stored WordPress password: {e}")
+        resolved_pwd = ""
+        if stored:
+            stored_str = str(stored).strip()
+            if stored_str.startswith("gAAAA"):
+                try:
+                    dec = decrypt_secret(stored_str)
+                    if dec and not dec.startswith("gAAAA"):
+                        resolved_pwd = dec.strip()
+                except Exception as e:
+                    logger.warning(f"Failed to decrypt stored WordPress password: {e}")
+            elif "•" not in stored_str:
+                resolved_pwd = stored_str
 
-        # Check if stored password has bullet masks (from masked .env)
-        stored_clean = str(stored).strip()
-        if "•" in stored_clean:
-            env_fallback = os.getenv("WORDPRESS_APP_PASSWORD", "")
+        # Fallback to env variable if DB password is missing, bullet-masked, or undecryptable
+        if not resolved_pwd or "•" in resolved_pwd or resolved_pwd.startswith("gAAAA"):
+            env_fallback = (
+                os.getenv("WORDPRESS_APP_PASSWORD")
+                or os.getenv("WORDPRESS_PASSWORD")
+                or ""
+            ).strip()
             if env_fallback and "•" not in env_fallback:
-                return (user, env_fallback.strip())
+                resolved_pwd = env_fallback
 
-        return (user, stored_clean)
+        return (user, resolved_pwd)
 
     def _get_request_headers(self, additional: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         # Spec: RankForge header for Hostinger bypass
@@ -1016,6 +1019,33 @@ class WordPressService:
         except Exception as e:
             logger.warning(f"Error fetching WP tags: {e}")
         return []
+
+    async def get_site_info(self) -> dict:
+        """Fetch WordPress site info via test_connection."""
+        base_url = self.get_base_url()
+        user, password = self._get_auth_tuple()
+        if not base_url:
+            return {"status": "not_configured", "url": "", "user": user}
+
+        test_result = await self.test_connection(base_url, user, password)
+        if test_result.get("connected"):
+            return {
+                "status": "live",
+                "connected": True,
+                "url": base_url,
+                "user": user,
+                "user_name": test_result.get("user_name"),
+                "roles": test_result.get("roles", []),
+                "can_publish": test_result.get("can_publish", True),
+                "warning": test_result.get("warning"),
+            }
+        return {
+            "status": "error",
+            "connected": False,
+            "url": base_url,
+            "user": user,
+            "message": test_result.get("message", "Could not connect to WordPress"),
+        }
 
 
 def get_wordpress_service(website_id: str) -> WordPressService:

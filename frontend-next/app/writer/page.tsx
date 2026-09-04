@@ -1006,13 +1006,18 @@ function ApproveControls({ article, wid, onRefresh }: { article: ContentItem; wi
 
   return (
     <div style={{ marginTop: "14px" }}>
-      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={approve} disabled={!!busy} className="btn btn-accent" style={{ padding: "8px 16px", fontSize: "11px" }}>
-          {busy === "draft" ? "Creating WordPress Draft..." : "📝 Send to WordPress Draft"}
+          {busy === "draft" ? "Creating WordPress Draft..." : (article.wp_post_id ? "📝 Re-sync WP Draft" : "📝 Send to WordPress Draft")}
         </button>
         <button onClick={publish} disabled={!!busy} className="btn btn-primary" style={{ padding: "8px 16px", fontSize: "11px" }}>
           {busy === "publish" ? "Publishing..." : "🚀 Publish Live Now"}
         </button>
+        {(article.wp_draft_url || article.wordpress_url) && (
+          <a href={article.wp_draft_url || article.wordpress_url} target="_blank" rel="noreferrer" className="btn" style={{ textDecoration: "none", fontSize: "11px", padding: "8px 12px" }}>
+            Open WP Draft ↗
+          </a>
+        )}
       </div>
       {msg && (
         <p style={{ fontSize: "11px", marginTop: "8px", color: msg.toLowerCase().includes("fail") ? "var(--red)" : "var(--green)", wordBreak: "break-all" }}>{msg}</p>

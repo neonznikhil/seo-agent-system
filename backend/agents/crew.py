@@ -94,12 +94,27 @@ seo_aeo_geo_tool = SEOAEOGEOTool()
 serp_analyzer_tool = SERPAnalyzerTool()
 content_optimizer_tool = ContentOptimizerTool()
 
+
+class ProposeBlogTool:
+    name: str = "propose_blog"
+    description: str = "Proposes a blog post with status pending_approval. Never publishes live."
+
+    def run(self, *a, **kw):
+        from agents.tools.cms_tools import propose_blog
+        return propose_blog(*a, **kw)
+
+
+propose_blog_tool = ProposeBlogTool()
+
 nim_llm = _build_nim_chat() if ChatOpenAI is not None else None
 
 
 if Agent is None:
     class _DummyAgent:
-        def __init__(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            self.tools = kw.get("tools", [])
+            self.role = kw.get("role", "")
+            self.goal = kw.get("goal", "")
     class _DummyTask:
         def __init__(self, *a, **kw): pass
     class _DummyCrew:
@@ -141,7 +156,7 @@ writer_agent = Agent(
                        "Publishing is FORBIDDEN - only human can approve via dashboard. "
                        "If you attempt to publish directly, safety gate will BLOCK you and log CRITICAL ERROR. "
                        "Optimize for: E-E-A-T, featured snippets, AI citation, structured data, semantic depth.",
-    tools=[think_tool, quality_gate_tool, llms_txt_tool, crawlee_tool, vector_memory_tool, knowledge_extractor_tool, tone_analyzer_tool, seo_aeo_geo_tool, content_optimizer_tool],
+    tools=[think_tool, propose_blog_tool, quality_gate_tool, llms_txt_tool, crawlee_tool, vector_memory_tool, knowledge_extractor_tool, tone_analyzer_tool, seo_aeo_geo_tool, content_optimizer_tool],
     llm=nim_llm,
     verbose=True,
 )
