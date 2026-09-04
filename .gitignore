@@ -48,9 +48,10 @@ backend/tests/**/*.pyc
 .DS_Store
 Thumbs.db
 
-# Build Artifacts
+# Build Artifacts & Logs
 .next/
 out/
 dist/
 build/
 *.tsbuildinfo
+*.log

@@ -187,7 +187,13 @@ class WordPressService:
         return headers
 
     def _get_wp_headers(self) -> Dict[str, str]:
-        return {"User-Agent": "Mozilla/5.0 RankForge/1.0", "Accept": "application/json", "Content-Type": "application/json"}
+        return {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/json",
+        }
 
     async def check_publish_capability(self, site_url: str, username: str, password: str) -> dict:
         """Pre-check WP user publish capability via GET /wp-json/wp/v2/users/me.
@@ -737,13 +743,27 @@ class WordPressService:
                 password = os.getenv("WP_APP_PASSWORD") or os.getenv("WORDPRESS_APP_PASSWORD", "")
         if not base_url or not user or not password:
             return {"success": False, "message": "WordPress credentials not configured for this website_id", "status_code": 0}
+        f_kw = focus_kw or (title.split()[0] if title else "")
+        meta_fields = {
+            # Yoast SEO
+            "_yoast_wpseo_title": title,
+            "_yoast_wpseo_metadesc": meta_description,
+            "_yoast_wpseo_focuskw": f_kw,
+            # RankMath SEO
+            "rank_math_title": title,
+            "rank_math_description": meta_description,
+            "rank_math_focus_keyword": f_kw,
+            # Generic SEO Fallback
+            "meta_description": meta_description,
+            "focus_keyword": f_kw,
+        }
         payload = {
             "title": title,
             "content": html_content,
             "excerpt": meta_description,
             "slug": slug or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:80],
             "status": "publish" if auto_publish else "draft",
-            "meta": {"_yoast_wpseo_metadesc": meta_description, "_yoast_wpseo_title": title, "_yoast_wpseo_focuskw": focus_kw or title.split()[0] if title else ""},
+            "meta": meta_fields,
         }
         if categories:
             payload["categories"] = categories

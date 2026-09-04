@@ -8,6 +8,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
     from backend.agents.tools import (
@@ -16,6 +19,9 @@ try:
         ContentOptimizerTool,
     )
     print("All tools imported successfully!")
+
+    from backend.agents.crew import auditor_agent, writer_agent, editor_agent, Agent, Crew
+    print("CrewAI agents and Crew imported successfully!")
 
     from backend.agents.setup_agent import SetupAgent, create_setup_agent
     print("SetupAgent imported successfully!")

@@ -13,6 +13,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 load_dotenv()
 
+# Prevent CrewAI and OpenTelemetry from blocking on network telemetry
+os.environ.setdefault("CREWAI_TELEMETRY_OPT_OUT", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
 logger = logging.getLogger("backend.config")
 
 # Core Service Keys & URLs
@@ -89,7 +93,7 @@ FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/
 BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 REDIRECT_URI: str = os.getenv("REDIRECT_URI", f"{BACKEND_URL}/api/wordpress/oauth/callback")
 
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,https://*.onrender.com,https://*.netlify.app,https://seo-agent-system-production.up.railway.app:8080"
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,https://*.onrender.com"
 _raw_cors = os.getenv("ALLOWED_CORS_ORIGINS") or os.getenv("CORS_ORIGINS") or _default_origins
 ALLOWED_CORS_ORIGINS: list = [
     origin.strip().rstrip("/")

@@ -28,6 +28,9 @@ RUN mkdir -p /app/backend/local_data && \
         cp -r /tmp/src/* /app/backend/ && \
         (cp -r /tmp/src/.[!.]* /app/backend/ 2>/dev/null || true); \
     fi && \
+    (cp -f /tmp/src/backend/main.py /app/backend/main.py 2>/dev/null || cp -f /tmp/src/main.py /app/backend/main.py 2>/dev/null || true) && \
+    (cp -f /tmp/src/backend/config.py /app/backend/config.py 2>/dev/null || cp -f /tmp/src/config.py /app/backend/config.py 2>/dev/null || true) && \
+    (cp -f /tmp/src/backend/error_handling.py /app/backend/error_handling.py 2>/dev/null || true) && \
     rm -rf /tmp/src
 
 ENV PYTHONPATH="/app:/app/backend"

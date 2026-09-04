@@ -1,0 +1,16 @@
+{
+  "unique_key": "https://www.google.com/search?gl=in&hl=en&num=10&q=legal+and+personal+injury+resources+2026+inurl:resources+or+inurl:links+%22useful+links%22",
+  "url": "https://www.google.com/search?q=Legal%20and%20personal%20injury%20resources%202026%20inurl%3Aresources%20OR%20inurl%3Alinks%20%22useful%20links%22&num=10&gl=IN&hl=en",
+  "method": "GET",
+  "payload": null,
+  "headers": {},
+  "user_data": {
+    "__crawlee": {
+      "state": 4
+    }
+  },
+  "retry_count": 0,
+  "no_retry": false,
+  "loaded_url": "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3DLegal%2520and%2520personal%2520injury%2520resources%25202026%2520inurl%253Aresources%2520OR%2520inurl%253Alinks%2520%2522useful%2520links%2522%26num%3D10%26gl%3DIN%26hl%3Den%26sei%3DdP-aaqS_Mu-ZhvcPsZ-0mAI&hl=en&q=EhAkCUDQE5SirNFGtWYp88dOGPX-69QGIjAXv5FZQIY4yrvFbYsRp7E9q7cNBh3rdGS2fdqnF3kaCB0iYJzJ0A2rdvLFglOSqBIyAVJaAUM",
+  "handled_at": "2026-09-04 17:27:20.926327+00:00"
+}

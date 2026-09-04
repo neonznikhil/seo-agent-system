@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>RankForge — System Blueprint</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; font-size: 10.5pt; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 22pt; color: #0f172a; border-bottom: 3px solid #2563eb; padding-bottom: 8px; margin-top: 0; }
+  h2 { font-size: 16pt; color: #1e3a8a; border-bottom: 2px solid #93c5fd; padding-bottom: 4px; margin-top: 28px; }
+  h3 { font-size: 12.5pt; color: #1e40af; margin-top: 20px; }
+  h4 { font-size: 11pt; color: #1e3a8a; margin-top: 14px; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9.5pt; }
+  th { background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; padding: 6px 8px; text-align: left; }
+  td { border: 1px solid #dbeafe; padding: 6px 8px; vertical-align: top; }
+  tr:nth-child(even) { background: #f8fafc; }
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 9.5pt; }
+  .toc { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; }
+  .toc h2 { margin-top: 0; font-size: 13pt; }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { margin: 2px 0; }
+  .toc a { color: #2563eb; text-decoration: none; }
+  .summary-box { background: #eff6ff; border-left: 4px solid #2563eb; padding: 10px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .warning-box { background: #fff7ed; border-left: 4px solid #f59e0b; padding: 10px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .success-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 10px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>RANKFORGE — Complete System Blueprint</h1>
+
+<div class="toc">
+<h2>Table of Contents</h2>
+<ul>
+  <li><a href="#overview">1. Project Overview</a></li>
+  <li><a href="#techstack">2. Tech Stack</a></li>
+  <li><a href="#backend">3. Backend Design</a></li>
+  <li><a href="#frontend">4. Frontend Design</a></li>
+  <li><a href="#capabilities">5. Working Capabilities</a></li>
+  <li><a href="#agent-capabilities">6. Agent Capabilities</a></li>
+  <li><a href="#database">7. Database Schema</a></li>
+  <li><a href="#testing">8. Testing</a></li>
+  <li><a href="#state">9. Current State & Issues</a></li>
+  <li><a href="#improvements">10. Improvement Opportunities</a></li>
+  <li><a href="#verdict">11. Verdict</a></li>
+</ul>
+</div>
+
+<div class="summary-box">
+  <strong>Purpose:</strong> RankForge is an autonomous SEO agent system that acts as a self-driving SEO workforce for websites, combining multi-agent AI, continuous monitoring, content generation, WordPress publishing, backlink prospecting, and knowledge management with strong human-in-the-loop safeguards.
+</div>
+
+<div class="page-break"></div>
+
+<h2 id="overview">1. Project Overview</h2>
+
+<h3>What is it?</h3>
+<p>RankForge is an autonomous SEO agent system designed to function as a self-driving SEO workforce for websites. It combines multi-agent AI, continuous monitoring, content generation, WordPress publishing, backlink prospecting, and knowledge management into a single platform.</p>
+
+<h3>Who is it for?</h3>
+<ul>
+  <li><strong>SEO Agencies / In-house SEO teams</strong> managing multiple client sites</li>
+  <li><strong>Content marketers</strong> who need automated, high-quality blog generation</li>
+  <li><strong>WordPress publishers</strong> who want AI-assisted drafting with human approval gates</li>
+  <li><strong>Legal / professional services</strong> (current default niche is personal injury law) but is niche-agnostic</li>
+  <li><strong>Developers</strong> who want an autonomous monitoring + self-healing SEO stack</li>
+</ul>
+
+<h3>What problem does it solve?</h3>
+<ol>
+  <li><strong>Content at scale:</strong> Generates SEO-optimized, human-quality blog posts via a 10-phase, 11-expert agent pipeline</li>
+  <li><strong>Autonomous monitoring:</strong> 24/7 rank drops, SERP changes, competitor moves, technical SEO issues</li>
+  <li><strong>Human-in-the-loop publishing:</strong> Never auto-publishes without explicit human approval via <code>X-User-Id</code></li>
+  <li><strong>Knowledge grounding:</strong> All content is grounded in the website's own knowledge base to prevent hallucination</li>
+  <li><strong>Self-healing & self-improving:</strong> Agents learn from failures, retry with fallbacks, and synthesize 14-day outcome learnings into preference memories</li>
+  <li><strong>Multi-tenant multi-site:</strong> Supports multiple websites per account with Row Level Security (RLS)</li>
+</ol>
+
+<h2 id="techstack">2. Tech Stack</h2>
+
+<h3>Frontend</h3>
+<table>
+  <tr><th>Component</th><th>Technology</th></tr>
+  <tr><td>Framework</td><td>Next.js 15 (App Router)</td></tr>
+  <tr><td>UI Library</td><td>React 19</td></tr>
+  <tr><td>Styling</td><td>Tailwind CSS 3.4 + CSS variables</td></tr>
+  <tr><td>Charts</td><td>D3.js</td></tr>
+  <tr><td>State</td><td>React local state + localStorage for website_id/user_id</td></tr>
+  <tr><td>Icons</td><td>Lucide React</td></tr>
+  <tr><td>Types</td><td>TypeScript 5.6</td></tr>
+  <tr><td>Deployment</td><td>Netlify / Vercel compatible</td></tr>
+  <tr><td>API comms</td><td>lib/api.ts wrapper with auth headers, retries, SSE support</td></tr>
+</table>
+
+<h3>Backend</h3>
+<table>
+  <tr><th>Component</th><th>Technology</th></tr>
+  <tr><td>Framework</td><td>FastAPI (Python 3.14)</td></tr>
+  <tr><td>ASGI</td><td>Uvicorn</td></tr>
+  <tr><td>Auth</td><td>Custom JWT (HS256) + X-User-Id header</td></tr>
+  <tr><td>Database</td><td>Supabase (PostgreSQL + pgvector)</td></tr>
+  <tr><td>Cache/Queue</td><td>Redis (optional, for rate limiting)</td></tr>
+  <tr><td>Scheduler</td><td>APScheduler (AsyncIO, Asia/Kolkata timezone)</td></tr>
+  <tr><td>LLM</td><td>NVIDIA NIM (primary) + OpenRouter fallback</td></tr>
+  <tr><td>Embeddings</td><td>NVIDIA NIM (nemotron-3-embed-1b)</td></tr>
+  <tr><td>Agents</td><td>CrewAI (optional) + custom agent framework</td></tr>
+  <tr><td>Validation</td><td>Pydantic v2</td></tr>
+  <tr><td>Rate limiting</td><td>Custom middleware (Redis or in-memory)</td></tr>
+  <tr><td>Security</td><td>Fernet encryption, bleach HTML sanitization</td></tr>
+</table>
+
+<h3>AI / Agents</h3>
+<table>
+  <tr><th>Component</th><th>Details</th></tr>
+  <tr><td>Agent Framework</td><td>Custom lightweight agents + CrewAI (optional, with fallback)</td></tr>
+  <tr><td>LLM Models</td><td>nvidia/nemotron-3-super-120b-a12b (primary), openai/gpt-oss-20b (fallback), OpenRouter free tier</td></tr>
+  <tr><td>Embedding Models</td><td>nvidia/nemotron-3-embed-1b (primary), nvidia-embed-qa-4, nv-embedqa-e5-v5</td></tr>
+  <tr><td>Agents</td><td>7 dedicated SEO agents + CrewAI 3-agent crew (Auditor, Writer, Editor)</td></tr>
+  <tr><td>Tools</td><td>20+ custom tools (web browsing, SERP analysis, knowledge extraction, quality gates, etc.)</td></tr>
+</table>
+
+<h3>Database</h3>
+<table>
+  <tr><th>Component</th><th>Details</th></tr>
+  <tr><td>Primary DB</td><td>Supabase (PostgreSQL 15+)</td></tr>
+  <tr><td>Vector Search</td><td>pgvector extension with IVFFlat indexes</td></tr>
+  <tr><td>ORM</td><td>Supabase-py client (no traditional ORM)</td></tr>
+  <tr><td>Schema</td><td>20+ tables across 5 SQL files</td></tr>
+</table>
+
+<h3>Integrations</h3>
+<table>
+  <tr><th>Integration</th><th>Purpose</th></tr>
+  <tr><td>WordPress</td><td>Draft creation, publishing via Application Passwords / OAuth</td></tr>
+  <tr><td>Serper.dev</td><td>SERP trends, competitor analysis, real-time search data</td></tr>
+  <tr><td>NVIDIA NIM</td><td>LLM completions + embeddings</td></tr>
+  <tr><td>OpenRouter</td><td>Fallback LLM provider</td></tr>
+  <tr><td>Slack</td><td>Alerts, notifications, intelligence</td></tr>
+  <tr><td>Resend</td><td>Email capabilities</td></tr>
+  <tr><td>Google Search Console</td><td>Keyword/impression data</td></tr>
+  <tr><td>GA4</td><td>Analytics integration</td></tr>
+  <tr><td>Crawlee</td><td>Web crawling / sitemap watching</td></tr>
+  <tr><td>Playwright</td><td>Browser automation for web browsing tools</td></tr>
+  <tr><td>Redis</td><td>Rate limiting, distributed locks</td></tr>
+</table>
+
+<h3>Deployment</h3>
+<table>
+  <tr><th>Platform</th><th>Role</th></tr>
+  <tr><td>Docker</td><td>Primary containerization (docker-compose.yml)</td></tr>
+  <tr><td>Render</td><td>Backend + frontend + Redis (free tier)</td></tr>
+  <tr><td>Railway</td><td>Alternative backend deployment (railway.json)</td></tr>
+  <tr><td>Fly.io</td><td>Alternative (fly.toml)</td></tr>
+  <tr><td>Netlify</td><td>Frontend deployment</td></tr>
+  <tr><td>Local</td><td>uvicorn backend.main:app --reload + npm run dev</td></tr>
+</table>
+
+<h3>Testing</h3>
+<table>
+  <tr><th>Component</th><th>Details</th></tr>
+  <tr><td>Framework</td><td>pytest + pytest-asyncio</td></tr>
+  <tr><td>Test location</td><td>backend/tests/test_*.py (50+ test files)</td></tr>
+  <tr><td>Config</td><td>pyproject.toml (asyncio_mode = "auto")</td></tr>
+  <tr><td>Conftest</td><td>Minimal (conftest.py only 4 lines)</td></tr>
+  <tr><td>Coverage</td><td>Not explicitly configured</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="backend">3. Backend Design</h2>
+
+<h3>FastAPI App Structure</h3>
+<pre style="background:#f8fafc;padding:10px;border-radius:6px;font-size:9.5pt;overflow:auto;">
+backend/
+  main.py                    # App entry, lifespan, middleware, routers, global endpoints
+  config.py                  # Env vars, JWT, CORS, validation
+  database.py                # Supabase singleton, NIM calls, embeddings
+  security.py                # Fernet encryption, HTML sanitization, credential safety
+  error_handling.py          # Global error response formatting
+  middleware/
+    auth.py                  # JWT + X-User-Id validation, spoofing protection
+    cors.py                  # Strict CORS allow-list
+    rate_limit.py            # Per-endpoint rate limiting (Redis or memory)
+    security_headers.py      # Security response headers
+    sanitize_response.py     # XSS prevention in JSON responses
+  routers/                   # 40+ API routers
+  services/                  # 40+ business logic services
+  agents/                    # 7 SEO agents + scheduler + tools
+  tools/                     # (empty; tools live in agents/tools/)
+</pre>
+
+<h3>All Routers and Endpoints</h3>
+<table>
+  <tr><th>Router</th><th>Prefix</th><th>Key Endpoints</th></tr>
+  <tr><td>auth</td><td>/api/auth</td><td>login, signup, forgot-password, reset-password, refresh</td></tr>
+  <tr><td>health</td><td>/api/health, /health</td><td>health check</td></tr>
+  <tr><td>websites</td><td>/api/websites</td><td>CRUD websites</td></tr>
+  <tr><td>setup</td><td>/api/setup</td><td>Supabase setup wizard</td></tr>
+  <tr><td>settings</td><td>/api/settings</td><td>App settings</td></tr>
+  <tr><td>approvals</td><td>/api/approvals</td><td>List/edit/approve/reject blog approvals, publish</td></tr>
+  <tr><td>proposals</td><td>/api/proposals</td><td>SEO proposal management</td></tr>
+  <tr><td>writer</td><td>/api/writer/{website_id}</td><td>generate, suggestions, content list, preview, publish, approve-draft, expert-reviews</td></tr>
+  <tr><td>crew_writer</td><td>/api/crew-writer</td><td>CrewAI blog generation</td></tr>
+  <tr><td>content</td><td>/api/content</td><td>Content management</td></tr>
+  <tr><td>calendar</td><td>/api/calendar</td><td>Content calendar</td></tr>
+  <tr><td>decay</td><td>/api/decay</td><td>Content decay tracking</td></tr>
+  <tr><td>keywords</td><td>/api/keywords</td><td>Keyword management</td></tr>
+  <tr><td>clusters</td><td>/api/clusters</td><td>Topic clusters</td></tr>
+  <tr><td>serp</td><td>/api/serp</td><td>SERP analysis</td></tr>
+  <tr><td>research</td><td>/api/research</td><td>Keyword research</td></tr>
+  <tr><td>seo_aeo_geo</td><td>/api/seo-analysis, /api/aeo-score, /api/geo-readiness</td><td>SEO/AEO/GEO scoring</td></tr>
+  <tr><td>tech_seo</td><td>/api/tech-seo</td><td>Technical SEO audits</td></tr>
+  <tr><td>gsc</td><td>/api/gsc</td><td>Google Search Console</td></tr>
+  <tr><td>analytics</td><td>/api/analytics</td><td>GA4 / analytics data</td></tr>
+  <tr><td>roi</td><td>/api/roi</td><td>ROI tracking</td></tr>
+  <tr><td>report</td><td>/api/report</td><td>Reporting</td></tr>
+  <tr><td>backlinks</td><td>/api/backlinks</td><td>Backlink management</td></tr>
+  <tr><td>links</td><td>/api/links</td><td>Internal linking</td></tr>
+  <tr><td>brain</td><td>/api/brain</td><td>Brain memory, autopilot</td></tr>
+  <tr><td>memory</td><td>/api/memory</td><td>Memory management</td></tr>
+  <tr><td>knowledge</td><td>/api/knowledge</td><td>Knowledge base ingestion, retrieval</td></tr>
+  <tr><td>rag</td><td>/api/rag</td><td>RAG chat, retrieval</td></tr>
+  <tr><td>chat</td><td>/api/chat</td><td>Chat interface</td></tr>
+  <tr><td>llms_txt</td><td>/api/llms-txt</td><td>LLMs.txt generation</td></tr>
+  <tr><td>wordpress</td><td>/api/wordpress</td><td>WP connect, create-draft, publish, test</td></tr>
+  <tr><td>wordpress_oauth</td><td>/api/wordpress/oauth</td><td>OAuth flow</td></tr>
+  <tr><td>wordpress_connect</td><td>/api/wordpress-connect</td><td>WP connection management</td></tr>
+  <tr><td>oauth_connectors</td><td>/api/oauth</td><td>Generic OAuth connectors</td></tr>
+  <tr><td>connectors</td><td>/api/connectors</td><td>Serper, Slack, Supabase, NVIDIA connectors</td></tr>
+  <tr><td>costs</td><td>/api/costs</td><td>Cost tracking</td></tr>
+  <tr><td>email</td><td>/api/email</td><td>Email via Resend</td></tr>
+  <tr><td>monitoring</td><td>/api/monitoring</td><td>Alerts, stats, logs, live SSE, pending fixes</td></tr>
+  <tr><td>autonomy</td><td>/api/autonomy</td><td>Autonomous settings, blog schedule</td></tr>
+  <tr><td>scheduler</td><td>/api/scheduler</td><td>Scheduler status, logs</td></tr>
+  <tr><td>workforce</td><td>/api/workforce</td><td>Agent workforce status</td></tr>
+  <tr><td>dashboard</td><td>/api/dashboard</td><td>Dashboard metrics</td></tr>
+  <tr><td>rank_tracker</td><td>/api/rankings</td><td>Rank tracking</td></tr>
+  <tr><td>demo</td><td>/api/demo</td><td>Demo readiness checks</td></tr>
+</table>
+
+<h3>All Services and Responsibilities</h3>
+<table>
+  <tr><th>Service</th><th>Responsibility</th></tr>
+  <tr><td>wordpress_service.py</td><td>WordPress REST API, draft/publish, connection testing, capability checks</td></tr>
+  <tr><td>wordpress_oauth_service.py</td><td>WordPress OAuth flow</td></tr>
+  <tr><td>approval_store.py</td><td>Blog approval queue (Supabase + memory fallback)</td></tr>
+  <tr><td>brain_service.py</td><td>7-memory-type brain, recall, remember, 14-day synthesis</td></tr>
+  <tr><td>knowledge_service.py</td><td>Knowledge ingestion, chunking, embeddings, hybrid search, freshness decay</td></tr>
+  <tr><td>rag_service.py</td><td>RAG retrieval, hybrid search, NIM cross-encoder reranking, streaming generation</td></tr>
+  <tr><td>seo_quality_gate.py</td><td>Deterministic SEO checks (title length, meta, keyword density, internal links, Elementor-safe HTML, grounding)</td></tr>
+  <tr><td>serper_service.py</td><td>Serper.dev API wrapper (SERP, news, images)</td></tr>
+  <tr><td>analytics_service.py</td><td>GSC/GA4 data fetching, content gaps, decaying content</td></tr>
+  <tr><td>rank_tracker.py</td><td>Rank tracking, position history</td></tr>
+  <tr><td>backlink_prospect_service.py</td><td>Backlink prospecting (broken link, resource, competitor, guest post)</td></tr>
+  <tr><td>backlink_authority_engine.py</td><td>Backlink authority scoring</td></tr>
+  <tr><td>backlink_acquisition_engine.py</td><td>Backlink acquisition outreach</td></tr>
+  <tr><td>content_refresher_service.py</td><td>Content refresh automation</td></tr>
+  <tr><td>content_refresh.py</td><td>Content refresh logic</td></tr>
+  <tr><td>content_portfolio_service.py</td><td>Content portfolio management</td></tr>
+  <tr><td>autonomous_health_service.py</td><td>Master health daemon, system status</td></tr>
+  <tr><td>connection_health_monitor.py</td><td>Connection health checks</td></tr>
+  <tr><td>cluster_service.py</td><td>Topic cluster management</td></tr>
+  <tr><td>business_scorer_service.py</td><td>Business potential scoring</td></tr>
+  <tr><td>budget_manager.py</td><td>Daily budget tracking</td></tr>
+  <tr><td>sse_service.py</td><td>Server-Sent Events for live updates</td></tr>
+  <tr><td>slack_service.py</td><td>Slack messaging</td></tr>
+  <tr><td>slack_intelligence_service.py</td><td>Slack notifications, intelligence</td></tr>
+  <tr><td>slack_app_service.py</td><td>Slack app integration</td></tr>
+  <tr><td>serp_volatility_service.py</td><td>SERP volatility monitoring</td></tr>
+  <tr><td>self_training_service.py</td><td>Self-training / model improvement</td></tr>
+  <tr><td>reporting_service.py</td><td>Alert/problem reporting</td></tr>
+  <tr><td>real_data_service.py</td><td>Real data collection</td></tr>
+  <tr><td>rank_prediction_service.py</td><td>Rank prediction</td></tr>
+  <tr><td>ranking_signal_harvester.py</td><td>Ranking signal harvesting</td></tr>
+  <tr><td>nim_client.py</td><td>Central NVIDIA NIM / OpenRouter client with model fallback</td></tr>
+  <tr><td>supabase_client.py</td><td>Supabase client wrapper</td></tr>
+  <tr><td>website_service.py</td><td>Website CRUD, default website resolution</td></tr>
+  <tr><td>validation_service.py</td><td>Input validation</td></tr>
+  <tr><td>local_store.py</td><td>Local JSON fallback store for offline resilience</td></tr>
+  <tr><td>monitors/</td><td>5 monitoring loops (tech, structure, serp, rank, geo)</td></tr>
+</table>
+
+<h3>All Agents and Their Roles</h3>
+<table>
+  <tr><th>Agent</th><th>Role</th></tr>
+  <tr><td>SEOAgentGroup</td><td>Orchestrator for the 7 dedicated agents; unified status endpoint</td></tr>
+  <tr><td>ResearchAgent</td><td>Real-time SERP trends, competitor gap analysis via Serper.dev</td></tr>
+  <tr><td>KeywordAgent</td><td>Difficulty calculation, intent classification, semantic clustering</td></tr>
+  <tr><td>SEOAgent</td><td>Metadata optimization (title, meta, slug, density, internal links)</td></tr>
+  <tr><td>TechSEOAgent</td><td>Full technical audit (CWV, sitemap, redirects, orphans)</td></tr>
+  <tr><td>BacklinkAgent</td><td>4-module live prospecting (broken link, resource, competitor, guest post)</td></tr>
+  <tr><td>StrategyAgent</td><td>Strategic cluster planning, self-healing alternative execution</td></tr>
+  <tr><td>SupervisorAgent</td><td>Orchestrator of the 7-agent pipeline, 14-day outcome self-improvement</td></tr>
+  <tr><td>WriterPipeline</td><td>10-phase, 111-step content generation with 11-expert review</td></tr>
+  <tr><td>HumanWriterAgent</td><td>Human-style writing fallback when pipeline output is thin</td></tr>
+  <tr><td>CrewAI Crew</td><td>6-agent CrewAI crew (Auditor, Editor, Writer, TechSEO, Backlink, Manager)</td></tr>
+  <tr><td>CrewBlogWriter</td><td>Self-healing CrewAI 3-agent (Planner→Writer→Editor) blog writer</td></tr>
+  <tr><td>AutonomousDecisionEngine</td><td>Empirical job trigger evaluation, budget checks, quality gates</td></tr>
+  <tr><td>AutonomousLoop</td><td>Monthly goals, weekly self-audit, budget manager, reactive alert dispatcher</td></tr>
+  <tr><td>Scheduler</td><td>APScheduler Asia/Kolkata cron jobs (8 daily jobs + continuous monitors)</td></tr>
+  <tr><td>BacklinkAutopilotAgent</td><td>Daily backlink jobs</td></tr>
+  <tr><td>BrainAutopilotAgent</td><td>Brain autopilot</td></tr>
+  <tr><td>KnowledgeAgent</td><td>Sitemap crawling, freshness decay</td></tr>
+  <tr><td>RefreshAgent</td><td>Content refresh for decaying articles</td></tr>
+  <tr><td>OutlineAgent</td><td>Outline generation</td></tr>
+  <tr><td>OpportunityScoutAgent</td><td>Opportunity identification</td></tr>
+  <tr><td>SetupAgent</td><td>Initial setup automation</td></tr>
+  <tr><td>AuthorityCalibrationAgent</td><td>Authority calibration</td></tr>
+  <tr><td>AssetEngineerAgent</td><td>Asset engineering</td></tr>
+  <tr><td>AEAgent</td><td>AEO (Answer Engine Optimization)</td></tr>
+  <tr><td>AcquisitionMonitorAgent</td><td>Acquisition monitoring</td></tr>
+  <tr><td>WordPressPublisherAgent</td><td>WordPress publishing</td></tr>
+  <tr><td>CrewManager</td><td>Crew management</td></tr>
+</table>
+
+<h3>All Tools Available to Agents</h3>
+<table>
+  <tr><th>Tool</th><th>Purpose</th></tr>
+  <tr><td>WebBrowserTool</td><td>Playwright-based full browser automation</td></tr>
+  <tr><td>RealTimeDataTool</td><td>News, social sentiment, public API data</td></tr>
+  <tr><td>CompetitorAnalysisTool</td><td>Full site rendering, SEO benchmark, content gaps</td></tr>
+  <tr><td>SERPAnalyzerTool</td><td>SERP feature extraction</td></tr>
+  <tr><td>CrawleeTool</td><td>Web crawling via Crawlee</td></tr>
+  <tr><td>SEOAEOGEOTool</td><td>SEO/AEO/GEO analysis</td></tr>
+  <tr><td>ContentOptimizerTool</td><td>Content optimization</td></tr>
+  <tr><td>QualityGateTool</td><td>Quality gating</td></tr>
+  <tr><td>ThinkAndLogTool</td><td>Agent thought logging</td></tr>
+  <tr><td>VectorMemoryTool</td><td>Vector memory operations</td></tr>
+  <tr><td>KnowledgeExtractorTool</td><td>Knowledge extraction</td></tr>
+  <tr><td>ToneAnalyzerTool</td><td>Tone analysis</td></tr>
+  <tr><td>LlmsTxtTool</td><td>LLMs.txt generation</td></tr>
+  <tr><td>ResearchTools</td><td>Research utilities</td></tr>
+  <tr><td>RankTools</td><td>Rank tracking</td></tr>
+  <tr><td>GscTools</td><td>Google Search Console</td></tr>
+  <tr><td>DirectoryTool</td><td>Directory management</td></tr>
+  <tr><td>ProspectResearchTool</td><td>Backlink prospect research</td></tr>
+  <tr><td>Humanizer</td><td>AI text humanization</td></tr>
+  <tr><td>AntiAIPenTool</td><td>AI detection avoidance</td></tr>
+  <tr><td>CmsTools</td><td>CMS operations (propose blog, etc.)</td></tr>
+  <tr><td>CompetitorTools</td><td>Competitor analysis</td></tr>
+  <tr><td>SharedUtils</td><td>Shared utilities</td></tr>
+</table>
+
+<h3>Authentication / Security Model</h3>
+<ol>
+  <li><strong>JWT Auth:</strong> HS256 tokens with <code>account_id</code> claim; 30-day expiration</li>
+  <li><strong>X-User-Id Header:</strong> Primary tenant identifier; validated against JWT to prevent spoofing</li>
+  <li><strong>Public Paths:</strong> <code>/health</code>, <code>/docs</code>, <code>/</code>, <code>/dashboard</code>, auth endpoints</li>
+  <li><strong>RLS:</strong> Supabase Row Level Security via <code>set_account_context</code> RPC</li>
+  <li><strong>Encryption:</strong> Fernet (MultiFernet) for all credentials in DB</li>
+  <li><strong>Sanitization:</strong> HTML bleach sanitization, credential field stripping from API responses</li>
+  <li><strong>Rate Limiting:</strong> Per-endpoint (login: 5/min, generate: 15/min, etc.) via Redis or memory</li>
+  <li><strong>CORS:</strong> Strict allow-list from <code>ALLOWED_CORS_ORIGINS</code></li>
+  <li><strong>Security Headers:</strong> Standard security headers via middleware</li>
+  <li><strong>Human Approval Gate:</strong> Publishing requires <code>X-User-Id</code>; blocks unauthorized WordPress operations</li>
+</ol>
+
+<h3>Middleware Stack (in order)</h3>
+<ol>
+  <li><code>SecurityHeadersMiddleware</code> (outermost)</li>
+  <li><code>StrictCORSMiddleware</code></li>
+  <li><code>RateLimitMiddleware</code></li>
+  <li><code>AuthMiddleware</code> (JWT + X-User-Id validation)</li>
+  <li><code>SanitizeResponseMiddleware</code></li>
+  <li>Request logging middleware (innermost)</li>
+</ol>
+
+<div class="page-break"></div>
+
+<h2 id="frontend">4. Frontend Design</h2>
+
+<h3>Pages / Routes</h3>
+<table>
+  <tr><th>Route</th><th>Page</th><th>Purpose</th></tr>
+  <tr><td>/</td><td>page.tsx</td><td><strong>Mission Control Dashboard</strong> (main hub)</td></tr>
+  <tr><td>/dashboard</td><td>dashboard/page.tsx</td><td>Redirect to /</td></tr>
+  <tr><td>/generate</td><td>generate/page.tsx</td><td>Blog generation studio</td></tr>
+  <tr><td>/writer</td><td>writer/page.tsx</td><td>Writer studio</td></tr>
+  <tr><td>/crew</td><td>crew/page.tsx</td><td>CrewAI workforce</td></tr>
+  <tr><td>/approvals</td><td>approvals/page.tsx</td><td>Human approval queue</td></tr>
+  <tr><td>/content</td><td>content/page.tsx</td><td>Content library</td></tr>
+  <tr><td>/calendar</td><td>calendar/page.tsx</td><td>Content calendar</td></tr>
+  <tr><td>/clusters</td><td>clusters/page.tsx</td><td>Topic clusters</td></tr>
+  <tr><td>/knowledge</td><td>knowledge/page.tsx</td><td>Knowledge base management</td></tr>
+  <tr><td>/memory</td><td>memory/page.tsx</td><td>Brain memory viewer</td></tr>
+  <tr><td>/brain</td><td>brain/page.tsx</td><td>Brain autopilot</td></tr>
+  <tr><td>/rag</td><td>rag/page.tsx</td><td>RAG chat interface</td></tr>
+  <tr><td>/backlinks</td><td>backlinks/page.tsx</td><td>Backlink management</td></tr>
+  <tr><td>/links</td><td>links/page.tsx</td><td>Internal linking</td></tr>
+  <tr><td>/research</td><td>research/page.tsx</td><td>Keyword research</td></tr>
+  <tr><td>/tech-seo</td><td>tech-seo/page.tsx</td><td>Technical SEO</td></tr>
+  <tr><td>/monitoring</td><td>monitoring/page.tsx</td><td>24/7 monitoring dashboard</td></tr>
+  <tr><td>/connectors</td><td>connectors/page.tsx</td><td>Integration connectors</td></tr>
+  <tr><td>/settings</td><td>settings/page.tsx</td><td>Settings</td></tr>
+  <tr><td>/websites</td><td>websites/page.tsx</td><td>Website management</td></tr>
+  <tr><td>/proposals</td><td>proposals/page.tsx</td><td>SEO proposals</td></tr>
+  <tr><td>/decay</td><td>decay/page.tsx</td><td>Content decay</td></tr>
+  <tr><td>/roi</td><td>roi/page.tsx</td><td>ROI tracking</td></tr>
+  <tr><td>/aeo</td><td>aeo/page.tsx</td><td>AEO scoring</td></tr>
+  <tr><td>/llms-txt</td><td>llms-txt/page.tsx</td><td>LLMs.txt</td></tr>
+  <tr><td>/onboarding</td><td>onboarding/page.tsx</td><td>Onboarding flow</td></tr>
+  <tr><td>/setup</td><td>setup/page.tsx</td><td>Supabase setup</td></tr>
+  <tr><td>/test-e2e</td><td>test-e2e/page.tsx</td><td>E2E testing</td></tr>
+</table>
+
+<h3>Frontend-Backend Communication</h3>
+<ul>
+  <li><code>lib/api.ts</code> wraps <code>fetch</code> with <code>NEXT_PUBLIC_API_URL</code> base, <code>X-User-Id</code> and <code>X-Website-Id</code> headers from <code>localStorage</code>, automatic retry on 500s, timeout handling (300s for generation requests)</li>
+  <li><strong>SSE (Server-Sent Events):</strong> <code>createSSE()</code> for live monitoring alerts and writer pipeline progress</li>
+  <li>Frontend calls backend directly — no Next.js API route proxy</li>
+</ul>
+
+<h3>State Management</h3>
+<ul>
+  <li><strong>React local state</strong> (<code>useState</code>) for UI state</li>
+  <li><strong>localStorage</strong> for <code>current-website-id</code>, <code>user-id</code>, <code>account-id</code></li>
+  <li><strong>No global state manager</strong> (Redux/Zustand)</li>
+</ul>
+
+<h2 id="capabilities">5. Working Capabilities</h2>
+
+<h3>Blog Generation Workflow (End-to-End)</h3>
+<ol>
+  <li><strong>Trigger:</strong> User clicks "Generate" in UI or autonomous scheduler fires</li>
+  <li><strong>Validation:</strong> Keyword denylist check, KB grounding check (hybrid vector similarity ≥ 0.55), off-topic validation, duplicate prevention</li>
+  <li><strong>WriterPipeline</strong> (10 phases, 111 steps):
+    <ul>
+      <li>Phase 1: Brain recall (brand brain, topic memories)</li>
+      <li>Phase 2: Audience demand analysis (business potential, intent, personas, pain points)</li>
+      <li>Phase 3: SERP & competitor intelligence (top 10, content gaps, AI questions)</li>
+      <li>Phase 4: Positioning & outline strategy (unique angle, H2 structure, internal links, E-E-A-T)</li>
+      <li>Phase 5: Multi-step content writing (section-by-section, tables, FAQs, citations)</li>
+      <li>Phase 6: Multi-expert review (11 experts score 0-100 each)</li>
+      <li>Phase 7: Humanizer gate (banned phrases, sentence variation, contractions)</li>
+      <li>Phase 8: Fact-check verification (first-party data only)</li>
+      <li>Phase 9: Internal link optimization (3+ high-traffic links)</li>
+      <li>Phase 10: Citation & reference audit + final quality gate</li>
+      <li>Phase 11: Brain learn (write back learnings to memory)</li>
+    </ul>
+  </li>
+  <li><strong>Quality Gates:</strong> SEO score ≥ 60, word count ≥ 800, expert average ≥ 70, grounding similarity ≥ 0.45</li>
+  <li><strong>Output:</strong> Saved to <code>content_log</code> + <code>blog_approvals</code> (status: <code>pending</code>)</li>
+  <li><strong>Notification:</strong> Slack alert, SSE event, <code>realtime_alerts</code> entry</li>
+</ol>
+
+<h3>WordPress Publishing (Drafts + Approval Flow)</h3>
+<ol>
+  <li><strong>Connection:</strong> <code>POST /api/wordpress/{website_id}/connect</code> — tests credentials, encrypts password, saves to <code>websites</code> + <code>wordpress_connections</code></li>
+  <li><strong>Draft Creation:</strong> <code>POST /api/wordpress/{website_id}/create-draft</code> — creates WP draft via REST API</li>
+  <li><strong>Approval Queue:</strong> <code>GET /api/approvals</code> — lists pending items with SEO scores, preview</li>
+  <li><strong>Human Publish:</strong> <code>POST /api/approvals/{id}/approve</code> — requires <code>X-User-Id</code> header; creates WP post, updates status</li>
+  <li><strong>Reject:</strong> <code>POST /api/approvals/{id}/reject</code></li>
+  <li><strong>Auto-publish (optional):</strong> If <code>auto_publish</code> flag is ON, the 5-minute autonomous cycle can publish items that pass strict quality gates (SEO ≥ 85, validation ≥ 0.80, grounding ≥ 0.75)</li>
+</ol>
+
+<h3>Autonomous Scheduling</h3>
+<p><strong>APScheduler</strong> (Asia/Kolkata timezone) is the single authority.</p>
+<p><strong>Daily jobs:</strong></p>
+<ul>
+  <li>08:30 — KnowledgeAgent: sitemap crawl</li>
+  <li>09:00 — ResearchAgent: SERP trends + daily content gap</li>
+  <li>09:30 — KnowledgeAgent: freshness decay + sync</li>
+  <li>10:00 — SupervisorAgent: 14-day outcome learning</li>
+  <li>10:30 — RefreshAgent: content refresh</li>
+  <li>11:00 — WriterPipeline / CrewBlogWriter: goal-driven article generation</li>
+  <li>11:30 — BacklinkAgent: 4-module prospecting</li>
+  <li>12:00 — TechSEOAgent: full technical audit</li>
+</ul>
+<p><strong>Continuous monitors:</strong> Rank (15m), SERP (30m), Competitor (60m), Tech (60m), Geo (30m), Structure (6h)</p>
+
+<h3>Quality / Safety Gates</h3>
+<table>
+  <tr><th>Gate</th><th>Criteria</th></tr>
+  <tr><td>WriterPipeline</td><td>Business potential ≥ 2, SEO score ≥ 60, expert avg ≥ 70, word count ≥ 800</td></tr>
+  <tr><td>AutonomousDecisionEngine</td><td>SEO ≥ 85, validation ≥ 0.80, similarity ≥ 0.75, plagiarism clean, hallucination check</td></tr>
+  <tr><td>SEO Quality Gate</td><td>Title < 60 chars, meta < 160 chars, keyword density 1-2%, ≥ 3 internal links, Elementor-safe HTML, KB grounding</td></tr>
+  <tr><td>Off-topic guard</td><td>Title must contain keyword words > 3 chars</td></tr>
+  <tr><td>Denylist guard</td><td>Blocks generic/unrelated keywords</td></tr>
+  <tr><td>Year hallucination guard</td><td>Replaces stale years with current year</td></tr>
+  <tr><td>Human approval gate</td><td>All WordPress publishing requires X-User-Id</td></tr>
+</table>
+
+<h3>Memory / Knowledge Management</h3>
+<ul>
+  <li><strong>Brain Memory</strong> (<code>brain_memory</code> table): 7 types (fact, experience, failure, preference, entity, relationship, outcome)</li>
+  <li><strong>Knowledge Base</strong> (<code>knowledge_base</code> table): Business facts with 1536-dim embeddings</li>
+  <li><strong>Hybrid Search:</strong> Vector (60%) + keyword (20%) + freshness + credibility</li>
+  <li><strong>Freshness Decay:</strong> Exponential decay over time; auto-consolidation of duplicates</li>
+  <li><strong>14-Day Synthesis:</strong> SupervisorAgent reads 7 days of outcomes and codifies preference rules</li>
+  <li><strong>Local Fallback:</strong> <code>local_store.py</code> provides JSON-file fallback when Supabase is unavailable</li>
+</ul>
+
+<h3>Dashboard Features</h3>
+<ul>
+  <li>Total articles, pending articles, health score, memories count, knowledge count, backlinks count</li>
+  <li>Recent blogs list</li>
+  <li>AI engine status</li>
+  <li>Agent states (7 agents)</li>
+  <li>Publishing schedule</li>
+  <li>Readiness checks</li>
+  <li>Demo mode flow</li>
+  <li>SSE live updates for monitoring and writer pipeline</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2 id="agent-capabilities">6. Agent Capabilities</h2>
+
+<h3>What can agents do autonomously?</h3>
+<ol>
+  <li><strong>Content Generation:</strong> Full 10-phase pipeline → draft with zero human intervention</li>
+  <li><strong>Keyword Research:</strong> Mine SERP trends, find content gaps, select next target keyword</li>
+  <li><strong>Knowledge Management:</strong> Crawl sitemaps, ingest content, apply freshness decay, auto-consolidate</li>
+  <li><strong>Backlink Prospecting:</strong> 4-module prospecting (broken link, resource page, competitor gap, guest post)</li>
+  <li><strong>Technical SEO:</strong> Full CWV audit, sitemap/robots checks, redirect chains, orphan pages</li>
+  <li><strong>Content Refresh:</strong> Detect decaying content, regenerate with current data</li>
+  <li><strong>Self-Improvement:</strong> 14-day outcome synthesis → preference memories</li>
+  <li><strong>Budget Management:</strong> Track daily token spend, pause when threshold exceeded</li>
+  <li><strong>Alert Processing:</strong> Route unread alerts to StrategyAgent for handling</li>
+  <li><strong>Auto-publish:</strong> (Optional) Publish drafts that pass strict quality gates</li>
+</ol>
+
+<h3>What requires human approval?</h3>
+<ol>
+  <li><strong>WordPress Publishing:</strong> Every post requires <code>X-User-Id</code> header (human approval)</li>
+  <li><strong>Tech Fixes:</strong> Technical SEO fixes require human approval via <code>pending_fixes</code> queue</li>
+  <li><strong>Backlink Outreach:</strong> Outreach drafts require approval before sending</li>
+  <li><strong>Content Strategy:</strong> Topic clusters and content calendars are proposals until human approves</li>
+</ol>
+
+<h3>What tools can agents call?</h3>
+<ul>
+  <li>Web browser automation (Playwright)</li>
+  <li>Real-time data fetching (news, social)</li>
+  <li>Competitor site analysis</li>
+  <li>SERP analysis</li>
+  <li>Knowledge extraction and RAG</li>
+  <li>Quality gating</li>
+  <li>WordPress CMS operations (draft only, never auto-publish)</li>
+  <li>Slack notifications</li>
+  <li>Google Search Console / GA4</li>
+  <li>Backlink prospecting</li>
+  <li>Internal linking</li>
+  <li>LLMs.txt generation</li>
+</ul>
+
+<h3>What integrations can they use?</h3>
+<ul>
+  <li><strong>NVIDIA NIM</strong> (primary LLM/embedding)</li>
+  <li><strong>OpenRouter</strong> (fallback LLM)</li>
+  <li><strong>Supabase</strong> (database + pgvector)</li>
+  <li><strong>Serper.dev</strong> (SERP data)</li>
+  <li><strong>WordPress</strong> (REST API, OAuth)</li>
+  <li><strong>Slack</strong> (notifications)</li>
+  <li><strong>Resend</strong> (email)</li>
+  <li><strong>Google</strong> (GSC, GA4)</li>
+  <li><strong>Crawlee</strong> (web crawling)</li>
+  <li><strong>Redis</strong> (rate limiting)</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2 id="database">7. Database Schema</h2>
+
+<h3>Core Tables</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th></tr>
+  <tr><td>websites</td><td>Multi-tenant websites (domain, CMS creds, niche)</td></tr>
+  <tr><td>pages</td><td>Crawled pages with embeddings</td></tr>
+  <tr><td>website_knowledge</td><td>Crawled website content with embeddings</td></tr>
+  <tr><td>tone_profiles</td><td>Per-website writing style/tone</td></tr>
+  <tr><td>knowledge_base</td><td>Business facts with embeddings (fact, service, pricing, etc.)</td></tr>
+  <tr><td>content_log</td><td>All generated content with pipeline status, scores, embeddings</td></tr>
+  <tr><td>blog_approvals</td><td>Human approval queue for drafts</td></tr>
+  <tr><td>audits</td><td>SEO audit issues</td></tr>
+  <tr><td>quality_checks</td><td>Content quality check records</td></tr>
+  <tr><td>technical_audits</td><td>Technical SEO audit results</td></tr>
+  <tr><td>backlinks</td><td>Backlink records</td></tr>
+  <tr><td>agent_thoughts</td><td>Agent reasoning log</td></tr>
+  <tr><td>agent_feedback</td><td>Human feedback for learning</td></tr>
+  <tr><td>tasks</td><td>Agent task execution log</td></tr>
+  <tr><td>llms_txt_log</td><td>LLMs.txt generation history</td></tr>
+  <tr><td>critical_action_logs</td><td>Critical action audit trail</td></tr>
+</table>
+
+<h3>Brain / Memory Tables</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th></tr>
+  <tr><td>brain_memory</td><td>7-type vector memory (fact, experience, failure, preference, etc.)</td></tr>
+  <tr><td>brain_daily_jobs</td><td>Daily job tracking</td></tr>
+  <tr><td>brain_content_performance</td><td>Content performance history</td></tr>
+  <tr><td>brain_auto_pages_queue</td><td>Autonomous page suggestion queue</td></tr>
+  <tr><td>agent_memory</td><td>Legacy agent memory mirror</td></tr>
+</table>
+
+<h3>Agent / SEO Tables</h3>
+<table>
+  <tr><th>Table</th><th>Purpose</th></tr>
+  <tr><td>topic_clusters</td><td>Topic cluster strategy</td></tr>
+  <tr><td>cluster_articles</td><td>Articles within clusters</td></tr>
+  <tr><td>serp_landscape</td><td>SERP feature snapshots</td></tr>
+  <tr><td>content_decay_logs</td><td>Content decay tracking</td></tr>
+  <tr><td>geo_visibility_logs</td><td>AI/GEO visibility tracking</td></tr>
+  <tr><td>backlink_prospects</td><td>Backlink opportunities</td></tr>
+  <tr><td>backlink_monitor</td><td>Backlink health monitoring</td></tr>
+  <tr><td>internal_link_graph</td><td>Internal link topology</td></tr>
+  <tr><td>outreach_drafts</td><td>Backlink outreach emails</td></tr>
+  <tr><td>weekly_reports</td><td>Weekly self-audit reports</td></tr>
+  <tr><td>daily_costs</td><td>Daily token/cost tracking</td></tr>
+  <tr><td>realtime_alerts</td><td>24/7 monitoring alerts</td></tr>
+  <tr><td>monitoring_logs</td><td>Monitor execution logs</td></tr>
+  <tr><td>pending_fixes</td><td>Human approval queue for tech fixes</td></tr>
+  <tr><td>keyword_proposals</td><td>Keyword proposals</td></tr>
+  <tr><td>daily_searches</td><td>Daily search trend data</td></tr>
+  <tr><td>autonomous_settings</td><td>Per-website autonomous config (budget, goals, schedule, auto_publish)</td></tr>
+  <tr><td>content_pipeline_logs</td><td>100+ step pipeline audit trail</td></tr>
+  <tr><td>content_expert_reviews</td><td>11-expert review scores</td></tr>
+  <tr><td>deleted_content_log</td><td>Audit trail for deleted content</td></tr>
+  <tr><td>wordpress_connections</td><td>Encrypted WP credentials per website</td></tr>
+  <tr><td>accounts</td><td>Multi-tenant accounts</td></tr>
+  <tr><td>users</td><td>User records</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="testing">8. Testing</h2>
+
+<h3>Test Files (50+)</h3>
+<table>
+  <tr><th>Category</th><th>Tests</th></tr>
+  <tr><td>Core Pipeline</td><td>test_writer_pipeline.py, test_writer_human.py, test_writer_human_standalone.py</td></tr>
+  <tr><td>Agents</td><td>test_all_agents.py, test_professional_crew.py, test_workforce.py</td></tr>
+  <tr><td>WordPress</td><td>test_wordpress_drafting.py, test_wp_draft_fix.py, test_oauth_flows.py</td></tr>
+  <tr><td>Monitoring</td><td>test_monitoring.py, test_reporting.py, test_crisis_response.py</td></tr>
+  <tr><td>Quality</td><td>test_quality_gate.py, test_safety_gate.py</td></tr>
+  <tr><td>Knowledge</td><td>test_knowledge_base.py, test_knowledge_rag.py, test_brain_memory.py, test_rag.py</td></tr>
+  <tr><td>Backlinks</td><td>test_backlink_engine.py, test_backlink_aeo_llms.py</td></tr>
+  <tr><td>Connectors</td><td>test_connectors.py, test_serper_connector.py, test_slack_intelligence.py, test_professional_connectors.py</td></tr>
+  <tr><td>Autonomous</td><td>test_autonomous.py, test_professional_autonomous.py, test_self_training.py</td></tr>
+  <tr><td>E2E</td><td>test_e2e_full_flow.py, test_e2e_user_journey.py, test_demo_flow.py</td></tr>
+  <tr><td>SEO</td><td>test_tech_seo.py, test_internal_links.py, test_rank_tracker.py</td></tr>
+  <tr><td>Auth</td><td>test_auth.py, test_rbac.py</td></tr>
+  <tr><td>Production</td><td>test_production.py, test_real_work.py, test_real_data.py</td></tr>
+</table>
+
+<h3>Test Configuration</h3>
+<ul>
+  <li><strong>Framework:</strong> pytest with asyncio_mode = "auto"</li>
+  <li><strong>Test location:</strong> backend/tests/test_*.py</li>
+  <li><strong>Coverage:</strong> Not explicitly configured; many tests are integration tests requiring live credentials</li>
+</ul>
+
+<h3>Pass Rate / Gaps</h3>
+<ul>
+  <li><strong>Latest run:</strong> 27 passed, 1 skipped, 1 deselected</li>
+  <li>Tests cover major subsystems but many are likely integration tests requiring live env</li>
+  <li><strong>Gaps:</strong> No unit tests for pure logic functions; no mock-based tests for NIM/Supabase failures; no CI/CD pipeline configuration visible</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2 id="state">9. Current State & Issues</h2>
+
+<h3>What's Working Well</h3>
+<div class="success-box">
+  <ol>
+    <li>Comprehensive architecture: Full-stack autonomous SEO with 7 dedicated agents + CrewAI</li>
+    <li>Robust content pipeline: 10-phase, 11-expert review with strong quality gates</li>
+    <li>Multi-tenant security: JWT auth, RLS, Fernet encryption, strict CORS</li>
+    <li>Resilient design: Local JSON fallback stores, Supabase connection pooling, Redis fallback to memory</li>
+    <li>Self-healing: Decision engine, retry queues, StrategyAgent alternative routing</li>
+    <li>Production-ready deployment: Docker, Render, Railway configs all present</li>
+    <li>Extensive integrations: WordPress, Serper, Slack, GSC, GA4, Resend, OpenAI-compatible APIs</li>
+    <li>Continuous monitoring: 6 background loops with real-time alerts</li>
+    <li>Knowledge grounding: Hybrid vector + keyword search prevents hallucination</li>
+    <li>Human-in-the-loop: Strict approval gates before any WordPress publishing</li>
+  </ol>
+</div>
+
+<h3>What's Broken or Incomplete</h3>
+<div class="warning-box">
+  <ol>
+    <li><strong>CrewAI optional dependency:</strong> CrewAI is listed as optional with dummy fallback; full CrewAI features may not work without installation</li>
+    <li><strong>Frontend proxy:</strong> Next.js next.config.js has empty rewrites; frontend calls backend directly which can cause CORS issues in production if not configured</li>
+    <li><strong>Test coverage:</strong> 50+ test files but no clear pass rate; many are likely integration tests requiring live env</li>
+    <li><strong>Database migrations:</strong> Schema is split across 5+ SQL files; no Alembic or Supabase CLI migrations</li>
+    <li><strong>Frontend routing:</strong> /dashboard redirects to / but some pages may be unfinished</li>
+    <li><strong>WordPress OAuth:</strong> OAuth flow exists but may not be fully tested</li>
+    <li><strong>GA4 integration:</strong> Credentials path supported but implementation depth unclear</li>
+    <li><strong>Email:</strong> Resend integration configured but not visibly wired into main flows</li>
+    <li><strong>Redis optional:</strong> Rate limiting degrades to memory; not distributed-safe in multi-worker deployments</li>
+    <li><strong>Developer mode:</strong> Multiple bypass mechanisms (env, file, DB) could be a security risk if left enabled</li>
+  </ol>
+</div>
+
+<h3>Deployment Status</h3>
+<table>
+  <tr><th>Platform</th><th>Status</th></tr>
+  <tr><td>Docker</td><td>Fully configured (docker-compose.yml, backend/Dockerfile, frontend-next/Dockerfile)</td></tr>
+  <tr><td>Render</td><td>Configured (render.yaml) with free tier, Redis, CORS origins</td></tr>
+  <tr><td>Railway</td><td>railway.json present</td></tr>
+  <tr><td>Fly.io</td><td>fly.toml present</td></tr>
+  <tr><td>Netlify</td><td>netlify.toml present for frontend</td></tr>
+  <tr><td>Local</td><td>Well-documented in README</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="improvements">10. Improvement Opportunities</h2>
+
+<h3>Reliability</h3>
+<ol>
+  <li><strong>Add explicit test coverage reporting:</strong> Integrate pytest-cov and enforce minimum coverage in CI</li>
+  <li><strong>Health checks:</strong> Add /health/detailed endpoint with dependency checks (NIM, Supabase, Redis, WP)</li>
+  <li><strong>Graceful degradation:</strong> Make Redis required for multi-worker; fail fast if unavailable</li>
+  <li><strong>Database migration tooling:</strong> Use Alembic or Supabase CLI migrations instead of ad-hoc SQL files</li>
+</ol>
+
+<h3>Capability</h3>
+<ol>
+  <li><strong>Multi-model support:</strong> Add Claude/GPT-4 as explicit first-class LLM options (not just OpenRouter fallback)</li>
+  <li><strong>Image generation:</strong> Add DALL-E 3 / Flux integration for blog featured images</li>
+  <li><strong>Video SEO:</strong> Add video transcript ingestion and optimization</li>
+  <li><strong>Advanced analytics:</strong> Predictive ranking models, anomaly detection</li>
+  <li><strong>Multi-language:</strong> i18n support for global SEO</li>
+  <li><strong>White-label:</strong> Multi-tenant branding per website</li>
+</ol>
+
+<h3>Performance</h3>
+<ol>
+  <li><strong>Connection pooling:</strong> Supabase-py pooling is basic; consider pg8000 or asyncpg for high concurrency</li>
+  <li><strong>Caching layer:</strong> Add Redis cache for frequent reads (stats, suggestions, knowledge)</li>
+  <li><strong>Batch processing:</strong> Batch embedding calls and bulk DB inserts</li>
+  <li><strong>CDN for frontend:</strong> Ensure static assets are cached aggressively</li>
+</ol>
+
+<h3>Security</h3>
+<ol>
+  <li><strong>Rotate secrets automation:</strong> Add CLI command to rotate all dev secrets</li>
+  <li><strong>API key scoping:</strong> Use Supabase service key only in backend; never expose anon key to privileged operations</li>
+  <li><strong>Audit logging:</strong> Expand critical_action_logs to all WordPress mutations</li>
+  <li><strong>Penetration testing:</strong> Add automated security tests (OWASP ZAP, bandit)</li>
+</ol>
+
+<h3>UX</h3>
+<ol>
+  <li><strong>Real-time collaboration:</strong> Show other users editing approvals</li>
+  <li><strong>Diff view:</strong> Show changes between pipeline phases</li>
+  <li><strong>Bulk actions:</strong> Approve/reject multiple drafts at once</li>
+  <li><strong>Mobile responsive:</strong> Current Tailwind setup may need mobile audit</li>
+  <li><strong>Onboarding wizard:</strong> Improve initial setup flow with progress tracking</li>
+</ol>
+
+<h3>Observability</h3>
+<ol>
+  <li><strong>Structured logging:</strong> JSON logging with correlation IDs across all services</li>
+  <li><strong>Metrics:</strong> Prometheus / OpenTelemetry integration for agent performance</li>
+  <li><strong>Tracing:</strong> Distributed tracing for multi-agent workflows</li>
+  <li><strong>Alerting:</strong> PagerDuty / OpsGenie integration for critical failures</li>
+</ol>
+
+<h2 id="verdict">11. Verdict</h2>
+
+<div class="success-box">
+  <strong>Overall assessment:</strong> RankForge is a <strong>production-grade, highly capable autonomous SEO platform</strong> with deep agent architecture, strong security, and extensive integrations. The main gaps are test coverage infrastructure, database migration tooling, and a few incomplete integrations. The system is worthy and functional — improvements should focus on observability, reliability, and expanding the LLM/model options.
+</div>
+
+</body>
+</html>

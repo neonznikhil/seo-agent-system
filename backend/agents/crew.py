@@ -2,10 +2,8 @@ import json
 import logging
 import os
 
-try:
-    from crewai import Agent, Task, Crew, Process
-except ImportError:
-    Agent = Task = Crew = Process = None  # fallback when crewai not installed
+from crewai import Agent, Task, Crew, Process
+from crewai.tools import BaseTool
 try:
     from langchain_openai import ChatOpenAI
 except ImportError:
@@ -95,11 +93,11 @@ serp_analyzer_tool = SERPAnalyzerTool()
 content_optimizer_tool = ContentOptimizerTool()
 
 
-class ProposeBlogTool:
+class ProposeBlogTool(BaseTool):
     name: str = "propose_blog"
     description: str = "Proposes a blog post with status pending_approval. Never publishes live."
 
-    def run(self, *a, **kw):
+    def _run(self, *a, **kw):
         from agents.tools.cms_tools import propose_blog
         return propose_blog(*a, **kw)
 
@@ -107,23 +105,6 @@ class ProposeBlogTool:
 propose_blog_tool = ProposeBlogTool()
 
 nim_llm = _build_nim_chat() if ChatOpenAI is not None else None
-
-
-if Agent is None:
-    class _DummyAgent:
-        def __init__(self, *a, **kw):
-            self.tools = kw.get("tools", [])
-            self.role = kw.get("role", "")
-            self.goal = kw.get("goal", "")
-    class _DummyTask:
-        def __init__(self, *a, **kw): pass
-    class _DummyCrew:
-        def __init__(self, *a, **kw): pass
-        def kickoff(self, *a, **kw): return "crewai not installed — fallback to direct NIM"
-    Agent = _DummyAgent
-    Task = _DummyTask
-    Crew = _DummyCrew
-    Process = type("P", (), {"sequential": "sequential"})
 
 auditor_agent = Agent(
     role=AUDITOR_PERSONA["role"],

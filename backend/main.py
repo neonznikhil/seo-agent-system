@@ -85,6 +85,7 @@ from routers.costs import router as costs_router
 from routers.auth import router as auth_router
 from routers.rank_tracker import router as rank_tracker_router
 from routers.demo import router as demo_router
+from routers.deep_diagnostic import router as deep_diagnostic_router
 from scripts.migrate import run_migrations
 from agents.seo_agent_group import seo_agent_group
 
@@ -880,6 +881,7 @@ app.include_router(dashboard_router, prefix="/api")            # /api/dashboard/
 app.include_router(phase3_router, prefix="/api")               # /api/phase3/*
 app.include_router(rank_tracker_router, prefix="/api")         # /api/rankings/*
 app.include_router(demo_router, prefix="/api")                 # /api/demo/*
+app.include_router(deep_diagnostic_router, prefix="/api")         # /api/system/*
 
 
 @app.get("/api/seo-agent-group/status")

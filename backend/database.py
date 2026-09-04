@@ -92,7 +92,7 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3.5-lightning")
 NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "openai/gpt-oss-20b")
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")

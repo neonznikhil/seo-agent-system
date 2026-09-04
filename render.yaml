@@ -36,9 +36,9 @@ services:
           type: redis
           property: connectionString
       - key: ALLOWED_CORS_ORIGINS
-        value: https://rankforge-frontend.onrender.com,https://seo-agent-system.netlify.app,http://localhost:3000
+        value: https://rankforge-frontend.onrender.com,http://localhost:3000
       - key: CORS_ORIGINS
-        value: https://rankforge-frontend.onrender.com,https://seo-agent-system.netlify.app,http://localhost:3000
+        value: https://rankforge-frontend.onrender.com,http://localhost:3000
       - key: FRONTEND_URL
         value: https://rankforge-frontend.onrender.com
       - key: BACKEND_URL

@@ -184,10 +184,11 @@ async def crew_health():
     has_crewai = False
     has_nvidia = False
     try:
-        import crewai  # noqa: F401
+        from crewai import Agent, Task, Crew, Process  # noqa: F401
         has_crewai = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"CrewAI import verification failed: {e}")
+        has_crewai = False
     try:
         from database import get_nim_state
         has_nvidia = bool(get_nim_state().get("available"))
@@ -206,5 +207,5 @@ async def crew_health():
         "nvidia_available": has_nvidia,
         "knowledge_base_total": kb_total,
         "fallback_mode": not has_crewai,
-        "message": "CrewAI 3-Agent ready (direct NIM fallback)" if not has_crewai else "CrewAI 3-Agent ready",
+        "message": "CrewAI 3-Agent active and fully operational" if has_crewai else "CrewAI installation missing or corrupted",
     }

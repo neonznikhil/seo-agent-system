@@ -29,8 +29,8 @@ python-jose[cryptography]>=3.3.0
 pyjwt>=2.8.0
 pgvector>=0.3.6
 tavily-python>=0.5.0
-# CrewAI 3-Agent (Planner→Writer→Editor) — optional heavy deps, fallback to direct NIM if not installed
-crewai>=0.80.0
+# Core AI Agent Framework (CrewAI & LangChain) - Required
+crewai>=0.203.0,<1.0.0
 crewai-tools>=0.12.0
 langchain-nvidia-ai-endpoints>=0.3.0
 bleach>=6.1.0

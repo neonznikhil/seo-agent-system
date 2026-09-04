@@ -77,18 +77,15 @@ Minimal prerequisites for deploying RankForge. All items checked before going li
 - [ ] **Lint Passes** - `npm run lint` passes
 - [ ] **Assets Optimized** - No large bundles, fonts loaded externally
 
-## Deploy Options
+## Deploy Options (Render)
 
 When ready for production:
 
-**Backend:** Deploy to Render.com or Railway.app
-- Add environment variables in service settings
-- Set build command: `pip install -r requirements.txt`
-- Set start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-
-**Frontend:** Deploy to Vercel.com or Netlify
-- Set `NEXT_PUBLIC_API_URL` to your Render/Railway backend URL
-- Framework preset: Next.js
+**Render Blueprint Deployment (`render.yaml`):**
+- Deploy via Render Blueprints using `render.yaml`
+- **Backend:** `rankforge-backend` (Docker runtime via root `Dockerfile`, health check at `/health`)
+- **Frontend:** `rankforge-frontend` (Node runtime, rootDir `frontend-next`, build `npm install && npm run build`, start `npm start`)
+- **Redis:** `rankforge-redis` (managed Redis cache)
 
 **Database:** Continue using Supabase (free tier sufficient for most sites)
 

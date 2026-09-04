@@ -55,7 +55,7 @@ class RAGService:
         return await KnowledgeService.create_embeddings_batch(texts)
 
     # ---------------------------------------------------------
-    # 3. Hybrid Retriever (Vector 60% + Keyword 20% + Freshness + Credibility)
+    # 3. Hybrid Retriever with Reciprocal Rank Fusion (RRF, k=60)
     # ---------------------------------------------------------
     async def retrieve(
         self,
@@ -63,7 +63,9 @@ class RAGService:
         top_k: int = 10,
         filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        """Retrieve candidate knowledge chunks using multi-vector hybrid search."""
+        """Retrieve candidate knowledge chunks using multi-vector dense + BM25-style sparse hybrid search
+        combined via Reciprocal Rank Fusion (RRF, k=60) with credibility and freshness decay calibration.
+        """
         if not query or not query.strip():
             return []
 
@@ -74,81 +76,112 @@ class RAGService:
         type_filter = filters.get("type")
 
         supabase = get_supabase()
-        vector_results = []
-        keyword_results = []
 
         # Step 1: Compute query embedding
         query_embs = await self.create_embeddings_batch([query])
         query_emb = query_embs[0] if query_embs else _deterministic_embedding(query)
 
-        # Step 2: Vector Search via RPC or table
+        # Step 2: Dense Vector Candidate Search
+        vector_candidates = []
         try:
             rpc_res = supabase.rpc("match_knowledge", {
                 "query_embedding": query_emb,
-                "match_threshold": 0.55,
-                "match_count": top_k * 3
+                "match_threshold": 0.45,
+                "match_count": top_k * 4
             }).execute()
             if rpc_res.data:
-                vector_results = rpc_res.data
+                vector_candidates = rpc_res.data
         except Exception as e:
             logger.debug(f"RPC match_knowledge fallback in RAG retrieve: {e}")
 
-        if not vector_results:
-            try:
-                rows = supabase.table("knowledge_base").select("*").limit(60).execute().data or []
-                for r in rows:
-                    doc_text = r.get("content") or r.get("fact") or ""
-                    emb = r.get("embedding")
-                    if not emb or not isinstance(emb, list):
-                        emb = _deterministic_embedding(doc_text)
-                    sim = _cosine_similarity(query_emb, emb)
-                    if sim >= 0.50 or any(w.lower() in doc_text.lower() for w in query.split() if len(w) > 3):
-                        row_copy = dict(r)
-                        row_copy["similarity"] = max(sim, 0.60)
-                        vector_results.append(row_copy)
-            except Exception as e:
-                logger.warning(f"Table vector scan error: {e}")
+        # Fetch knowledge base pool for dense scan fallback and sparse lexical scoring
+        all_pool = []
+        try:
+            pool_res = supabase.table("knowledge_base").select("*").limit(100).execute()
+            all_pool = pool_res.data or []
+        except Exception as e:
+            logger.warning(f"Table pool scan note in RAG retrieve: {e}")
 
-        # Step 3: Keyword Search (In-memory over fetched rows + DB)
-        q_tokens = [w.strip().lower() for w in query.split() if len(w.strip()) > 3]
-        for r in vector_results:
+        if not vector_candidates and all_pool:
+            for r in all_pool:
+                doc_text = r.get("content") or r.get("fact") or ""
+                emb = r.get("embedding")
+                if not emb or not isinstance(emb, list):
+                    emb = _deterministic_embedding(doc_text)
+                sim = _cosine_similarity(query_emb, emb)
+                row_copy = dict(r)
+                row_copy["similarity"] = sim
+                vector_candidates.append(row_copy)
+
+        vector_candidates.sort(key=lambda x: float(x.get("similarity", 0.0)), reverse=True)
+
+        # Step 3: Sparse Lexical Candidate Search (BM25-style token saturation)
+        q_tokens = [w.strip().lower() for w in re.findall(r"\w+", query.lower()) if len(w.strip()) > 2]
+        lexical_candidates = []
+        target_pool = all_pool if all_pool else vector_candidates
+        for r in target_pool:
             doc_text = (r.get("content") or r.get("fact") or "").lower()
-            if any(tok in doc_text for tok in q_tokens):
-                keyword_results.append(r)
+            doc_title = (r.get("title") or r.get("fact_type") or "").lower()
+            term_score = 0.0
+            matched_terms = 0
+            for tok in q_tokens:
+                c_content = doc_text.count(tok)
+                c_title = doc_title.count(tok)
+                if c_content > 0 or c_title > 0:
+                    matched_terms += 1
+                    tf = c_content + (c_title * 2.5)
+                    term_score += tf / (tf + 1.2)  # BM25 frequency saturation curve
+            if matched_terms > 0:
+                row_copy = dict(r)
+                row_copy["lexical_score"] = term_score
+                row_copy["matched_terms"] = matched_terms
+                lexical_candidates.append(row_copy)
 
-        # Step 4: Merge & Deduplicate
-        merged = {}
-        for item in vector_results:
-            item_id = item["id"]
-            merged[item_id] = {
-                **item,
-                "vector_sim": float(item.get("similarity", 0.70)),
-                "keyword_match": False
-            }
+        lexical_candidates.sort(key=lambda x: float(x.get("lexical_score", 0.0)), reverse=True)
 
-        for item in keyword_results:
-            item_id = item["id"]
-            if item_id in merged:
-                merged[item_id]["keyword_match"] = True
-            else:
-                emb = item.get("embedding")
-                sim = _cosine_similarity(query_emb, emb) if emb else 0.65
-                merged[item_id] = {
-                    **item,
-                    "vector_sim": sim,
-                    "keyword_match": True
+        # Step 4: Reciprocal Rank Fusion (RRF, k=60)
+        RRF_K = 60
+        W_VEC = 1.0
+        W_LEX = 0.85
+
+        doc_registry: Dict[str, Dict[str, Any]] = {}
+        for rank_idx, doc in enumerate(vector_candidates):
+            d_id = str(doc.get("id"))
+            if d_id not in doc_registry:
+                doc_registry[d_id] = {
+                    "raw": doc,
+                    "vec_rank": rank_idx + 1,
+                    "lex_rank": None,
+                    "vec_sim": float(doc.get("similarity", 0.7)),
+                    "lex_score": 0.0
                 }
+            else:
+                doc_registry[d_id]["vec_rank"] = rank_idx + 1
+                doc_registry[d_id]["vec_sim"] = float(doc.get("similarity", 0.7))
 
-        # Step 5: Filter by provenance, freshness, and credibility
+        for rank_idx, doc in enumerate(lexical_candidates):
+            d_id = str(doc.get("id"))
+            if d_id not in doc_registry:
+                doc_registry[d_id] = {
+                    "raw": doc,
+                    "vec_rank": None,
+                    "lex_rank": rank_idx + 1,
+                    "vec_sim": 0.6,
+                    "lex_score": float(doc.get("lexical_score", 0.0))
+                }
+            else:
+                doc_registry[d_id]["lex_rank"] = rank_idx + 1
+                doc_registry[d_id]["lex_score"] = float(doc.get("lexical_score", 0.0))
+
+        # Step 5: Filter and compute composite RRF score with freshness & credibility
         filtered_hits = []
-        for raw_doc in merged.values():
-            doc = dict(raw_doc)
-            # Normalize schema aliases
+        for d_id, entry in doc_registry.items():
+            doc = dict(entry["raw"])
             doc["content"] = doc.get("content") or doc.get("fact") or ""
             doc["title"] = doc.get("title") or (doc.get("fact_type") or "Knowledge Fact").replace("_", " ").title()
             doc["type"] = doc.get("type") or doc.get("fact_type") or "business_info"
             doc["source"] = doc.get("source") or doc.get("source_url") or "knowledge_base"
-            
+
             freshness = float(doc.get("freshness_score", 1.0))
             credibility = float(doc.get("credibility_score", 1.0))
             is_val = bool(doc.get("validated", False))
@@ -164,11 +197,22 @@ class RAGService:
                 elif isinstance(type_filter, str) and type_filter != "all" and doc_type != type_filter:
                     continue
 
-            # Hybrid score formula
-            kw_bonus = 0.20 if doc.get("keyword_match") else 0.0
+            # RRF formula: sum( weight / (k + rank) )
+            rrf_val = 0.0
+            if entry["vec_rank"] is not None:
+                rrf_val += W_VEC / (RRF_K + entry["vec_rank"])
+            if entry["lex_rank"] is not None:
+                rrf_val += W_LEX / (RRF_K + entry["lex_rank"])
+
+            # Scale to 0.0 - 1.0 normalized basis (max theoretical ~ 1.85 / 61 ~ 0.030)
+            norm_rrf = min(1.0, rrf_val * 32.0)
             val_bonus = 0.05 if is_val else 0.0
-            hybrid_score = (doc["vector_sim"] * 0.6) + kw_bonus + (freshness * 0.1) + (credibility * 0.05) + val_bonus
-            doc["hybrid_score"] = round(hybrid_score, 4)
+            composite_score = (norm_rrf * 0.70) + (freshness * 0.15) + (credibility * 0.10) + val_bonus
+
+            doc["rrf_score"] = round(rrf_val, 5)
+            doc["vector_sim"] = entry["vec_sim"]
+            doc["keyword_match"] = entry["lex_rank"] is not None
+            doc["hybrid_score"] = round(composite_score, 4)
             filtered_hits.append(doc)
 
         filtered_hits.sort(key=lambda x: x["hybrid_score"], reverse=True)
@@ -300,17 +344,20 @@ class RAGService:
         for c_idx in sorted(citation_indices):
             if 1 <= c_idx <= len(hits):
                 matched_hit = hits[c_idx - 1]
+                sim_val = float(matched_hit.get("final_score", matched_hit.get("hybrid_score", 0.85)))
                 citations.append({
                     "citation_number": c_idx,
+                    "badge": f"[{c_idx}]",
                     "id": matched_hit.get("id"),
                     "title": matched_hit.get("title", f"Source {c_idx}"),
                     "source": matched_hit.get("source", "knowledge_base"),
-                    "url": matched_hit.get("url"),
+                    "url": matched_hit.get("url") or matched_hit.get("source_url"),
                     "type": matched_hit.get("type", "business_info"),
-                    "similarity": float(matched_hit.get("final_score", 0.85)),
+                    "similarity": round(sim_val, 4),
+                    "grounding_confidence": round(min(1.0, max(0.5, sim_val * 1.15)), 2),
                     "llm_relevance": float(matched_hit.get("llm_relevance_score", 8.5)),
                     "validated": bool(matched_hit.get("validated", False)),
-                    "content_snippet": matched_hit.get("content", "")[:250] + "..."
+                    "content_snippet": (matched_hit.get("content", "")[:250] + "...").strip()
                 })
 
         # Anti-Hallucination Verification Check
@@ -333,10 +380,16 @@ class RAGService:
             except Exception:
                 pass
 
+        grounding_score = 1.0 if not hallucination_check.get("hallucinated") else 0.4
+        if citations:
+            avg_conf = sum(c.get("grounding_confidence", 0.8) for c in citations) / len(citations)
+            grounding_score = round(grounding_score * avg_conf, 2)
+
         return {
             "answer": answer,
             "citations": citations,
             "used_hits": hits,
+            "grounding_score": grounding_score,
             "hallucination_check": hallucination_check,
             "timestamp": datetime.utcnow().isoformat()
         }

@@ -42,9 +42,9 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
 LLM_MODELS: List[str] = [
-    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
+    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3.5-lightning"),
     os.getenv("NIM_LLM_FALLBACK", "openai/gpt-oss-20b"),
-    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3.5-lightning",
     "openai/gpt-oss-20b",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nemotron-3-ultra-550b-a55b",
