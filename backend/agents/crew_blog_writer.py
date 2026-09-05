@@ -1743,15 +1743,15 @@ def generate_tldr_block(topic: str, h2_headings: List[str] = None) -> str:
     bullets = ""
     for label, desc in bullets_list[:4]:
         label_clean = label.strip().rstrip(":")
-        bullets += f'<li><strong>{label_clean}:</strong> {desc}</li>\n'
+        bullets += f'<li style="margin-bottom: 8px !important; font-size: 14px !important; line-height: 1.5 !important; color: #374151 !important;"><strong>{label_clean}:</strong> {desc}</li>\n'
 
     words = summary.split()
     if len(words) > 60:
         summary = " ".join(words[:58]) + "."
         
-    return f'''<div class="tldr-block">
-<p><strong>TL;DR:</strong> {summary}</p>
-<ul>
+    return f'''<div class="tldr-block" style="background: #f8f9fa !important; border-left: 4px solid #ff6b35 !important; padding: 20px 24px !important; margin: 24px 0 !important; border-radius: 6px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;">
+<p style="margin-top: 0 !important; margin-bottom: 12px !important; font-size: 15px !important; line-height: 1.6 !important; color: #1f2937 !important;"><strong style="color: #ff6b35 !important;">TL;DR:</strong> {summary}</p>
+<ul style="margin-bottom: 0 !important; padding-left: 20px !important; margin-top: 8px !important;">
 {bullets.strip()}
 </ul>
 </div>'''
@@ -1953,7 +1953,7 @@ def validate_and_fix_tldr(html_content: str, topic: str = "", outline: Optional[
     bullets_html = ""
     for topic_name, topic_desc in valid_bullets[:4]:
         t_clean = str(topic_name).strip().rstrip(":")
-        bullets_html += f"<li><strong>{t_clean}:</strong> {topic_desc}</li>\n"
+        bullets_html += f'<li style="margin-bottom: 8px !important; font-size: 14px !important; line-height: 1.5 !important; color: #374151 !important;"><strong>{t_clean}:</strong> {topic_desc}</li>\n'
 
     if not summary or any(bad in summary.lower() for bad in bad_indicators):
         if "limitation" in clean_topic.lower() or "statute" in clean_topic.lower() or "deadline" in clean_topic.lower():
@@ -1969,7 +1969,7 @@ def validate_and_fix_tldr(html_content: str, topic: str = "", outline: Optional[
     if len(words) > 60:
         summary = " ".join(words[:58]) + "."
 
-    tldr_block = f'''<div class="tldr-block">\n<p><strong>TL;DR:</strong> {summary}</p>\n<ul>\n{bullets_html.strip()}\n</ul>\n</div>'''
+    tldr_block = f'''<div class="tldr-block" style="background: #f8f9fa !important; border-left: 4px solid #ff6b35 !important; padding: 20px 24px !important; margin: 24px 0 !important; border-radius: 6px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;">\n<p style="margin-top: 0 !important; margin-bottom: 12px !important; font-size: 15px !important; line-height: 1.6 !important; color: #1f2937 !important;"><strong style="color: #ff6b35 !important;">TL;DR:</strong> {summary}</p>\n<ul style="margin-bottom: 0 !important; padding-left: 20px !important; margin-top: 8px !important;">\n{bullets_html.strip()}\n</ul>\n</div>'''
 
     # If TL;DR exists, replace it to eliminate placeholder bullets
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -2596,31 +2596,55 @@ def remove_invalid_h2_sections(html_content: str) -> str:
 
 
 def wrap_tldr_css(html_content: str) -> str:
-    """Wrap HTML with TL;DR CSS for WordPress."""
+    """Wrap HTML with TL;DR CSS for WordPress and ensure inline orange line exists."""
+    import re
+    if not html_content:
+        return ""
+    # Ensure every tldr-block div explicitly carries the orange left border in inline styles
+    def _add_tldr_inline(m):
+        tag = m.group(0)
+        if 'border-left' in tag:
+            return tag
+        if 'style="' in tag:
+            return tag.replace('style="', 'style="background: #f8f9fa !important; border-left: 4px solid #ff6b35 !important; padding: 20px 24px !important; margin: 24px 0 !important; border-radius: 6px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important; ')
+        return tag.replace('class="tldr-block"', 'class="tldr-block" style="background: #f8f9fa !important; border-left: 4px solid #ff6b35 !important; padding: 20px 24px !important; margin: 24px 0 !important; border-radius: 6px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;"')
+
+    html_content = re.sub(r'<div[^>]*class=["\'][^"\']*tldr-block[^"\']*["\'][^>]*>', _add_tldr_inline, html_content)
+
     css = """<style>
 .tldr-block {
-    background: #f8f9fa;
-    border-left: 4px solid #ff6b35;
-    padding: 20px 24px;
-    margin: 24px 0;
-    border-radius: 4px;
+    background: #f8f9fa !important;
+    border-left: 4px solid #ff6b35 !important;
+    padding: 20px 24px !important;
+    margin: 24px 0 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
 }
 .tldr-block p {
-    margin-top: 0;
-    font-size: 15px;
-    line-height: 1.6;
+    margin-top: 0 !important;
+    margin-bottom: 12px !important;
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+    color: #1f2937 !important;
+}
+.tldr-block p strong {
+    color: #ff6b35 !important;
 }
 .tldr-block ul {
-    margin-bottom: 0;
-    padding-left: 20px;
+    margin-bottom: 0 !important;
+    padding-left: 20px !important;
+    margin-top: 8px !important;
 }
 .tldr-block ul li {
-    margin-bottom: 8px;
-    font-size: 14px;
-    line-height: 1.5;
+    margin-bottom: 8px !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+    color: #374151 !important;
 }
 </style>"""
-    return f"{css}\n\n{html_content}"
+    if "tldr-block" in html_content and ".tldr-block {" not in html_content:
+        return f"{css}\n\n{html_content}"
+    return html_content
 
 
 def ensure_humanized_traits(html_content: str, topic: str) -> str:
@@ -4543,6 +4567,7 @@ async def generate_blog_autonomous(
         # Attempt WP draft creation for every generation (draft for WordPress)
         # PROBLEM 4 FIX STEP 2 — wrap with TLDR CSS for WordPress
         # Also compute cleaned title for WP draft from final_html H1
+        final_html = wrap_tldr_css(final_html)
         wp_title = planner_outline.get("h1_suggestion") or topic
         try:
             _h1m = re.search(r"<h1[^>]*>(.*?)</h1>", final_html, flags=re.I | re.S)
@@ -4552,7 +4577,7 @@ async def generate_blog_autonomous(
                     wp_title = enforce_title_rules(_h1txt, topic)
         except Exception:
             pass
-        wp_content = wrap_tldr_css(final_html)
+        wp_content = final_html
         
         # DUPLICATE CHECK: Skip WP draft if post with same/similar title exists
         duplicate_found = False
@@ -5023,10 +5048,22 @@ def ensure_faqs_and_ctas(html_content: str, outline: Optional[dict] = None) -> s
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    h3_elements = soup.find_all('h3')
-    has_faq_h2 = any("frequently asked" in h2.get_text().lower() or "faqs" in h2.get_text().lower() for h2 in soup.find_all('h2'))
+    def _get_faq_h2_and_count(soup):
+        for h2 in soup.find_all('h2'):
+            if 'frequently asked' in h2.get_text().lower() or 'faqs' in h2.get_text().lower():
+                count = 0
+                current = h2.next_sibling
+                while current and getattr(current, 'name', None) != 'h2':
+                    if hasattr(current, 'name') and current.name == 'h3':
+                        count += 1
+                    current = current.next_sibling
+                return h2, count
+        return None, 0
+
+    faq_h2, faq_question_count = _get_faq_h2_and_count(soup)
+    has_faq_h2 = faq_h2 is not None
     
-    if not has_faq_h2 or len(h3_elements) < 4:
+    if not has_faq_h2 or faq_question_count < 4:
         faqs = []
         if outline:
             faqs = outline.get("point_13_faqs", [])
@@ -5295,34 +5332,214 @@ def fix_broken_sentences(html_content: str) -> str:
 
 
 # ============================================================
-# FIX 3: DYNAMIC CLICKABLE FAQ ACCORDION
+# FIX 3: DYNAMIC CLICKABLE FAQ ACCORDION (SCRATCH TEST CARD SYSTEM)
 # ============================================================
 
-def build_faq_accordion(faq_items: list) -> str:
-    """Converts FAQ list into animated toggle accordion matching user template with SEO schema."""
+def build_faq_accordion(faq_items: list, topic: str = "") -> str:
+    """
+    Renders an ultra-premium, modern, responsive FAQ accordion card system.
+    Completely immune to WordPress theme button overrides (uses accessible role='button' on styled divs)
+    and immune to wpautop spacing issues.
+    """
     import json
 
-    # Scoped inline CSS guarantees smooth animations even if WordPress theme lacks Tailwind
     accordion_css = """<style>
-.rf-faq-wrapper { max-width: 48rem; margin-left: auto; margin-right: auto; padding-top: 2rem; padding-bottom: 2rem; font-family: inherit; }
-.rf-faq-title { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin-bottom: 1.5rem; color: #111827; }
-.rf-faq-divider { border-top: 1px solid #e5e7eb; }
-.rf-faq-item { border-bottom: 1px solid #e5e7eb; }
-.rf-faq-button { width: 100%; text-align: left; padding-top: 1rem; padding-bottom: 1rem; background: none; border: none; cursor: pointer; color: inherit; font-family: inherit; display: block; }
-.rf-faq-button:focus { outline: none; }
-.rf-faq-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-.rf-faq-qtext { font-size: 1.15rem; font-weight: 500; color: #111827; }
-.rf-faq-arrow { width: 1.5rem; height: 1.5rem; min-width: 1.5rem; color: #6b7280; transition: transform 200ms ease-in-out; }
-.rf-faq-content { overflow: hidden; max-height: 0px; transition: max-height 500ms ease-in-out; }
-.rf-faq-answer-p { padding: 1rem 0; margin: 0; color: #4b5563; font-size: 1rem; line-height: 1.6; }
+.rf-faq-wrapper {
+  max-width: 880px !important;
+  margin: 56px auto !important;
+  padding: 0 16px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  position: relative !important;
+}
+.rf-faq-wrapper::before {
+  content: "" !important;
+  position: absolute !important;
+  top: -20px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 60px !important;
+  height: 4px !important;
+  background: linear-gradient(90deg, #0d9488, #14b8a6, #0d9488) !important;
+  border-radius: 2px !important;
+  opacity: 0.85 !important;
+}
+.rf-faq-card {
+  margin-bottom: 14px !important;
+  background: #ffffff !important;
+  border: 1.5px solid #e2e8f0 !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02) !important;
+  position: relative !important;
+}
+.rf-faq-card::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 4px !important;
+  height: 100% !important;
+  background: linear-gradient(180deg, #0d9488, #14b8a6) !important;
+  opacity: 0 !important;
+  transition: opacity 0.35s ease !important;
+}
+.rf-faq-card:hover {
+  border-color: #14b8a6 !important;
+  box-shadow: 0 10px 30px -8px rgba(13, 148, 136, 0.15), 0 4px 12px -2px rgba(13, 148, 136, 0.08) !important;
+  transform: translateY(-2px) !important;
+}
+.rf-faq-card:hover::before {
+  opacity: 0.6 !important;
+}
+.rf-faq-card.rf-open {
+  border-color: #0d9488 !important;
+  box-shadow: 0 16px 40px -8px rgba(13, 148, 136, 0.2), 0 6px 16px -4px rgba(13, 148, 136, 0.08) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdfa 100%) !important;
+}
+.rf-faq-card.rf-open::before {
+  opacity: 1 !important;
+}
+.rf-faq-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 22px 26px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  gap: 18px !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  text-align: left !important;
+  position: relative !important;
+}
+.rf-faq-header:focus-visible {
+  outline: 2px solid #0d9488 !important;
+  outline-offset: 2px !important;
+  border-radius: 16px !important;
+}
+.rf-faq-title-text {
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+  line-height: 1.5 !important;
+  text-transform: none !important;
+  letter-spacing: -0.015em !important;
+  margin: 0 !important;
+  font-family: inherit !important;
+  transition: color 0.3s ease !important;
+  flex: 1 !important;
+}
+.rf-faq-card.rf-open .rf-faq-title-text {
+  color: #0f766e !important;
+  font-weight: 700 !important;
+}
+.rf-faq-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+  color: #475569 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-family: inherit !important;
+  position: relative !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5) !important;
+}
+.rf-faq-card.rf-open .rf-faq-badge {
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
+  color: #ffffff !important;
+  transform: scale(1.05) !important;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+}
+.rf-faq-circle {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  border-radius: 50% !important;
+  background: #f8fafc !important;
+  border: 1.5px solid #e2e8f0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+}
+.rf-faq-card:hover .rf-faq-circle {
+  border-color: #14b8a6 !important;
+  background: #f0fdfa !important;
+}
+.rf-faq-card.rf-open .rf-faq-circle {
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
+  border-color: #0d9488 !important;
+  transform: rotate(180deg) !important;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3) !important;
+}
+.rf-faq-arrow-svg {
+  width: 18px !important;
+  height: 18px !important;
+  color: #64748b !important;
+  transition: color 0.3s ease !important;
+}
+.rf-faq-card.rf-open .rf-faq-arrow-svg {
+  color: #ffffff !important;
+}
+.rf-faq-content {
+  overflow: hidden !important;
+  max-height: 0px;
+  opacity: 0;
+  transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
+}
+.rf-faq-answer-inner {
+  padding: 0 26px 26px 26px !important;
+  position: relative !important;
+}
+.rf-faq-divider-line {
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent 0%, #e2e8f0 20%, #e2e8f0 80%, transparent 100%) !important;
+  margin-bottom: 18px !important;
+  opacity: 0.8 !important;
+}
+.rf-faq-answer-p {
+  margin: 0 !important;
+  font-size: 15.5px !important;
+  line-height: 1.8 !important;
+  color: #475569 !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  font-family: inherit !important;
+  letter-spacing: -0.005em !important;
+}
+@media (max-width: 640px) {
+  .rf-faq-header { padding: 18px 20px !important; gap: 12px !important; }
+  .rf-faq-answer-inner { padding: 0 20px 22px 20px !important; }
+  .rf-faq-title-text { font-size: 15.5px !important; }
+  .rf-faq-badge { width: 32px !important; height: 32px !important; min-width: 32px !important; font-size: 12px !important; }
+  .rf-faq-circle { width: 34px !important; height: 34px !important; min-width: 34px !important; }
+  .rf-faq-answer-p { font-size: 14.5px !important; line-height: 1.7 !important; }
+}
+@keyframes rf-faq-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rf-faq-card.rf-open .rf-faq-answer-p {
+  animation: rf-faq-fade-in 0.4s ease 0.1s both !important;
+}
 </style>"""
 
     items_html = ""
     schema_items = []
     for idx, faq in enumerate(faq_items, 1):
-        question = faq.get("question", "").strip()
-        answer = faq.get("answer_draft", "") or faq.get("answer", "")
-        answer = answer.strip()
+        question = str(faq.get("question", "")).strip()
+        answer = str(faq.get("answer_draft", "") or faq.get("answer", "") or faq.get("answer_approach", "")).strip()
         if not question or not answer:
             continue
         schema_items.append({
@@ -5330,19 +5547,25 @@ def build_faq_accordion(faq_items: list) -> str:
             "name": question,
             "acceptedAnswer": {"@type": "Answer", "text": answer}
         })
-        items_html += f"""      <!-- FAQ Item {idx} -->
-      <div class="rf-faq-item">
-        <button class="w-full text-left py-4 rf-faq-button" onclick="toggleFAQItem({idx})" type="button">
-          <div class="flex justify-between items-center rf-faq-header">
-            <span class="text-xl font-medium rf-faq-qtext">{question}</span>
-            <svg id="arrow-{idx}" class="w-6 h-6 text-gray-500 transform transition-transform duration-200 rf-faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-        </button>
-        <div id="faq-content-{idx}" class="overflow-hidden max-h-0 transition-all duration-500 rf-faq-content">
-          <p class="p-4 text-gray-600 rf-faq-answer-p">{answer}</p>
-        </div>
-      </div>
-"""
+        badge_num = f"{idx:02d}"
+        items_html += f"""<div id="rf-faq-item-{idx}" class="rf-faq-card" style="margin-bottom:14px;background:#ffffff;border:1.5px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.04),0 1px 2px rgba(15,23,42,0.02);position:relative;">
+<div style="position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,#0d9488,#14b8a6);opacity:0;transition:opacity 0.35s ease;" id="rf-bar-{idx}"></div>
+<div class="rf-faq-header" onclick="toggleFAQItem({idx})" onkeydown="if(event.key==='Enter'||event.key===' '){{toggleFAQItem({idx});event.preventDefault();}}" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-content-{idx}" style="display:flex;align-items:center;justify-content:space-between;padding:22px 26px;cursor:pointer;user-select:none;gap:18px;background:transparent;border:none;outline:none;text-align:left;position:relative;">
+<div style="display:flex;align-items:center;gap:14px;flex-grow:1;min-width:0;">
+<span id="rf-badge-{idx}" class="rf-faq-badge" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;min-width:36px;border-radius:12px;background:linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%);color:#475569;font-size:13px;font-weight:700;font-family:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);">{badge_num}</span>
+<span id="rf-title-{idx}" class="rf-faq-title-text" style="font-size:17px;font-weight:600;color:#0f172a;line-height:1.5;text-transform:none!important;letter-spacing:-0.015em;margin:0;font-family:inherit;flex:1;">{question}</span>
+</div>
+<div id="arrow-wrap-{idx}" class="rf-faq-circle" style="width:38px;height:38px;min-width:38px;border-radius:50%;background:#f8fafc;border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.35s cubic-bezier(0.4,0,0.2,1);">
+<svg id="arrow-{idx}" class="rf-faq-arrow-svg" style="width:18px;height:18px;color:#64748b;display:block;transition:transform 0.35s cubic-bezier(0.4,0,0.2,1),color 0.3s ease;" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+</div>
+</div>
+<div id="faq-content-{idx}" class="rf-faq-content" style="overflow:hidden;max-height:0px;opacity:0;transition:max-height 0.5s cubic-bezier(0.16,1,0.3,1),opacity 0.35s ease;">
+<div class="rf-faq-answer-inner" style="padding:0 26px 26px 26px;position:relative;">
+<div class="rf-faq-divider-line" style="height:1px;background:linear-gradient(90deg,transparent 0%,#e2e8f0 20%,#e2e8f0 80%,transparent 100%);margin-bottom:18px;opacity:0.8;"></div>
+<p class="rf-faq-answer-p" style="margin:0;font-size:15.5px;line-height:1.8;color:#475569;font-weight:400;text-transform:none!important;font-family:inherit;letter-spacing:-0.005em;">{answer}</p>
+</div>
+</div>
+</div>"""
 
     faq_schema = json.dumps({
         "@context": "https://schema.org",
@@ -5352,54 +5575,128 @@ def build_faq_accordion(faq_items: list) -> str:
 
     accordion_js = """<script>
 function toggleFAQItem(id) {
+  var item = document.getElementById('rf-faq-item-' + id);
   var content = document.getElementById('faq-content-' + id);
   var arrow = document.getElementById('arrow-' + id);
+  var iconWrap = document.getElementById('arrow-wrap-' + id);
+  var badge = document.getElementById('rf-badge-' + id);
+  var title = document.getElementById('rf-title-' + id);
+  var bar = document.getElementById('rf-bar-' + id);
   if (!content) return;
-  if (content.style.maxHeight && content.style.maxHeight !== '0px') {
-    content.style.maxHeight = null;
-    if (arrow) arrow.style.transform = 'rotate(0deg)';
+  var isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+  if (isOpen) {
+    content.style.maxHeight = '0px';
+    content.style.opacity = '0';
+    if (item) {
+      item.classList.remove('rf-open');
+      item.style.borderColor = '#e2e8f0';
+      item.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02)';
+      item.style.background = '#ffffff';
+    }
+    if (arrow) {
+      arrow.style.transform = 'rotate(0deg)';
+      arrow.style.color = '#64748b';
+    }
+    if (iconWrap) {
+      iconWrap.style.background = '#f8fafc';
+      iconWrap.style.borderColor = '#e2e8f0';
+      iconWrap.style.transform = 'rotate(0deg)';
+      iconWrap.style.boxShadow = 'none';
+    }
+    if (badge) {
+      badge.style.background = 'linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%)';
+      badge.style.color = '#475569';
+      badge.style.transform = 'scale(1)';
+      badge.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.5)';
+    }
+    if (title) {
+      title.style.color = '#0f172a';
+      title.style.fontWeight = '600';
+    }
+    if (bar) {
+      bar.style.opacity = '0';
+    }
   } else {
-    content.style.maxHeight = content.scrollHeight + 'px';
-    if (arrow) arrow.style.transform = 'rotate(180deg)';
+    content.style.maxHeight = (content.scrollHeight + 40) + 'px';
+    content.style.opacity = '1';
+    if (item) {
+      item.classList.add('rf-open');
+      item.style.borderColor = '#0d9488';
+      item.style.boxShadow = '0 16px 40px -8px rgba(13, 148, 136, 0.2), 0 6px 16px -4px rgba(13, 148, 136, 0.08)';
+      item.style.background = 'linear-gradient(180deg,#ffffff 0%,#f0fdfa 100%)';
+    }
+    if (arrow) {
+      arrow.style.color = '#ffffff';
+    }
+    if (iconWrap) {
+      iconWrap.style.background = 'linear-gradient(135deg,#0d9488 0%,#14b8a6 100%)';
+      iconWrap.style.borderColor = '#0d9488';
+      iconWrap.style.transform = 'rotate(180deg)';
+      iconWrap.style.boxShadow = '0 4px 12px rgba(13, 148, 136, 0.3)';
+    }
+    if (badge) {
+      badge.style.background = 'linear-gradient(135deg,#0d9488 0%,#14b8a6 100%)';
+      badge.style.color = '#ffffff';
+      badge.style.transform = 'scale(1.05)';
+      badge.style.boxShadow = '0 4px 12px rgba(13, 148, 136, 0.35), inset 0 1px 0 rgba(255,255,255,0.2)';
+    }
+    if (title) {
+      title.style.color = '#0f766e';
+      title.style.fontWeight = '700';
+    }
+    if (bar) {
+      bar.style.opacity = '1';
+    }
   }
 }
+if (typeof window !== 'undefined') { window.toggleFAQItem = toggleFAQItem; }
 </script>"""
 
-    return f"""{accordion_css}
-  <div class="max-w-3xl mx-auto py-16 rf-faq-wrapper">
-    <h2 class="text-2xl font-bold mb-8 rf-faq-title">Frequently Asked Questions</h2>
-    <div class="divide-y divide-gray-200 rf-faq-divider">
-{items_html}    </div>
-  </div>
+    sub_text = f"Clear, reliable answers to the most important legal and practical questions regarding {topic}." if topic else "Clear, reliable answers to the most important legal and procedural questions."
+
+    header_html = f"""<div class="rf-faq-wrapper" style="max-width:880px;margin:56px auto;padding:0 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;position:relative;">
+<div style="text-align:center;margin-bottom:40px;position:relative;">
+<div style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#f0fdfa 0%,#ccfbf1 100%);border:1px solid #99f6e4;color:#0f766e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:7px 18px;border-radius:9999px;margin-bottom:16px;box-shadow:0 2px 8px rgba(13,148,136,0.08);">
+<svg style="width:14px;height:14px;color:#0d9488;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+<span>Knowledge Base</span>
+</div>
+<h2 style="font-size:36px;font-weight:800;color:#0f172a;margin:0 0 12px 0;letter-spacing:-0.035em;line-height:1.2;font-family:inherit;background:linear-gradient(135deg,#0f172a 0%,#0f766e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Frequently Asked Questions</h2>
+<p style="font-size:16.5px;color:#64748b;margin:0 auto;line-height:1.6;font-family:inherit;max-width:560px;">{sub_text}</p>
+</div>
+<div class="rf-faq-list">
+"""
+
+    footer_html = """</div>
+</div>
 <script type="application/ld+json">
-{faq_schema}
+""" + faq_schema + """
 </script>
-{accordion_js}"""
+""" + accordion_js
+
+    return accordion_css + "\n" + header_html + items_html + footer_html
 
 
-def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
-    """Replaces static FAQ section with dynamic clickable accordion matching user template."""
+def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = "") -> str:
+    """Replaces static or broken FAQ section with dynamic clickable accordion matching user template."""
     from bs4 import BeautifulSoup
     import re
     
+    if not html_content:
+        return ""
+
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Find the FAQ H2
-    faq_h2 = None
-    for h2 in soup.find_all('h2'):
-        text = h2.get_text().lower()
-        if 'frequently asked' in text or 'faq' in text:
-            faq_h2 = h2
-            break
-    
-    if not faq_h2:
-        return html_content
-    
+    # 1. Gather FAQ items from outline if available
     faq_items = []
     if outline:
-        faq_items = outline.get("point_14_faqs", []) or outline.get("point_13_faqs", []) or outline.get("faqs", [])
+        faq_items = (
+            outline.get("point_14_faqs", [])
+            or outline.get("point_13_faqs", [])
+            or outline.get("faqs", [])
+            or outline.get("faq_questions", [])
+        )
     
-    # Fallback 1: parse questions and answers directly from existing JSON-LD FAQPage schema if present
+    # 2. Fallback: parse questions and answers directly from existing JSON-LD FAQPage schema
     if not faq_items:
         for s in soup.find_all('script', type='application/ld+json'):
             try:
@@ -5414,8 +5711,15 @@ def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
             except Exception:
                 pass
 
-    # Fallback 2: parse questions and answers directly from existing H3 and P elements under FAQ H2
-    if not faq_items:
+    # 3. Fallback: parse questions and answers directly from existing H3/P elements under FAQ H2
+    faq_h2 = None
+    for h2 in soup.find_all('h2'):
+        text = h2.get_text().lower()
+        if 'frequently asked' in text or 'faq' in text:
+            faq_h2 = h2
+            break
+
+    if not faq_items and faq_h2:
         current = faq_h2.next_sibling
         cur_q = None
         while current:
@@ -5424,74 +5728,103 @@ def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
                     break
                 if current.name == 'h3':
                     cur_q = current.get_text().strip()
-                elif current.name == 'p' and cur_q:
-                    ans = current.get_text().strip()
-                    if ans:
-                        faq_items.append({"question": cur_q, "answer_draft": ans})
-                    cur_q = None
+                elif current.name == 'p':
+                    # check if paragraph is strong question or answer
+                    p_text = current.get_text().strip()
+                    if cur_q:
+                        if p_text:
+                            faq_items.append({"question": cur_q, "answer_draft": p_text})
+                        cur_q = None
+                    elif current.find('strong') and ('?' in p_text or len(p_text) < 120):
+                        cur_q = p_text
             current = current.next_sibling
 
-    # Fallback 3: parse from existing accordion buttons and answers if already partially formatted
+    # 4. Fallback: parse from existing card / button structures if previously partially built
     if not faq_items:
-        for btn in soup.find_all('button', class_=lambda c: c and ('faq' in c.lower() or 'question' in c.lower())):
-            q_text = btn.get_text().strip()
-            q_text = re.sub(r'[\+\-\s]+$', '', q_text).strip()
-            ans_div = btn.find_next('div', class_=lambda c: c and ('answer' in c.lower() or 'content' in c.lower()))
-            if q_text and ans_div:
-                ans_text = ans_div.get_text().strip()
-                if ans_text:
+        for card in soup.find_all('div', class_=lambda c: c and ('rf-faq-card' in c or 'rf-faq-item' in c)):
+            title_el = card.find(class_=lambda c: c and ('rf-faq-title-text' in c or 'rf-faq-qtext' in c)) or card.find(['span', 'h3', 'button'])
+            ans_el = card.find(class_=lambda c: c and ('rf-faq-answer-p' in c or 'rf-faq-content' in c)) or card.find('p')
+            if title_el and ans_el:
+                q_text = title_el.get_text().strip()
+                ans_text = ans_el.get_text().strip()
+                if q_text and ans_text:
                     faq_items.append({"question": q_text, "answer_draft": ans_text})
 
-    if not faq_items:
+    # If still no FAQ items found and no FAQ header, return content as is
+    if not faq_items and not faq_h2:
         return html_content
-    
-    # Build accordion HTML
-    accordion_html = build_faq_accordion(faq_items)
+
+    # If FAQ H2 existed but no items extracted, populate default high-quality FAQ questions based on topic
+    if not faq_items:
+        clean_t = (topic or "your accident").title()
+        faq_items = [
+            {"question": f"What immediate steps should I take regarding {clean_t}?", "answer_draft": f"Ensure immediate safety, seek emergency medical care, document all scene details and witnesses, and consult an attorney before giving recorded statements to insurers."},
+            {"question": "How is financial compensation determined?", "answer_draft": "Compensation covers direct economic losses (emergency hospital bills, rehabilitation, lost income) and non-economic damages (pain and suffering, emotional distress) calculated using severity multipliers."},
+            {"question": "What is the statutory deadline to file a claim?", "answer_draft": "Most jurisdictions enforce a strict two-year statute of limitations from the incident date. Failing to file before the statutory window expires permanently bars legal recovery."},
+            {"question": "Will my case settle out of court or go to trial?", "answer_draft": "Over 90 percent of claims settle through structured negotiations when supported by robust evidence. If an insurance carrier refuses fair compensation, litigation becomes necessary to secure full damages."}
+        ]
+
+    # Build the brand new modern accordion HTML
+    accordion_html = build_faq_accordion(faq_items, topic=topic)
     accordion_soup = BeautifulSoup(accordion_html, 'html.parser')
-    
-    # Find ALL elements in the FAQ section (H2 + following elements until next H2 or div.cta)
-    elements_to_remove = [faq_h2]
-    current = faq_h2.next_sibling
-    while current:
-        if hasattr(current, 'name'):
-            if current.name == 'h2':
-                break
-            if current.name == 'div' and ('cta' in str(current.get('class', [])).lower() or 'take action' in current.get_text().lower()):
-                break
-        elements_to_remove.append(current)
-        current = current.next_sibling
-    
-    # Insert accordion before the FAQ H2 position
-    cta_el = None
+
+    # Remove any existing .rf-faq-wrapper or old FAQ section
+    existing_wrapper = soup.find('div', class_=lambda c: c and 'rf-faq-wrapper' in c)
+    if existing_wrapper:
+        existing_wrapper.replace_with(accordion_soup)
+        return str(soup)
+
+    if faq_h2:
+        elements_to_remove = [faq_h2]
+        current = faq_h2.next_sibling
+        while current:
+            if hasattr(current, 'name'):
+                if current.name == 'h2':
+                    break
+                if current.name == 'div' and ('cta' in str(current.get('class', [])).lower() or 'take action' in current.get_text().lower()):
+                    break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+
+        faq_h2.insert_before(accordion_soup)
+        for el in elements_to_remove:
+            try:
+                el.decompose()
+            except Exception:
+                pass
+        return str(soup)
+
+    # If no FAQ H2, insert before CTA block or at the end
+    cta = None
     for div in soup.find_all('div'):
         div_text = div.get_text().lower()
-        if 'take action' in div_text and 'schedule' in div_text:
-            cta_el = div
+        if 'take action' in div_text or 'schedule' in div_text or 'cta' in ' '.join(div.get('class', [])):
+            cta = div
             break
-    
-    if cta_el:
-        cta_el.insert_before(accordion_soup)
+
+    if cta:
+        cta.insert_before(accordion_soup)
     else:
-        faq_h2.insert_before(accordion_soup)
-    
-    # Remove old FAQ elements
-    for el in elements_to_remove:
-        try:
-            el.decompose()
-        except Exception:
-            pass
-    
+        if soup.body:
+            soup.body.append(accordion_soup)
+        else:
+            soup.append(accordion_soup)
+
     return str(soup)
 
 
 def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
     """
     Fixes blog structure: adds H1 title, moves TL;DR to top,
-    ensures proper order: Title → TL;DR → Content → FAQ → CTA
+    ensures proper order: Title → TL;DR → Content → FAQ → CTA.
+    Maintains .rf-faq-wrapper as an atomic unit so accordion is never broken.
     """
     from bs4 import BeautifulSoup
     import re
     
+    if not html_content:
+        return ""
+
     soup = BeautifulSoup(html_content, 'html.parser')
     
     # 1. Ensure H1 title exists at the top
@@ -5506,8 +5839,11 @@ def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
     
     # 2. Find and move TL;DR to top (after H1)
     tldr = None
-    tldr_parent = None
     for el in soup.find_all(['div', 'section', 'p']):
+        c = el.get('class', [])
+        if any('tldr' in str(x).lower() for x in (c if isinstance(c, list) else [c])):
+            tldr = el
+            break
         text = el.get_text().lower()
         if 'tldr' in text or 'too long' in text:
             tldr = el
@@ -5527,53 +5863,54 @@ def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
     # 3. Fix section headings that are questions (convert to statements)
     for h2 in soup.find_all('h2'):
         text = h2.get_text().strip()
-        # If heading ends with ? and is a question, convert to statement
+        if 'frequently asked' in text.lower() or 'faq' in text.lower():
+            continue
         if text.endswith('?') and 'what' in text.lower():
-            # Convert question to statement
             new_text = text.replace('?', '').strip()
-            # Capitalize first letter
             if new_text:
                 new_text = new_text[0].upper() + new_text[1:]
                 h2.string = new_text
     
-    # 4. Ensure FAQ is at the end (before CTA if exists)
-    faq_h2 = None
-    for h2 in soup.find_all('h2'):
-        if 'frequently asked' in h2.get_text().lower():
-            faq_h2 = h2
+    # 4. Ensure FAQ is before CTA block
+    rf_wrapper = soup.find('div', class_=lambda c: c and 'rf-faq-wrapper' in c)
+    cta = None
+    for div in soup.find_all('div'):
+        div_text = div.get_text().lower()
+        if 'take action' in div_text or 'schedule' in div_text or 'cta' in ' '.join(div.get('class', [])):
+            cta = div
             break
-    
-    if faq_h2:
-        # Collect FAQ section elements
-        faq_elements = [faq_h2]
-        sibling = faq_h2.next_sibling
-        while sibling:
-            if hasattr(sibling, 'name') and sibling.name == 'h2':
-                break
-            faq_elements.append(sibling)
-            sibling = sibling.next_sibling
-        
-        # Extract all FAQ elements
-        for el in faq_elements:
-            el.extract()
-        
-        # Find CTA block
-        cta = None
-        for div in soup.find_all('div'):
-            div_text = div.get_text().lower()
-            if 'take action' in div_text or 'schedule' in div_text or 'cta' in ' '.join(div.get('class', [])):
-                cta = div
+
+    if rf_wrapper and cta and rf_wrapper != cta:
+        rf_wrapper.extract()
+        cta.insert_before(rf_wrapper)
+    elif not rf_wrapper:
+        # Check for static FAQ H2 to place before CTA
+        faq_h2 = None
+        for h2 in soup.find_all('h2'):
+            if 'frequently asked' in h2.get_text().lower():
+                faq_h2 = h2
                 break
         
-        # Insert FAQ before CTA (or at end)
-        if cta:
-            cta.insert_before(*faq_elements)
-        else:
-            if soup.body:
-                soup.body.extend(faq_elements)
+        if faq_h2:
+            faq_elements = [faq_h2]
+            sibling = faq_h2.next_sibling
+            while sibling:
+                if hasattr(sibling, 'name') and sibling.name == 'h2':
+                    break
+                faq_elements.append(sibling)
+                sibling = sibling.next_sibling
+            
+            for el in faq_elements:
+                el.extract()
+            
+            if cta:
+                cta.insert_before(*faq_elements)
             else:
-                for el in faq_elements:
-                    soup.append(el)
+                if soup.body:
+                    soup.body.extend(faq_elements)
+                else:
+                    for el in faq_elements:
+                        soup.append(el)
     
     return str(soup)
 
@@ -5750,8 +6087,7 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     step9 = enforce_keyword_density(step9, pk, max_count=8)
 
     # FIX 3: Replace static FAQ with clickable accordion
-    if outline and outline.get("point_14_faqs"):
-        step9 = replace_faq_with_accordion(step9, outline)
+    step9 = replace_faq_with_accordion(step9, outline or {}, topic=pk)
 
     # 11. Validate keyword in title
     final = validate_keyword_in_title(step9, pk)
@@ -5789,7 +6125,93 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     if contains_wrong_audience_content(final):
         raise ValueError("Wrong audience content detected — regenerating")
     
+    final = wrap_tldr_css(final)
     return final
+
+
+async def process_blog_output_aeo(
+    raw_html: str,
+    website_id: str,
+    target_keyword: str,
+    outline: Optional[dict],
+    primary_keyword: str,
+    real_quotes: list,
+    website_facts: dict,
+    faq_items: list
+):
+    from services.citation_injector import (
+        inject_citations,
+        inject_term_definitions,
+        build_quick_facts_table,
+        inject_quick_facts_table,
+        auto_fix_chunk_lengths,
+        validate_chunk_lengths,
+    )
+    from services.schema_generator import generate_article_schema
+    from services.llm_content_server import generate_markdown_version
+
+    humanized = await humanizer_agent.run(raw_html, target_keyword)
+
+    step1 = clean_llm_output(humanized)
+    step1b = fix_broken_year_in_content(step1)
+    step2 = clean_special_characters(step1b)
+    step3 = enforce_contractions(step2)
+    step4 = enforce_sentence_variety(step3)
+    real_people = [q["person"] for q in (real_quotes or [])]
+    step4b = remove_fake_quotes(step4, real_people)
+    step4c = remove_duplicate_paragraphs(step4b)
+    step4d = remove_duplicate_tables(step4c)
+    step4e = fix_broken_sentences(step4d)
+    step5 = remove_broken_links(step4e)
+    step6 = detect_duplicate_examples(step5)
+    step7 = enforce_keyword_density(step6, primary_keyword, max_count=8)
+
+    step7a = await inject_citations(step7, target_keyword, website_id)
+    step7b = inject_term_definitions(step7a, "legal")
+
+    facts_table = build_quick_facts_table(outline or {}, website_facts, target_keyword)
+    step7c = inject_quick_facts_table(step7b, facts_table)
+
+    step7d = await auto_fix_chunk_lengths(step7c)
+
+    is_valid, word_count = validate_word_count(step7d)
+    if not is_valid and word_count < 2400:
+        step7d = await ensure_minimum_word_count(
+            step7d, outline or {}, target_keyword,
+            website_id, word_count
+        )
+
+    step8 = await inject_internal_links(step7d, website_id)
+    step9 = validate_and_fix_tldr(step8, target_keyword, outline)
+    step9b = replace_faq_with_accordion(step9, outline or {})
+
+    schema_tag = await generate_article_schema(
+        title=outline.get("point_6_h1", {}).get("h1_text", target_keyword) if outline else target_keyword,
+        html_content=step9b,
+        target_keyword=target_keyword,
+        website_facts=website_facts,
+        wp_url="",
+        published_at=datetime.utcnow().isoformat(),
+        faq_items=faq_items
+    )
+    final = step9b + schema_tag
+
+    final = validate_keyword_in_title(final, target_keyword)
+
+    if contains_wrong_audience_content(final):
+        raise ValueError("Wrong audience content — regenerating")
+
+    await generate_markdown_version(
+        html_content=final,
+        title=outline.get("point_6_h1", {}).get("h1_text", target_keyword) if outline else target_keyword,
+        target_keyword=target_keyword,
+        wp_url="",
+        published_at=datetime.utcnow().isoformat(),
+        website_facts=website_facts
+    )
+
+    return final
+
 
 async def run_crew_blog_writer(website_id: str, target_keyword: str, tone: str = "Professional", word_count_target: int = 2500) -> Dict[str, Any]:
     """
