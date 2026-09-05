@@ -2811,6 +2811,86 @@ OUTPUT RULES:
 - Do not change keyword placement
 - Start with the same h1 tag as input
 - End with the Meta Description line
+
+WIKIPEDIA AI WRITING SIGNS — NEVER DO THESE:
+
+1. SYCOPHANTIC OR HOLLOW OPENERS
+Never start a section or paragraph with:
+"It is essential to note that..."
+"It is important to understand that..."
+"It is crucial to remember that..."
+"It is worth noting that..."
+"It goes without saying that..."
+"Needless to say..."
+"Of course..."
+"Certainly..."
+Just say the thing directly.
+
+2. UNNECESSARY TRANSITIONAL SUMMARIES
+Never end a section by summarizing what was just said.
+Never write: "By understanding X, you can Y."
+Never write: "With this knowledge, you are now equipped to..."
+Never write: "As we have seen, X is important because..."
+End sections with a new fact, a warning, or a next step — 
+not a restatement.
+
+3. OVERUSE OF "IT IS" CONSTRUCTIONS
+Maximum 2 uses of "It is" per article.
+"It is recommended" → "We recommend" or just give the instruction
+"It is important" → delete and say the important thing
+"It is essential" → delete and say the essential thing
+"It is crucial" → delete and say the crucial thing
+
+4. VAGUE STATISTICS WITHOUT REAL ATTRIBUTION
+Never write: "Studies show that..."
+Never write: "Research indicates that..."
+Never write: "According to recent studies..."
+Never write: "Experts say that..."
+Unless you have a REAL source name:
+OK: "According to NHTSA's 2024 crash data report..."
+OK: "The Insurance Information Institute reported in 2025..."
+NOT OK: "Studies show 73% of accidents..."
+
+5. HOMOGENEOUS PARAGRAPH LENGTH
+Count words in every paragraph before outputting.
+No more than 2 consecutive paragraphs within 20 words 
+of each other in length.
+Mix short (30-60 words) and longer (80-120 words) paragraphs.
+At least 2 paragraphs must be under 40 words in every article.
+
+6. LISTS MASQUERADING AS PROSE
+AI turns everything into a 3-part list:
+"There are three factors: X, Y, and Z."
+Sometimes things have 2 factors. Sometimes 5. 
+Don't always use 3. Vary it.
+
+7. UNEARNED CERTAINTY
+Never claim a specific number without a real source.
+"The average settlement is $50,000" — where does this come from?
+If you don't have a real source, say "Settlement amounts vary 
+widely — a minor injury might settle for $8,000 while a spinal 
+injury can exceed $400,000."
+
+8. CLOSING PARAGRAPH CLICHÉS
+Never end the article with:
+"By following these steps..."
+"Armed with this knowledge..."
+"Don't hesitate to seek help..."
+"Taking these proactive steps..."
+End with something specific: a warning, a deadline, 
+a single most important action.
+
+9. PASSIVE VOICE CHAINS
+Never write 2 consecutive passive voice sentences.
+"The claim was filed. The evidence was gathered. 
+The settlement was negotiated." → all passive.
+Rewrite: "File the claim. Gather your evidence before 
+the adjuster calls. Then negotiate."
+
+10. FAKE BALANCE
+AI always presents "both sides" even when there is only one right answer.
+"While some attorneys recommend X, others prefer Y."
+If X is clearly correct, just say X.
 """
 
 HUMANIZER_TASK_TEMPLATE = """
@@ -2940,6 +3020,30 @@ def enforce_sentence_variety(html_content: str) -> str:
         "law firms and insurance",
         "saving attorney time", "attorney billable hours", "attorney time per case",
         "resource allocation",
+        "armed with this knowledge",
+        "armed with this information",
+        "by following these steps",
+        "by understanding this",
+        "taking these steps",
+        "taking proactive steps",
+        "studies show that",
+        "research indicates that",
+        "research shows that",
+        "experts say that",
+        "according to recent studies",
+        "according to experts",
+        "in the modern world",
+        "there are three",
+        "there are several",
+        "there are many reasons",
+        "it should be noted",
+        "it can be said",
+        "rest assured",
+        "look no further",
+        "in a world where",
+        "navigating the complex",
+        "navigating the world of",
+        "the importance of",
     ]
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -5341,343 +5445,179 @@ def fix_broken_sentences(html_content: str) -> str:
 
 def build_faq_accordion(faq_items: list, topic: str = "") -> str:
     """
-    Renders an ultra-premium, modern, responsive FAQ accordion card system.
-    Completely immune to WordPress theme button overrides (uses accessible role='button' on styled divs)
-    and immune to wpautop spacing issues.
+    Minimal FAQ accordion: neutral styling, no icons, click-to-expand,
+    optional search filter, mobile-friendly.
     """
-    import json
-
-    accordion_css = """<style>
-.rf-faq-wrapper {
-  max-width: 880px !important;
-  margin: 56px auto !important;
-  padding: 0 16px !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-  -webkit-font-smoothing: antialiased;
-  position: relative !important;
-}
-.rf-faq-wrapper::before {
-  content: "" !important;
-  position: absolute !important;
-  top: -20px !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  width: 60px !important;
-  height: 4px !important;
-  background: linear-gradient(90deg, #0d9488, #14b8a6, #0d9488) !important;
-  border-radius: 2px !important;
-  opacity: 0.85 !important;
-}
-.rf-faq-card {
-  margin-bottom: 14px !important;
-  background: #ffffff !important;
-  border: 1.5px solid #e2e8f0 !important;
-  border-radius: 18px !important;
-  overflow: hidden !important;
-  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02) !important;
-  position: relative !important;
-}
-.rf-faq-card::before {
-  content: "" !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 4px !important;
-  height: 100% !important;
-  background: linear-gradient(180deg, #0d9488, #14b8a6) !important;
-  opacity: 0 !important;
-  transition: opacity 0.35s ease !important;
-}
-.rf-faq-card:hover {
-  border-color: #14b8a6 !important;
-  box-shadow: 0 10px 30px -8px rgba(13, 148, 136, 0.15), 0 4px 12px -2px rgba(13, 148, 136, 0.08) !important;
-  transform: translateY(-2px) !important;
-}
-.rf-faq-card:hover::before {
-  opacity: 0.6 !important;
-}
-.rf-faq-card.rf-open {
-  border-color: #0d9488 !important;
-  box-shadow: 0 16px 40px -8px rgba(13, 148, 136, 0.2), 0 6px 16px -4px rgba(13, 148, 136, 0.08) !important;
-  background: linear-gradient(180deg, #ffffff 0%, #f0fdfa 100%) !important;
-}
-.rf-faq-card.rf-open::before {
-  opacity: 1 !important;
-}
-.rf-faq-header {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  padding: 22px 26px !important;
-  cursor: pointer !important;
-  user-select: none !important;
-  gap: 18px !important;
-  background: transparent !important;
-  border: none !important;
-  outline: none !important;
-  text-align: left !important;
-  position: relative !important;
-}
-.rf-faq-header:focus-visible {
-  outline: 2px solid #0d9488 !important;
-  outline-offset: 2px !important;
-  border-radius: 16px !important;
-}
-.rf-faq-title-text {
-  font-size: 17px !important;
-  font-weight: 600 !important;
-  color: #0f172a !important;
-  line-height: 1.5 !important;
-  text-transform: none !important;
-  letter-spacing: -0.015em !important;
-  margin: 0 !important;
-  font-family: inherit !important;
-  transition: color 0.3s ease !important;
-  flex: 1 !important;
-}
-.rf-faq-card.rf-open .rf-faq-title-text {
-  color: #0f766e !important;
-  font-weight: 700 !important;
-}
-.rf-faq-badge {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 36px !important;
-  height: 36px !important;
-  min-width: 36px !important;
-  border-radius: 12px !important;
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
-  color: #475569 !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  font-family: inherit !important;
-  position: relative !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5) !important;
-}
-.rf-faq-card.rf-open .rf-faq-badge {
-  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
-  color: #ffffff !important;
-  transform: scale(1.05) !important;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35), inset 0 1px 0 rgba(255,255,255,0.2) !important;
-}
-.rf-faq-circle {
-  width: 38px !important;
-  height: 38px !important;
-  min-width: 38px !important;
-  border-radius: 50% !important;
-  background: #f8fafc !important;
-  border: 1.5px solid #e2e8f0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-shrink: 0 !important;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  position: relative !important;
-}
-.rf-faq-card:hover .rf-faq-circle {
-  border-color: #14b8a6 !important;
-  background: #f0fdfa !important;
-}
-.rf-faq-card.rf-open .rf-faq-circle {
-  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%) !important;
-  border-color: #0d9488 !important;
-  transform: rotate(180deg) !important;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3) !important;
-}
-.rf-faq-arrow-svg {
-  width: 18px !important;
-  height: 18px !important;
-  color: #64748b !important;
-  transition: color 0.3s ease !important;
-}
-.rf-faq-card.rf-open .rf-faq-arrow-svg {
-  color: #ffffff !important;
-}
-.rf-faq-content {
-  overflow: hidden !important;
-  max-height: 0px;
-  opacity: 0;
-  transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
-}
-.rf-faq-answer-inner {
-  padding: 0 26px 26px 26px !important;
-  position: relative !important;
-}
-.rf-faq-divider-line {
-  height: 1px !important;
-  background: linear-gradient(90deg, transparent 0%, #e2e8f0 20%, #e2e8f0 80%, transparent 100%) !important;
-  margin-bottom: 18px !important;
-  opacity: 0.8 !important;
-}
-.rf-faq-answer-p {
-  margin: 0 !important;
-  font-size: 15.5px !important;
-  line-height: 1.8 !important;
-  color: #475569 !important;
-  font-weight: 400 !important;
-  text-transform: none !important;
-  font-family: inherit !important;
-  letter-spacing: -0.005em !important;
-}
-@media (max-width: 640px) {
-  .rf-faq-header { padding: 18px 20px !important; gap: 12px !important; }
-  .rf-faq-answer-inner { padding: 0 20px 22px 20px !important; }
-  .rf-faq-title-text { font-size: 15.5px !important; }
-  .rf-faq-badge { width: 32px !important; height: 32px !important; min-width: 32px !important; font-size: 12px !important; }
-  .rf-faq-circle { width: 34px !important; height: 34px !important; min-width: 34px !important; }
-  .rf-faq-answer-p { font-size: 14.5px !important; line-height: 1.7 !important; }
-}
-@keyframes rf-faq-fade-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.rf-faq-card.rf-open .rf-faq-answer-p {
-  animation: rf-faq-fade-in 0.4s ease 0.1s both !important;
-}
-</style>"""
-
+    
     items_html = ""
-    schema_items = []
-    for idx, faq in enumerate(faq_items, 1):
-        question = str(faq.get("question", "")).strip()
-        answer = str(faq.get("answer_draft", "") or faq.get("answer", "") or faq.get("answer_approach", "")).strip()
+    
+    for i, faq in enumerate(faq_items):
+        question = faq.get("question", "").strip()
+        answer = faq.get("answer_draft", "").strip()
+        
         if not question or not answer:
             continue
-        schema_items.append({
-            "@type": "Question",
-            "name": question,
-            "acceptedAnswer": {"@type": "Answer", "text": answer}
-        })
-        badge_num = f"{idx:02d}"
-        items_html += f"""<div id="rf-faq-item-{idx}" class="rf-faq-card" style="margin-bottom:14px;background:#ffffff;border:1.5px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.04),0 1px 2px rgba(15,23,42,0.02);position:relative;">
-<div style="position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,#0d9488,#14b8a6);opacity:0;transition:opacity 0.35s ease;" id="rf-bar-{idx}"></div>
-<div class="rf-faq-header" onclick="toggleFAQItem({idx})" onkeydown="if(event.key==='Enter'||event.key===' '){{toggleFAQItem({idx});event.preventDefault();}}" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-content-{idx}" style="display:flex;align-items:center;justify-content:space-between;padding:22px 26px;cursor:pointer;user-select:none;gap:18px;background:transparent;border:none;outline:none;text-align:left;position:relative;">
-<div style="display:flex;align-items:center;gap:14px;flex-grow:1;min-width:0;">
-<span id="rf-badge-{idx}" class="rf-faq-badge" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;min-width:36px;border-radius:12px;background:linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%);color:#475569;font-size:13px;font-weight:700;font-family:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);">{badge_num}</span>
-<span id="rf-title-{idx}" class="rf-faq-title-text" style="font-size:17px;font-weight:600;color:#0f172a;line-height:1.5;text-transform:none!important;letter-spacing:-0.015em;margin:0;font-family:inherit;flex:1;">{question}</span>
+        
+        items_html += f"""
+<div class="faq-item" data-question="{question.replace('"', '&quot;')}">
+    <button class="faq-question" aria-expanded="false" onclick="toggleFAQ(this)">
+        <span class="faq-q-text">{question}</span>
+    </button>
+    <div class="faq-answer" hidden>
+        <p>{answer}</p>
+    </div>
 </div>
-<div id="arrow-wrap-{idx}" class="rf-faq-circle" style="width:38px;height:38px;min-width:38px;border-radius:50%;background:#f8fafc;border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.35s cubic-bezier(0.4,0,0.2,1);">
-<svg id="arrow-{idx}" class="rf-faq-arrow-svg" style="width:18px;height:18px;color:#64748b;display:block;transition:transform 0.35s cubic-bezier(0.4,0,0.2,1),color 0.3s ease;" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-</div>
-</div>
-<div id="faq-content-{idx}" class="rf-faq-content" style="overflow:hidden;max-height:0px;opacity:0;transition:max-height 0.5s cubic-bezier(0.16,1,0.3,1),opacity 0.35s ease;">
-<div class="rf-faq-answer-inner" style="padding:0 26px 26px 26px;position:relative;">
-<div class="rf-faq-divider-line" style="height:1px;background:linear-gradient(90deg,transparent 0%,#e2e8f0 20%,#e2e8f0 80%,transparent 100%);margin-bottom:18px;opacity:0.8;"></div>
-<p class="rf-faq-answer-p" style="margin:0;font-size:15.5px;line-height:1.8;color:#475569;font-weight:400;text-transform:none!important;font-family:inherit;letter-spacing:-0.005em;">{answer}</p>
-</div>
-</div>
-</div>"""
-
+"""
+    
+    import json
+    schema_items = []
+    for faq in faq_items:
+        q = faq.get("question", "")
+        a = faq.get("answer_draft", "")
+        if q and a:
+            schema_items.append({
+                "@type": "Question",
+                "name": q,
+                "acceptedAnswer": {"@type": "Answer", "text": a}
+            })
+    
     faq_schema = json.dumps({
         "@context": "https://schema.org",
         "@type": "FAQPage",
         "mainEntity": schema_items
-    }, indent=2)
+    })
+    
+    return f"""
+<style>
+.faq-wrapper {{
+    margin: 32px 0;
+    font-family: inherit;
+}}
+.faq-wrapper h2 {{
+    font-size: 20px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0 0 16px 0;
+}}
+.faq-search {{
+    width: 100%;
+    max-width: 480px;
+    padding: 10px 14px;
+    margin-bottom: 18px;
+    font-size: 15px;
+    font-family: inherit;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #111827;
+    box-sizing: border-box;
+    outline: none;
+}}
+.faq-search:focus {{
+    border-color: #9ca3af;
+}}
+.faq-item {{
+    border-bottom: 1px solid #e5e7eb;
+}}
+.faq-item:last-child {{
+    border-bottom: none;
+}}
+.faq-question {{
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 4px;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 500;
+    color: #111827;
+    line-height: 1.45;
+}}
+.faq-question:hover {{
+    color: #374151;
+}}
+.faq-q-text {{
+    flex: 1;
+    padding-right: 16px;
+}}
+.faq-answer {{
+    display: none;
+    padding: 0 4px 18px 4px;
+    color: #374151;
+    font-size: 15px;
+    line-height: 1.7;
+}}
+.faq-answer p {{
+    margin: 0;
+}}
+.faq-item.open .faq-answer {{
+    display: block;
+}}
+.faq-item.hidden {{
+    display: none;
+}}
 
-    accordion_js = """<script>
-function toggleFAQItem(id) {
-  var item = document.getElementById('rf-faq-item-' + id);
-  var content = document.getElementById('faq-content-' + id);
-  var arrow = document.getElementById('arrow-' + id);
-  var iconWrap = document.getElementById('arrow-wrap-' + id);
-  var badge = document.getElementById('rf-badge-' + id);
-  var title = document.getElementById('rf-title-' + id);
-  var bar = document.getElementById('rf-bar-' + id);
-  if (!content) return;
-  var isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
-  if (isOpen) {
-    content.style.maxHeight = '0px';
-    content.style.opacity = '0';
-    if (item) {
-      item.classList.remove('rf-open');
-      item.style.borderColor = '#e2e8f0';
-      item.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02)';
-      item.style.background = '#ffffff';
-    }
-    if (arrow) {
-      arrow.style.transform = 'rotate(0deg)';
-      arrow.style.color = '#64748b';
-    }
-    if (iconWrap) {
-      iconWrap.style.background = '#f8fafc';
-      iconWrap.style.borderColor = '#e2e8f0';
-      iconWrap.style.transform = 'rotate(0deg)';
-      iconWrap.style.boxShadow = 'none';
-    }
-    if (badge) {
-      badge.style.background = 'linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%)';
-      badge.style.color = '#475569';
-      badge.style.transform = 'scale(1)';
-      badge.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.5)';
-    }
-    if (title) {
-      title.style.color = '#0f172a';
-      title.style.fontWeight = '600';
-    }
-    if (bar) {
-      bar.style.opacity = '0';
-    }
-  } else {
-    content.style.maxHeight = (content.scrollHeight + 40) + 'px';
-    content.style.opacity = '1';
-    if (item) {
-      item.classList.add('rf-open');
-      item.style.borderColor = '#0d9488';
-      item.style.boxShadow = '0 16px 40px -8px rgba(13, 148, 136, 0.2), 0 6px 16px -4px rgba(13, 148, 136, 0.08)';
-      item.style.background = 'linear-gradient(180deg,#ffffff 0%,#f0fdfa 100%)';
-    }
-    if (arrow) {
-      arrow.style.color = '#ffffff';
-    }
-    if (iconWrap) {
-      iconWrap.style.background = 'linear-gradient(135deg,#0d9488 0%,#14b8a6 100%)';
-      iconWrap.style.borderColor = '#0d9488';
-      iconWrap.style.transform = 'rotate(180deg)';
-      iconWrap.style.boxShadow = '0 4px 12px rgba(13, 148, 136, 0.3)';
-    }
-    if (badge) {
-      badge.style.background = 'linear-gradient(135deg,#0d9488 0%,#14b8a6 100%)';
-      badge.style.color = '#ffffff';
-      badge.style.transform = 'scale(1.05)';
-      badge.style.boxShadow = '0 4px 12px rgba(13, 148, 136, 0.35), inset 0 1px 0 rgba(255,255,255,0.2)';
-    }
-    if (title) {
-      title.style.color = '#0f766e';
-      title.style.fontWeight = '700';
-    }
-    if (bar) {
-      bar.style.opacity = '1';
-    }
-  }
-}
-if (typeof window !== 'undefined') { window.toggleFAQItem = toggleFAQItem; }
-</script>"""
+@media (max-width: 640px) {{
+    .faq-question {{
+        font-size: 15px;
+        padding: 14px 2px;
+    }}
+    .faq-answer {{
+        font-size: 14px;
+        padding: 0 2px 16px 2px;
+    }}
+}}
+</style>
 
-    sub_text = f"Clear, reliable answers to the most important legal and practical questions regarding {topic}." if topic else "Clear, reliable answers to the most important legal and procedural questions."
-
-    header_html = f"""<div class="rf-faq-wrapper" style="max-width:880px;margin:56px auto;padding:0 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;position:relative;">
-<div style="text-align:center;margin-bottom:40px;position:relative;">
-<div style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#f0fdfa 0%,#ccfbf1 100%);border:1px solid #99f6e4;color:#0f766e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:7px 18px;border-radius:9999px;margin-bottom:16px;box-shadow:0 2px 8px rgba(13,148,136,0.08);">
-<svg style="width:14px;height:14px;color:#0d9488;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-<span>Knowledge Base</span>
+<div class="faq-wrapper">
+<h2>Frequently Asked Questions</h2>
+<input class="faq-search" type="search" placeholder="Search questions..." oninput="filterFAQ(this.value)">
+{items_html}
 </div>
-<h2 style="font-size:36px;font-weight:800;color:#0f172a;margin:0 0 12px 0;letter-spacing:-0.035em;line-height:1.2;font-family:inherit;background:linear-gradient(135deg,#0f172a 0%,#0f766e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Frequently Asked Questions</h2>
-<p style="font-size:16.5px;color:#64748b;margin:0 auto;line-height:1.6;font-family:inherit;max-width:560px;">{sub_text}</p>
-</div>
-<div class="rf-faq-list">
-"""
 
-    footer_html = """</div>
-</div>
-<script type="application/ld+json">
-""" + faq_schema + """
+<script>
+function toggleFAQ(btn) {{
+    var item = btn.parentElement;
+    var answer = item.querySelector('.faq-answer');
+    var isOpen = item.classList.contains('open');
+    
+    document.querySelectorAll('.faq-item.open').forEach(function(el) {{
+        el.classList.remove('open');
+        var a = el.querySelector('.faq-answer');
+        a.style.display = 'none';
+        a.setAttribute('hidden', '');
+        el.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+    }});
+    
+    if (!isOpen) {{
+        item.classList.add('open');
+        answer.style.display = 'block';
+        answer.removeAttribute('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+    }}
+}}
+
+function filterFAQ(query) {{
+    var term = (query || '').toLowerCase().trim();
+    document.querySelectorAll('.faq-item').forEach(function(item) {{
+        var q = (item.getAttribute('data-question') || '').toLowerCase();
+        var a = (item.querySelector('.faq-answer')?.innerText || '').toLowerCase();
+        var match = !term || q.indexOf(term) !== -1 || a.indexOf(term) !== -1;
+        item.classList.toggle('hidden', !match);
+    }});
+}}
 </script>
-""" + accordion_js
 
-    return accordion_css + "\n" + header_html + items_html + footer_html
+<script type="application/ld+json">
+{faq_schema}
+</script>
+"""
 
 
 def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = "") -> str:
