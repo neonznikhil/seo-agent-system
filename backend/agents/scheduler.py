@@ -2502,6 +2502,21 @@ def setup_scheduler() -> AsyncIOScheduler:
         max_instances=1
     )
 
+    # Every 12 hours - AI Search Visibility Check
+    async def _job_ai_visibility():
+        from services.ai_visibility_monitor import run_ai_visibility_check_all_sites
+        await run_ai_visibility_check_all_sites()
+
+    scheduler.add_job(
+        _job_ai_visibility,
+        IntervalTrigger(hours=12, timezone=IST),
+        id="job_ai_visibility_monitor",
+        name="Every 12h AI Search Visibility Check",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1
+    )
+
     # 11:00 IST - Daily Content Refresh Check (Decay Detection)
     scheduler.add_job(
         job_content_refresh_daily,

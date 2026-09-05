@@ -4095,13 +4095,17 @@ async def _direct_nim_crew_fallback(topic: str, website_id: str, business_name: 
     )
     _validate_writer_on_topic(writer_html, topic)
     
-    # 3. Complete 15-Point Quality Pipeline
-    final_html = await process_blog_output(
+    # 3. AEO-enhanced pipeline: base 15-point quality + citation injection + schema + markdown
+    faq_items = (planner_outline or {}).get("point_14_faqs", [])
+    final_html = await process_blog_output_aeo(
         raw_html=writer_html,
         website_id=website_id,
         target_keyword=topic,
         outline=planner_outline,
-        primary_keyword=topic
+        primary_keyword=topic,
+        real_quotes=[],
+        website_facts={},
+        faq_items=faq_items
     )
     _validate_writer_on_topic(final_html, topic)
     
@@ -6144,27 +6148,20 @@ async def process_blog_output_aeo(
         inject_term_definitions,
         build_quick_facts_table,
         inject_quick_facts_table,
-        auto_fix_chunk_lengths,
-        validate_chunk_lengths,
     )
+    from services.chunking_service import auto_fix_chunk_lengths, validate_chunk_lengths
     from services.schema_generator import generate_article_schema
     from services.llm_content_server import generate_markdown_version
 
-    humanized = await humanizer_agent.run(raw_html, target_keyword)
+    base = await process_blog_output(
+        raw_html=raw_html,
+        website_id=website_id,
+        target_keyword=target_keyword,
+        outline=outline,
+        primary_keyword=primary_keyword,
+    )
 
-    step1 = clean_llm_output(humanized)
-    step1b = fix_broken_year_in_content(step1)
-    step2 = clean_special_characters(step1b)
-    step3 = enforce_contractions(step2)
-    step4 = enforce_sentence_variety(step3)
-    real_people = [q["person"] for q in (real_quotes or [])]
-    step4b = remove_fake_quotes(step4, real_people)
-    step4c = remove_duplicate_paragraphs(step4b)
-    step4d = remove_duplicate_tables(step4c)
-    step4e = fix_broken_sentences(step4d)
-    step5 = remove_broken_links(step4e)
-    step6 = detect_duplicate_examples(step5)
-    step7 = enforce_keyword_density(step6, primary_keyword, max_count=8)
+    step7 = base
 
     step7a = await inject_citations(step7, target_keyword, website_id)
     step7b = inject_term_definitions(step7a, "legal")
@@ -6173,13 +6170,6 @@ async def process_blog_output_aeo(
     step7c = inject_quick_facts_table(step7b, facts_table)
 
     step7d = await auto_fix_chunk_lengths(step7c)
-
-    is_valid, word_count = validate_word_count(step7d)
-    if not is_valid and word_count < 2400:
-        step7d = await ensure_minimum_word_count(
-            step7d, outline or {}, target_keyword,
-            website_id, word_count
-        )
 
     step8 = await inject_internal_links(step7d, website_id)
     step9 = validate_and_fix_tldr(step8, target_keyword, outline)

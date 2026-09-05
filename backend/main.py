@@ -48,6 +48,7 @@ from routers.backlinks import router as backlinks_router
 from routers.calendar import router as calendar_router
 from routers.roi import router as roi_router
 from routers.seo_aeo_geo import router as seo_aeo_geo_router
+from routers.aeo import router as aeo_router
 from routers.monitoring import router as monitoring_router
 from routers.writer import router as writer_router
 from routers.decay import router as decay_router
@@ -531,12 +532,14 @@ Never deviate from these rules. Always output clean HTML. Never use markdown."""
             raise HTTPException(status_code=400, detail=f"Generated unrelated generic blog for keyword '{keyword}'")
         if "2024" in content and "2024" not in keyword:
             content = re.sub(r"\b2024\b", _cur_year_str, content)
-        # Convert FAQ section to animated toggle accordion
+        # Ensure TL;DR block with orange line and convert FAQ section to modern accordion
         try:
-            from agents.crew_blog_writer import replace_faq_with_accordion
-            content = replace_faq_with_accordion(content, {})
+            from agents.crew_blog_writer import replace_faq_with_accordion, ensure_tldr_exists, wrap_tldr_css
+            content = ensure_tldr_exists(content, topic)
+            content = replace_faq_with_accordion(content, {}, topic=topic)
+            content = wrap_tldr_css(content)
         except Exception as _e_faq:
-            logger.debug(f"FAQ accordion conversion note: {_e_faq}")
+            logger.debug(f"FAQ accordion / TLDR styling note: {_e_faq}")
     except HTTPException:
         raise
     except Exception as e:
@@ -848,6 +851,7 @@ app.include_router(clusters_router, prefix="/api")             # /api/clusters/*
 app.include_router(serp_router, prefix="/api")                 # /api/serp/*
 app.include_router(research_router, prefix="/api")             # /api/research/*
 app.include_router(seo_aeo_geo_router, prefix="/api")                 # /api/seo-analysis, /api/aeo-score, /api/geo-readiness
+app.include_router(aeo_router, prefix="/api")                           # /api/aeo/*
 app.include_router(tech_seo_router, prefix="/api")                    # /api/tech-seo/*
 app.include_router(gsc_router, prefix="/api")                         # /api/gsc/*
 app.include_router(analytics_router, prefix="/api")            # /api/analytics/*
