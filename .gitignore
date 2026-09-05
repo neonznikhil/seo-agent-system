@@ -21,6 +21,7 @@ backend/local_data/
 *.sqlite
 *.db
 backend/storage/
+storage/
 
 # Dependencies
 node_modules/
@@ -36,6 +37,8 @@ test_*.py
 debug_*.py
 fix_*.py
 diagnose_*.py
+scratch_*.py
+scratch/
 blog_sample.html
 scratch/
 !backend/tests/**

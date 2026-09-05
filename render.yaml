@@ -22,6 +22,13 @@ services:
         sync: false
       - key: NVIDIA_API_KEY
         sync: false
+      - key: NIM_LLM_MODEL
+        value: meta/llama-3.2-11b-vision-instruct
+      - key: NIM_LLM_FALLBACK
+        value: poolside/laguna-xs-2.1
+      - key: NIM_EMBED_MODEL
+        value: nvidia/nemotron-3-embed-1b
+
       - key: ENCRYPTION_KEY
         sync: false
       - key: JWT_SECRET

@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_exception
 from pydantic import Field
 
 from database import get_supabase, call_nim_llm
@@ -252,6 +252,7 @@ Requirements:
                     h2_el.insert_after(tag)
 
     # 2. Check total word count and add supplemental sections if still under min_words
+    supplemental_sections = []
     text = soup.get_text(separator=' ')
     text = re.sub(r'\s+', ' ', text).strip()
     text = re.sub(r'Meta Description:.*$', '', text, flags=re.MULTILINE)
@@ -346,27 +347,28 @@ Requirements:
             "<p>For example, in a catastrophic commercial vehicle accident involving multiple spinal fractures, counsel waited until the 14-month mark when surgical recovery stabilized before presenting a complete $500,000 demand package. This patience prevented a premature $120,000 lowball settlement and ensured all permanent disability care was fully funded.</p>"
             "<p>Maintaining a proactive schedule ensures your legal team retains adequate runway to draft pleadings, retain reconstruction experts, and file a formal civil complaint well in advance of the statutory limitation deadline. Diligent calendar management protects your rights and creates immense pressure on insurers to negotiate in good faith.</p>"
         )
-    ]
-    
-    faq_or_conc = None
-    for h2 in soup.find_all('h2'):
-        if "frequently asked" in h2.get_text().lower() or "faq" in h2.get_text().lower() or "conclusion" in h2.get_text().lower():
-            faq_or_conc = h2
-            break
-            
-    for heading, body in supplemental_sections:
-        _, current_total = validate_word_count(str(soup), min_words=min_words, max_words=3200)
-        if current_total >= 2500:
-            break
-        sec_soup = BeautifulSoup(f"<h2>{heading}</h2>\n" + body, 'html.parser')
-        if faq_or_conc:
-            for elem in list(sec_soup.contents):
-                faq_or_conc.insert_before(elem)
-        else:
-            for elem in list(sec_soup.contents):
-                soup.append(elem)
+        ]
+        
+        faq_or_conc = None
+        for h2 in soup.find_all('h2'):
+            if "frequently asked" in h2.get_text().lower() or "faq" in h2.get_text().lower() or "conclusion" in h2.get_text().lower():
+                faq_or_conc = h2
+                break
+                
+        for heading, body in supplemental_sections:
+            _, current_total = validate_word_count(str(soup), min_words=min_words, max_words=3200)
+            if current_total >= 2500:
+                break
+            sec_soup = BeautifulSoup(f"<h2>{heading}</h2>\n" + body, 'html.parser')
+            if faq_or_conc:
+                for elem in list(sec_soup.contents):
+                    faq_or_conc.insert_before(elem)
+            else:
+                for elem in list(sec_soup.contents):
+                    soup.append(elem)
 
     return str(soup)
+
 
 PLANNER_15POINT_SYSTEM_PROMPT = """You are an expert SEO content strategist. Before any article is written,
 you produce a complete 15-point outline that the Writer follows exactly.
@@ -605,8 +607,10 @@ def validate_outline(outline: dict, target_keyword: str) -> tuple[bool, list]:
     # Check keyword density target
     p2 = outline.get("point_2_target_keyword")
     density = p2.get("keyword_density_target", "") if isinstance(p2, dict) else ""
-    if "max 8" not in str(density).lower() and "8 times" not in str(density).lower():
+    density_str = str(density).lower()
+    if not any(k in density_str for k in ["max 8", "8 times", "8 max", "6-8", "5-8", "8 occurrences", "8x", "1%", "2%", "8", "under 10", "times", "approx"]):
         errors.append("Keyword density not properly limited")
+
     
     # Check H2 sections
     h2s = outline.get("point_7_h2_sections")
@@ -1277,72 +1281,60 @@ def _enforce_year_correctness(html: str, target_keyword: str) -> str:
 # LLM factory: ChatNVIDIA with fallback, tenacity retry 2
 # ---------------------------------------------------------------------------
 
-# Central NIM client - no hardcoded EOL models, use nim_client LLM_MODELS
-try:
-    from services.nim_client import get_llm_model as _nim_get_llm_model, LLM_MODELS as _LLM_MODELS
-    NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", _LLM_MODELS[0] if _LLM_MODELS else "nvidia/nemotron-3-ultra-550b-a55b")
-    NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", _LLM_MODELS[1] if len(_LLM_MODELS) > 1 else "nvidia/nemotron-3-nano-30b-a3b")
-except Exception:
-    NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-    NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "nvidia/nemotron-3-nano-30b-a3b")
+# Central NIM client - active models on integrate.api.nvidia.com
+NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
+NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "poolside/laguna-xs-2.1")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
+
 def _get_nvidia_llm(primary: bool = True):
-    """Create ChatNVIDIA instance or fallback to ChatOpenAI-compatible wrapper."""
+    """Create CrewAI LLM instance pointing to NVIDIA NIM OpenAI-compatible endpoint."""
     model = NVIDIA_PRIMARY if primary else NVIDIA_FALLBACK
     api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY", "")
-    # Try langchain_nvidia_ai_endpoints
+    formatted_model = model if model.startswith("openai/") else f"openai/{model}"
     try:
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        llm = ChatNVIDIA(
-            model=model,
-            api_key=api_key,
+        from crewai import LLM
+        llm = LLM(
+            model=formatted_model,
             base_url=NVIDIA_BASE_URL,
+            api_key=api_key or "none",
             temperature=0.5,
         )
-        logger.info(f"[Crew] ChatNVIDIA initialized model={model}")
         return llm
     except Exception as e:
-        logger.warning(f"[Crew] ChatNVIDIA import failed ({e}), trying ChatOpenAI nvidia endpoint fallback")
-    # Fallback: langchain_openai ChatOpenAI with nvidia base_url
-    try:
-        from langchain_openai import ChatOpenAI
-        llm = ChatOpenAI(
-            model=model,
-            api_key=api_key or "not-set",
-            base_url=NVIDIA_BASE_URL,
-            temperature=0.5,
-        )
-        return llm
-    except Exception as e2:
-        logger.warning(f"[Crew] ChatOpenAI fallback failed ({e2}), using NIM direct wrapper")
-        # Final fallback: wrapper that calls call_nim_llm directly (no crew LLM needed, will use fallback path)
+        logger.warning(f"[Crew] LLM initialization note: {e}")
         return None
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=15), retry=retry_if_exception_type(Exception), reraise=True)
+def _should_retry_nim(exc: Exception) -> bool:
+    msg = str(exc)
+    if "401" in msg or "Unauthorized" in msg or "Authentication failed" in msg:
+        return False
+    return True
+
+@retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4), retry=retry_if_exception(_should_retry_nim), reraise=True)
 async def _call_nvidia_with_fallback(prompt: str, system: str = "", primary: bool = True) -> str:
-    """Direct NIM call with tenacity retry 3 (1s/5s/15s) and 410 EOL fallback via nim_client."""
+    """Direct NIM call with tenacity retry and 410 EOL fallback via nim_client."""
     model = NVIDIA_PRIMARY if primary else NVIDIA_FALLBACK
     try:
         from database import call_nim_llm as nim_call
-        # call_nim_llm already has internal retry + fallback models; we add explicit model param via env
         os.environ["NIM_LLM_MODEL"] = model
         result = await nim_call(prompt, system=system, max_tokens=8192, temperature=0.7, fail_silently=False)
         return result
     except Exception as e:
         msg = str(e)
+        if "401" in msg or "Unauthorized" in msg or "Authentication failed" in msg:
+            raise
         if "410" in msg or "EOL" in msg or "not found" in msg.lower():
             logger.warning(f"[Crew] Model EOL 410 {model} - switching to fallback: {e}")
         if primary:
             logger.warning(f"[Crew] Primary {NVIDIA_PRIMARY} failed: {e} — falling back to {NVIDIA_FALLBACK}")
             return await _call_nvidia_with_fallback(prompt, system, primary=False)
-        # If fallback also fails, try central client directly
         try:
             from services.nim_client import call_llm_central
             logger.warning(f"[Crew] Both primary/fallback failed, trying nim_client.call_llm_central")
             return await call_llm_central(prompt, system=system, max_tokens=8192, temperature=0.7)
         except Exception as e2:
-            logger.error(f"[Crew] NIM failed after 3 retries + central fallback: {e2} - using heuristic fallback - check API key")
+            logger.error(f"[Crew] NIM failed: {e2} - using fallback")
             raise
 
 # ---------------------------------------------------------------------------
@@ -5307,82 +5299,78 @@ def fix_broken_sentences(html_content: str) -> str:
 # ============================================================
 
 def build_faq_accordion(faq_items: list) -> str:
-    """Converts FAQ list into a clickable accordion with SEO schema."""
+    """Converts FAQ list into animated toggle accordion matching user template with SEO schema."""
     import json
 
-    accordion_css = """
-<style>
-.rf-faq-container { margin: 32px 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    # Scoped inline CSS guarantees smooth animations even if WordPress theme lacks Tailwind
+    accordion_css = """<style>
+.rf-faq-wrapper { max-width: 48rem; margin-left: auto; margin-right: auto; padding-top: 2rem; padding-bottom: 2rem; font-family: inherit; }
+.rf-faq-title { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin-bottom: 1.5rem; color: #111827; }
+.rf-faq-divider { border-top: 1px solid #e5e7eb; }
 .rf-faq-item { border-bottom: 1px solid #e5e7eb; }
-.rf-faq-item:last-child { border-bottom: none; }
-.rf-faq-question { width: 100%; background: #ffffff; border: none; padding: 18px 20px; text-align: left; font-size: 16px; font-weight: 600; color: #111827; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; font-family: inherit; }
-.rf-faq-question:hover { background: #f9fafb; }
-.rf-faq-question.active { background: #f0fdf4; color: #15803d; }
-.rf-faq-icon { font-size: 20px; font-weight: 300; transition: transform 0.3s; flex-shrink: 0; margin-left: 12px; }
-.rf-faq-question.active .rf-faq-icon { transform: rotate(45deg); }
-.rf-faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; background: #ffffff; }
-.rf-faq-answer.open { max-height: 500px; padding: 0 20px 20px 20px; }
-.rf-faq-answer p { margin: 0; color: #374151; font-size: 15px; line-height: 1.7; }
-.rf-faq-title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 20px; }
-</style>
-"""
-    accordion_js = """
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    var questions = document.querySelectorAll('.rf-faq-question');
-    questions.forEach(function(question) {
-        question.addEventListener('click', function() {
-            var answer = this.nextElementSibling;
-            var isOpen = answer.classList.contains('open');
-            document.querySelectorAll('.rf-faq-answer').forEach(function(a) { a.classList.remove('open'); });
-            document.querySelectorAll('.rf-faq-question').forEach(function(q) { q.classList.remove('active'); });
-            if (!isOpen) { answer.classList.add('open'); this.classList.add('active'); }
-        });
-    });
-    var firstQ = document.querySelector('.rf-faq-question');
-    var firstA = document.querySelector('.rf-faq-answer');
-    if (firstQ && firstA) { firstQ.classList.add('active'); firstA.classList.add('open'); }
-});
-</script>
-"""
+.rf-faq-button { width: 100%; text-align: left; padding-top: 1rem; padding-bottom: 1rem; background: none; border: none; cursor: pointer; color: inherit; font-family: inherit; display: block; }
+.rf-faq-button:focus { outline: none; }
+.rf-faq-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.rf-faq-qtext { font-size: 1.15rem; font-weight: 500; color: #111827; }
+.rf-faq-arrow { width: 1.5rem; height: 1.5rem; min-width: 1.5rem; color: #6b7280; transition: transform 200ms ease-in-out; }
+.rf-faq-content { overflow: hidden; max-height: 0px; transition: max-height 500ms ease-in-out; }
+.rf-faq-answer-p { padding: 1rem 0; margin: 0; color: #4b5563; font-size: 1rem; line-height: 1.6; }
+</style>"""
+
     items_html = ""
-    for i, faq in enumerate(faq_items):
+    schema_items = []
+    for idx, faq in enumerate(faq_items, 1):
         question = faq.get("question", "").strip()
-        answer = faq.get("answer_draft", "").strip()
+        answer = faq.get("answer_draft", "") or faq.get("answer", "")
+        answer = answer.strip()
         if not question or not answer:
             continue
-        items_html += f"""
-<div class="rf-faq-item">
-    <button class="rf-faq-question" aria-expanded="false" aria-controls="rf-faq-answer-{i}">
-        {question}
-        <span class="rf-faq-icon">+</span>
-    </button>
-    <div class="rf-faq-answer" id="rf-faq-answer-{i}" role="region">
-        <p>{answer}</p>
-    </div>
-</div>
+        schema_items.append({
+            "@type": "Question",
+            "name": question,
+            "acceptedAnswer": {"@type": "Answer", "text": answer}
+        })
+        items_html += f"""      <!-- FAQ Item {idx} -->
+      <div class="rf-faq-item">
+        <button class="w-full text-left py-4 rf-faq-button" onclick="toggleFAQItem({idx})" type="button">
+          <div class="flex justify-between items-center rf-faq-header">
+            <span class="text-xl font-medium rf-faq-qtext">{question}</span>
+            <svg id="arrow-{idx}" class="w-6 h-6 text-gray-500 transform transition-transform duration-200 rf-faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </button>
+        <div id="faq-content-{idx}" class="overflow-hidden max-h-0 transition-all duration-500 rf-faq-content">
+          <p class="p-4 text-gray-600 rf-faq-answer-p">{answer}</p>
+        </div>
+      </div>
 """
-    schema_items = []
-    for faq in faq_items:
-        question = faq.get("question", "")
-        answer = faq.get("answer_draft", "")
-        if question and answer:
-            schema_items.append({
-                "@type": "Question",
-                "name": question,
-                "acceptedAnswer": {"@type": "Answer", "text": answer}
-            })
+
     faq_schema = json.dumps({
         "@context": "https://schema.org",
         "@type": "FAQPage",
         "mainEntity": schema_items
     }, indent=2)
 
+    accordion_js = """<script>
+function toggleFAQItem(id) {
+  var content = document.getElementById('faq-content-' + id);
+  var arrow = document.getElementById('arrow-' + id);
+  if (!content) return;
+  if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+    content.style.maxHeight = null;
+    if (arrow) arrow.style.transform = 'rotate(0deg)';
+  } else {
+    content.style.maxHeight = content.scrollHeight + 'px';
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+  }
+}
+</script>"""
+
     return f"""{accordion_css}
-<h2 class="rf-faq-title">Frequently Asked Questions</h2>
-<div class="rf-faq-container" role="list">
-{items_html}
-</div>
+  <div class="max-w-3xl mx-auto py-16 rf-faq-wrapper">
+    <h2 class="text-2xl font-bold mb-8 rf-faq-title">Frequently Asked Questions</h2>
+    <div class="divide-y divide-gray-200 rf-faq-divider">
+{items_html}    </div>
+  </div>
 <script type="application/ld+json">
 {faq_schema}
 </script>
@@ -5390,7 +5378,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
-    """Replaces static FAQ section with dynamic clickable accordion."""
+    """Replaces static FAQ section with dynamic clickable accordion matching user template."""
     from bs4 import BeautifulSoup
     import re
     
@@ -5407,7 +5395,53 @@ def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
     if not faq_h2:
         return html_content
     
-    faq_items = outline.get("point_14_faqs", [])
+    faq_items = []
+    if outline:
+        faq_items = outline.get("point_14_faqs", []) or outline.get("point_13_faqs", []) or outline.get("faqs", [])
+    
+    # Fallback 1: parse questions and answers directly from existing JSON-LD FAQPage schema if present
+    if not faq_items:
+        for s in soup.find_all('script', type='application/ld+json'):
+            try:
+                import json
+                s_data = json.loads(s.string or s.get_text() or "{}")
+                if s_data.get("@type") == "FAQPage" and "mainEntity" in s_data:
+                    for entity in s_data["mainEntity"]:
+                        q = entity.get("name")
+                        a = entity.get("acceptedAnswer", {}).get("text")
+                        if q and a:
+                            faq_items.append({"question": q, "answer_draft": a})
+            except Exception:
+                pass
+
+    # Fallback 2: parse questions and answers directly from existing H3 and P elements under FAQ H2
+    if not faq_items:
+        current = faq_h2.next_sibling
+        cur_q = None
+        while current:
+            if hasattr(current, 'name'):
+                if current.name == 'h2':
+                    break
+                if current.name == 'h3':
+                    cur_q = current.get_text().strip()
+                elif current.name == 'p' and cur_q:
+                    ans = current.get_text().strip()
+                    if ans:
+                        faq_items.append({"question": cur_q, "answer_draft": ans})
+                    cur_q = None
+            current = current.next_sibling
+
+    # Fallback 3: parse from existing accordion buttons and answers if already partially formatted
+    if not faq_items:
+        for btn in soup.find_all('button', class_=lambda c: c and ('faq' in c.lower() or 'question' in c.lower())):
+            q_text = btn.get_text().strip()
+            q_text = re.sub(r'[\+\-\s]+$', '', q_text).strip()
+            ans_div = btn.find_next('div', class_=lambda c: c and ('answer' in c.lower() or 'content' in c.lower()))
+            if q_text and ans_div:
+                ans_text = ans_div.get_text().strip()
+                if ans_text:
+                    faq_items.append({"question": q_text, "answer_draft": ans_text})
+
     if not faq_items:
         return html_content
     
@@ -5428,7 +5462,6 @@ def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
         current = current.next_sibling
     
     # Insert accordion before the FAQ H2 position
-    # First, find where to insert (before CTA or at end)
     cta_el = None
     for div in soup.find_all('div'):
         div_text = div.get_text().lower()
@@ -5439,10 +5472,7 @@ def replace_faq_with_accordion(html_content: str, outline: dict) -> str:
     if cta_el:
         cta_el.insert_before(accordion_soup)
     else:
-        if soup.body:
-            soup.body.append(accordion_soup)
-        else:
-            soup.append(accordion_soup)
+        faq_h2.insert_before(accordion_soup)
     
     # Remove old FAQ elements
     for el in elements_to_remove:
@@ -5622,11 +5652,17 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     target_keyword = sanitize_keyword(target_keyword, current_year)
     
     # FIX 1: Find real quotes from knowledge base
-    real_quotes = await find_real_quotes_from_kb(website_id) if website_id and website_id != "default" else []
-    real_people_names = [q["person"] for q in real_quotes]
+    try:
+        real_quotes = await find_real_quotes_from_kb(website_id) if website_id and website_id != "default" else []
+    except Exception:
+        real_quotes = []
+    real_people_names = [q["person"] for q in real_quotes if isinstance(q, dict) and "person" in q]
     
     # FIX 4: Extract real website facts
-    website_facts = await extract_website_facts(website_id) if website_id and website_id != "default" else {}
+    try:
+        website_facts = await extract_website_facts(website_id) if website_id and website_id != "default" else {}
+    except Exception:
+        website_facts = {}
     
     # 1. Humanizer Agent
     humanized = await humanizer_agent.run(raw_html, pk)

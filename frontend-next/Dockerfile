@@ -1,14 +1,20 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app/frontend-next
 
-COPY frontend-next/package.json frontend-next/package-lock.json* ./
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 
-COPY frontend-next/ .
+COPY . .
 RUN npm run build
 
 EXPOSE 3000
 
+USER node
+
 CMD ["npm", "start"]
+
 

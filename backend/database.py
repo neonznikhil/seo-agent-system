@@ -2,6 +2,10 @@ import os
 import time
 import logging
 from typing import Optional, List
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 import httpx
 import tenacity
@@ -92,17 +96,24 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3.5-lightning")
-NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "openai/gpt-oss-20b")
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
+NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "poolside/laguna-xs-2.1")
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # Fallback lists for central client (used by call_nim_llm)
-_LLM_MODELS = [NIM_LLM_MODEL, NIM_LLM_FALLBACK, "nvidia/nemotron-3-super-120b-a12b", "openai/gpt-oss-20b", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"]
-_EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nvidia-embed-qa-4", "nvidia/nv-embedqa-e5-v5"]
+_LLM_MODELS = [
+    NIM_LLM_MODEL,
+    NIM_LLM_FALLBACK,
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "openai/gpt-oss-20b",
+    "google/diffusiongemma-26b-a4b-it",
+]
+_EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nemotron-3-embed-1b"]
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 if LLM_PROVIDER == "openrouter":
     NIM_API_KEY = OPENROUTER_API_KEY or NIM_API_KEY
+
 
 # ---------------------------------------------------------------------------
 # NIM availability tracking (startup validation + live diagnostics)
@@ -364,7 +375,7 @@ async def _nim_chat_with_retry(model_name: str, messages: list, headers: dict,
 
 async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] = None,
                        max_tokens: int = 8192, temperature: float = 0.7,
-                       fail_silently: bool = True, **kwargs) -> str:
+                       fail_silently: bool = True, model: Optional[str] = None, **kwargs) -> str:
     """Call NVIDIA NIM chat completions with 3x retry and model fallbacks."""
     # Rate limiting: min 1.5s gap between requests
     global _last_request_time_db
@@ -380,7 +391,8 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
         await asyncio.sleep(1.5 - elapsed)
     _last_request_time_db = time.monotonic()
     
-    api_key = NIM_API_KEY
+    api_key = os.getenv("NVIDIA_API_KEY") or NIM_API_KEY
+
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -395,10 +407,12 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
         headers["X-Title"] = "RankForge"
 
     candidate_models = []
+    if model:
+        candidate_models.append(model)
     env_model = os.getenv("NIM_LLM_MODEL")
-    if env_model:
+    if env_model and env_model not in candidate_models:
         candidate_models.append(env_model)
-    # Use central _LLM_MODELS (primary nemotron-3-nano-30b-a3b, fallback nano-8b-v1, 70b) - NO EOL ultra models as primary
+    # Use central _LLM_MODELS (primary verified working models)
     for m in _LLM_MODELS:
         if m not in candidate_models:
             candidate_models.append(m)

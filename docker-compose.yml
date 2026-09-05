@@ -24,10 +24,18 @@ services:
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-${ENCRYPTION_KEY}}
       - ENCRYPTION_SECRET=${ENCRYPTION_SECRET:-${ENCRYPTION_KEY}}
       - JWT_SECRET=${JWT_SECRET}
+      - NIM_LLM_MODEL=${NIM_LLM_MODEL:-meta/llama-3.2-11b-vision-instruct}
+      - NIM_LLM_FALLBACK=${NIM_LLM_FALLBACK:-poolside/laguna-xs-2.1}
+      - NIM_EMBED_MODEL=${NIM_EMBED_MODEL:-nvidia/nemotron-3-embed-1b}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - BACKEND_HOST=0.0.0.0
       - BACKEND_PORT=8000
-      - UVICORN_WORKERS=4
+      - UVICORN_WORKERS=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     volumes:
       - ./backend/local_data:/app/backend/local_data
     depends_on:
@@ -35,6 +43,7 @@ services:
         condition: service_healthy
     networks:
       - rankforge-net
+
 
   frontend:
     build:

@@ -14,32 +14,66 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
     BACKEND_URL, WP_SITE_URL, WORDPRESS_URL,
+    REDIS_URL,
 )
 from database import get_supabase
-from security import encrypt_secret
+from security import encrypt_secret, decrypt_secret
+
+try:
+    import redis as redis_lib
+    _redis_client = redis_lib.from_url(REDIS_URL or "redis://localhost:6379/0", decode_responses=True)
+    _redis_available = _redis_client.ping()
+except Exception:
+    _redis_available = False
+    _redis_client = None
 
 logger = logging.getLogger("backend.routers.oauth_connectors")
 router = APIRouter(tags=["OAuth Connectors"])
 
-OAUTH_STATE_STORE: Dict[str, Dict[str, Any]] = {}
+
+def _redis_set(key: str, value: str, ttl_sec: int = 600) -> bool:
+    if _redis_available and _redis_client:
+        return _redis_client.setex(key, ttl_sec, value)
+    return False
 
 
-def set_oauth_state(state: str, data: dict, ttl_sec: int = 600):
-    OAUTH_STATE_STORE[state] = {"data": data, "expires_at": time.time() + ttl_sec}
+def _redis_get(key: str) -> Optional[dict]:
+    if _redis_available and _redis_client:
+        val = _redis_client.get(key)
+        if val:
+            try:
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                return None
+    return None
+
+
+def _redis_del(key: str) -> bool:
+    if _redis_available and _redis_client:
+        return _redis_client.delete(key)
+    return False
+
+
+def set_oauth_state(state: str, data: dict, ttl_sec: int = 600) -> bool:
+    payload = json.dumps({"data": data, "expires_at": time.time() + ttl_sec})
+    return _redis_set(f"oauth_state:{state}", payload, ttl_sec)
 
 
 def get_and_validate_oauth_state(state: str) -> Optional[dict]:
-    entry = OAUTH_STATE_STORE.pop(state, None)
-    if not entry or time.time() > entry["expires_at"]:
+    entry = _redis_get(f"oauth_state:{state}")
+    if not entry:
         return None
-    return entry["data"]
+    if time.time() > entry.get("expires_at", 0):
+        _redis_del(f"oauth_state:{state}")
+        return None
+    return entry.get("data")
 
 
 def _popup_html(success: bool, provider: str, detail: str = "", extra_payload: str = "{}") -> HTMLResponse:
@@ -62,6 +96,30 @@ def _popup_html(success: bool, provider: str, detail: str = "", extra_payload: s
 </script>
 </body></html>"""
     return HTMLResponse(html)
+
+
+# -----------------------------------------------------------------------------
+# Common OAuth 2.0 helper: exchange authorization code for tokens
+# -----------------------------------------------------------------------------
+async def _exchange_oauth_code(code: str, client_id: str, client_secret: str, redirect_uri: str) -> Optional[dict]:
+    """Exchange an authorization code for tokens via Google's token endpoint.
+    Returns the parsed JSON response, or None on failure."""
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        tok_resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
+        tokens = tok_resp.json()
+        if "error" in tokens:
+            logger.error(f"OAuth token exchange error: {tokens['error']}")
+            return None
+        return tokens
 
 
 # -----------------------------------------------------------------------------
@@ -102,24 +160,13 @@ async def gsc_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
         return _popup_html(False, "gsc", "Server missing GOOGLE_CLIENT_ID/SECRET configuration.")
 
     redirect_uri = f"{BACKEND_URL}/api/connectors/gsc/oauth/callback"
+    tokens = await _exchange_oauth_code(code, client_id, client_secret, redirect_uri)
+    if not tokens:
+        return _popup_html(False, "gsc", "Token exchange failed - invalid code or credentials.")
+
+    access_token = tokens.get("access_token", "")
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
-            tok_resp = await client.post(
-                "https://oauth2.googleapis.com/token",
-                data={
-                    "code": code,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "redirect_uri": redirect_uri,
-                    "grant_type": "authorization_code",
-                },
-            )
-            tokens = tok_resp.json()
-            if "error" in tokens:
-                return _popup_html(False, "gsc", f"Token exchange failed: {tokens['error']}")
-
-            access_token = tokens.get("access_token", "")
-            # Real verified-sites fetch immediately after connect
             sites_resp = await client.get(
                 "https://www.googleapis.com/webmasters/v3/sites",
                 headers={"Authorization": f"Bearer {access_token}"},
@@ -130,8 +177,8 @@ async def gsc_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
                 if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
             ]
     except Exception as e:
-        logger.error(f"[GSC OAuth] exchange failed: {e}")
-        return _popup_html(False, "gsc", f"Token exchange failed: {str(e)[:120]}")
+        logger.error(f"[GSC OAuth] sites fetch failed: {e}")
+        return _popup_html(False, "gsc", f"Failed to fetch verified properties: {str(e)[:120]}")
 
     supabase = get_supabase()
     try:
@@ -192,23 +239,14 @@ async def ga4_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
         return _popup_html(False, "ga4", "Server missing GOOGLE_CLIENT_ID/SECRET configuration.")
 
     redirect_uri = f"{BACKEND_URL}/api/connectors/ga4/oauth/callback"
+    tokens = await _exchange_oauth_code(code, client_id, client_secret, redirect_uri)
+    if not tokens:
+        return _popup_html(False, "ga4", "Token exchange failed - invalid code or credentials.")
+
+    access_token = tokens.get("access_token", "")
+
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
-            tok_resp = await client.post(
-                "https://oauth2.googleapis.com/token",
-                data={
-                    "code": code,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "redirect_uri": redirect_uri,
-                    "grant_type": "authorization_code",
-                },
-            )
-            tokens = tok_resp.json()
-            if "error" in tokens:
-                return _popup_html(False, "ga4", f"Token exchange failed: {tokens['error']}")
-            access_token = tokens.get("access_token", "")
-
             # Fetch the account summary for real GA4 property IDs
             accounts_resp = await client.get(
                 "https://analyticsadmin.googleapis.com/v1beta/accountSummaries",
@@ -411,3 +449,79 @@ async def verify_resend_key(payload: VerifyApiKeyRequest):
                 return {"success": False, "error": f"Resend returned HTTP {resp.status_code}"}
     except Exception as e:
         return {"success": False, "error": f"Resend unreachable: {str(e)[:120]}"}
+
+
+# -----------------------------------------------------------------------------
+# 5. OAUTH 2.0 TOKEN REFRESH (for GSC & GA4 stored credentials)
+# -----------------------------------------------------------------------------
+class TokenRefreshRequest(BaseModel):
+    website_id: Optional[str] = "default"
+
+
+async def _refresh_oauth_token(website_id: str, creds_column: str) -> Optional[dict]:
+    """Refresh an OAuth 2.0 access token using a stored refresh token.
+    Returns dict with new access_token and expires_at, or None on failure."""
+    supabase = get_supabase()
+    try:
+        row = supabase.table("websites").select(creds_column).eq("id", website_id).execute().data
+        if not row or not row[0].get(creds_column):
+            return None
+        creds = row[0][creds_column]
+        if not isinstance(creds, dict):
+            return None
+        # Decrypt refresh token
+        refresh_token_encrypted = creds.get("refresh_token_encrypted", "")
+        if not refresh_token_encrypted:
+            return None
+        refresh_token = decrypt_secret(refresh_token_encrypted)
+        if not refresh_token:
+            return None
+
+        # Get client credentials from env
+        client_id = GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
+        client_secret = GOOGLE_CLIENT_SECRET or os.getenv("GOOGLE_CLIENT_SECRET", "")
+        if not client_id or not client_secret:
+            return None
+
+        redirect_uri = f"{BACKEND_URL}/api/connectors/gsc/oauth/callback"  # reuse callback URI
+
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            tok_resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "refresh_token": refresh_token,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "grant_type": "refresh_token",
+                },
+            )
+            tokens = tok_resp.json()
+            if "error" in tokens:
+                logger.error(f"OAuth token refresh error: {tokens['error']}")
+                return None
+
+            access_token = tokens.get("access_token", "")
+            expires_in = tokens.get("expires_in", 3600)
+            return {
+                "access_token": access_token,
+                "expires_at": (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat(),
+            }
+    except Exception as e:
+        logger.error(f"OAuth token refresh exception: {e}")
+        return None
+
+
+@router.post("/api/connectors/gsc/oauth/refresh")
+async def gsc_oauth_refresh(payload: TokenRefreshRequest):
+    result = await _refresh_oauth_token(payload.website_id, "gsc_credentials")
+    if not result:
+        return JSONResponse(status_code=400, content={"success": False, "error": "Token refresh failed - no valid refresh token or credentials."})
+    return JSONResponse(content={"success": True, "access_token": result["access_token"], "expires_at": result["expires_at"]})
+
+
+@router.post("/api/connectors/ga4/oauth/refresh")
+async def ga4_oauth_refresh(payload: TokenRefreshRequest):
+    result = await _refresh_oauth_token(payload.website_id, "ga4_credentials")
+    if not result:
+        return JSONResponse(status_code=400, content={"success": False, "error": "Token refresh failed - no valid refresh token or credentials."})
+    return JSONResponse(content={"success": True, "access_token": result["access_token"], "expires_at": result["expires_at"]})

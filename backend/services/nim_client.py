@@ -8,7 +8,10 @@ import logging
 import time
 import httpx
 from typing import List
+from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+load_dotenv()
 
 logger = logging.getLogger("backend.services.nim_client")
 
@@ -27,8 +30,6 @@ async def _rate_limit():
         await asyncio.sleep(wait_time)
     _last_request_time = time.monotonic()
 
-logger = logging.getLogger("backend.services.nim_client")
-
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")  # "nvidia" or "openrouter"
 
@@ -42,12 +43,13 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
 LLM_MODELS: List[str] = [
-    os.getenv("NIM_LLM_MODEL", "nvidia/nemotron-3.5-lightning"),
-    os.getenv("NIM_LLM_FALLBACK", "openai/gpt-oss-20b"),
-    "nvidia/nemotron-3.5-lightning",
+    os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+    os.getenv("NIM_LLM_FALLBACK", "poolside/laguna-xs-2.1"),
+    "meta/llama-3.2-11b-vision-instruct",
+    "poolside/laguna-xs-2.1",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
     "openai/gpt-oss-20b",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    "nvidia/nemotron-3-ultra-550b-a55b",
+    "google/diffusiongemma-26b-a4b-it",
 ]
 # Add OpenRouter free model as final fallback if key available
 _or_key = os.getenv("OPENROUTER_API_KEY", "")
@@ -59,10 +61,9 @@ LLM_MODELS = [m for m in LLM_MODELS if not (m in _seen or _seen.add(m))]
 
 EMBED_MODELS: List[str] = [
     os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b"),
-    "nvidia/nvidia-embed-qa-4",
-    # EOL last
-    "nvidia/nv-embedqa-e5-v5",
+    "nvidia/nemotron-3-embed-1b",
 ]
+
 _seen2 = set()
 EMBED_MODELS = [m for m in EMBED_MODELS if not (m in _seen2 or _seen2.add(m))]
 

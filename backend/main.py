@@ -531,6 +531,12 @@ Never deviate from these rules. Always output clean HTML. Never use markdown."""
             raise HTTPException(status_code=400, detail=f"Generated unrelated generic blog for keyword '{keyword}'")
         if "2024" in content and "2024" not in keyword:
             content = re.sub(r"\b2024\b", _cur_year_str, content)
+        # Convert FAQ section to animated toggle accordion
+        try:
+            from agents.crew_blog_writer import replace_faq_with_accordion
+            content = replace_faq_with_accordion(content, {})
+        except Exception as _e_faq:
+            logger.debug(f"FAQ accordion conversion note: {_e_faq}")
     except HTTPException:
         raise
     except Exception as e:
