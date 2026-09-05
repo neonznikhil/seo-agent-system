@@ -427,6 +427,12 @@ class WordPressService:
         focus_kw = (keywords[0] if keywords else "") or title.split()[0] if title else slug_clean
         meta_desc = meta_description or (content[:155].replace("<p>", "").replace("</p>", "").strip() if content else "")
 
+        try:
+            from agents.crew_blog_writer import wrap_tldr_css
+            content = wrap_tldr_css(content)
+        except Exception:
+            pass
+
         payload = {
             "title": title,
             "content": content,
@@ -757,6 +763,12 @@ class WordPressService:
             "meta_description": meta_description,
             "focus_keyword": f_kw,
         }
+        try:
+            from agents.crew_blog_writer import wrap_tldr_css
+            html_content = wrap_tldr_css(html_content)
+        except Exception:
+            pass
+
         payload = {
             "title": title,
             "content": html_content,

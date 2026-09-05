@@ -267,6 +267,11 @@ async def list_approvals(
     enriched = []
     for r in rows:
         html_body = r.get("html_content") or r.get("content") or ""
+        try:
+            from agents.crew_blog_writer import wrap_tldr_css
+            html_body = wrap_tldr_css(html_body)
+        except Exception:
+            pass
         word_count = len(html_body.replace("<", " <").split()) if html_body else 1200
         preview_parts = [
             p.strip() for p in _strip_tags(html_body).split("\n") if p.strip()

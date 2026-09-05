@@ -231,24 +231,49 @@ ALLOWED_HTML_TAGS = [
     "figure", "figcaption",
     "dl", "dt", "dd",
     "sup", "sub",
+    "style", "script", "svg", "path", "button",
 ]
 
 ALLOWED_HTML_ATTRIBUTES = {
-    "*": ["class", "id", "style", "aria-label", "role"],
+    "*": [
+        "class", "id", "style", "aria-label", "aria-expanded", "aria-controls",
+        "role", "tabindex", "onclick", "onkeydown", "type",
+    ],
     "a": ["href", "title", "target", "rel"],
     "img": ["src", "alt", "title", "loading", "width", "height"],
     "td": ["colspan", "rowspan", "align", "valign"],
     "th": ["colspan", "rowspan", "align", "valign"],
     "tr": ["align", "valign"],
     "table": ["border", "cellpadding", "cellspacing", "align", "valign", "width"],
+    "svg": [
+        "viewbox", "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap",
+        "stroke-linejoin", "class", "id", "style", "xmlns", "aria-hidden",
+    ],
+    "path": [
+        "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin",
+    ],
+    "button": [
+        "type", "class", "id", "style", "onclick", "aria-expanded", "aria-controls",
+    ],
+    "script": ["type"],
 }
 
 ALLOWED_HTML_STYLES = [
-    "color", "background-color", "font-size", "font-weight", "font-style",
-    "text-align", "text-decoration", "margin", "margin-left", "margin-right",
-    "margin-top", "margin-bottom", "padding", "padding-left", "padding-right",
-    "padding-top", "padding-bottom", "border", "border-radius", "width", "height",
-    "display", "flex", "grid", "gap", "line-height", "letter-spacing",
+    "color", "background", "background-color", "background-image", "background-clip",
+    "-webkit-background-clip", "-webkit-text-fill-color",
+    "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing",
+    "text-align", "text-decoration", "text-transform",
+    "margin", "margin-left", "margin-right", "margin-top", "margin-bottom",
+    "padding", "padding-left", "padding-right", "padding-top", "padding-bottom",
+    "border", "border-left", "border-right", "border-top", "border-bottom",
+    "border-color", "border-radius", "border-width",
+    "width", "min-width", "max-width", "height", "min-height", "max-height",
+    "overflow", "box-shadow", "opacity", "cursor", "user-select",
+    "transform", "transition",
+    "position", "top", "left", "right", "bottom", "z-index",
+    "display", "flex", "grid", "gap", "justify-content", "align-items",
+    "flex-shrink", "flex-grow", "flex-direction",
+    "outline", "outline-offset", "vertical-align",
 ]
 
 
