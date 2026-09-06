@@ -41,15 +41,20 @@ async def get_linking_suggestions(
     """Retrieve contextual internal link recommendations for a draft or published post."""
     supabase = get_supabase()
     try:
-        q = supabase.table("content_log").select("title, slug, primary_keyword").eq("website_id", website_id)
-        if target_slug:
-            q = q.neq("slug", target_slug)
-        rows = q.limit(10).execute().data or []
+        try:
+            q = supabase.table("content_log").select("title, slug, primary_keyword, keyword").eq("website_id", website_id)
+            if target_slug:
+                q = q.neq("slug", target_slug)
+            rows = q.limit(10).execute().data or []
+        except Exception:
+            q = supabase.table("content_log").select("id, title, keyword").eq("website_id", website_id)
+            rows = q.limit(10).execute().data or []
+
         suggestions = [
             {
                 "target_title": r.get("title"),
-                "target_url": f"/{r.get('slug', '')}",
-                "recommended_anchor": r.get("primary_keyword") or r.get("title"),
+                "target_url": f"/{r.get('slug') or r.get('id', '')}",
+                "recommended_anchor": r.get("primary_keyword") or r.get("keyword") or r.get("title"),
                 "relevance_score": 0.92
             }
             for r in rows

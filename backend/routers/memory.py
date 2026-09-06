@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from database import get_supabase
-from agents.tools.vector_memory_tool import is_duplicate
+# Note: is_duplicate is imported lazily inside check_memory to prevent heavy vector/CrewAI imports on startup
 
 logger = logging.getLogger("backend.routers.memory")
 router = APIRouter()
@@ -38,6 +38,10 @@ async def get_memory(website_id: str):
 
 @router.post("/memory/check")
 async def check_memory(body: MemoryCheckIn):
+    try:
+        from agents.tools.vector_memory_tool import is_duplicate
+    except ImportError:
+        from backend.agents.tools.vector_memory_tool import is_duplicate
     is_dup = await is_duplicate(body.topic, website_id=body.website_id)
     return {"topic": body.topic, "is_duplicate": is_dup}
 

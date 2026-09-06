@@ -29,15 +29,63 @@ class ConnectionHealthMonitor:
         
         supabase = get_supabase()
         results = {
-            "slack": {"status": "connected", "latency_ms": 120},
-            "gsc": {"status": "connected", "latency_ms": 180},
-            "ga4": {"status": "connected", "latency_ms": 165},
-            "wordpress": {"status": "connected", "latency_ms": 210},
-            "serper": {"status": "connected", "latency_ms": 95},
-            "nvidia_nim": {"status": "connected", "latency_ms": 140},
-            "ahrefs": {"status": "connected", "latency_ms": 250},
-            "resend": {"status": "connected", "latency_ms": 110}
+            "slack": {"status": "unknown", "latency_ms": None},
+            "gsc": {"status": "unknown", "latency_ms": None},
+            "ga4": {"status": "unknown", "latency_ms": None},
+            "wordpress": {"status": "unknown", "latency_ms": None},
+            "serper": {"status": "unknown", "latency_ms": None},
+            "nvidia_nim": {"status": "unknown", "latency_ms": None},
+            "ahrefs": {"status": "unknown", "latency_ms": None},
+            "resend": {"status": "unknown", "latency_ms": None}
         }
+
+        # Measure real latency for each integration
+        import time as _time
+        
+        # Slack
+        try:
+            _t0 = _time.time()
+            await slack_intelligence_service.send_crisis_alert(
+                website_id=self.website_id,
+                crisis_type="Health Check",
+                description="Connection health monitoring",
+                action_taken="Automated check",
+            )
+            results["slack"] = {"status": "connected", "latency_ms": round((_time.time() - _t0) * 1000, 1)}
+        except Exception as e:
+            results["slack"] = {"status": "error", "latency_ms": None, "error": str(e)}
+            logger.debug(f"[ConnectionHealthMonitor] Slack check failed: {e}")
+        
+        # Serper
+        try:
+            from services.serper_service import serper_service
+            _t0 = _time.time()
+            await serper_service.search(query="health check ping", num=1)
+            results["serper"] = {"status": "connected", "latency_ms": round((_time.time() - _t0) * 1000, 1)}
+        except Exception as e:
+            results["serper"] = {"status": "error", "latency_ms": None, "error": str(e)}
+            logger.debug(f"[ConnectionHealthMonitor] Serper check failed: {e}")
+        
+        # NVIDIA NIM
+        try:
+            from database import call_nim_llm
+            _t0 = _time.time()
+            await call_nim_llm("Say OK", max_tokens=5)
+            results["nvidia_nim"] = {"status": "connected", "latency_ms": round((_time.time() - _t0) * 1000, 1)}
+        except Exception as e:
+            results["nvidia_nim"] = {"status": "error", "latency_ms": None, "error": str(e)}
+            logger.debug(f"[ConnectionHealthMonitor] NIM check failed: {e}")
+        
+        # WordPress
+        try:
+            from services.wordpress_service import WordPressService
+            _t0 = _time.time()
+            wp = WordPressService(website_id=self.website_id)
+            await wp.get_base_url()
+            results["wordpress"] = {"status": "connected", "latency_ms": round((_time.time() - _t0) * 1000, 1)}
+        except Exception as e:
+            results["wordpress"] = {"status": "error", "latency_ms": None, "error": str(e)}
+            logger.debug(f"[ConnectionHealthMonitor] WordPress check failed: {e}")
 
         expired_integrations = []
 
@@ -55,8 +103,8 @@ class ConnectionHealthMonitor:
                     if exp_dt < datetime.utcnow():
                         results["gsc"]["status"] = "expired"
                         expired_integrations.append("Google Search Console")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[ConnectionHealthMonitor] Failed to parse GSC expires_at: {e}")
         except Exception as e:
             logger.debug(f"Website query note: {e}")
 
@@ -70,8 +118,8 @@ class ConnectionHealthMonitor:
                     description=f"{expired} connection expired or revoked.",
                     action_taken="Marked status as expired in /connectors. Please click Reconnect."
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[ConnectionHealthMonitor] Failed to send crisis alert: {e}")
 
         duration = time.time() - start_t
         all_ok = len(expired_integrations) == 0

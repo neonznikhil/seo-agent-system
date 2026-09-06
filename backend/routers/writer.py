@@ -99,8 +99,8 @@ async def get_writer_suggestions(website_id: str):
                     "volume": r.get("search_volume", 1200),
                     "source": "Research"
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     # 2. Daily searches keywords
     try:
@@ -114,8 +114,8 @@ async def get_writer_suggestions(website_id: str):
                     "volume": r.get("search_volume", 2400),
                     "source": "SERP Trends"
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     # 2b. GSC keywords (high-impression gaps)
     try:
@@ -130,8 +130,8 @@ async def get_writer_suggestions(website_id: str):
                     "volume": int(r.get("impressions") or 1800),
                     "source": "GSC Insights"
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     # 2c. Blog gaps — keywords in research but not yet published
     try:
@@ -139,8 +139,8 @@ async def get_writer_suggestions(website_id: str):
         try:
             b_rows = supabase.table("blogs").select("primary_keyword").eq("website_id", website_id).limit(50).execute().data or []
             existing = {bb.get("primary_keyword","").lower() for bb in b_rows if bb.get("primary_keyword")}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
         gap_rows = supabase.table("keyword_research").select("keyword, search_volume").eq("website_id", website_id).gte("search_volume", 500).limit(10).execute().data or []
         for r in gap_rows:
             kw = r.get("keyword")
@@ -152,8 +152,8 @@ async def get_writer_suggestions(website_id: str):
                     "volume": int(r.get("search_volume") or 1500),
                     "source": "Gap Analysis"
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     # 3. Domain / Niche Curated High-Value Topics (always ensure minimum 8)
     niche_lower = (niche or "").lower()
@@ -212,8 +212,8 @@ async def get_writer_suggestions(website_id: str):
                             "volume": 1700,
                             "source": "AI Autonomous"
                         })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
 
     # 5. WordPress connectivity hint for autonomous UI
     wordpress_connected = False
@@ -229,10 +229,10 @@ async def get_writer_suggestions(website_id: str):
             if base:
                 wordpress_connected = True
                 wordpress_url = base
-        except Exception:
-            pass
-    except Exception:
-        pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     return {
         "success": True,
@@ -538,25 +538,25 @@ async def approve_draft_endpoint(
         from middleware.human_gate import require_human_for_request
         if request:
             user_id = await require_human_for_request(request) or user_id
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
     supabase = get_supabase()
 
     content = None
     try:
         content = supabase.table("content_log").select("*").eq("id", content_id).single().execute().data
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
     if not content:
         try:
             content = supabase.table("blogs").select("*").eq("id", content_id).single().execute().data
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
     if not content:
         try:
             content = supabase.table("blog_approvals").select("*").eq("id", content_id).single().execute().data
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
     if not content:
         all_local = list_local_content(website_id) + list_local_approvals(website_id)
         content = next((i for i in all_local if i.get("id") == content_id or i.get("blog_id") == content_id or i.get("content_id") == content_id), None)
@@ -575,8 +575,8 @@ async def approve_draft_endpoint(
                 wp_service.site["wordpress_user"] = req_body["wordpress_username"]
             if req_body.get("wordpress_app_password"):
                 wp_service.site["app_password"] = req_body["wordpress_app_password"]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     title = content.get("title", "Autonomous SEO Article")
     content_text = content.get("content") or content.get("html_content") or ""
@@ -613,12 +613,12 @@ async def approve_draft_endpoint(
 
     try:
         supabase.table("blogs").update(update_payload).eq("id", content_id).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
     try:
         supabase.table("blog_approvals").update(update_payload).eq("id", content_id).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     # Update local store cache
     try:
@@ -631,8 +631,8 @@ async def approve_draft_endpoint(
             "wordpress_url": wp_draft_url,
         })
         save_local_content(content_copy)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     msg = (
         f"Draft created in WordPress (Post ID #{wp_post_id})"
@@ -663,25 +663,25 @@ async def publish_content_endpoint(
         from middleware.human_gate import require_human_for_request
         if request:
             user_id = await require_human_for_request(request) or user_id
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     supabase = get_supabase()
     content = None
     try:
         content = supabase.table("content_log").select("*").eq("id", content_id).single().execute().data
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
     if not content:
         try:
             content = supabase.table("blogs").select("*").eq("id", content_id).single().execute().data
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
     if not content:
         try:
             content = supabase.table("blog_approvals").select("*").eq("id", content_id).single().execute().data
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_writer] operation failed: {e}")
     if not content:
         all_local = list_local_content(website_id) + list_local_approvals(website_id)
         content = next((i for i in all_local if i.get("id") == content_id or i.get("blog_id") == content_id or i.get("content_id") == content_id), None)
@@ -730,8 +730,8 @@ async def publish_content_endpoint(
             title=content.get("title", ""),
             wordpress_url=None,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_writer] operation failed: {e}")
 
     return {
         "status": "published",

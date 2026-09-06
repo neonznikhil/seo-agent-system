@@ -30,8 +30,8 @@ def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: st
             "error": json.dumps({"real_api_called": real_api}),
             "created_at": __import__("datetime").datetime.utcnow().isoformat(),
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[agents_tools_prospect_research_tool] operation failed: {e}")
 
 
 class ProspectResearchInput(BaseModel):
@@ -85,7 +85,7 @@ class ProspectResearchTool(BaseTool):
             [
               {{
                 "name": "Legal Resource Hub",
-                "url": "https://example.com/legal-resources",
+                "url": "https://target-site.com/legal-resources",
                 "type": "resource_page",
                 "domain_authority": 52,
                 "relevance_score": 9,

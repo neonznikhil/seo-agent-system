@@ -133,7 +133,8 @@ async def generate_strategy_from_alert(alert: Dict[str, Any], website_id: str) -
             
             try:
                 clusters = json.loads(result)
-            except:
+            except Exception as e:
+                logger.warning(f"[ReportingService] Failed to parse topic clusters JSON: {e}")
                 clusters = {"pillar_topic": kw, "clusters": []}
             
             cluster_id = str(uuid.uuid4())

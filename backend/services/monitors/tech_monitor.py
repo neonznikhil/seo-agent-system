@@ -52,18 +52,21 @@ class TechMonitor:
         
         try:
             result["broken_links"] = await self._check_broken_links(url)
-        except:
+        except Exception as e:
+            logger.warning(f"[TechMonitor] _check_broken_links failed: {e}")
             pass
         
         try:
             speed_result = await self._check_page_speed(url)
             result.update(speed_result)
-        except:
+        except Exception as e:
+            logger.warning(f"[TechMonitor] _check_page_speed failed: {e}")
             pass
         
         try:
             result["mobile_issues"] = await self._check_mobile_usability(url)
-        except:
+        except Exception as e:
+            logger.warning(f"[TechMonitor] _check_mobile_usability failed: {e}")
             pass
         
         return result
@@ -95,10 +98,10 @@ class TechMonitor:
                         async with session.head(link, timeout=aiohttp.ClientTimeout(total=5), allow_redirects=True) as lresp:
                             if lresp.status in (404, 500, 502, 503):
                                 links.append({"url": link, "status": lresp.status})
-                    except:
-                        pass
-            except Exception:
-                pass
+                    except Exception as e:
+                        logger.warning(f"[TechMonitor] Broken link check failed for {link}: {e}")
+            except Exception as e:
+                logger.warning("[TechMonitor] Broken link check outer failed: %s", e)
         return links
     
     async def _check_page_speed(self, url: str) -> Dict:
@@ -140,8 +143,8 @@ class TechMonitor:
                 "metrics": {"lcp": lcp, "score": data.get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("score", 0)},
                 "created_at": datetime.utcnow()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[TechMonitor] PageSpeed save failed: %s", e)
         
         return result
     
@@ -177,7 +180,7 @@ class TechMonitor:
                     "issues": issues,
                     "created_at": datetime.utcnow()
                 }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[TechMonitor] Mobile usability save failed: %s", e)
         
         return "; ".join(issues[:3]) if issues else ""

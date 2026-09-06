@@ -19,22 +19,22 @@ class StructureMonitor:
         try:
             issues.extend(await self._check_orphan_pages())
         except Exception as e:
-            pass
+            logger.warning("[StructureMonitor] Orphan pages check failed: %s", e)
         
         try:
             issues.extend(await self._check_redirects())
         except Exception as e:
-            pass
+            logger.warning("[StructureMonitor] Redirects check failed: %s", e)
         
         try:
             issues.extend(await self._check_duplicate_titles())
         except Exception as e:
-            pass
+            logger.warning("[StructureMonitor] Duplicate titles check failed: %s", e)
         
         try:
             issues.extend(await self._check_noindex_pages())
         except Exception as e:
-            pass
+            logger.warning("[StructureMonitor] Noindex pages check failed: %s", e)
         
         return issues
     
@@ -59,8 +59,8 @@ class StructureMonitor:
                         "data": {"page_url": page.get("url"), "clicks": page.get("clicks")},
                         "audit_type": "orphan_pages"
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[StructureMonitor] Orphan pages internal fetch failed: %s", e)
         
         return issues
     
@@ -85,8 +85,8 @@ class StructureMonitor:
                         },
                         "audit_type": "redirect_chains"
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[StructureMonitor] Redirects fetch failed: %s", e)
         
         return issues
     
@@ -114,8 +114,8 @@ class StructureMonitor:
                                 },
                                 "audit_type": "duplicate_titles"
                             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[StructureMonitor] Duplicate titles check failed: %s", e)
         
         if issues:
             for issue in issues:
@@ -127,7 +127,8 @@ class StructureMonitor:
                         "issues": [issue],
                         "created_at": datetime.utcnow()
                     }).execute()
-                except:
+                except Exception as e:
+                    logger.warning(f"[StructureMonitor] Failed to insert technical_audits: {e}")
                     pass
         return issues
     
@@ -153,8 +154,8 @@ class StructureMonitor:
                         },
                         "audit_type": "noindex_pages"
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[StructureMonitor] Noindex pages fetch failed: %s", e)
         
         return issues
     

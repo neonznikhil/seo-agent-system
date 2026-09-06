@@ -935,8 +935,8 @@ def setup_supabase():
             try:
                 # Only run via psycopg2 if available, but log
                 pass
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[auto_supabase] operation failed: {e}")
         logger.info("[Supabase] setup_supabase checks completed")
         return {"success": True, "patched": True}
     except Exception as e:

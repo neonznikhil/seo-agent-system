@@ -73,8 +73,8 @@ class AutonomousDecisionEngine:
                         "should_run": True,
                         "reason": f"Knowledge base freshness average ({avg_freshness:.2f} < 0.70) requires fresh SERP trends."
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[DecisionEngine] SERP trends fetch failed: %s", e)
             return {
                 "should_run": True,
                 "reason": "Routine 24h competitor and search trend refresh cycle."
@@ -89,8 +89,8 @@ class AutonomousDecisionEngine:
                         "should_run": True,
                         "reason": f"Found {stale_count} stale knowledge records (freshness < 0.40) requiring synchronization."
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[DecisionEngine] Knowledge sync fetch failed: %s", e)
             return {
                 "should_run": True,
                 "reason": "Scheduled knowledge base and competitor sync."
@@ -105,8 +105,8 @@ class AutonomousDecisionEngine:
                         "should_run": True,
                         "reason": f"Live analytics activity detected ({analytics_count} records) ready for pattern synthesis."
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[ADE] Failed to check analytics for brain_learn: {e}")
             return {
                 "should_run": True,
                 "reason": "Synthesizing latest content performance into memory rules."
@@ -122,8 +122,8 @@ class AutonomousDecisionEngine:
                         "should_run": True,
                         "reason": f"Detected {len(decaying)} decaying articles with >30% view drop."
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[DecisionEngine] Content freshness check failed: %s", e)
             return {
                 "should_run": True,
                 "reason": "Periodic 2026 freshness overhaul for older published guides."
@@ -163,16 +163,16 @@ class AutonomousDecisionEngine:
                         last_run_ok = hours > 20
                         if not last_run_ok:
                             return {"should_run": False, "reason": f"Last daily_content_gap ran {hours:.1f}h ago (<20h)"}
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[DecisionEngine] Daily content gap last run check failed: %s", e)
                 # Knowledge freshness avg <0.7
                 avg_fresh = 0.7
                 try:
                     rows = supabase.table("knowledge_base").select("freshness_score").limit(50).execute().data or []
                     if rows:
                         avg_fresh = sum(float(r.get("freshness_score", 1.0)) for r in rows) / len(rows)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[DecisionEngine] Knowledge freshness fetch failed: %s", e)
                 # New gap found?
                 from services.analytics_service import AnalyticsService
                 gaps = await AnalyticsService.get_content_gaps(self.website_id)
@@ -201,11 +201,11 @@ class AutonomousDecisionEngine:
                     fresh_rows = supabase.table("knowledge_base").select("freshness_score").lt("freshness_score", 0.4).limit(1).execute().data or []
                     if fresh_rows:
                         return {"should_run": True, "reason": "Low freshness (<0.4) knowledge found for refresh"}
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[DecisionEngine] Decaying content check failed: %s", e)
                 return {"should_run": False, "reason": "No decaying content nor stale freshness — skipping refresh"}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[DecisionEngine] Content refresh check failed: %s", e)
             return {"should_run": True, "reason": "Periodic refresh check"}
 
         # Job: Backlink Prospecting
@@ -222,8 +222,8 @@ class AutonomousDecisionEngine:
                         "should_run": False,
                         "reason": f"Backlink queue currently has {pending_count} pending approvals. Skipping until reviewed."
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[DecisionEngine] Backlink pending count fetch failed: %s", e)
 
         # Log decision to agent_memory type decision
         try:
@@ -237,8 +237,8 @@ class AutonomousDecisionEngine:
                 source_type="autonomous_decision_engine",
                 confidence=0.8
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[DecisionEngine] Decision memory write failed: %s", e)
 
         return {"should_run": True, "reason": "Standard execution."}
 
@@ -257,8 +257,8 @@ class AutonomousDecisionEngine:
                 goals = settings_res[0]["goals"]
                 if goals.get("focus_keywords"):
                     focus_kws = goals["focus_keywords"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[DecisionEngine] Focus keywords fetch failed: %s", e)
 
         # 2. Fetch existing published blog keywords
         existing_kws = set()
@@ -267,8 +267,8 @@ class AutonomousDecisionEngine:
             for b in blogs:
                 if b.get("primary_keyword"):
                     existing_kws.add(b["primary_keyword"].lower())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[DecisionEngine] Published blog keywords fetch failed: %s", e)
 
         # 3. Find focus keyword not yet published — with denylist + grounding guard
         DENYLIST = ["how to start a blog", "start a blog", "generic marketing", "strategy and best practices", "autonomous seo"]
@@ -288,8 +288,8 @@ class AutonomousDecisionEngine:
                             continue
                     else:
                         continue
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[DecisionEngine] Knowledge grounding check (focus kw) failed: %s", e)
                 return kw
 
         # 5. Check keywords table — with same guards
@@ -311,11 +311,11 @@ class AutonomousDecisionEngine:
                                 continue
                         else:
                             continue
-                    except Exception:
-                        pass
-                    return kw
-        except Exception:
-            pass
+                    except Exception as e:
+                        logger.warning("[DecisionEngine] Knowledge grounding check (kw table) failed: %s", e)
+                        return kw
+        except Exception as e:
+            logger.warning("[DecisionEngine] Keywords table fetch failed: %s", e)
 
         # 6. Generate from site niche or domain — but NEVER return generic fallback if not grounded
         # Instead return None to signal no grounded keyword available (forces skip rather than unrelated blog)
@@ -331,12 +331,12 @@ class AutonomousDecisionEngine:
                         hits = await ks.retrieve_relevant_hybrid(niche, top_k=3)
                         if hits and sum(float(h.get("final_score", 0)) for h in hits)/len(hits) >= 0.55:
                             return f"{niche} strategy and best practices"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("[DecisionEngine] Niche grounding check failed: %s", e)
                     # If not grounded, don't return generic
                     return None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[DecisionEngine] Website niche fetch failed: %s", e)
 
         return None
 
@@ -386,8 +386,8 @@ class AutonomousDecisionEngine:
                 if data.get("has_hallucination") is True:
                     checks["hallucination_check_passed"] = False
                     failure_reasons.append("Potential ungrounded legal claim detected in draft")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[DecisionEngine] Hallucination check failed: %s", e)
 
         passed = len(failure_reasons) == 0
         return {
@@ -477,6 +477,6 @@ class AutonomousDecisionEngine:
             if QUEUE_FILE.exists():
                 with open(QUEUE_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[DecisionEngine] Retry queue read failed: %s", e)
         return []

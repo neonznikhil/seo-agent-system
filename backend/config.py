@@ -8,7 +8,8 @@ if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[Config] Failed to reconfigure stdout/stderr encoding: {e}")
         pass
 
 load_dotenv()
@@ -28,8 +29,7 @@ REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # Custom Auth JWT Secret (Minimum 32 characters)
 _raw_jwt = os.getenv("JWT_SECRET")
 if not _raw_jwt:
-    logger.warning("[Config] WARNING: JWT_SECRET not set in environment! Using secure runtime default. Set JWT_SECRET in your Render dashboard.")
-    _raw_jwt = "rankforge-production-secure-jwt-secret-key-64chars-for-token-signing"
+    raise RuntimeError("JWT_SECRET is required. Set it in your environment.")
 elif len(_raw_jwt) < 32:
     _raw_jwt = hashlib.sha256(_raw_jwt.encode()).hexdigest()
 
@@ -78,8 +78,7 @@ _raw_secret = (
     or os.getenv("ENCRYPTION_SECRET")
 )
 if not _raw_secret:
-    logger.warning("[Config] WARNING: ENCRYPTION_KEY not set in environment! Using secure default. Set ENCRYPTION_KEY in your Render dashboard.")
-    _raw_secret = "rankforge-production-fallback-key-32bytes"
+    raise RuntimeError("ENCRYPTION_KEY is required. Set it in your environment.")
 
 # Always ensure exactly 32 url-safe base64-encoded bytes for Fernet
 TOKEN_ENCRYPTION_KEY: str = base64.urlsafe_b64encode(hashlib.sha256(_raw_secret.encode()).digest()).decode()
@@ -113,10 +112,10 @@ def _mask(val: str) -> str:
 
 
 def validate_env() -> None:
-    """Validate required environment variables on startup and print a clear masked diagnostic report."""
-    print("================================================================")
-    print("           RANKFORGE PRODUCTION ENVIRONMENT DIAGNOSTIC          ")
-    print("================================================================")
+    """Validate required environment variables on startup and log a clear masked diagnostic report."""
+    logger.info("================================================================")
+    logger.info("           RANKFORGE PRODUCTION ENVIRONMENT DIAGNOSTIC          ")
+    logger.info("================================================================")
     
     # Core variables
     core_vars = {
@@ -142,15 +141,15 @@ def validate_env() -> None:
     for k, v in core_vars.items():
         masked = _mask(v)
         status = "[OK]" if v else "[MISSING]"
-        print(f"  [CORE] {k.ljust(20)}: {masked.ljust(18)} {status}")
+        logger.info(f"  [CORE] {k.ljust(20)}: {masked.ljust(18)} {status}")
         if not v and k in ["SUPABASE_URL", "SUPABASE_KEY", "NVIDIA_API_KEY", "JWT_SECRET"]:
             missing_core.append(k)
 
-    print("----------------------------------------------------------------")
+    logger.info("----------------------------------------------------------------")
     for k, v in integration_vars.items():
         masked = _mask(v)
         status = "[CONFIGURED]" if v else "[OPTIONAL/FALLBACK]"
-        print(f"  [OPT]  {k.ljust(20)}: {masked.ljust(18)} {status}")
+        logger.info(f"  [OPT]  {k.ljust(20)}: {masked.ljust(18)} {status}")
 
     if missing_core and not os.getenv("TESTING"):
         error_msg = (
@@ -161,4 +160,3 @@ def validate_env() -> None:
             f"================================================================\n"
         )
         logger.warning(error_msg)
-        print(error_msg, file=sys.stderr)

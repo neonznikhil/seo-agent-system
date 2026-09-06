@@ -253,20 +253,20 @@ class SEOAgentGroup:
         try:
             pb = supabase.table("blog_approvals").select("id", count="exact").eq("status", "pending").execute()
             pending_blogs = pb.count if pb.count is not None else len(pb.data or [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_seo_agent_group] operation failed: {e}")
 
         try:
             pf = supabase.table("pending_fixes").select("id", count="exact").eq("status", "pending_approval").execute()
             pending_fixes = pf.count if pf.count is not None else len(pf.data or [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_seo_agent_group] operation failed: {e}")
 
         try:
             ua = supabase.table("realtime_alerts").select("id", count="exact").eq("is_read", False).execute()
             unread_alerts = ua.count if ua.count is not None else len(ua.data or [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_seo_agent_group] operation failed: {e}")
 
         # 4. Schedule Cadence Map
         cadence_info = [

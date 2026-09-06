@@ -4,17 +4,24 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
-from database import get_supabase
-
 logger = logging.getLogger("backend.scripts.migrate")
 
 
+def get_db_url() -> str | None:
+    return (
+        os.getenv("DATABASE_URL")
+        or os.getenv("SUPABASE_DB_URL")
+        or os.getenv("POSTGRES_URL")
+        or os.getenv("DIRECT_URL")
+    )
+
+
 def run_migrations() -> dict:
-    """Execute unapplied SQL migrations in backend/schemas in alphabetical order."""
+    """Execute SQL migrations in backend/schemas or inform user to run master script."""
     print("----------------------------------------------------------------")
     print("           RANKFORGE DATABASE MIGRATION RUNNER                  ")
     print("----------------------------------------------------------------")
-    
+
     schemas_dir = Path(__file__).resolve().parent.parent / "schemas"
     if not schemas_dir.exists():
         logger.warning(f"Schemas directory not found at {schemas_dir}")
@@ -22,54 +29,86 @@ def run_migrations() -> dict:
 
     sql_files = sorted(glob.glob(str(schemas_dir / "*.sql")))
     applied = []
-    
-    try:
-        supabase = get_supabase()
-        
-        # 1. Ensure schema_migrations tracker table exists
-        create_tracker_sql = """
-        CREATE TABLE IF NOT EXISTS public.schema_migrations (
-            id SERIAL PRIMARY KEY,
-            migration_name TEXT UNIQUE NOT NULL,
-            applied_at TIMESTAMPTZ DEFAULT now()
-        );
-        """
-        # Execute basic table probe / tracking
+
+    db_url = get_db_url()
+
+    if db_url:
+        import psycopg2
+
+        print("  [INFO] Direct Postgres connection detected. Executing DDL migrations...")
         try:
-            res = supabase.table("schema_migrations").select("migration_name").execute()
-            already_applied = {row["migration_name"] for row in (res.data or [])}
-        except Exception:
-            already_applied = set()
+            conn = psycopg2.connect(db_url)
+            conn.autocommit = True
+            cur = conn.cursor()
 
-        for sql_file_path in sql_files:
-            file_name = Path(sql_file_path).name
-            if file_name in already_applied:
-                print(f"  [MIGRATED]  {file_name.ljust(30)} (Already Applied)")
-                continue
+            # Ensure schema_migrations table exists
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public.schema_migrations (
+                    id SERIAL PRIMARY KEY,
+                    migration_name TEXT UNIQUE NOT NULL,
+                    applied_at TIMESTAMPTZ DEFAULT now()
+                );
+            """
+            )
 
-            print(f"  [APPLYING]  {file_name.ljust(30)} ...")
-            with open(sql_file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            cur.execute("SELECT migration_name FROM public.schema_migrations;")
+            already_applied = {row[0] for row in cur.fetchall()}
 
-            # Record in schema_migrations
+            for sql_file_path in sql_files:
+                file_name = Path(sql_file_path).name
+                if file_name in already_applied:
+                    print(f"  [MIGRATED]  {file_name.ljust(35)} (Already Applied)")
+                    continue
+
+                print(f"  [APPLYING]  {file_name.ljust(35)} ...")
+                with open(sql_file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                try:
+                    cur.execute(content)
+                    cur.execute(
+                        "INSERT INTO public.schema_migrations (migration_name, applied_at) VALUES (%s, %s);",
+                        (file_name, datetime.utcnow().isoformat()),
+                    )
+                    applied.append(file_name)
+                    print(f"  [SUCCESS]   {file_name.ljust(35)} (Applied)")
+                except Exception as e:
+                    print(f"  [ERROR]     {file_name.ljust(35)}: {e}")
+                    logger.error(f"Failed to execute {file_name}: {e}")
+
+            cur.close()
+            conn.close()
+
+        except Exception as e:
+            logger.error(f"PostgreSQL connection error: {e}")
+            print(f"  [ERROR] Database connection failed: {e}")
+            return {"success": False, "error": str(e), "applied": applied}
+
+    else:
+        # Only PostgREST / Supabase REST client available
+        from database import get_supabase
+
+        supabase = get_supabase()
+        print("  [NOTICE] Direct Postgres URL (DATABASE_URL) is not set in backend/.env.")
+        print("  PostgREST does not support arbitrary DDL (CREATE/ALTER TABLE).")
+        print("  To apply migrations, run the master schema in your Supabase SQL Editor:")
+        print(f"  File: {schemas_dir / 'supabase_master_complete.sql'}")
+
+        # Check existing tables via REST probe
+        test_tables = ["accounts", "websites", "content_log", "realtime_alerts", "autonomous_settings", "daily_costs"]
+        print("\n  Probing Supabase PostgREST tables status:")
+        for tbl in test_tables:
             try:
-                supabase.table("schema_migrations").insert({
-                    "migration_name": file_name,
-                    "applied_at": datetime.utcnow().isoformat()
-                }).execute()
-                applied.append(file_name)
-                print(f"  [SUCCESS]   {file_name.ljust(30)} (Applied)")
-            except Exception as e:
-                logger.warning(f"Note recording migration {file_name}: {e}")
-                applied.append(file_name)
+                res = supabase.table(tbl).select("id").limit(1).execute()
+                status = "EXISTS" if res is not None else "UNKNOWN"
+            except Exception as ex:
+                status = f"MISSING ({ex.code if hasattr(ex, 'code') else '404'})"
+            print(f"    - {tbl.ljust(25)}: {status}")
 
-    except Exception as e:
-        logger.error(f"Migration runner error: {e}")
-        return {"success": False, "error": str(e), "applied": applied}
-
-    print(f"================================================================")
-    print(f"Migrations Complete. {len(applied)} new migration(s) recorded.")
-    print(f"================================================================")
+    print("================================================================")
+    print(f"Migrations check complete. {len(applied)} new migration(s) applied directly.")
+    print("================================================================")
     return {"success": True, "applied": applied}
 
 

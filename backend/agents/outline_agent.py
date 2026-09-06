@@ -80,8 +80,8 @@ class OutlineAgent:
                 "topic": keyword,
                 "outline_data": data,
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_outline_agent] operation failed: {e}")
 
         return data
 
@@ -93,14 +93,14 @@ class OutlineAgent:
             raw = re.sub(r"\s*```$", "", raw)
         try:
             return json.loads(raw)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_outline_agent] operation failed: {e}")
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[agents_outline_agent] operation failed: {e}")
         return {}
 
 

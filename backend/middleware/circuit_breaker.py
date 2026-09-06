@@ -74,7 +74,8 @@ class CircuitBreaker:
                     "status": "unread",
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
-            except Exception:
+            except Exception as e:
+                logger.warning(f"[CircuitBreaker] Failed to insert realtime_alerts: {e}")
                 pass
 
     @classmethod

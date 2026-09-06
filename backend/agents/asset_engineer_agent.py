@@ -110,8 +110,8 @@ class AssetEngineerAgent:
                 "metadata": {"briefed_count": len(briefed_assets)},
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[AssetEngineer] Failed to insert task: {e}")
 
         return {
             "success": True,

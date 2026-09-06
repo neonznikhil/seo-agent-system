@@ -36,8 +36,6 @@ def _init_multi_fernet() -> MultiFernet:
         os.getenv("TOKEN_ENCRYPTION_KEY"),
         os.getenv("ENCRYPTION_KEY"),
         os.getenv("ENCRYPTION_SECRET"),
-        "rankforge-local-dev-secret-key-32bytes-secure",
-        "rankforge-production-fallback-key-32bytes",
     ]
     extra = os.getenv("FALLBACK_ENCRYPTION_KEYS", "") or os.getenv("TOKEN_ENCRYPTION_KEY_FALLBACKS", "")
     if extra:
@@ -54,8 +52,8 @@ def _init_multi_fernet() -> MultiFernet:
             if derived not in seen_b64:
                 seen_b64.add(derived)
                 fernets.append(Fernet(derived.encode()))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[security] operation failed: {e}")
         # 2. Direct key if already a valid 44-char base64 Fernet key
         try:
             rk_clean = rk.strip()
@@ -64,8 +62,8 @@ def _init_multi_fernet() -> MultiFernet:
                 if rk_clean not in seen_b64:
                     seen_b64.add(rk_clean)
                     fernets.append(Fernet(rk_clean.encode()))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[security] operation failed: {e}")
 
     if not fernets:
         fernets.append(Fernet(Fernet.generate_key()))

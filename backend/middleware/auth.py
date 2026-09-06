@@ -197,7 +197,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         try:
             set_account_context(get_supabase(), final_account_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[Auth] Failed to set account context: {e}")
             pass
 
         return await call_next(request)

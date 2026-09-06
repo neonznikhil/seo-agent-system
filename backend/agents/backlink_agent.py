@@ -134,14 +134,22 @@ class BacklinkAgent:
         mod_type = target.get("module_type", "resource_page")
 
         supabase = get_supabase()
-        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL") or "https://example.com"
+        site_url = None
         if self.website_id:
             try:
                 site = supabase.table("websites").select("url, domain").eq("id", self.website_id).single().execute().data
                 if site:
-                    site_url = site.get("url") or f"https://{site.get('domain', 'example.com')}"
-            except Exception:
-                pass
+                    site_url = site.get("url") or f"https://{site.get('domain')}"
+            except Exception as e:
+                logger.warning(f"[BacklinkAgent] Failed to fetch site URL: {e}")
+
+        if not site_url:
+            logger.error("Website URL not found for website_id=%s; cannot generate pitch without site data.", self.website_id)
+            return {
+                "error": "website_url_missing",
+                "fallback_used": True,
+                "message": f"No website URL configured for website_id='{self.website_id}'. Set the site URL before generating outreach pitches."
+            }
         our_resource = f"{site_url.rstrip('/')}/resource"
 
         system_prompt = (

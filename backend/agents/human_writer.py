@@ -247,8 +247,8 @@ class HumanWriterAgent:
                                         for item in s_data:
                                             if isinstance(item, dict) and "@type" in item:
                                                 schemas.append(item["@type"])
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning(f"[HumanWriter] Failed to parse JSON-LD schema: {e}")
 
                             # Readability & sentence length
                             sentences = re.split(r'[.!?]+', text)
@@ -542,8 +542,8 @@ Output ONLY the full article Markdown — no introductory commentary, no convers
             if progress_callback:
                 try:
                     progress_callback(name, text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[HumanWriter] progress_callback failed for {name}: {e}")
 
         # --- Section 1: H1 ---
         sections["h1"] = f"# {title}"
@@ -726,8 +726,8 @@ Output ONLY the full article Markdown — no introductory commentary, no convers
                     "result_data": {"injected_terms": injected_terms, "primary_keyword": primary_keyword},
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[HumanWriter] Failed to log semantic NLP injection: {e}")
 
         return content
 

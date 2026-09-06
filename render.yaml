@@ -80,5 +80,5 @@ services:
     plan: free
     maxmemoryPolicy: allkeys-lru
     ipAllowList:
-      - source: 0.0.0.0/0
-        description: WARNING: Open to all. Restrict to backend service IP in production.
+      - source: 10.0.0.0/8
+        description: Private backend service network only

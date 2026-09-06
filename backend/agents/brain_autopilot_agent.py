@@ -22,7 +22,7 @@ async def _run_job(website_id: str, job_type: str, job_func) -> Dict[str, Any]:
             "run_at": datetime.utcnow().isoformat(),
         }).execute()
     except Exception:
-        pass
+        logger.warning(f"[BrainAutopilot] Failed to insert running job {job_type}: {e}")
 
     try:
         result = await job_func(website_id)
@@ -37,8 +37,8 @@ async def _run_job(website_id: str, job_type: str, job_func) -> Dict[str, Any]:
                 "result": res_obj,
                 "run_at": datetime.utcnow().isoformat(),
             }).execute()
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.warning(f"[BrainAutopilot] Failed to insert completed job {job_type}: {e2}")
         return result
     except Exception as e:
         logger.error(f"[BrainAutopilot] {job_type} failed for {website_id}: {e}")
@@ -51,7 +51,7 @@ async def _run_job(website_id: str, job_type: str, job_func) -> Dict[str, Any]:
                 "run_at": datetime.utcnow().isoformat(),
             }).execute()
         except Exception:
-            pass
+            logger.warning(f"[BrainAutopilot] Failed to insert error job {job_type}: {e}")
         return {"error": str(e)}
 
 
@@ -91,15 +91,15 @@ async def run_pattern_recognition_engine(website_id: str) -> Dict[str, Any]:
                 approved_posts.append(r)
             elif r.get("status") == "rejected":
                 rejected_posts.append(r)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[PatternEngine] Could not fetch blog approvals: {e}")
 
     backlink_conversions = []
     try:
         bl_res = supabase.table("backlink_opportunities").select("type, status, domain_authority").limit(100).execute()
         backlink_conversions = bl_res.data or []
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[PatternEngine] Could not fetch backlink opportunities: {e}")
 
     # Build analysis prompt for NVIDIA NIM
     sample_size = len(outcome_rows) + len(approved_posts) + len(backlink_conversions)

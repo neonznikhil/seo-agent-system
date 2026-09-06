@@ -41,12 +41,16 @@ except Exception as e:
 # Check content_log for latest article
 print()
 print('=== LATEST CONTENT ===')
-r = client.table('content_log').select('id,title,seo_score,status,wp_post_id,wordpress_url').order('created_at', desc=True).limit(3).execute()
+try:
+    r = client.table('content_log').select('id,title,seo_score,status,wp_post_id,wordpress_url').order('created_at', desc=True).limit(3).execute()
+except Exception:
+    r = client.table('content_log').select('id,title,seo_score,status,wp_post_id,published_url,wp_draft_url').order('created_at', desc=True).limit(3).execute()
+
 for c in r.data or []:
     cid = c['id'][:8]
     title = c.get('title', 'N/A')
     seo = c.get('seo_score', 'N/A')
     status = c.get('status', 'N/A')
     wp_post = c.get('wp_post_id', 'N/A')
-    wp_url = c.get('wordpress_url', 'N/A')
+    wp_url = c.get('wordpress_url') or c.get('published_url') or c.get('wp_draft_url') or 'N/A'
     print(f'  {cid} | {title} | SEO: {seo} | Status: {status} | WP Post: {wp_post} | WP URL: {wp_url}')

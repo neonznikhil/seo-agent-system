@@ -30,20 +30,20 @@ async def run_monthly_goal_setting(website_id: str) -> Dict[str, Any]:
     try:
         c_res = supabase.table("content_log").select("id", count="exact").eq("website_id", website_id).execute()
         total_articles = c_res.count if c_res.count is not None else len(c_res.data or [])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[AutoLoop] Content log count fetch failed: %s", e)
 
     try:
         k_res = supabase.table("keyword_proposals").select("id, current_rank").eq("website_id", website_id).lte("current_rank", 10).execute()
         top10_keywords = len(k_res.data or [])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[AutoLoop] Keyword proposals fetch failed: %s", e)
 
     try:
         b_res = supabase.table("backlink_opportunities").select("id", count="exact").eq("website_id", website_id).eq("status", "acquired").execute()
         active_backlinks = b_res.count if b_res.count is not None else len(b_res.data or [])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[AutoLoop] Backlink opportunities fetch failed: %s", e)
 
     prompt = (
         f"You are RankForge's Autonomous SEO Strategist for website '{website_id}'.\n"
@@ -202,8 +202,8 @@ async def run_autonomous_budget_manager(website_id: str) -> Dict[str, Any]:
         res = supabase.table("autonomous_settings").select("budget_threshold").eq("website_id", website_id).single().execute()
         if res.data and res.data.get("budget_threshold"):
             threshold = float(res.data["budget_threshold"])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[AutoLoop] Budget threshold fetch failed: %s", e)
 
     # Sum real costs recorded for today
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
@@ -245,12 +245,17 @@ async def run_autonomous_budget_manager(website_id: str) -> Dict[str, Any]:
 async def process_unread_alerts(website_id: Optional[str] = None):
     """Scan realtime_alerts for unread issues and route to specialized agent handlers."""
     supabase = get_supabase()
+    alerts = []
     try:
-        q = supabase.table("realtime_alerts").select("*").eq("status", "unread")
+        q = supabase.table("realtime_alerts").select("*")
         if website_id:
             q = q.eq("website_id", website_id)
-        alerts = q.limit(20).execute().data or []
-    except Exception:
+        try:
+            alerts = q.eq("status", "unread").limit(20).execute().data or []
+        except Exception:
+            alerts = q.eq("is_read", False).limit(20).execute().data or []
+    except Exception as e:
+        logger.warning(f"[AlertDispatcher] Error fetching alerts: {e}")
         alerts = []
 
     if not alerts:
@@ -264,10 +269,18 @@ async def process_unread_alerts(website_id: Optional[str] = None):
         sa = StrategyAgent(wid)
         try:
             await sa.handle_alert(alert)
-            supabase.table("realtime_alerts").update({
+            update_data = {
                 "status": "investigating",
+                "is_read": True,
                 "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", alert["id"]).execute()
+            }
+            try:
+                supabase.table("realtime_alerts").update(update_data).eq("id", alert["id"]).execute()
+            except Exception:
+                try:
+                    supabase.table("realtime_alerts").update({"is_read": True, "updated_at": datetime.utcnow().isoformat()}).eq("id", alert["id"]).execute()
+                except Exception as e2:
+                    logger.warning(f"[AlertDispatcher] Fallback alert update failed: {e2}")
             processed_count += 1
         except Exception as e:
             logger.warning(f"[AlertDispatcher] Error handling alert {alert.get('id')}: {e}")
@@ -346,18 +359,18 @@ async def _auto_publish_inline(website_id: Optional[str] = None):
                             supabase.table("blog_approvals").update({"status": "published", "wordpress_url": pub.get("wordpress_url"), "wordpress_post_id": pub.get("wordpress_post_id")}).eq("id", appr["id"]).execute()
                             try:
                                 supabase.table("blogs").update({"status": "published", "wordpress_url": pub.get("wordpress_url")}).eq("id", appr.get("blog_id")).execute()
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning("[AutoLoop] Blog status update failed: %s", e)
                             supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": "autonomous"}, "created_at": datetime.utcnow().isoformat()}).execute()
                     except Exception as e:
                         logger.warning(f"[AutoPublish] failed for {appr.get('id')}: {e}")
                         # Handle 401 -> deactivate
                         if "401" in str(e):
-                            try:
-                                supabase.table("wordpress_connections").update({"is_active": False}).eq("website_id", target_id).execute()
-                                supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", target_id).execute()
-                            except Exception:
-                                pass
+                                try:
+                                    supabase.table("wordpress_connections").update({"is_active": False}).eq("website_id", target_id).execute()
+                                    supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", target_id).execute()
+                                except Exception as e:
+                                    logger.warning("[AutoLoop] WP connection deactivation failed: %s", e)
         except Exception as e:
             logger.debug(f"[AutoPublishInline] skip {target_id}: {e}")
 

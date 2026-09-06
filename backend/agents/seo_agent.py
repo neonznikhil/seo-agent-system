@@ -108,8 +108,8 @@ class SEOAgent:
                 "keyword_density": density,
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_seo_agent] operation failed: {e}")
 
         await brain.remember(
             website_id=self.website_id,
@@ -129,14 +129,14 @@ class SEOAgent:
             raw = re.sub(r"\s*```$", "", raw)
         try:
             return json.loads(raw)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_seo_agent] operation failed: {e}")
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[agents_seo_agent] operation failed: {e}")
         return {}
 
 

@@ -58,3 +58,6 @@ dist/
 build/
 *.tsbuildinfo
 *.log
+
+# Python packaging helpers
+backend/get-pip.py

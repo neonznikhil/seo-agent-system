@@ -4,7 +4,7 @@ async function handleProxy(req: Request, slug: string[]) {
   const path = "/" + slug.join("/");
   const url = new URL(req.url);
   const search = url.search;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
   const targetUrl = `${backendUrl.replace(/\/+$/, "")}/api${path}${search}`;
 
   try {

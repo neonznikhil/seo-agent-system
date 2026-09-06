@@ -158,8 +158,8 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
             title=f"Built internal graph {len(urls)} nodes {len(edges)} edges orphans {len(orphans)}",
             source_monitor="internal_link_service",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
     nodes_out = []
     for u in urls:
@@ -251,8 +251,8 @@ async def suggest_internal_links(
             sim = cosine(kw_emb, art_emb)
             if sim > 0.75:
                 cluster_candidates.append({"url": art["url"], "relevance": sim})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
     from services.brain_service import BrainService
 
@@ -330,8 +330,8 @@ async def suggest_internal_links(
             )
             anchor = await call_nim_llm(anchor_prompt, website_id=website_id)
             anchor = anchor.strip().strip('"')
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
         position_h2 = ""
         try:
@@ -345,8 +345,8 @@ async def suggest_internal_links(
             )
             position_h2 = await call_nim_llm(pos_prompt, website_id=website_id)
             position_h2 = position_h2.strip().strip('"')
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
         suggestions.append(
             {
@@ -378,8 +378,8 @@ async def suggest_internal_links(
                     "anchor": new_article_keyword,
                     "reason": "Cluster authority - pillar should link to new article",
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
     return {
         "suggestions": suggestions,
@@ -403,13 +403,16 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
     orphans = graph_data.get("orphans", [])
 
     # Get site config
-    site_url = "https://example.com"
+    site_url = None
     try:
         s_row = supabase.table("websites").select("url, domain").eq("id", website_id).single().execute().data
         if s_row:
-            site_url = s_row.get("url") or f"https://{s_row.get('domain', 'example.com')}"
-    except Exception:
-        pass
+            site_url = s_row.get("url") or f"https://{s_row.get('domain')}"
+    except Exception as e:
+        logger.warning(f"[InternalLinks] Failed to fetch site URL: {e}")
+    if not site_url:
+        logger.warning("[InternalLinks] Site URL missing; using empty base")
+        site_url = ""
 
     # Pass 1: Orphan Rescue
     pages = [n.get("id") for n in graph_data.get("nodes", []) if n.get("id") not in orphans]
@@ -431,8 +434,8 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         try:
             supabase.table("pending_fixes").insert(fix).execute()
             fixes_generated.append(fix)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
     # Pass 2: PageRank Sculpting (if pages available)
     if len(pages) >= 2:
@@ -452,8 +455,8 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         try:
             supabase.table("pending_fixes").insert(star_fix).execute()
             fixes_generated.append(star_fix)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
     # Pass 3: Anchor Diversification
     if pages:
@@ -473,8 +476,8 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         try:
             supabase.table("pending_fixes").insert(anchor_fix).execute()
             fixes_generated.append(anchor_fix)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_internal_link_service] operation failed: {e}")
 
     return {
         "success": True,

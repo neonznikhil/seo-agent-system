@@ -25,21 +25,23 @@ class OpportunityScoutAgent:
     async def run(self, niche_keyword: Optional[str] = None) -> Dict[str, Any]:
         start_t = time.time()
         supabase = get_supabase()
-        website_domain = "example.com"
+        website_domain = None
         try:
             w_res = supabase.table("websites").select("domain, focus_keywords, niche").eq("id", self.website_id).single().execute()
             if w_res.data:
-                website_domain = w_res.data.get("domain") or "example.com"
+                website_domain = w_res.data.get("domain")
                 if not niche_keyword:
                     fks = w_res.data.get("focus_keywords")
                     if isinstance(fks, list) and fks:
                         niche_keyword = fks[0]
                     elif w_res.data.get("niche"):
                         niche_keyword = w_res.data.get("niche")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_opportunity_scout_agent] operation failed: {e}")
 
-        niche_keyword = niche_keyword or "authoritative resources"
+        if not website_domain:
+            return {"error": "website_domain_missing", "fallback_used": True, "message": f"No website domain configured for website_id='{self.website_id}'."}
+        niche_keyword = niche_keyword or "professional services"
         logger.info(f"[OpportunityScout] Commencing backlink opportunity sweep for '{niche_keyword}' on {website_domain}...")
 
         # 5 Real Serper Search Tiers
@@ -129,8 +131,8 @@ class OpportunityScoutAgent:
                                 "status": "pending",
                                 "created_at": datetime.utcnow().isoformat()
                             }).execute()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"[agents_opportunity_scout_agent] operation failed: {e}")
             except Exception as e:
                 logger.warning(f"[OpportunityScout] Search '{sq['type']}' note: {e}")
 
@@ -158,8 +160,8 @@ class OpportunityScoutAgent:
                 "metadata": {"discovered_count": len(discovered_opportunities)},
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_opportunity_scout_agent] operation failed: {e}")
 
         return {
             "success": True,

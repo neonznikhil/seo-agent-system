@@ -86,7 +86,8 @@ class SanitizeResponseMiddleware(BaseHTTPMiddleware):
                         headers=headers,
                         media_type="application/json",
                     )
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"[Sanitize] Failed to sanitize response body: {e}")
                     pass
             
             return Response(

@@ -27,8 +27,8 @@ def _log_task(website_id: str, action: str, status: str, duration_sec: float = 0
             "metadata": meta or {},
             "created_at": datetime.utcnow().isoformat()
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[services_backlink_authority_engine] operation failed: {e}")
 
 
 class BacklinkAuthorityEngine:
@@ -164,8 +164,8 @@ class BacklinkAuthorityEngine:
                                             "metadata": {"broken_source_url": source_url, "original_dead_url": href}
                                         }).execute()
                                         break
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning(f"[services_backlink_authority_engine] operation failed: {e}")
                 except Exception as e:
                     logger.debug(f"Crawl note on {source_url}: {e}")
 
@@ -222,8 +222,8 @@ class BacklinkAuthorityEngine:
                     "status": "pending_human_approval",
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_backlink_authority_engine] operation failed: {e}")
 
         duration = time.time() - start_t
         _log_task(self.website_id, "lost_link_recovery", "completed", duration, {"lost_links_found": len(lost_links)})
@@ -236,17 +236,19 @@ class BacklinkAuthorityEngine:
         """6-hour search for brand and founder mentions without a hyperlink; alert on DR 40+."""
         start_t = time.time()
         supabase = get_supabase()
-        domain = "example.com"
+        domain = None
         if self.website_id:
             try:
                 site = supabase.table("websites").select("domain, name").eq("id", self.website_id).single().execute().data
                 if site:
-                    domain = site.get("domain") or "example.com"
+                    domain = site.get("domain")
                     brand_name = brand_name or site.get("name") or domain
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[BacklinkEngine] Failed to fetch site domain: {e}")
 
-        brand_name = brand_name or "Brand"
+        if not domain:
+            return {"error": "website_domain_missing", "fallback_used": True, "message": f"No website domain configured for website_id='{self.website_id}'."}
+        brand_name = brand_name or domain
         logger.info(f"[BacklinkEngine] Subsystem 4: Scanning for unlinked brand mentions of '{brand_name}'...")
         
         query = f'"{brand_name}" -site:{domain}'
@@ -329,8 +331,8 @@ class BacklinkAuthorityEngine:
                 # Trigger Digital PR asset generation specifically to win this gap
                 if "statistic" in g["topic_of_linking_page"].lower():
                     await self.generate_digital_pr_assets(g["their_anchor_texts"][0])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_backlink_authority_engine] operation failed: {e}")
 
         duration = time.time() - start_t
         _log_task(self.website_id, "competitor_backlink_gap", "completed", duration, {"gaps_identified": len(gaps)})

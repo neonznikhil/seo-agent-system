@@ -28,17 +28,24 @@ class AEOAgent:
     async def track_buyer_intent_queries(self, queries: List[str]) -> Dict[str, Any]:
         """Query LLMs to simulate buyer intent and measure brand citation rate vs competitors."""
         supabase = get_supabase()
-        site_name = "Brand"
-        site_domain = "example.com"
-        competitors = []
+        site_name = None
+        site_domain = None
         if self.website_id:
             try:
                 site = supabase.table("websites").select("name, domain, url").eq("id", self.website_id).single().execute().data
                 if site:
-                    site_name = site.get("name") or site.get("domain") or "Brand"
-                    site_domain = site.get("domain") or "example.com"
-            except Exception:
-                pass
+                    site_name = site.get("name") or site.get("domain")
+                    site_domain = site.get("domain")
+            except Exception as e:
+                logger.warning(f"[AEO] Failed to fetch site info: {e}")
+
+        if not site_domain:
+            logger.error("Website domain not found for website_id=%s; cannot track AEO citations without site data.", self.website_id)
+            return {
+                "error": "website_domain_missing",
+                "fallback_used": True,
+                "message": f"No website domain configured for website_id='{self.website_id}'. Set the domain before tracking AEO citations."
+            }
 
         brand_keywords = [site_name.lower(), site_domain.lower()]
 
@@ -100,16 +107,24 @@ class AEOAgent:
     async def generate_entity_graph(self) -> Dict[str, Any]:
         """Connect brand entities with Wikidata, Google Knowledge Graph, and Local Schema."""
         supabase = get_supabase()
-        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL") or "https://example.com"
-        site_name = "Enterprise Service"
+        site_name = None
+        site_domain = None
         if self.website_id:
             try:
                 site = supabase.table("websites").select("name, domain, url").eq("id", self.website_id).single().execute().data
                 if site:
-                    site_url = site.get("url") or f"https://{site.get('domain', 'example.com')}"
-                    site_name = site.get("name") or site.get("domain") or site_name
-            except Exception:
-                pass
+                    site_name = site.get("name") or site.get("domain")
+                    site_domain = site.get("domain")
+            except Exception as e:
+                logger.warning("[AEO] Website lookup failed: %s", e)
+
+        if not site_domain:
+            logger.error("Website domain not found for website_id=%s; cannot track AEO citations without site data.", self.website_id)
+            return {
+                "error": "website_domain_missing",
+                "fallback_used": True,
+                "message": f"No website domain configured for website_id='{self.website_id}'. Set the domain before tracking AEO citations."
+            }
         
         entity_map = {
             "@context": "https://schema.org",
@@ -149,14 +164,16 @@ class AEOAgent:
     async def generate_and_inject_schema(self, blog_id: Optional[str], schema_type: str = "FAQPage") -> Dict[str, Any]:
         """Generate structured JSON-LD and inject into WordPress / database."""
         supabase = get_supabase()
-        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL") or "https://example.com"
-        if self.website_id:
+        site_url = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WP_SITE_URL")
+        if not site_url and self.website_id:
             try:
                 site = supabase.table("websites").select("url, domain").eq("id", self.website_id).single().execute().data
                 if site:
-                    site_url = site.get("url") or f"https://{site.get('domain', 'example.com')}"
-            except Exception:
-                pass
+                    site_url = site.get("url") or f"https://{site.get('domain')}"
+            except Exception as e:
+                logger.warning("[AEO] Website URL lookup failed: %s", e)
+        if not site_url:
+            return {"error": "site_url_missing", "fallback_used": True, "message": "No site URL configured."}
         
         schema_json = {
             "@context": "https://schema.org",
@@ -188,8 +205,8 @@ class AEOAgent:
                 supabase.table("blogs").update({
                     "meta_description": f"Verified Houston Injury Claims FAQ · {schema_type} Schema Active"
                 }).eq("id", blog_id).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[AEO] Blog meta update failed: %s", e)
 
         return {
             "success": True,

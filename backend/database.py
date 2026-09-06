@@ -260,7 +260,8 @@ def _log_task_fail(website_id, action, error: str) -> None:
         if resolved_id:
             payload["website_id"] = resolved_id
         get_supabase().table("tasks").insert(payload).execute()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[Database] Failed to log NIM failure: {e}")
         pass
 
 

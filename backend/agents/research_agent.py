@@ -125,8 +125,8 @@ class ResearchAgent:
                 "result": data,
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_research_agent] operation failed: {e}")
 
         # Persist fact and experience memories
         await brain.remember(
@@ -156,14 +156,14 @@ class ResearchAgent:
             raw = re.sub(r"\s*```$", "", raw)
         try:
             return json.loads(raw)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_research_agent] operation failed: {e}")
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[agents_research_agent] operation failed: {e}")
         return {}
 
 

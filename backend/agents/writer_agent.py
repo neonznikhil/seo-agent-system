@@ -353,14 +353,14 @@ class WriterPipeline:
                 .eq("website_id", self.website_id)\
                 .execute()
             kb_count = kb_res.count if kb_res.count is not None else len(kb_res.data or [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
         if kb_count == 0:
             try:
                 from services.local_store import list_local_knowledge
                 kb_count = len(list_local_knowledge(self.website_id))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
         knowledge_chunks = await knowledge_service.retrieve_relevant_hybrid(self.primary_keyword, top_k=5)
         if not knowledge_chunks and kb_count == 0:
@@ -511,8 +511,8 @@ class WriterPipeline:
             content = _writer_enforce_year(content, self.primary_keyword)
             self.generated_title = _writer_enforce_year(self.generated_title, self.primary_keyword)
             self._stored_content = content
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
         # Off-topic validation: title must contain keyword word >3 chars
         _title_low = (self.generated_title or "").lower()
         _kw_words = (self.primary_keyword or "").lower().split()
@@ -538,8 +538,8 @@ class WriterPipeline:
                     logger.warning(f"[Writer] {err}")
                     self._update_content_log(pipeline_status='failed', status='failed', error_message=err)
                     return {"status": "failed", "error_message": err}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
         # Persist the finished article body + real title
         expert_avg = float(self.final_scores.get('expert', 0) or 0)
@@ -596,8 +596,8 @@ class WriterPipeline:
                     "website_id": self.website_id,
                     "created_at": datetime.utcnow().isoformat(),
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
             # Calendar entry: scheduled publish = NOW + 48h review window
             scheduled = (datetime.utcnow().timestamp() + 48 * 3600)
@@ -612,8 +612,8 @@ class WriterPipeline:
                     "content_log_id": self.content_id,
                     "created_at": datetime.utcnow().isoformat(),
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[agents_writer_agent] operation failed: {e}")
         except Exception as e:
             logger.warning(f"[Writer] Could not insert into blog_approvals: {e}")
 
@@ -623,8 +623,8 @@ class WriterPipeline:
             auto_res = self.supabase.table("autonomous_settings").select("auto_publish").limit(1).execute().data
             if auto_res and auto_res[0].get("auto_publish") is not None:
                 auto_publish = bool(auto_res[0]["auto_publish"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
         self._update_content_log(
             pipeline_status='completed',
@@ -658,8 +658,8 @@ class WriterPipeline:
                 word_count=word_count,
                 seo_score=round(seo_score, 1),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
         return {
             'status': 'completed',
@@ -697,8 +697,8 @@ class WriterPipeline:
             )
             if res.data:
                 return res.data[0]["id"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
         return None
 
     @staticmethod
@@ -864,8 +864,8 @@ class WriterPipeline:
             site_row = self.supabase.table("websites").select("account_id").eq("id", self.website_id).limit(1).execute().data
             if site_row:
                 acc_id = site_row[0].get("account_id")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
         insert_payload = {
             'id': self.content_id,

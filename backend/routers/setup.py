@@ -10,6 +10,12 @@ try:
 except ImportError:
     get_supabase = None
 
+try:
+    from error_handling import log_server_error
+except ImportError:
+    def log_server_error(exc, request=None, context=""):
+        pass
+
 logger = logging.getLogger("backend.routers.setup")
 
 router = APIRouter(prefix="/setup", tags=["setup"])
@@ -32,8 +38,8 @@ async def setup_status(request: Request):
     if connected:
         try:
             supabase = get_supabase()
-            response = supabase.table("").select("*").limit(1).execute()
-            tables = []
+            response = supabase.table("websites").select("id").limit(1).execute()
+            tables = ["websites"]
         except Exception as exc:
             connected = False
             error = "Database connection failed"

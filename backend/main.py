@@ -20,7 +20,7 @@ import re
 import traceback
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 
@@ -182,8 +182,8 @@ async def lifespan(app: FastAPI):
                             jdata = _json.loads(p.read_text(encoding="utf-8"))
                             for wid, vals in jdata.items():
                                 schedules.append({"website_id": wid, "generation_interval_minutes": vals.get("generation_interval_minutes") or vals.get("interval_minutes") or 288, "schedule_label": vals.get("schedule_label") or vals.get("label") or "default", "auto_generate_enabled": vals.get("auto_generate_enabled", True)})
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("[Main] Schedule config parse failed: %s", e)
                 from agents.scheduler import scheduler, run_autonomous_blog_generation
                 for setting in (schedules or []):
                     wid = setting.get("website_id")
@@ -203,7 +203,6 @@ async def lifespan(app: FastAPI):
                             misfire_grace_time=120
                         )
                         logger.info(f"[SCHEDULER] Restored: {job_id} every {interval} min ({label})")
-                        print(f"[SCHEDULER] Restored: {job_id} every {interval} min ({label})")
                     except Exception as e:
                         logger.warning(f"[SCHEDULER] Failed to restore {job_id}: {e}")
             except Exception as e:
@@ -236,7 +235,7 @@ async def lifespan(app: FastAPI):
                 "description": "Autonomous SEO Monitoring active. 6 background agents running (Rank, SERP, Competitor, Tech, Geo, Structure).",
                 "source": "continuous_monitor",
                 "is_read": False,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }).execute()
             logger.info("[RealtimeAlerts] Seeded initial system status alert.")
     except Exception as e:
@@ -248,13 +247,13 @@ async def lifespan(app: FastAPI):
     logger.info("RankForge shutting down...")
     try:
         await autonomous_health_service.stop()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Main] Health service stop failed: %s", e)
     try:
         from agents.scheduler import stop_scheduler
         stop_scheduler()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Main] Scheduler stop failed: %s", e)
 
 
 is_prod = os.getenv("ENVIRONMENT") == "production"
@@ -380,8 +379,8 @@ async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
                     raise HTTPException(status_code=400, detail=f"Keyword '{keyword}' not grounded in KB (similarity {_avgr2:.2f} <0.55)")
     except HTTPException:
         raise
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Main] Keyword grounding check failed: %s", e)
     
     website_id = payload.website_id
     supabase = get_supabase()
@@ -395,7 +394,7 @@ async def generate_blog_nim(payload: GenerateBlogPayload, request: Request):
         except Exception as e:
             logger.warning(f"Could not fetch website id: {e}")
 
-    _cur_raw = datetime.utcnow()
+    _cur_raw = datetime.now(timezone.utc)
     _date_block_raw = f"""CRITICAL DATE CONTEXT — READ THIS FIRST:
 Today's date is {_cur_raw.strftime("%B %d, %Y")}.
 The current year is {_cur_raw.year}.
@@ -675,8 +674,8 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
                 audits = q.order("created_at", desc=True).limit(1).execute().data or []
                 if audits and audits[0].get("health_score") is not None:
                     return round(float(audits[0]["health_score"]))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Main] Health score fetch failed: %s", e)
             return 94
 
         rows, all_logs, memories_data, knowledge_data, wp_rows, backlinks_data, health_score = await asyncio.gather(
@@ -783,7 +782,7 @@ async def delete_content_item(blog_id: str, request: Request):
                     "content": target_row.get("content"),
                     "snapshot_data": target_row,
                     "deleted_by": request.state.account.get("email") if hasattr(request.state, "account") else "operator",
-                    "deleted_at": datetime.utcnow().isoformat(),
+                    "deleted_at": datetime.now(timezone.utc).isoformat(),
                 }).execute()
             except Exception as e:
                 logger.warning(f"Deleted content audit logging note: {e}")
@@ -791,8 +790,8 @@ async def delete_content_item(blog_id: str, request: Request):
             # 3. Delete from blog_approvals
             try:
                 supabase.table("blog_approvals").delete().eq("blog_id", target_row["id"]).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Main] Blog approval delete failed: %s", e)
 
             # 4. Delete from content_log
             supabase.table("content_log").delete().eq("id", target_row["id"]).eq("account_id", account_id).execute()
@@ -805,8 +804,8 @@ async def delete_content_item(blog_id: str, request: Request):
                     kw = target_row.get("keyword", "N/A")
                     async with httpx.AsyncClient(timeout=4.0) as client:
                         await client.post(SLACK_WEBHOOK_URL, json={"text": f"🗑️ Draft deleted: '{title}' — {kw}"})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Main] Slack alert failed: %s", e)
 
             return {"success": True, "deleted_id": blog_id, "detail": "Article draft deleted."}
 
@@ -918,8 +917,8 @@ def _get_dev_mode_state_main() -> bool:
                 data = _json.loads(p.read_text(encoding="utf-8"))
                 if data.get("enabled") is True or data.get("developer_mode") is True:
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Main] Developer mode file read failed: %s", e)
     try:
         supabase = get_supabase()
         rows = supabase.table("autonomous_settings").select("developer_mode").limit(1).execute().data or []
@@ -928,8 +927,8 @@ def _get_dev_mode_state_main() -> bool:
         rows2 = supabase.table("autonomous_settings").select("goals").limit(1).execute().data or []
         if rows2 and (rows2[0].get("goals") or {}).get("developer_mode") is True:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[Main] Developer mode state read failed: %s", e)
     return False
 
 def _set_dev_mode_state_main(enabled: bool):
@@ -941,27 +940,30 @@ def _set_dev_mode_state_main(enabled: bool):
     ]:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(_json.dumps({"enabled": enabled, "developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+            p.write_text(_json.dumps({"enabled": enabled, "developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning("[Main] Developer mode file write failed: %s", e)
     try:
         supabase = get_supabase()
         existing = supabase.table("autonomous_settings").select("id").limit(1).execute().data or []
         if existing:
             try:
-                supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}).eq("id", existing[0]["id"]).execute()
+                supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]).execute()
             except Exception:
                 cur = supabase.table("autonomous_settings").select("goals").eq("id", existing[0]["id"]).single().execute().data or {}
                 goals = cur.get("goals") or {}
                 goals["developer_mode"] = enabled
-                supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.utcnow().isoformat()}).eq("id", existing[0]["id"]).execute()
+                supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]).execute()
         else:
             try:
-                supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}).execute()
+                supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
             except Exception:
-                supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.utcnow().isoformat()}).execute()
-    except Exception:
-        pass
+                try:
+                    supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
+                except Exception as e:
+                    logger.warning("[Main] Developer mode fallback insert failed: %s", e)
+    except Exception as e:
+        logger.warning("[Main] Developer mode state update failed: %s", e)
     # Reschedule for 2-min cadence
     try:
         from backend.agents.scheduler import scheduler
@@ -969,27 +971,27 @@ def _set_dev_mode_state_main(enabled: bool):
         if enabled:
             try:
                 scheduler.reschedule_job("job_auto_blog_10min", trigger=IntervalTrigger(minutes=2))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Main] Scheduler reschedule job_auto_blog_10min failed: %s", e)
             for job in list(scheduler.get_jobs()):
                 if job.id.startswith("auto_blog_"):
                     try:
                         scheduler.reschedule_job(job.id, trigger=IntervalTrigger(minutes=2))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("[Main] Scheduler job reschedule failed: %s", e)
         else:
             try:
                 scheduler.reschedule_job("job_auto_blog_10min", trigger=IntervalTrigger(minutes=10))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Main] Scheduler reschedule (disable) failed: %s", e)
             for job in list(scheduler.get_jobs()):
                 if job.id.startswith("auto_blog_"):
                     try:
                         scheduler.reschedule_job(job.id, trigger=IntervalTrigger(minutes=10))
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+                    except Exception as e:
+                        logger.warning("[Main] Scheduler job reschedule (disable) failed: %s", e)
+    except Exception as e:
+        logger.warning("[Main] Developer mode reschedule failed: %s", e)
 
 @app.get("/api/developer-mode")
 @app.get("/developer-mode")

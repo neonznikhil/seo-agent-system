@@ -46,13 +46,16 @@ class AcquisitionMonitorAgent:
             # Real Ahrefs / crawl link acquisition verification (live check)
             # Verify page references our topic with high relevance, then mark as acquired
             if dr >= 50 and opp.get("status") == "asset_published":
-                site_url = "https://example.com"
+                site_url = None
                 try:
                     site_row = supabase.table("websites").select("url, domain").eq("id", self.website_id).single().execute().data
                     if site_row:
-                        site_url = site_row.get("url") or f"https://{site_row.get('domain', 'example.com')}"
-                except Exception:
-                    pass
+                        site_url = site_row.get("url") or f"https://{site_row.get('domain')}"
+                except Exception as e:
+                    logger.warning(f"[AcquisitionMonitor] Failed to fetch site URL: {e}")
+                if not site_url:
+                    logger.warning("[AcquisitionMonitor] Site URL missing; skipping acquisition entry")
+                    continue
                 acquired_entry = {
                     "website_id": self.website_id,
                     "url": f"{site_url.rstrip('/')}/resource",
@@ -102,8 +105,8 @@ class AcquisitionMonitorAgent:
                 "metadata": {"acquired_count": len(acquired_links)},
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[AcquisitionMonitor] Acquisition log insert failed: %s", e)
 
         return {
             "success": True,

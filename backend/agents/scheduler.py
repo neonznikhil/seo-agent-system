@@ -6,7 +6,7 @@ maintains brain_memory integration, and runs continuous monitoring loops.
 import os
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -56,7 +56,7 @@ MAX_LOG_ENTRIES = 100
 
 def _add_log(job_name: str, status: str, message: str, details: Optional[Dict] = None):
     entry = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "job": job_name,
         "status": status,
         "message": message,
@@ -76,7 +76,7 @@ async def is_auto_publish_enabled() -> bool:
         if res and res[0].get("auto_publish") is not None:
             return bool(res[0]["auto_publish"])
     except Exception:
-        pass
+        logger.warning("[SCHEDULER] auto_publish lookup failed, defaulting to True")
     return True
 
 
@@ -134,7 +134,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
                 brain = BrainService(website_id=target_id)
                 await brain.remember(website_id=target_id, memory_type="decision", title=f"Decision: {job_name}", content=f"skipped: {decision.get('reason')}", source_type="autonomous_decision_engine", confidence=0.7)
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] brain memory note: skipped decision for {target_id}")
             continue
         # Log decision
         try:
@@ -142,7 +142,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
             brain = BrainService(website_id=target_id)
             await brain.remember(website_id=target_id, memory_type="decision", title=f"Decision: {job_name}", content=f"should_run True: {decision.get('reason')}", source_type="autonomous_decision_engine", confidence=0.85)
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] brain memory note: should_run decision for {target_id}")
 
         _add_log(job_name, "running", f"Checking content gaps for {target_id}")
         try:
@@ -176,7 +176,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
                             if focus and not any(f in kw.lower() for f in focus):
                                 continue
                         except Exception:
-                            pass
+                            logger.warning(f"[SCHEDULER] focus_keywords overlap check failed for '{kw}' on {target_id}")
                         gap_keyword = kw
                         gap_row = r
                         break
@@ -195,7 +195,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
                             if exists:
                                 continue
                         except Exception:
-                            pass
+                            logger.warning(f"[SCHEDULER] blogs existence check failed for keyword '{kw}' on {target_id}")
                         gap_keyword = kw
                         gap_row = g
                         break
@@ -210,14 +210,14 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
                 try:
                     await log_autonomous_decision(website_id=target_id, decision="SKIP", reason=f"Denied unrelated keyword '{gap_keyword}' (denylist)", job=job_name)
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] log_autonomous_decision SKIP note (denylist '{gap_keyword}'): cannot persist decision")
                 continue
             if not await _is_keyword_grounded_in_kb(gap_keyword, target_id, threshold=0.55):
                 _add_log(job_name, "skipped", f"Skipped ungrounded gap keyword '{gap_keyword}' on {target_id} (KB similarity <0.55)")
                 try:
                     await log_autonomous_decision(website_id=target_id, decision="SKIP", reason=f"Keyword '{gap_keyword}' not grounded in KB for {target_id}", job=job_name)
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] log_autonomous_decision SKIP note (ungrounded '{gap_keyword}'): cannot persist decision")
                 continue
 
             # Knowledge hybrid similarity >0.7 check
@@ -278,22 +278,41 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
                                 queue = _json.load(open(fallback_path))
                             except Exception:
                                 queue = []
-                        queue.append({"job": job_name, "website_id": target_id, "keyword": gap_keyword, "error": str(e)[:500], "retry_at": (datetime.utcnow() + timedelta(minutes=1)).isoformat(), "attempts": 1})
+                        queue.append({"job": job_name, "website_id": target_id, "keyword": gap_keyword, "error": str(e)[:500], "retry_at": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(), "attempts": 1})
                         open(fallback_path, "w").write(_json.dumps(queue, indent=2))
                     except Exception:
-                        pass
+                        logger.warning(f"[SCHEDULER] fallback queue write note for {target_id}/{gap_keyword}")
                 # realtime_alerts critical if fails 2 times
                 try:
                     supabase = get_supabase()
                     fail_count = 1
                     try:
                         # count recent failures for this job
-                        recent = supabase.table("realtime_alerts").select("id").eq("website_id", target_id).eq("severity", "critical").gte("created_at", (datetime.utcnow() - timedelta(hours=1)).isoformat()).execute().data or []
+                        recent = supabase.table("realtime_alerts").select("id").eq("website_id", target_id).eq("severity", "critical").gte("created_at", (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()).execute().data or []
                         fail_count = len(recent) + 1
                     except Exception:
-                        pass
+                        logger.warning(f"[SCHEDULER] realtime_alerts failure count note for {target_id}")
                     if fail_count >= 2:
-                        supabase.table("realtime_alerts").insert({"website_id": target_id, "alert_type": "crew_failure", "severity": "critical", "title": f"Gap generation failed twice for {gap_keyword}", "description": str(e)[:500], "status": "unread", "created_at": datetime.utcnow().isoformat()}).execute()
+                        alert_dict = {
+                            "website_id": target_id,
+                            "alert_type": "crew_failure",
+                            "severity": "critical",
+                            "title": f"Gap generation failed twice for {gap_keyword}",
+                            "description": str(e)[:500],
+                            "status": "unread",
+                            "is_read": False,
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        try:
+                            supabase.table("realtime_alerts").insert(alert_dict).execute()
+                        except Exception:
+                            try:
+                                alert_dict.pop("is_read", None)
+                                supabase.table("realtime_alerts").insert(alert_dict).execute()
+                            except Exception:
+                                alert_dict.pop("status", None)
+                                alert_dict["is_read"] = False
+                                supabase.table("realtime_alerts").insert(alert_dict).execute()
                         from .strategy_agent import StrategyAgent
                         sa = StrategyAgent(target_id)
                         await sa.handle_alert({"website_id": target_id, "alert_type": "crew_failure", "severity": "critical", "title": f"Gap failed twice", "description": str(e)[:500]})
@@ -331,7 +350,7 @@ async def job_daily_search(website_id: Optional[str] = None):
                 "keyword": "Personal injury and commercial claims 2026",
                 "trends": trends if isinstance(trends, dict) else {"summary": str(trends)},
                 "competitor_data": {"serp_volume": 1200, "difficulty": 38},
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }).execute()
             
             await engine.track_cost("ResearchAgent", 8200)
@@ -430,10 +449,17 @@ async def job_content_refresh(website_id: Optional[str] = None):
 
             # Picks 2 oldest freshness <0.4 -> Crew refresh "Refresh: {old_title} for 2026"
             try:
-                fresh_rows = supabase.table("knowledge_base").select("id, title, content").eq("website_id", target_id).lt("freshness_score", 0.4).order("freshness_score").limit(2).execute().data or []
+                fresh_rows = []
+                for sel in ["id, title, content", "id, title, fact", "*"]:
+                    try:
+                        fresh_rows = supabase.table("knowledge_base").select(sel).eq("website_id", target_id).lt("freshness_score", 0.4).order("freshness_score").limit(2).execute().data or []
+                        if fresh_rows:
+                            break
+                    except Exception:
+                        continue
                 for fr in fresh_rows:
                     old_title = fr.get("title") or "Untitled"
-                    old_content = fr.get("content") or ""
+                    old_content = fr.get("content") or fr.get("fact") or ""
                     try:
                         await _enhanced_refresh_with_crew(target_id, old_title, old_content)
                         refreshed_count += 1
@@ -567,7 +593,7 @@ async def job_auto_blog_writer_crew(website_id: Optional[str] = None):
                 ba_rows = supabase.table("blog_approvals").select("keyword").eq("website_id", target_id).limit(50).execute().data or []
                 existing_kw.update({r.get("keyword","").lower() for r in ba_rows if r.get("keyword")})
             except Exception:
-                pass
+                logger.warning(f"[SCHEDULER] existing blog keyword query failed for {target_id}")
             for g in gaps:
                 kw = g.get("keyword") or g.get("query") or ""
                 vol = int(g.get("impressions") or g.get("search_volume") or 0)
@@ -611,10 +637,10 @@ async def job_auto_blog_writer_crew(website_id: Optional[str] = None):
                         "action": "crew_blog_generation_start",
                         "status": "running",
                         "payload": {"topic": gap_keyword, "attempt": attempts},
-                        "created_at": datetime.utcnow().isoformat(),
+                        "created_at": datetime.now(timezone.utc).isoformat(),
                     }).execute()
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] critical_action_logs insert note (crew start for '{gap_keyword}' on {target_id})")
                 result = await generate_blog_with_self_healing(topic=gap_keyword, website_id=target_id, user_id=None)
                 # FIX autonomous unrelated: post-generation off-topic + denylist guard
                 _final_html = result.get("final_html") or result.get("html") or ""
@@ -637,10 +663,10 @@ async def job_auto_blog_writer_crew(website_id: Optional[str] = None):
                         "action": "crew_blog_generation_complete",
                         "status": result.get("status"),
                         "payload": {"topic": gap_keyword, "seo_score": result.get("seo_score"), "wordpress_url": result.get("wordpress_url")},
-                        "created_at": datetime.utcnow().isoformat(),
+                        "created_at": datetime.now(timezone.utc).isoformat(),
                     }).execute()
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] critical_action_logs insert note (crew complete for '{gap_keyword}' on {target_id})")
                 break
             except Exception as e:
                 logger.error(f"[CrewSched] attempt {attempts} failed for {gap_keyword} on {target_id}: {e}")
@@ -701,7 +727,7 @@ async def count_knowledge_base_rows(website_id: str) -> int:
         elif res.data:
             count = len(res.data)
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] count_knowledge_base_rows note for {website_id}")
     
     local_kb = list_local_knowledge(website_id)
     return max(count, len(local_kb))
@@ -726,21 +752,21 @@ async def count_blogs_in_status(website_id: str, status: str) -> int:
         if res.data:
             return len(res.data)
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] count_blogs_in_status note for {website_id}/{status}")
     return 0
 
 
 async def get_today_spend(website_id: str) -> float:
     """Get total spend for website today."""
     from database import get_supabase
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
         supabase = get_supabase()
         res = supabase.table("daily_costs").select("cost_usd").eq("website_id", website_id).eq("date", today_str).execute()
         if res.data:
             return sum(float(r.get("cost_usd", 0.0) or 0.0) for r in res.data)
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] get_today_spend note for {website_id}")
     return 0.0
 
 
@@ -758,7 +784,7 @@ async def get_daily_budget_limit(website_id: str) -> float:
             if goals.get("daily_budget"):
                 return float(goals["daily_budget"])
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] get_daily_budget_limit note for {website_id}")
     return 5.0
 
 
@@ -774,13 +800,13 @@ async def is_keyword_too_similar(new_keyword: str, website_id: str) -> bool:
             extra = supabase.table("blog_approvals").select("target_keyword").eq("website_id", website_id).order("created_at", desc=True).limit(50).execute().data or []
             rows.extend(extra)
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] blog_approvals keyword check note for {website_id}")
         try:
             extra2 = supabase.table("content_log").select("keyword").eq("website_id", website_id).order("created_at", desc=True).limit(50).execute().data or []
             for r in extra2:
                 rows.append({"target_keyword": r.get("keyword")})
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] content_log keyword check note for {website_id}")
         new_words = set(new_keyword.lower().split())
         if not new_words:
             return True
@@ -793,7 +819,8 @@ async def is_keyword_too_similar(new_keyword: str, website_id: str) -> bool:
             if overlap > 0.6:
                 return True
         return False
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[SCHEDULER] is_keyword_too_similar failed for '{new_keyword}' on {website_id}: {e}")
         return False
 
 
@@ -849,10 +876,10 @@ def is_developer_mode_enabled() -> bool:
             if os.path.exists(p):
                 with open(p, "r", encoding="utf-8") as f:
                     data = _json.load(f)
-                    if data.get("enabled") or data.get("developer_mode") is True:
-                        return True
+                if data.get("enabled") or data.get("developer_mode") is True:
+                    return True
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] developer_mode file note: {p}")
     # DB flag
     try:
         from database import get_supabase
@@ -865,7 +892,7 @@ def is_developer_mode_enabled() -> bool:
         if rows2 and (rows2[0].get("goals") or {}).get("developer_mode") is True:
             return True
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] developer_mode DB flag note")
     return False
 
 GENERIC_NICHES = [
@@ -928,7 +955,7 @@ async def _is_keyword_grounded_in_kb(keyword: str, website_id: str, threshold: f
             # Raise threshold for accident sites
             threshold = max(threshold, 0.60)
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] accident site check note for '{keyword}' on {website_id}")
     if _is_keyword_denied(keyword):
         threshold = max(threshold, 0.75)
     # Primary: hybrid vector search
@@ -956,7 +983,7 @@ async def _is_keyword_grounded_in_kb(keyword: str, website_id: str, threshold: f
                 rows = sup.table("knowledge_base").select("content,fact").eq("website_id", website_id).limit(30).execute().data or []
                 kb_filtered = [{"fact": r.get("content") or r.get("fact") or ""} for r in rows if (r.get("content") or r.get("fact") or '').strip() and 'Hello world' not in (r.get("content") or '')]
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] KB fallback note for '{keyword}' on {website_id}")
         if not kb_filtered:
             return False
         kb_text = " ".join((k.get('fact') or k.get('content') or '').lower() for k in kb_filtered)
@@ -1033,9 +1060,9 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
             if t_res.data:
                 existing_kws.update({(r.get("target_keyword") or "").lower() for r in t_res.data if r.get("target_keyword")})
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] blogs target_keyword check note for {website_id}")
     except Exception:
-        pass
+        logger.warning(f"[SCHEDULER] existing keyword collection failed for {website_id}")
 
     # Step 1: Check research table for queued keywords (spec exact) — with denylist + grounding guard
     try:
@@ -1049,14 +1076,14 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
                     try:
                         supabase.table("research").update({"status": "skipped_similar"}).eq("website_id", website_id).eq("keyword", keyword).execute()
                     except Exception:
-                        pass
+                        logger.debug(f"[SCHEDULER] research skipped_similar update note for '{keyword}'")
                     continue
                 if _is_keyword_denied(keyword):
                     # Hard denylist — skip and mark
                     try:
                         supabase.table("research").update({"status": "skipped_denied"}).eq("website_id", website_id).eq("keyword", keyword).execute()
                     except Exception:
-                        pass
+                        logger.debug(f"[SCHEDULER] research skipped_denied update note for '{keyword}'")
                     logger.info(f"[KeywordPicker] Denied queued keyword '{keyword}' (denylist)")
                     continue
                 # Grounding check — must be relevant to website's KB
@@ -1064,16 +1091,16 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
                     try:
                         supabase.table("research").update({"status": "skipped_ungrounded"}).eq("website_id", website_id).eq("keyword", keyword).execute()
                     except Exception:
-                        pass
+                        logger.debug(f"[SCHEDULER] research skipped_ungrounded update note for '{keyword}'")
                     logger.info(f"[KeywordPicker] Skipped ungrounded queued keyword '{keyword}'")
                     continue
                 try:
                     supabase.table("research").update({"status": "in_progress"}).eq("website_id", website_id).eq("keyword", keyword).execute()
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] research in_progress update note for '{keyword}'")
                 return keyword
     except Exception:
-        pass
+        logger.warning(f"[SCHEDULER] research table keyword query failed for {website_id}")
     # Also check keyword_research table queued
     try:
         result2 = supabase.table("keyword_research").select("keyword").eq("website_id", website_id).in_("status", ["queued", "pending"]).order("priority_score", desc=True).limit(10).execute()
@@ -1093,10 +1120,10 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
                 try:
                     supabase.table("keyword_research").update({"status": "generating"}).eq("website_id", website_id).eq("keyword", kw2).execute()
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] keyword_research generating update note for '{kw2}'")
                 return kw2
     except Exception:
-        pass
+        logger.warning(f"[SCHEDULER] keyword_research table query failed for {website_id}")
 
     # Step 2: Get niche from knowledge base (NOT the domain name) — handle `fact` column
     kb_result = None
@@ -1116,7 +1143,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
             local_kb = list_local_knowledge(website_id)[:5]
             kb_rows = [{"content": (k.get("content") or k.get("fact") or "")} for k in local_kb]
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] local knowledge merge note for {website_id}")
 
     if not kb_rows:
         return None
@@ -1203,7 +1230,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
             if existing.data:
                 continue
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] blog duplication check note for '{kw_clean}' on {website_id}")
         # Grounding check — must be relevant to website's KB (prevents legal site getting "how to start a blog")
         if not await _is_keyword_grounded_in_kb(kw_clean, website_id):
             logger.info(f"[KeywordPicker] Skipped ungrounded NIM keyword '{kw_clean}' (KB similarity < threshold)")
@@ -1265,7 +1292,7 @@ async def get_next_target_keyword(website_id: str) -> Optional[str]:
                         "source": "ai_suggested",
                     }).execute()
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] keyword_research insert note for {website_id}")
 
     # Final denylist + grounding + similarity guard before returning
     if _is_keyword_denied(best_keyword["keyword"]):
@@ -1399,7 +1426,7 @@ async def log_autonomous_decision(website_id: str, decision: str, reason: str, j
             "job": job,
             "decision": decision,
             "reason": reason,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
     except Exception:
         try:
@@ -1413,7 +1440,7 @@ async def log_autonomous_decision(website_id: str, decision: str, reason: str, j
                 "decision": decision
             })
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] log_autonomous_decision note for {website_id}/{job}")
 
 
 # --- helpers for Problem 4.2 / 4.3 ---
@@ -1426,7 +1453,7 @@ async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
         "auto_publish": True,
         "daily_blog_target": 5,
         "blogs_generated_today": 0,
-        "last_reset_date": datetime.utcnow().date().isoformat(),
+        "last_reset_date": datetime.now(timezone.utc).date().isoformat(),
         "generation_interval_minutes": 288,
         "auto_topic_selection": True,
     }
@@ -1452,7 +1479,7 @@ async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
                     tgt = int(defaults.get("daily_blog_target", 5))
                     defaults["generation_interval_minutes"] = (24 * 60) // max(1, tgt)
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] generation_interval computation note for {website_id}")
             defaults["_row"] = row
             return defaults
         # also try account-based fetch
@@ -1487,9 +1514,9 @@ async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
                         tgt = int(defaults.get("daily_blog_target", 5))
                         defaults["generation_interval_minutes"] = (24 * 60) // max(1, tgt)
                     except Exception:
-                        pass
+                        logger.debug(f"[SCHEDULER] blog_settings interval computation note for {website_id}")
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] blog_settings local fallback note for {website_id}")
     return defaults
 
 async def get_last_blog_time(website_id: str) -> Optional[datetime]:
@@ -1503,7 +1530,7 @@ async def get_last_blog_time(website_id: str) -> Optional[datetime]:
             try:
                 return datetime.fromisoformat(res.data[0]["created_at"].replace("Z", "+00:00")).replace(tzinfo=None)
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] datetime parse note for content_log on {website_id}")
         # blog_approvals fallback
         res2 = supabase.table("blog_approvals").select("created_at").eq("website_id", website_id).order("created_at", desc=True).limit(1).execute()
         if res2.data and res2.data[0].get("created_at"):
@@ -1513,7 +1540,7 @@ async def get_last_blog_time(website_id: str) -> Optional[datetime]:
         if res3.data and res3.data[0].get("created_at"):
             return datetime.fromisoformat(res3.data[0]["created_at"].replace("Z", "+00:00")).replace(tzinfo=None)
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] get_last_blog_time note for {website_id}")
     return None
 
 async def get_knowledge_base_sample(website_id: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -1574,7 +1601,8 @@ async def get_knowledge_base_sample(website_id: str, limit: int = 5) -> List[Dic
             if c:
                 out2.append({"content": c, "title": k.get("title") or ""})
         return out2
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[SCHEDULER] get_knowledge_base_sample note for {website_id}: {e}")
         return []
 
 async def identify_niche(kb_sample: List[Dict[str, Any]]) -> str:
@@ -1592,7 +1620,7 @@ async def identify_niche(kb_sample: List[Dict[str, Any]]) -> str:
         if 2 <= len(niche.split()) <= 5 and len(niche) < 40:
             return niche
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] identify_niche note: NIM call failed, using default")
     # fallback heuristic: first 3 words of most frequent?
     return "Professional Services"
 
@@ -1622,7 +1650,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
                 if len(kb_data) >= 1:
                     break
         except Exception:
-            continue
+            logger.debug(f"[SCHEDULER] knowledge_base select note for {website_id} (selector: {sel})")
     # Also merge local_store if supabase has insufficient data
     if len(kb_data) < 3:
         try:
@@ -1642,7 +1670,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
                 # Deduplicate to 15
                 kb_data = kb_data[:15]
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] local knowledge merge note for {website_id}")
     # Also try get_knowledge_base_sample fallback
     if len(kb_data) < 3:
         try:
@@ -1653,7 +1681,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
                 if not any((d.get("content") or d.get("fact") or "") == (s.get("content") or "") for d in kb_data):
                     kb_data.append({"content": s.get("content") or s.get("fact") or "", "source_url": "", "credibility_score": 0.7})
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] get_knowledge_base_sample fallback note for {website_id}")
 
     if not kb_data or len(kb_data) < 3:
         await log_autonomous_decision(
@@ -1687,7 +1715,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
             eb_res2 = supabase.table("content_log").select("keyword, title").eq("website_id", website_id).order("created_at", desc=True).limit(30).execute()
             existing_blogs_data = [{"target_keyword": r.get("keyword"), "title": r.get("title")} for r in (eb_res2.data or [])]
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] content_log existing blogs note for {website_id}")
     # also blog_approvals for broader coverage
     try:
         ba_res = supabase.table("blog_approvals").select("target_keyword").eq("website_id", website_id).order("created_at", desc=True).limit(30).execute()
@@ -1695,7 +1723,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
             if r.get("target_keyword"):
                 existing_blogs_data.append({"target_keyword": r["target_keyword"], "title": ""})
     except Exception:
-        pass
+        logger.debug(f"[SCHEDULER] blog_approvals existing blogs note for {website_id}")
 
     written_keywords = [b.get("target_keyword") or b.get("keyword") or "" for b in (existing_blogs_data or []) if b.get("target_keyword") or b.get("keyword")]
     written_keywords = [k for k in written_keywords if k]
@@ -1754,7 +1782,8 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
                 system="You are an SEO content strategist. Respond ONLY with valid JSON.",
                 website_id=website_id,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[SCHEDULER] ai_pick_best_keyword second NIM call failed for {website_id}: {e}")
             return None
 
     if not ai_response:
@@ -1822,7 +1851,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
                     )
                     return alt
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] fallback keyword picker note for {website_id}")
             return None
 
         # Check not already written (overlap)
@@ -1847,7 +1876,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
                     )
                     return alt
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] fallback keyword picker (similar) note for {website_id}")
             return None
 
         # Log what AI understood about the website
@@ -1861,6 +1890,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
         return keyword
 
     except Exception as e:
+        logger.warning(f"[SCHEDULER] ai_pick_best_keyword failed for {website_id}: {e}")
         return None
 
 
@@ -1883,7 +1913,7 @@ async def run_autonomous_blog_generation():
                 if settings.get("auto_generate") is False:
                     continue
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] auto_generate flag note for {website_id}")
             # if explicitly disabled
             if not settings.get("auto_generate_enabled", True) and settings.get("auto_generate") is False:
                 continue
@@ -1893,7 +1923,7 @@ async def run_autonomous_blog_generation():
         
         # Reset counter at midnight
         last_reset = settings.get("last_reset_date")
-        today = datetime.utcnow().date().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         # last_reset may be datetime or string
         last_reset_str = str(last_reset)[:10] if last_reset else ""
         if last_reset_str != today:
@@ -1913,7 +1943,7 @@ async def run_autonomous_blog_generation():
                             "goals": {**(settings.get("_row", {}).get("goals") or {}), "daily_blog_target": daily_target, "blogs_generated_today": 0, "last_reset_date": today}
                         }).eq("website_id", website_id).execute()
                     except Exception:
-                        pass
+                        logger.debug(f"[SCHEDULER] goals JSON reset note for {website_id}")
                 settings["blogs_generated_today"] = 0
                 settings["last_reset_date"] = today
             except Exception:
@@ -1937,7 +1967,7 @@ async def run_autonomous_blog_generation():
                 _d[website_id] = _cur2
                 _pf.write_text(_j2.dumps(_d, indent=2), encoding="utf-8")
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] blog_settings local reset note for {website_id}")
         
         blogs_today = int(settings.get("blogs_generated_today", 0) or 0)
         dev_mode = is_developer_mode_enabled()
@@ -1969,11 +1999,12 @@ async def run_autonomous_blog_generation():
             else:
                 interval_minutes = (24 * 60) // daily_target
         except Exception:
+            logger.debug(f"[SCHEDULER] interval computation note for {website_id}")
             interval_minutes = (24 * 60) // daily_target
         last_blog = await get_last_blog_time(website_id)
         
         if last_blog:
-            minutes_since_last = (datetime.utcnow() - last_blog).total_seconds() / 60
+            minutes_since_last = (datetime.now(timezone.utc) - last_blog).total_seconds() / 60
             if minutes_since_last < interval_minutes:
                 remaining = int(interval_minutes - minutes_since_last)
                 if dev_mode:
@@ -2100,9 +2131,9 @@ async def run_autonomous_blog_generation():
                             "goals": {**(settings.get("_row", {}).get("goals") or {}), "blogs_generated_today": blogs_today + 1}
                         }).eq("website_id", website_id).execute()
                     except Exception:
-                        pass
+                        logger.debug(f"[SCHEDULER] goals JSON counter update note for {website_id}")
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] autonomous_settings counter update note for {website_id}")
             # Always also update local file
             try:
                 import json as _json2
@@ -2124,7 +2155,7 @@ async def run_autonomous_blog_generation():
                 _data[website_id] = _cur
                 _p.write_text(_json2.dumps(_data, indent=2), encoding="utf-8")
             except Exception:
-                pass
+                logger.debug(f"[SCHEDULER] blog_settings local counter update note for {website_id}")
             
             await log_autonomous_decision(
                 website_id=website_id,
@@ -2239,12 +2270,12 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                         svc = WordPressService(website_id=target_id)
                         pub = await svc.publish_post_via_crew(website_id=target_id, title=title, html_content=html, meta_description=meta, slug=slug, auto_publish=True)
                         if pub.get("success"):
-                            supabase.table("blog_approvals").update({"status": "published", "wordpress_url": pub.get("wordpress_url"), "wordpress_post_id": pub.get("wordpress_post_id"), "approved_at": datetime.utcnow().isoformat()}).eq("id", appr["id"]).execute()
+                            supabase.table("blog_approvals").update({"status": "published", "wordpress_url": pub.get("wordpress_url"), "wordpress_post_id": pub.get("wordpress_post_id"), "approved_at": datetime.now(timezone.utc).isoformat()}).eq("id", appr["id"]).execute()
                             try:
                                 supabase.table("blogs").update({"status": "published", "wordpress_url": pub.get("wordpress_url"), "wordpress_post_id": pub.get("wordpress_post_id")}).eq("id", appr.get("blog_id")).execute()
                             except Exception:
-                                pass
-                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": "autonomous", "wordpress_url": pub.get("wordpress_url")}, "created_at": datetime.utcnow().isoformat()}).execute()
+                                logger.debug(f"[SCHEDULER] blogs status update note for approval {appr.get('id')} on {target_id}")
+                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": "autonomous", "wordpress_url": pub.get("wordpress_url")}, "created_at": datetime.now(timezone.utc).isoformat()}).execute()
                             published += 1
                             await engine.track_cost("AutoPublish", 800)
                             _add_log(job_name, "completed", f"Auto-published '{title[:40]}' on {target_id} -> {pub.get('wordpress_url')}")
@@ -2256,13 +2287,32 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                     supabase.table("wordpress_connections").update({"is_active": False}).eq("website_id", target_id).execute()
                                     supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", target_id).execute()
                                 except Exception:
-                                    pass
+                                    logger.debug(f"[SCHEDULER] WP 401 settings update note for {target_id}")
                                 _add_log(job_name, "error", f"WP 401 auth failed on {target_id} — deactivated WP & paused auto_publish")
                                 # realtime_alert
                                 try:
-                                    supabase.table("realtime_alerts").insert({"website_id": target_id, "alert_type": "wp_auth_failed", "severity": "critical", "title": "WP auth failed — auto_publish paused", "description": msg[:500], "status": "unread", "created_at": datetime.utcnow().isoformat()}).execute()
+                                    alert_dict = {
+                                        "website_id": target_id,
+                                        "alert_type": "wp_auth_failed",
+                                        "severity": "critical",
+                                        "title": "WP auth failed — auto_publish paused",
+                                        "description": msg[:500],
+                                        "status": "unread",
+                                        "is_read": False,
+                                        "created_at": datetime.now(timezone.utc).isoformat(),
+                                    }
+                                    try:
+                                        supabase.table("realtime_alerts").insert(alert_dict).execute()
+                                    except Exception:
+                                        try:
+                                            alert_dict.pop("is_read", None)
+                                            supabase.table("realtime_alerts").insert(alert_dict).execute()
+                                        except Exception:
+                                            alert_dict.pop("status", None)
+                                            alert_dict["is_read"] = False
+                                            supabase.table("realtime_alerts").insert(alert_dict).execute()
                                 except Exception:
-                                    pass
+                                    logger.debug(f"[SCHEDULER] realtime_alerts insert fallback note for {target_id}")
                             else:
                                 supabase.table("blog_approvals").update({"pending_reason": msg[:300]}).eq("id", appr["id"]).execute()
                                 _add_log(job_name, "warning", f"Publish failed for '{title[:30]}': {msg[:100]}")
@@ -2273,7 +2323,7 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                 supabase.table("wordpress_connections").update({"is_active": False}).eq("website_id", target_id).execute()
                                 supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", target_id).execute()
                             except Exception:
-                                pass
+                                logger.debug(f"[SCHEDULER] WP 401 settings update note for {target_id}")
                             _add_log(job_name, "error", f"WP 401 — paused auto_publish on {target_id}")
                         else:
                             _add_log(job_name, "error", f"Auto-publish exception {appr.get('id')}: {msg[:120]}")
@@ -2315,9 +2365,9 @@ async def _enhanced_refresh_with_crew(website_id: str, old_title: str, old_conte
                 try:
                     supabase.table("blog_approvals").update({"type": "refresh_update"}).eq("blog_id", result["blog_id"]).execute()
                 except Exception:
-                    pass
+                    logger.debug(f"[SCHEDULER] blog_approvals type update note for {result.get('blog_id')}")
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] _enhanced_refresh_with_crew note for {old_title}")
         return result
     except Exception as e:
         logger.error(f"[ContentRefresh] crew refresh failed for {old_title}: {e}")
@@ -2771,8 +2821,8 @@ def setup_scheduler() -> AsyncIOScheduler:
             from services.continuous_monitor import start_all_monitors
         start_all_monitors()
         logger.info("[Scheduler] Continuous monitoring loops (6) started ✅")
-    except RuntimeError:
-        pass
+    except RuntimeError as e:
+        logger.warning("[Scheduler] Continuous monitors startup skipped: %s", e)
     except Exception as e:
         logger.warning(f"Continuous monitors startup note: {e}")
 
@@ -2809,7 +2859,7 @@ def get_scheduler_status() -> Dict[str, Any]:
         "timezone": IST,
         "jobs_count": len(jobs_info),
         "jobs": jobs_info,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -2825,7 +2875,7 @@ def _has_run_today(job_name: str) -> bool:
     """Check brain_daily_jobs for a successful run of this job today."""
     try:
         from database import get_supabase
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         res = (
             get_supabase().table("brain_daily_jobs")
             .select("id")
@@ -2836,6 +2886,7 @@ def _has_run_today(job_name: str) -> bool:
         )
         return bool(res.data)
     except Exception:
+        logger.debug(f"[SCHEDULER] _has_run_today note for {job_name}")
         return False
 
 
@@ -2847,7 +2898,7 @@ def _record_job_run(job_name: str, website_id: Optional[str], status: str = "com
         payload = {
             "job_name": job_name,
             "status": status,
-            "run_at": datetime.utcnow().isoformat(),
+            "run_at": datetime.now(timezone.utc).isoformat(),
         }
         if resolved_id:
             payload["website_id"] = resolved_id
@@ -2911,7 +2962,7 @@ async def run_first_time_setup(website_id: str) -> Dict[str, Any]:
                 .eq("id", website_id).single().execute().data or {}
             )
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] first_time_setup website row note for {website_id}")
         url = (site_row or {}).get("cms_url") or (site_row or {}).get("url") or \
               f"https://{(site_row or {}).get('domain', '')}"
         if url and url != "https://":
@@ -2992,7 +3043,7 @@ async def job_cleanup_stuck_content():
     """Every 10 minutes: mark content_log rows stuck in_progress >15min as failed."""
     try:
         from database import get_supabase
-        cutoff = (datetime.utcnow().timestamp() - 15 * 60)
+        cutoff = (datetime.now(timezone.utc).timestamp() - 15 * 60)
         cutoff_iso = datetime.utcfromtimestamp(cutoff).isoformat()
         supabase = get_supabase()
         stuck = (
@@ -3029,10 +3080,10 @@ async def job_cleanup_junk_drafts():
             elif isinstance(data, int):
                 deleted = data
         except Exception:
-            pass
+            logger.debug(f"[SCHEDULER] cleanup_junk_drafts RPC note")
         if deleted == 0:
             # Fallback manual cleanup when the RPC is unavailable
-            cutoff_24h = (datetime.utcnow().timestamp() - 24 * 3600)
+            cutoff_24h = (datetime.now(timezone.utc).timestamp() - 24 * 3600)
             rows = (
                 supabase.table("content_log").select("id, blog_approvals(id)")
                 .ilike("title", "%Draft: a blog%")

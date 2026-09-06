@@ -14,7 +14,7 @@ import re
 import logging
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
 import httpx
@@ -188,7 +188,7 @@ async def ensure_minimum_word_count(
     for section in section_lengths:
         if section["word_count"] < 280:
             expansion_prompt = f"""
-Today: {datetime.utcnow().strftime("%B %d, %Y")}
+Today: {datetime.now(timezone.utc).strftime("%B %d, %Y")}
 
 The section "{section['heading']}" in an article about 
 "{target_keyword}" is currently only {section['heading']} words.
@@ -1136,7 +1136,7 @@ def enforce_keyword_density(html_content: str,
                     new_el = BeautifulSoup(new_el_text, 'html.parser')
                     el.replace_with(new_el)
                 except Exception:
-                    pass
+                    logger.debug("[BLOG_WRITER] HTML element replacement note: keeping original element")
 
     result = str(soup)
     
@@ -1171,7 +1171,7 @@ def fix_broken_sentences(html_content: str) -> str:
 
 def _get_date_context():
     """Return current date components dynamically — used to prevent year hallucination."""
-    current_date = datetime.utcnow()
+    current_date = datetime.now(timezone.utc)
     current_year = current_date.year
     current_month = current_date.strftime("%B")
     current_date_str = current_date.strftime("%B %d, %Y")
@@ -3121,198 +3121,206 @@ humanizer_agent = HumanizerAgent()
 # Tools
 # ---------------------------------------------------------------------------
 
-# --- KnowledgeRAGTool ---
-try:
-    from crewai.tools import BaseTool
-    from pydantic import Field
-    HAS_CREWAI_TOOLS = True
-except Exception:
-    # Fallback dummy BaseTool for py_compile without crewai
-    HAS_CREWAI_TOOLS = False
-    class BaseTool:  # type: ignore
-        name: str = ""
-        description: str = ""
-        def _run(self, *a, **kw): raise NotImplementedError
+# --- Lazy Tool Classes Factory (prevents eager CrewAI load on import) ---
+_TOOL_CLASSES: Dict[str, Any] = {}
 
-class KnowledgeRAGTool(BaseTool):
-    """Knowledge Base RAG — Supabase knowledge_base vector 1536 hybrid search, real DB not mock."""
-    name: str = "Knowledge Base RAG"
-    description: str = "Query Supabase knowledge_base vector 1536 hybrid search. Input: query string. Returns top 5 hits with citations from business_info/service/location/faq types. Real DB not mock."
-    website_id: Optional[str] = Field(default=None)
-
-    def __init__(self, website_id: Optional[str] = None, **kwargs):
-        from services.website_service import get_default_website_id
-        wid = website_id if website_id and website_id not in ("default", "all") else (get_default_website_id() or "")
+def _get_tool_classes():
+    if not _TOOL_CLASSES:
         try:
-            super().__init__(website_id=wid, **kwargs)
-        except TypeError:
-            # fallback dummy BaseTool
-            try:
-                super().__init__()
-            except Exception:
-                pass
-        object.__setattr__(self, "website_id", wid)
+            from crewai.tools import BaseTool
+            from pydantic import Field
+            HAS_CREWAI_TOOLS = True
+        except Exception:
+            HAS_CREWAI_TOOLS = False
+            class BaseTool:  # type: ignore
+                name: str = ""
+                description: str = ""
+                def _run(self, *a, **kw): raise NotImplementedError
+            def Field(default=None, **kw): return default
 
-    def _run(self, query: str) -> str:
-        # Sync wrapper for CrewAI; runs async retrieval via asyncio
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create new loop in thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    fut = pool.submit(asyncio.run, self._aretrieve(query))
-                    return fut.result(timeout=30)
-            else:
-                return loop.run_until_complete(self._aretrieve(query))
-        except Exception as e:
-            # Fallback sync
-            try:
-                return asyncio.run(self._aretrieve(query))
-            except Exception as e2:
-                return json.dumps({"error": str(e2), "query": query, "hits": []})
+        class KnowledgeRAGTool(BaseTool):
+            """Knowledge Base RAG — Supabase knowledge_base vector 1536 hybrid search, real DB not mock."""
+            name: str = "Knowledge Base RAG"
+            description: str = "Query Supabase knowledge_base vector 1536 hybrid search. Input: query string. Returns top 5 hits with citations from business_info/service/location/faq types. Real DB not mock."
+            website_id: Optional[str] = Field(default=None)
 
-    async def _aretrieve(self, query: str) -> str:
-        try:
-            from services.rag_service import RAGService
-            rag = RAGService(website_id=self.website_id)
-            hits = await rag.retrieve(query=query, top_k=5, filters={"type": "all"})
-            # If no hits with filter, try broader
-            if not hits:
-                hits = await rag.retrieve(query=query, top_k=5)
-            serial = []
-            for idx, h in enumerate(hits[:5], start=1):
-                serial.append({
-                    "citation": f"[{idx}]",
-                    "id": h.get("id"),
-                    "title": h.get("title"),
-                    "content": (h.get("content") or "")[:600],
-                    "type": h.get("type"),
-                    "source": h.get("source"),
-                    "similarity": round(float(h.get("hybrid_score", h.get("final_score", 0.75))), 3),
-                    "url": h.get("url"),
-                })
-            return json.dumps({"query": query, "hits": serial, "count": len(serial)}, indent=2)
-        except Exception as e:
-            logger.error(f"[KnowledgeRAGTool] retrieve failed: {e}")
-            return json.dumps({"query": query, "hits": [], "error": str(e)[:200]})
+            def __init__(self, website_id: Optional[str] = None, **kwargs):
+                from services.website_service import get_default_website_id
+                wid = website_id if website_id and website_id not in ("default", "all") else (get_default_website_id() or "")
+                try:
+                    super().__init__(website_id=wid, **kwargs)
+                except TypeError:
+                    try:
+                        super().__init__()
+                    except Exception:
+                        logger.debug("[BLOG_WRITER] KnowledgeRAGTool BaseTool init fallback note")
+                object.__setattr__(self, "website_id", wid)
 
-# --- Serper/Tavily Tool ---
-class SerperTavilyTool(BaseTool):
-    """SerperDevTool or TavilyTool wrapper — real API key, no mock."""
-    name: str = "SERP Search"
-    description: str = "Search top 10 competitor outlines, PAA, featured snippets via Serper or Tavily. Input: search_query string. Returns organic results with title/link/snippet and PAA."
+            def _run(self, query: str) -> str:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            fut = pool.submit(asyncio.run, self._aretrieve(query))
+                            return fut.result(timeout=30)
+                    else:
+                        return loop.run_until_complete(self._aretrieve(query))
+                except Exception as e:
+                    try:
+                        return asyncio.run(self._aretrieve(query))
+                    except Exception as e2:
+                        return json.dumps({"error": str(e2), "query": query, "hits": []})
 
-    def _run(self, search_query: str) -> str:
-        return asyncio.run(self._asearch(search_query))
+            async def _aretrieve(self, query: str) -> str:
+                try:
+                    from services.rag_service import RAGService
+                    rag = RAGService(website_id=self.website_id)
+                    hits = await rag.retrieve(query=query, top_k=5, filters={"type": "all"})
+                    if not hits:
+                        hits = await rag.retrieve(query=query, top_k=5)
+                    serial = []
+                    for idx, h in enumerate(hits[:5], start=1):
+                        serial.append({
+                            "citation": f"[{idx}]",
+                            "id": h.get("id"),
+                            "title": h.get("title"),
+                            "content": (h.get("content") or "")[:600],
+                            "type": h.get("type"),
+                            "source": h.get("source"),
+                            "similarity": round(float(h.get("hybrid_score", h.get("final_score", 0.75))), 3),
+                            "url": h.get("url"),
+                        })
+                    return json.dumps({"query": query, "hits": serial, "count": len(serial)}, indent=2)
+                except Exception as e:
+                    logger.error(f"[KnowledgeRAGTool] retrieve failed: {e}")
+                    return json.dumps({"query": query, "hits": [], "error": str(e)[:200]})
 
-    async def _asearch(self, search_query: str) -> str:
-        # Try real Serper first, then Tavily
-        serp_data = {"organic": [], "peopleAlsoAsk": [], "relatedSearches": [], "source": "none"}
-        # 1. Serper
-        try:
-            from services.serper_service import serper_service
-            serp_data = await serper_service.search(query=search_query, num=10, auto_fallback=False)
-            if serp_data.get("organic"):
-                return json.dumps({
-                    "query": search_query,
-                    "source": serp_data.get("source", "serper"),
-                    "organic": serp_data.get("organic", [])[:10],
-                    "peopleAlsoAsk": serp_data.get("peopleAlsoAsk", [])[:5],
-                    "relatedSearches": serp_data.get("relatedSearches", [])[:5],
-                }, indent=2)
-        except Exception as e:
-            logger.debug(f"[SERP] serper failed: {e}")
-        # 2. Tavily fallback
-        try:
-            tavily_key = os.getenv("TAVILY_API_KEY", "")
-            if tavily_key:
-                from tavily import TavilyClient
-                client = TavilyClient(api_key=tavily_key)
-                res = await asyncio.to_thread(client.search, search_query, 10, True, "advanced")
-                organic = []
-                for idx, r in enumerate(res.get("results", [])[:10], start=1):
-                    organic.append({"title": r.get("title"), "link": r.get("url"), "snippet": r.get("content","")[:300], "position": idx})
-                return json.dumps({
-                    "query": search_query,
-                    "source": "tavily",
-                    "organic": organic,
-                    "peopleAlsoAsk": [],
-                    "relatedSearches": [],
-                }, indent=2)
-        except Exception as e:
-            logger.debug(f"[SERP] tavily failed: {e}")
-        # 3. Direct httpx Serper API if service not available
-        try:
-            serper_key = os.getenv("SERPER_API_KEY", "")
-            if serper_key:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post("https://google.serper.dev/search", json={"q": search_query, "num": 10}, headers={"X-API-KEY": serper_key, "Content-Type": "application/json"})
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        organic = data.get("organic", [])[:10]
-                        return json.dumps({"query": search_query, "source": "serper_direct", "organic": organic, "peopleAlsoAsk": data.get("peopleAlsoAsk", [])[:5]}, indent=2)
-        except Exception as e:
-            logger.debug(f"[SERP] direct serper failed: {e}")
-        return json.dumps({"query": search_query, "organic": [], "peopleAlsoAsk": [], "source": "none", "note": "No SERP provider configured or all failed — outline will use knowledge base only"})
+        class SerperTavilyTool(BaseTool):
+            """SerperDevTool or TavilyTool wrapper — real API key, no mock."""
+            name: str = "SERP Search"
+            description: str = "Search top 10 competitor outlines, PAA, featured snippets via Serper or Tavily. Input: search_query string. Returns organic results with title/link/snippet and PAA."
 
-# --- WordPressTool ---
-class WordPressTool(BaseTool):
-    """WordPress Publisher — real POST to {site_url}/wp-json/wp/v2/posts via backend service."""
-    name: str = "WordPress Publisher"
-    description: str = "Publish HTML to WordPress via POST /wp-json/wp/v2/posts. Input: JSON with title, html_content, meta_description, slug. Returns wordpress_url or draft url."
-    website_id: Optional[str] = Field(default=None)
+            def _run(self, search_query: str) -> str:
+                return asyncio.run(self._asearch(search_query))
 
-    def __init__(self, website_id: Optional[str] = None, **kwargs):
-        from services.website_service import get_default_website_id
-        wid = website_id if website_id and website_id not in ("default", "all") else (get_default_website_id() or "")
-        try:
-            super().__init__(website_id=wid, **kwargs)
-        except TypeError:
-            try:
-                super().__init__()
-            except Exception:
-                pass
-        object.__setattr__(self, "website_id", wid)
+            async def _asearch(self, search_query: str) -> str:
+                serp_data = {"organic": [], "peopleAlsoAsk": [], "relatedSearches": [], "source": "none"}
+                try:
+                    from services.serper_service import serper_service
+                    serp_data = await serper_service.search(query=search_query, num=10, auto_fallback=False)
+                    if serp_data.get("organic"):
+                        return json.dumps({
+                            "query": search_query,
+                            "source": serp_data.get("source", "serper"),
+                            "organic": serp_data.get("organic", [])[:10],
+                            "peopleAlsoAsk": serp_data.get("peopleAlsoAsk", [])[:5],
+                            "relatedSearches": serp_data.get("relatedSearches", [])[:5],
+                        }, indent=2)
+                except Exception as e:
+                    logger.debug(f"[SERP] serper failed: {e}")
+                try:
+                    tavily_key = os.getenv("TAVILY_API_KEY", "")
+                    if tavily_key:
+                        from tavily import TavilyClient
+                        client = TavilyClient(api_key=tavily_key)
+                        res = await asyncio.to_thread(client.search, search_query, 10, True, "advanced")
+                        organic = []
+                        for idx, r in enumerate(res.get("results", [])[:10], start=1):
+                            organic.append({"title": r.get("title"), "link": r.get("url"), "snippet": r.get("content","")[:300], "position": idx})
+                        return json.dumps({
+                            "query": search_query,
+                            "source": "tavily",
+                            "organic": organic,
+                            "peopleAlsoAsk": [],
+                            "relatedSearches": [],
+                        }, indent=2)
+                except Exception as e:
+                    logger.debug(f"[SERP] tavily failed: {e}")
+                try:
+                    serper_key = os.getenv("SERPER_API_KEY", "")
+                    if serper_key:
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            resp = await client.post("https://google.serper.dev/search", json={"q": search_query, "num": 10}, headers={"X-API-KEY": serper_key, "Content-Type": "application/json"})
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                organic = data.get("organic", [])[:10]
+                                return json.dumps({"query": search_query, "source": "serper_direct", "organic": organic, "peopleAlsoAsk": data.get("peopleAlsoAsk", [])[:5]}, indent=2)
+                except Exception as e:
+                    logger.debug(f"[SERP] direct serper failed: {e}")
+                return json.dumps({"query": search_query, "organic": [], "peopleAlsoAsk": [], "source": "none", "note": "No SERP provider configured or all failed — outline will use knowledge base only"})
 
-    def _run(self, payload: str) -> str:
-        # payload is JSON string from Crew
-        try:
-            data = json.loads(payload) if isinstance(payload, str) else payload
-            title = data.get("title", "")
-            html = data.get("html_content") or data.get("content", "")
-            meta = data.get("meta_description", "")[:160]
-            slug = data.get("slug") or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:80]
-            # async publish
-            return asyncio.run(self._apublish(title, html, meta, slug))
-        except Exception as e:
-            return json.dumps({"success": False, "error": str(e)[:300]})
+        class WordPressTool(BaseTool):
+            """WordPress Publisher — real POST to {site_url}/wp-json/wp/v2/posts via backend service."""
+            name: str = "WordPress Publisher"
+            description: str = "Publish HTML to WordPress via POST /wp-json/wp/v2/posts. Input: JSON with title, html_content, meta_description, slug. Returns wordpress_url or draft url."
+            website_id: Optional[str] = Field(default=None)
 
-    async def _apublish(self, title: str, html: str, meta: str, slug: str) -> str:
-        try:
-            from services.wordpress_service import WordPressService
-            svc = WordPressService(website_id=self.website_id)
-            # Check auto_publish setting
-            supabase = get_supabase()
-            auto_publish = False
-            try:
-                row = supabase.table("autonomous_settings").select("auto_publish").limit(1).execute().data
-                if row and row[0].get("auto_publish") is not None:
-                    auto_publish = bool(row[0]["auto_publish"])
-            except Exception:
-                pass
-            res = await svc.publish_post_via_crew(
-                website_id=self.website_id,
-                title=title,
-                html_content=html,
-                meta_description=meta,
-                slug=slug,
-                auto_publish=auto_publish,
-            )
-            return json.dumps(res, indent=2)
-        except Exception as e:
-            logger.error(f"[WPTool] publish failed: {e}")
-            return json.dumps({"success": False, "error": str(e)[:300]})
+            def __init__(self, website_id: Optional[str] = None, **kwargs):
+                from services.website_service import get_default_website_id
+                wid = website_id if website_id and website_id not in ("default", "all") else (get_default_website_id() or "")
+                try:
+                    super().__init__(website_id=wid, **kwargs)
+                except TypeError:
+                    try:
+                        super().__init__()
+                    except Exception:
+                        logger.debug("[BLOG_WRITER] WordPressTool BaseTool init fallback note")
+                object.__setattr__(self, "website_id", wid)
+
+            def _run(self, payload: str) -> str:
+                try:
+                    data = json.loads(payload) if isinstance(payload, str) else payload
+                    title = data.get("title", "")
+                    html = data.get("html_content") or data.get("content", "")
+                    meta = data.get("meta_description", "")[:160]
+                    slug = data.get("slug") or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:80]
+                    return asyncio.run(self._apublish(title, html, meta, slug))
+                except Exception as e:
+                    return json.dumps({"success": False, "error": str(e)[:300]})
+
+            async def _apublish(self, title: str, html: str, meta: str, slug: str) -> str:
+                try:
+                    from services.wordpress_service import WordPressService
+                    svc = WordPressService(website_id=self.website_id)
+                    supabase = get_supabase()
+                    auto_publish = False
+                    try:
+                        row = supabase.table("autonomous_settings").select("auto_publish").limit(1).execute().data
+                        if row and row[0].get("auto_publish") is not None:
+                            auto_publish = bool(row[0]["auto_publish"])
+                    except Exception:
+                        logger.debug("[BLOG_WRITER] WordPressTool auto_publish lookup note")
+                    res = await svc.publish_post_via_crew(
+                        website_id=self.website_id,
+                        title=title,
+                        html_content=html,
+                        meta_description=meta,
+                        slug=slug,
+                        auto_publish=auto_publish,
+                    )
+                    return json.dumps(res, indent=2)
+                except Exception as e:
+                    logger.error(f"[WPTool] publish failed: {e}")
+                    return json.dumps({"success": False, "error": str(e)[:300]})
+
+        _TOOL_CLASSES["KnowledgeRAGTool"] = KnowledgeRAGTool
+        _TOOL_CLASSES["SerperTavilyTool"] = SerperTavilyTool
+        _TOOL_CLASSES["WordPressTool"] = WordPressTool
+        globals()["KnowledgeRAGTool"] = KnowledgeRAGTool
+        globals()["SerperTavilyTool"] = SerperTavilyTool
+        globals()["WordPressTool"] = WordPressTool
+
+    return _TOOL_CLASSES["KnowledgeRAGTool"], _TOOL_CLASSES["SerperTavilyTool"], _TOOL_CLASSES["WordPressTool"]
+
+
+def __getattr__(name: str) -> Any:
+    if name in ("KnowledgeRAGTool", "SerperTavilyTool", "WordPressTool"):
+        _get_tool_classes()
+        if name in globals():
+            return globals()[name]
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 
 # ---------------------------------------------------------------------------
 # Planner / Writer / Editor Agents factory (requires crewai, fallback to direct NIM if missing)
@@ -3320,6 +3328,7 @@ class WordPressTool(BaseTool):
 
 def _make_agents_and_tasks(topic: str, website_id: str, business_name: str, knowledge_hits: List[Dict], tone: str, analytics_learnings: List[Dict]):
     """Create CrewAI agents/tasks or fallback task descriptors for direct NIM path."""
+    KnowledgeRAGTool, SerperTavilyTool, WordPressTool = _get_tool_classes()
     # Tools instances
     rag_tool = KnowledgeRAGTool(website_id=website_id)
     serp_tool = SerperTavilyTool()
@@ -3449,7 +3458,7 @@ async def _log_phase(website_id: str, content_id: str, phase: str, step: int, st
             "status": status,
             "input_data": json.dumps(input_data, default=str)[:2000] if input_data else None,
             "output_data": json.dumps(output, default=str)[:2000] if output else None,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
     except Exception as e:
         logger.debug(f"pipeline log note: {e}")
@@ -3457,7 +3466,7 @@ async def _log_phase(website_id: str, content_id: str, phase: str, step: int, st
         from services.event_bus import publish
         publish(f"crew:{content_id}", {"event": "phase", "phase": phase, "status": status, "output": str(output)[:500] if output else ""})
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] event_bus publish note for {content_id}")
 
 # ---------------------------------------------------------------------------
 # Phase A: Production-Grade Planner, Writer, and Editor Multi-Agent Functions
@@ -3488,7 +3497,7 @@ async def run_planner_agent(topic: str, website_id: str, business_name: str, ton
             rag = RAGService(website_id=website_id)
             kb_chunks = await rag.retrieve(query=topic, top_k=10)
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] RAG fallback retrieve note for {website_id}/{topic}")
 
     kb_context = "\n".join(f"[{i+1}] {c.get('title','Fact')}: {(c.get('content') or '')[:350]}" for i, c in enumerate(kb_chunks[:10])) or f"{business_name} personal injury and accident claim representation."
 
@@ -3570,10 +3579,10 @@ async def run_planner_agent(topic: str, website_id: str, business_name: str, ton
             "website_id": website_id,
             "keyword": topic,
             "outline_json": outline_json,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] blog_outlines insert note for {website_id}/{topic}")
 
     if content_id:
         await _log_phase(website_id, content_id, "planner_research", 1, "completed", outline_json, {"topic": topic})
@@ -3743,7 +3752,7 @@ def _clean_pure_html(raw_html: str) -> str:
     try:
         raw_html = clean_llm_output(raw_html)
     except Exception:
-        pass
+        logger.debug("[BLOG_WRITER] clean_llm_output note: using raw HTML")
     text = raw_html.strip()
     
     # 1. Strip <think>...</think> tags if any model outputs internal reasoning
@@ -4075,7 +4084,7 @@ async def send_slack_approval_notification(title: str, seo_score: int, website_i
             if c_row and c_row.get("credentials", {}).get("webhook_url"):
                 slack_url = c_row["credentials"]["webhook_url"]
         except Exception:
-            pass
+            logger.debug("[BLOG_WRITER] Slack webhook URL lookup note")
 
     if not slack_url:
         return
@@ -4141,10 +4150,10 @@ async def _log_autonomous_failed(website_id: str, reason: str):
             "job": "crew_writer",
             "decision": "FAILED",
             "reason": reason,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] log_autonomous_failed note for {website_id}: {reason[:100]}")
     # Also log to local file
     try:
         from services.local_store import save_local_brain_memory
@@ -4157,7 +4166,7 @@ async def _log_autonomous_failed(website_id: str, reason: str):
             "decision": "FAILED"
         })
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] local log_autonomous_failed note for {website_id}")
 
 
 async def _direct_nim_crew_fallback(topic: str, website_id: str, business_name: str, knowledge_hits: List[Dict], tone: str, analytics_learnings: List[Dict], content_id: str, word_count_target: int = 2500) -> Dict[str, Any]:
@@ -4255,7 +4264,7 @@ async def generate_blog_autonomous(
     supabase = get_supabase()
     content_id = str(uuid.uuid4())
     blog_id = str(uuid.uuid4())
-    start_ts = datetime.utcnow()
+    start_ts = datetime.now(timezone.utc)
 
     # Event bus helper for real-time frontend updates
     async def publish_phase(phase: str, status: str, message: str, data: dict = None):
@@ -4270,10 +4279,10 @@ async def generate_blog_autonomous(
                 "website_id": website_id,
                 "content_id": content_id,
                 "data": data or {},
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] event_bus publish note for {content_id}")
 
     from services.website_service import get_default_website_id
     from services.local_store import list_local_knowledge
@@ -4322,8 +4331,13 @@ async def generate_blog_autonomous(
         if kb_count < 5:
             try:
                 site_info = supabase.table("websites").select("domain, business_name, niche").eq("id", website_id).single().execute().data or {}
-                dom = site_info.get("domain") or "example.com"
-                niche = site_info.get("niche") or "professional authority"
+                dom = site_info.get("domain")
+                niche = site_info.get("niche")
+                if not dom:
+                    logger.warning(f"[BLOG_WRITER] Website domain missing for website_id={website_id}")
+                    dom = "business"
+                if not niche:
+                    niche = "professional services"
                 from services.knowledge_service import KnowledgeService
                 ks = KnowledgeService(website_id=website_id)
                 synth_chunks = [
@@ -4337,7 +4351,7 @@ async def generate_blog_autonomous(
                     try:
                         await ks.ingest(content=s_text, source_type="manual", title=f"{dom} Core Fact", explicit_type=s_type)
                     except Exception:
-                        pass
+                        logger.debug(f"[BLOG_WRITER] synthetic knowledge ingest note for {dom}")
                 alt = supabase.table("knowledge_base").select("id").eq("website_id", website_id).limit(10).execute().data or []
                 kb_count = len(alt)
             except Exception as synth_err:
@@ -4368,7 +4382,7 @@ async def generate_blog_autonomous(
             if tone_row:
                 tone = f"{tone_row.get('tone_description','')} {tone_row.get('writing_style','')}".strip() or tone
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] tone_profiles note for {website_id}")
     except Exception as e:
         logger.debug(f"[Crew] brain recall note: {e}")
 
@@ -4390,7 +4404,7 @@ async def generate_blog_autonomous(
         site_row = supabase.table("websites").select("domain, business_name, name, cms_url").eq("id", website_id).single().execute().data or {}
         business_name = site_row.get("business_name") or site_row.get("name") or site_row.get("domain") or "the business"
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] business_name lookup note for {website_id}")
 
     # knowledge_hits hybrid top 5
     knowledge_hits = []
@@ -4558,7 +4572,7 @@ async def generate_blog_autonomous(
                 job="content_validator"
             )
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] log_tldr2 note for {website_id}")
         raise ValueError("TL;DR block missing — regenerating")
     if not final_html or len(final_html.strip()) < 500:
         raise Exception("Crew generated HTML too short (<500 chars) — aborting")
@@ -4570,7 +4584,7 @@ async def generate_blog_autonomous(
         try:
             await _log_autonomous_failed(website_id, str(ve))
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] log_autonomous_failed note for {website_id}: {str(ve)[:100]}")
         raise
     # Final audience validation (Problem 2 & 7 — updated pipeline)
     if contains_wrong_audience_content(final_html):
@@ -4579,7 +4593,7 @@ async def generate_blog_autonomous(
             from .scheduler import log_autonomous_decision as _log_aud
             await _log_aud(website_id=website_id, decision="VALIDATION_FAILED", reason="Article contains wrong audience content — B2B phrases like ROI, predictive analytics", job="content_validator")
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] wrong audience log note for {website_id}")
         raise ValueError("Article contains wrong audience content — regenerating")
 
     # 5. Quality gate: seo_score via seo_agent, validation via rag hallucination, grounding avg similarity
@@ -4607,7 +4621,7 @@ async def generate_blog_autonomous(
             if sims:
                 ground_score = round(sum(sims) / len(sims), 3)
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] grounding score computation note for {website_id}")
 
     # Validation via RAG hallucination check
     try:
@@ -4684,7 +4698,7 @@ async def generate_blog_autonomous(
                 if _h1txt:
                     wp_title = enforce_title_rules(_h1txt, topic)
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] wp_title H1 extraction note for {website_id}")
         wp_content = final_html
         
         # DUPLICATE CHECK: Skip WP draft if post with same/similar title exists
@@ -4709,7 +4723,7 @@ async def generate_blog_autonomous(
                     logger.warning(f"[Crew] DUPLICATE: '{wp_title}' matches existing '{row.get('title')}' in blog_approvals")
                     break
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] blog_approvals duplicate check note for {website_id}")
         
         if not duplicate_found:
             try:
@@ -4724,7 +4738,7 @@ async def generate_blog_autonomous(
                         logger.warning(f"[Crew] DUPLICATE: '{wp_title}' already in local store")
                         break
             except Exception:
-                pass
+                logger.debug(f"[BLOG_WRITER] local store duplicate check note for {website_id}")
         
         if not duplicate_found:
             try:
@@ -4747,7 +4761,7 @@ async def generate_blog_autonomous(
                     except Exception:
                         continue
             except Exception:
-                pass
+                logger.debug(f"[BLOG_WRITER] WordPress duplicate check note for {website_id}")
         
         if not duplicate_found:
             try:
@@ -4789,7 +4803,7 @@ async def generate_blog_autonomous(
             if row and row[0].get("auto_publish") is not None:
                 auto_publish = bool(row[0]["auto_publish"])
         except Exception:
-            pass
+            logger.debug(f"[BLOG_WRITER] auto_publish lookup note for {website_id}")
         if auto_publish and wp_post_id:
             try:
                 from services.wordpress_service import WordPressService
@@ -4844,14 +4858,14 @@ async def generate_blog_autonomous(
             if h1_text:
                 raw_title = h1_text
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] H1 extraction note for {website_id}")
     cleaned_title = enforce_title_rules(raw_title, topic)
     # Update planner_outline for consistency
     try:
         planner_outline["h1_suggestion"] = cleaned_title
         planner_outline["H1"] = cleaned_title
     except Exception:
-        pass
+        logger.debug(f"[BLOG_WRITER] planner_outline update note for {website_id}")
     slug_final = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")[:80]
     words_total = len(re.sub(r"<[^>]+>", " ", final_html).split())
     blog_row = {
@@ -4871,7 +4885,7 @@ async def generate_blog_autonomous(
         "rag_hits": [{"id": h.get("id"), "title": h.get("title"), "similarity": float(h.get("hybrid_score", 0.75))} for h in knowledge_hits[:5]],
         "wordpress_post_id": wp_post_id,
         "wordpress_url": wordpress_url,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     from services.local_store import save_local_content, save_local_approval
 
@@ -4888,7 +4902,7 @@ async def generate_blog_autonomous(
         "wordpress_url": wordpress_url,
         "wp_draft_url": wp_draft_url or wordpress_url,
         "wordpress_post_id": wp_post_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         supabase.table("content_log").insert(cl_payload).execute()
@@ -4919,7 +4933,7 @@ async def generate_blog_autonomous(
         "wordpress_url": wordpress_url,
         "wp_draft_url": wp_draft_url or wordpress_url,
         "pending_reason": pending_reason,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         supabase.table("blog_approvals").insert(app_payload).execute()
@@ -5003,7 +5017,7 @@ async def generate_blog_autonomous(
             try:
                 estimated_tokens = int(crew_result["usage"].get("total_tokens", 4500))
             except Exception:
-                pass
+                logger.debug("[BLOG_WRITER] token estimation note: using default 4500")
         cost_usd = round(estimated_tokens * 0.000002, 5)
         for agent_name in ["planner", "writer", "editor"]:
             tokens_part = estimated_tokens // 3
@@ -5015,8 +5029,8 @@ async def generate_blog_autonomous(
                     "agent_name": agent_name,
                     "tokens": tokens_part,
                     "cost_usd": cost_part,
-                    "date": datetime.utcnow().strftime("%Y-%m-%d"),
-                    "created_at": datetime.utcnow().isoformat(),
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 }).execute()
             except Exception:
                 # fallback without id
@@ -5026,7 +5040,7 @@ async def generate_blog_autonomous(
                         "agent_name": agent_name,
                         "tokens": tokens_part,
                         "cost_usd": cost_part,
-                        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     }).execute()
                 except Exception as e2:
                     logger.debug(f"[Crew] daily_costs insert note: {e2}")
@@ -5034,7 +5048,7 @@ async def generate_blog_autonomous(
         logger.debug(f"[Crew] cost tracking note: {e}")
 
     # 8. Return
-    duration = (datetime.utcnow() - start_ts).total_seconds()
+    duration = (datetime.now(timezone.utc) - start_ts).total_seconds()
     logger.info(f"[Crew] generate_blog_autonomous done topic='{topic}' blog_id={blog_id} seo={seo_score} status={status} duration={duration:.1f}s")
     await publish_phase("complete", "completed", f"Article ready! SEO {seo_score}/100 · {words_total} words · {status}", {
         "seo_score": seo_score,
@@ -5653,7 +5667,7 @@ def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = ""
                         if q and a:
                             faq_items.append({"question": q, "answer_draft": a})
             except Exception:
-                pass
+                logger.debug("[BLOG_WRITER] FAQPage PAA parse note")
 
     # 3. Fallback: parse questions and answers directly from existing H3/P elements under FAQ H2
     faq_h2 = None
@@ -5735,7 +5749,7 @@ def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = ""
             try:
                 el.decompose()
             except Exception:
-                pass
+                logger.debug("[BLOG_WRITER] BeautifulSoup decompose note: element already removed")
         return str(soup)
 
     # If no FAQ H2, insert before CTA block or at the end
@@ -5878,13 +5892,13 @@ async def extract_website_facts(website_id: str) -> dict:
     all_content = " ".join([c["fact"] for c in kb.data])
 
     from datetime import datetime
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
 
     from services.nim_client import nim_generate_with_feedback
     facts_response = await nim_generate_with_feedback(
         system_prompt="You respond only with valid JSON. No other text.",
         prompt=f"""
-Extract key facts from this website content. Today: {datetime.utcnow().strftime("%B %d, %Y")}
+Extract key facts from this website content. Today: {datetime.now(timezone.utc).strftime("%B %d, %Y")}
 
 Website content:
 {all_content[:3000]}
@@ -5926,7 +5940,7 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     12. validate_keyword_in_title & final density
     """
     from datetime import datetime
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
     
     pk = primary_keyword or target_keyword
     pk = sanitize_keyword(pk, current_year)
@@ -6121,7 +6135,7 @@ async def process_blog_output_aeo(
         target_keyword=target_keyword,
         website_facts=website_facts,
         wp_url="",
-        published_at=datetime.utcnow().isoformat(),
+        published_at=datetime.now(timezone.utc).isoformat(),
         faq_items=faq_items
     )
     final = step9b + schema_tag
@@ -6136,7 +6150,7 @@ async def process_blog_output_aeo(
         title=outline.get("point_6_h1", {}).get("h1_text", target_keyword) if outline else target_keyword,
         target_keyword=target_keyword,
         wp_url="",
-        published_at=datetime.utcnow().isoformat(),
+        published_at=datetime.now(timezone.utc).isoformat(),
         website_facts=website_facts
     )
 
@@ -6306,7 +6320,7 @@ async def run_crew_blog_writer_with_retry(website_id: str, target_keyword: str, 
                     from .scheduler import log_autonomous_decision
                     await log_autonomous_decision(website_id=website_id, decision="FAILED", reason=f"All {max_retries} attempts failed for '{target_keyword}': {error_msg}", job="crew_writer")
                 except Exception:
-                    pass
+                    logger.debug(f"[BLOG_WRITER] log_autonomous_decision FAILED note for {website_id}/{target_keyword}")
                 raise
             await asyncio.sleep(5)
             continue

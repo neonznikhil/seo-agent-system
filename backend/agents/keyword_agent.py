@@ -96,8 +96,8 @@ class KeywordAgent:
                 "is_active": True,
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[KeywordAgent] Failed to insert gsc_keywords: {e}")
 
         # Write to brain_memory
         await brain.remember(
@@ -127,13 +127,15 @@ class KeywordAgent:
             raw = re.sub(r"\s*```$", "", raw)
         try:
             return json.loads(raw)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[KeywordAgent] Failed to parse JSON from raw: {e}")
             pass
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
-            except Exception:
+            except Exception as e2:
+                logger.warning(f"[KeywordAgent] Failed to parse JSON from match: {e2}")
                 pass
         return {}
 

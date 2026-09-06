@@ -128,7 +128,7 @@ class RefreshAgent:
     
     async def _run_phase_4_positioning(self, decay: Dict) -> Dict:
         diagnosis = decay.get("diagnosis", {})
-        angle = f"Updated for 2024: The evolving {self.primary_keyword} landscape with new analysis"
+        angle = f"Updated for {datetime.utcnow().year}: The evolving {self.primary_keyword} landscape with new analysis"
         
         for i in range(41, 51):
             self._log_step("positioning", i, f"step_{i}", "completed",
@@ -158,29 +158,22 @@ class RefreshAgent:
         return {"status": "completed"}
     
     async def _run_phase_6_writing(self, decay: Dict) -> Dict:
-        diagnosis = decay.get("diagnosis", {})
-        gaps = diagnosis.get("gaps", {})
-        
-        content = f"# {self.primary_keyword.title()}\n\n"
-        content += "This is an updated guide based on recent analysis.\n\n"
-        
-        for i in range(61, 81):
-            self._log_step("multi_step_writing", i, f"step_{i}", "completed",
-                          {"section": f"part_of_content"}, 
-                          thought=f"Writing section {i-60} with citations from verified sources")
-        return {"status": "completed", "content": content}
+        raise NotImplementedError(
+            "_run_phase_6_writing requires a real NIM LLM call to generate content. "
+            "This stub currently returns fake content and must be wired to NIM before use."
+        )
     
     async def _run_phase_7_internal_linking_schema(self) -> Dict:
-        for i in range(81, 91):
-            self._log_step("internal_linking_schema", i, f"step_{i}", "completed",
-                          {"links": 3, "schemas": ["Article", "FAQPage", "BreadcrumbList"]})
-        return {"status": "completed"}
+        raise NotImplementedError(
+            "_run_phase_7_internal_linking_schema requires a real NIM LLM call for internal linking and schema generation. "
+            "This stub currently returns fake data and must be wired to NIM before use."
+        )
     
     async def _run_phase_8_eeat_citations(self) -> Dict:
-        for i in range(91, 101):
-            self._log_step("eeat_citations", i, f"step_{i}", "completed",
-                          {"author": "SEO Team", "reviewer": "Founder", "last_updated": datetime.utcnow().isoformat()})
-        return {"status": "completed"}
+        raise NotImplementedError(
+            "_run_phase_8_eeat_citations requires a real NIM LLM call for E-E-A-T citation generation. "
+            "This stub currently returns fake data and must be wired to NIM before use."
+        )
     
     async def _run_phase_9_multi_expert_review(self) -> Dict:
         scores = {}
