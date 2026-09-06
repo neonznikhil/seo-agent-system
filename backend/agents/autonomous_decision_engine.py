@@ -4,7 +4,7 @@ import uuid
 import math
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 
 import httpx
@@ -45,7 +45,7 @@ class AutonomousDecisionEngine:
         """Evaluate empirical conditions before triggering an autonomous job."""
         clean_name = job_name.replace("job_", "")
         supabase = get_supabase()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Enforce budget availability
         budget_status = await self.check_budget_availability()
@@ -439,7 +439,7 @@ class AutonomousDecisionEngine:
             # Update autonomous_settings success_rate
             supabase.table("autonomous_settings").update({
                 "success_rate": 0.98 if success else 0.92,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).execute()
         except Exception as e:
             logger.debug(f"Decision learn failed: {e}")
@@ -461,7 +461,7 @@ class AutonomousDecisionEngine:
                 "payload": payload,
                 "error": error,
                 "retry_count": 0,
-                "queued_at": datetime.utcnow().isoformat()
+                "queued_at": datetime.now(timezone.utc).isoformat()
             })
             
             with open(QUEUE_FILE, "w", encoding="utf-8") as f:

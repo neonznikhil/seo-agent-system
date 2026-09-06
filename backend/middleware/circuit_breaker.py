@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("backend.middleware.circuit_breaker")
 
@@ -72,11 +72,10 @@ class CircuitBreaker:
                     "title": f"Circuit Breaker Tripped: {service_name}",
                     "description": f"External API {service_name} failed 3 times. Circuit opened for 5 minutes.",
                     "status": "unread",
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }).execute()
             except Exception as e:
                 logger.warning(f"[CircuitBreaker] Failed to insert realtime_alerts: {e}")
-                pass
 
     @classmethod
     def get_all_states(cls) -> Dict[str, Any]:

@@ -4217,7 +4217,7 @@ async def _direct_nim_crew_fallback(topic: str, website_id: str, business_name: 
         outline=planner_outline,
         primary_keyword=topic,
         real_quotes=[],
-        website_facts={},
+        website_facts=website_facts,
         faq_items=faq_items
     )
     _validate_writer_on_topic(final_html, topic)

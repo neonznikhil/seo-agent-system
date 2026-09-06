@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
@@ -92,7 +92,7 @@ class SerperService:
                 "result": {"error": error[:500]},
                 "status": "failed",
                 "real_api_called": "serper.dev",
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }).execute()
         except Exception as e:
             logger.debug(f"Failed to log task failure to Supabase: {e}")
@@ -162,7 +162,7 @@ class SerperService:
                 )
                 self._record_circuit_success()
                 _CONNECTOR_STATE["successful_calls"] += 1
-                _CONNECTOR_STATE["last_successful_call"] = datetime.utcnow().isoformat()
+                _CONNECTOR_STATE["last_successful_call"] = datetime.now(timezone.utc).isoformat()
                 _CONNECTOR_STATE["last_error"] = None
                 self._log_cost_to_daily_costs(cost_usd=0.001)
 
@@ -280,7 +280,7 @@ class SerperService:
                     query=query, location=location, language=language, num=num
                 )
                 _CONNECTOR_STATE["successful_calls"] += 1
-                _CONNECTOR_STATE["last_successful_call"] = datetime.utcnow().isoformat()
+                _CONNECTOR_STATE["last_successful_call"] = datetime.now(timezone.utc).isoformat()
                 _CONNECTOR_STATE["last_error"] = None
 
                 news_items = data.get("news", [])
@@ -364,7 +364,7 @@ class SerperService:
                 elapsed_ms = int((time.time() - start_t) * 1000)
 
             if response.status_code == 200:
-                _CONNECTOR_STATE["last_successful_call"] = datetime.utcnow().isoformat()
+                _CONNECTOR_STATE["last_successful_call"] = datetime.now(timezone.utc).isoformat()
                 _CONNECTOR_STATE["last_error"] = None
                 return {
                     "connected": True,
@@ -589,13 +589,13 @@ class SerperService:
         try:
             from database import get_supabase
             sb = get_supabase()
-            today = datetime.utcnow().strftime("%Y-%m-%d")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             payload = {
                 "date": today,
                 "agent_name": "serper_service",
                 "tokens": 0,
                 "cost_usd": cost_usd,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             sb.table("daily_costs").insert(payload).execute()
         except Exception as e:
@@ -665,11 +665,11 @@ async def serper_search_safe(query: str, num_results: int = 10) -> list:
                     "severity": "warning",
                     "title": "Serper API Quota Exceeded",
                     "message": "Serper API quota exceeded. SERP features paused until quota resets. Check your quota at serper.dev/dashboard",
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "status": "active",
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_serper_service] operation failed: {e}")
             logger.warning(f"[Serper Safe] Quota exceeded for '{query}'")
             return []
         elif "401" in error_str or "unauthorized" in error_str.lower():
@@ -680,11 +680,11 @@ async def serper_search_safe(query: str, num_results: int = 10) -> list:
                     "severity": "critical",
                     "title": "Invalid Serper API Key",
                     "message": "Serper API key is invalid. Update it in /connectors.",
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "status": "active",
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_serper_service] operation failed: {e}")
             logger.warning(f"[Serper Safe] Invalid API key for '{query}'")
             return []
         else:

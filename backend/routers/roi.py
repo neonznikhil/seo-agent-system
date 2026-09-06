@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -32,7 +32,7 @@ async def get_roi_metrics(website_id: str):
     backlinks_total = 0
     backlinks_new_7d = 0
 
-    thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     supabase = get_supabase()
 
     # 1. GSC impressions
@@ -47,7 +47,7 @@ async def get_roi_metrics(website_id: str):
         gsc_data = gsc_res.data or []
         if gsc_data:
             total_impressions = sum(item.get("impressions", 0) for item in gsc_data)
-            sixty_days_ago = (datetime.utcnow() - timedelta(days=60)).isoformat()
+            sixty_days_ago = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
             try:
                 prev_gsc_res = (
                     supabase.table("gsc_data")
@@ -61,8 +61,8 @@ async def get_roi_metrics(website_id: str):
                 prev_impressions = sum(item.get("impressions", 0) for item in prev_gsc_data)
                 if prev_impressions > 0:
                     impressions_change_pct = ((total_impressions - prev_impressions) / prev_impressions) * 100
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[routers_roi] operation failed: {e}")
     except Exception as e:
         logger.debug(f"[ROI] gsc_data query note: {e}")
 
@@ -106,7 +106,7 @@ async def get_roi_metrics(website_id: str):
             .execute()
         )
         backlinks_total = backlinks_total_res.count or 0
-        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         backlinks_new_res = (
             supabase.table("backlinks")
             .select("id", count="exact")
@@ -126,8 +126,8 @@ async def get_roi_metrics(website_id: str):
                 .execute()
             )
             backlinks_total = mem_res.count or 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_roi] operation failed: {e}")
 
     return ROIMetrics(
         impressions_last_30d=total_impressions,

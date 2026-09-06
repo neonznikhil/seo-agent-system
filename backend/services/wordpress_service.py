@@ -3,7 +3,7 @@ import logging
 import base64
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, List, Any
 import httpx
 from fastapi import HTTPException
@@ -47,8 +47,8 @@ class WordPressService:
             result = self.supabase.table("websites").select("*").eq("id", self.website_id).single().execute().data
             if result:
                 site = result or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_wordpress_service] operation failed: {e}")
         if not site or not site.get("wordpress_url"):
             local = get_local_website(self.website_id) or {}
             if not local:
@@ -86,8 +86,8 @@ class WordPressService:
                         if not site.get("app_password"):
                             site["app_password"] = enc
                             site["wordpress_password_encrypted"] = enc
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
         # Fallback to local store wordpress connections
         if not site.get("wordpress_url") or not (site.get("app_password") or site.get("wordpress_password")):
@@ -103,8 +103,8 @@ class WordPressService:
                         site["cms_user"] = loc_conn.get("wp_username")
                     if not site.get("app_password"):
                         site["app_password"] = loc_conn.get("wp_app_password_encrypted") or loc_conn.get("encrypted_password")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
         # Environment variable fallback
         if not site.get("wordpress_url"):
@@ -355,8 +355,8 @@ class WordPressService:
                                     "fix_instructions": "WP Admin > Users > Role = Editor",
                                     "endpoint": ep,
                                 }
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"[services_wordpress_service] operation failed: {e}")
                         return {
                             "connected": False,
                             "status": "error",
@@ -430,8 +430,8 @@ class WordPressService:
         try:
             from agents.crew_blog_writer import wrap_tldr_css
             content = wrap_tldr_css(content)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
         payload = {
             "title": title,
@@ -491,8 +491,8 @@ class WordPressService:
                                     "wordpress_post_id": draft_id,
                                     "wordpress_url": link,
                                 }).eq("website_id", website_id).eq("title", title).execute()
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
                             return {
                                 "success": True,
@@ -613,10 +613,10 @@ class WordPressService:
                 "approved_by": user_id,
                 "status": "success",
                 "payload": {"website_id": website_id, "wp_post_id": wp_post_id},
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
         return {"published": True, "post_id": wp_post_id}
 
@@ -766,8 +766,8 @@ class WordPressService:
         try:
             from agents.crew_blog_writer import wrap_tldr_css
             html_content = wrap_tldr_css(html_content)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
         payload = {
             "title": title,
@@ -799,15 +799,15 @@ class WordPressService:
                             "status": "pending",
                             "pending_reason": pending_msg,
                             "wordpress_action": "create",
-                            "created_at": datetime.utcnow().isoformat(),
+                            "created_at": datetime.now(timezone.utc).isoformat(),
                         }).execute()
                     except Exception:
                         try:
                             supabase.table("blog_approvals").update({"pending_reason": pending_msg, "status": "pending"}).eq("website_id", website_id).eq("title", title).execute()
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+                        except Exception as e:
+                            logger.warning(f"[services_wordpress_service] operation failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[services_wordpress_service] operation failed: {e}")
                 return {
                     "success": False,
                     "status_code": 401,
@@ -842,8 +842,8 @@ class WordPressService:
                     existing = supabase.table("blogs").select("id").eq("website_id", website_id).eq("title", title).limit(1).execute().data
                     if existing:
                         supabase.table("blogs").update({"wordpress_post_id": wp_id, "wordpress_url": link}).eq("id", existing[0]["id"]).execute()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[services_wordpress_service] operation failed: {e}")
                 return {"success": True, "wordpress_post_id": wp_id, "wordpress_url": link, "edit_url": edit_url, "status_code": resp.status_code, "message": f"WordPress {'published' if auto_publish else 'draft'} created ✅"}
             # Handle Hostinger 403
             if resp.status_code == 403:
@@ -859,15 +859,15 @@ class WordPressService:
                             "html_content": html_content,
                             "pending_reason": "Hostinger 403 - manual publish required",
                             "status": "pending",
-                            "created_at": datetime.utcnow().isoformat(),
+                            "created_at": datetime.now(timezone.utc).isoformat(),
                         }).execute()
                     except Exception:
                         supabase.table("blog_approvals").update({"pending_reason": "Hostinger 403 - manual publish required"}).eq("website_id", website_id).eq("title", title).execute()
                     # Deactivate WP
                     supabase.table("wordpress_connections").update({"is_active": False}).eq("website_id", website_id).execute()
                     supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", website_id).execute()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[services_wordpress_service] operation failed: {e}")
                 return {"success": False, "status_code": 403, "message": "Hostinger 403 - manual publish required - WP API blocked - contact host to whitelist /wp-json/ or use ?rest_route", "hostinger_403": True}
             # Handle 401 rest_cannot_create -> role needs Editor (CRITICAL for demo)
             if resp.status_code == 401:
@@ -884,8 +884,8 @@ class WordPressService:
                         # If trimmed also 401, use resp2 for error parsing
                         if resp2 is not None:
                             resp = resp2
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"[services_wordpress_service] operation failed: {e}")
                 # Parse role error
                 code = ""
                 msg_text = resp.text[:500] if hasattr(resp, "text") else ""
@@ -893,8 +893,8 @@ class WordPressService:
                     j = resp.json()
                     code = j.get("code", "")
                     msg_text = j.get("message", msg_text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[services_wordpress_service] operation failed: {e}")
                 is_role_error = "rest_cannot_create" in code or "rest_cannot_create" in msg_text or "sorry, you are not allowed" in msg_text.lower()
                 # Also if GET works but POST 401 -> role
                 roles_info = []
@@ -905,8 +905,8 @@ class WordPressService:
                     can_pub = cap2.get("can_publish", False)
                     if not can_pub and roles_info:
                         is_role_error = True
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[services_wordpress_service] operation failed: {e}")
                 if is_role_error or resp.status_code == 401:
                     # Default to role error messaging for demo clarity
                     pending_reason = f"WP role needs Editor - see dashboard banner - current role: {roles_info or 'subscriber'} - cannot publish - Go to WP Admin > Users > Role = Editor"
@@ -921,17 +921,17 @@ class WordPressService:
                                 "html_content": html_content,
                                 "pending_reason": pending_reason,
                                 "status": "pending",
-                                "created_at": datetime.utcnow().isoformat(),
+                                "created_at": datetime.now(timezone.utc).isoformat(),
                             }).execute()
                         except Exception:
                             try:
                                 supabase.table("blog_approvals").update({"pending_reason": pending_reason, "status": "pending"}).eq("website_id", website_id).eq("title", title).execute()
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"[services_wordpress_service] operation failed: {e}")
                         # Do NOT deactivate is_active because read works (keep true)
                         logger.warning(f"[WP] 401 role error - NOT deactivating is_active, read works: roles={roles_info}")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"[services_wordpress_service] operation failed: {e}")
                     banner = f"WordPress user needs Editor role - Go to WP Admin > Users > Role = Editor - current role: {roles_info or 'subscriber'} - cannot publish"
                     logger.error(f"[WP] 401 rest_cannot_create role error: {banner} - see backend/scripts/fix_wp_role.py")
                     return {

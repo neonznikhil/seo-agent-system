@@ -1,7 +1,7 @@
 import os
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from database import get_supabase
 
@@ -15,7 +15,7 @@ class BudgetManager:
 
     async def get_today_spend(self, website_id: Optional[str] = None) -> float:
         wid = website_id or self.website_id
-        today_str = datetime.utcnow().strftime('%Y-%m-%d')
+        today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         supabase = get_supabase()
         try:
             q = supabase.table('daily_costs').select('cost_usd').eq('date', today_str)
@@ -35,16 +35,16 @@ class BudgetManager:
         if env_limit:
             try:
                 return float(env_limit)
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.warning(f"[BudgetManager] Invalid DAILY_BUDGET value: {env_limit!r}: {e}")
         if wid and wid != 'default':
             try:
                 from services.local_store import get_local_website
                 site = get_local_website(wid)
                 if site and site.get('daily_budget_usd'):
                     return float(site['daily_budget_usd'])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_budget_manager] operation failed: {e}")
         return DEFAULT_DAILY_LIMIT_USD
 
     async def check_budget(self, website_id: Optional[str] = None, estimated_cost: float = 0.0) -> Dict[str, Any]:
@@ -59,10 +59,10 @@ class BudgetManager:
                     'action': 'budget_exceeded_pause',
                     'status': 'paused',
                     'payload': {'today_spend': today_spend, 'daily_limit': daily_limit, 'estimated_cost': estimated_cost},
-                    'created_at': datetime.utcnow().isoformat()
+                    'created_at': datetime.now(timezone.utc).isoformat()
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_budget_manager] operation failed: {e}")
             return {'allowed': False, 'today_spend': today_spend, 'daily_limit': daily_limit, 'remaining': remaining, 'reason': f'Daily budget limit of ${daily_limit:.2f} exceeded (today spend: ${today_spend:.2f})'}
         return {'allowed': True, 'today_spend': today_spend, 'daily_limit': daily_limit, 'remaining': remaining, 'reason': 'Within daily budget'}
 
@@ -72,11 +72,11 @@ class BudgetManager:
             get_supabase().table('daily_costs').insert({
                 'id': str(uuid.uuid4()),
                 'website_id': wid,
-                'date': datetime.utcnow().strftime('%Y-%m-%d'),
+                'date': datetime.now(timezone.utc).strftime('%Y-%m-%d'),
                 'agent_name': agent_name,
                 'tokens': tokens,
                 'cost_usd': cost_usd,
-                'created_at': datetime.utcnow().isoformat()
+                'created_at': datetime.now(timezone.utc).isoformat()
             }).execute()
         except Exception as e:
             logger.warning(f'Record spend error: {e}')

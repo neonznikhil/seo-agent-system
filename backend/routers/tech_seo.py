@@ -12,7 +12,6 @@ router = APIRouter()
 
 
 @router.get("/tech-seo/{website_id}")
-@router.get("/tech_seo/{website_id}")
 async def get_tech_seo(website_id: str):
     """Fetch latest technical audit for a website or run initial audit."""
     from services.website_service import get_default_website_id
@@ -75,8 +74,8 @@ async def execute_tech_audit(website_id: str) -> dict:
     site = {}
     try:
         site = supabase.table("websites").select("*").eq("id", website_id).single().execute().data or {}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_tech_seo] operation failed: {e}")
 
     domain = site.get("domain", "").strip() or site.get("cms_url", "").strip() or site.get("url", "").strip()
     if not domain:
@@ -347,11 +346,7 @@ async def execute_tech_audit(website_id: str) -> dict:
     }
 
 
-@router.post("/tech-seo/{website_id}/audit")
-@router.post("/tech_seo/{website_id}/audit")
 @router.post("/tech-seo/{website_id}/run-audit")
-@router.post("/tech_seo/{website_id}/run-audit")
-@router.post("/api/tech-seo/{website_id}/run-audit")
 async def run_tech_audit(website_id: str):
     """Execute live technical audit on demand and return real results."""
     result = await execute_tech_audit(website_id)
@@ -367,8 +362,6 @@ class FixIssueRequest(BaseModel):
 
 
 @router.post("/tech-seo/{website_id}/fix")
-@router.post("/tech_seo/{website_id}/fix")
-@router.post("/api/tech-seo/{website_id}/fix")
 async def queue_fix_issue(website_id: str, body: FixIssueRequest):
     """Create a pending_fixes row and queue StrategyAgent self-healing action."""
     import uuid

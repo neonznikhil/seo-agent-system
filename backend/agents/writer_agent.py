@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import json
 
@@ -12,7 +12,7 @@ logger = logging.getLogger("backend.agents.writer")
 
 # FIX Problem 1: Date context helpers for legacy WriterPipeline
 def _writer_get_date_block() -> str:
-    cur = datetime.utcnow()
+    cur = datetime.now(timezone.utc)
     return f"""CRITICAL DATE CONTEXT — READ THIS FIRST:
 Today's date is {cur.strftime("%B %d, %Y")}.
 The current year is {cur.year}.
@@ -47,7 +47,7 @@ def _writer_is_denied(keyword: str) -> bool:
 
 def _writer_enforce_year(html: str, keyword: str) -> str:
     import re
-    cur_year = str(datetime.utcnow().year)
+    cur_year = str(datetime.now(timezone.utc).year)
     kw_year = None
     m = re.search(r"\b((?:19|20)\d{2})\b", keyword or "")
     if m:
@@ -579,7 +579,7 @@ class WriterPipeline:
                 "auto_generated": True,
                 "wordpress_action": "create",
                 "website_id": self.website_id,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
             approval_id = True
             try:
@@ -594,13 +594,13 @@ class WriterPipeline:
                     "slug": self._slugify(self.generated_title),
                     "status": "pending",
                     "website_id": self.website_id,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception as e:
                 logger.warning(f"[agents_writer_agent] operation failed: {e}")
 
             # Calendar entry: scheduled publish = NOW + 48h review window
-            scheduled = (datetime.utcnow().timestamp() + 48 * 3600)
+            scheduled = (datetime.now(timezone.utc).timestamp() + 48 * 3600)
             try:
                 self.supabase.table("content_calendar").insert({
                     "website_id": self.website_id,
@@ -610,7 +610,7 @@ class WriterPipeline:
                     "status": "scheduled",
                     "priority": 5,
                     "content_log_id": self.content_id,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 }).execute()
             except Exception as e:
                 logger.warning(f"[agents_writer_agent] operation failed: {e}")
@@ -845,7 +845,7 @@ class WriterPipeline:
             'input_data': json.dumps(input_data, default=str) if input_data else None,
             'output_data': json.dumps(output_data, default=str) if output_data else None,
             'thought': thought,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
         self.step_log.append(step_record)
 
@@ -876,7 +876,7 @@ class WriterPipeline:
             'pipeline_status': 'not_started',
             'phase_results': json.dumps({}),
             'final_scores': json.dumps({}),
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
         if acc_id:
             insert_payload['account_id'] = acc_id
@@ -1886,7 +1886,7 @@ class WriterPipeline:
         return {
             'author_profile': {'name': 'SEO Team', 'role': 'Content Strategist'},
             'reviewer': {'name': 'Founder', 'role': 'CEO'},
-            'last_updated': datetime.utcnow().isoformat()
+            'last_updated': datetime.now(timezone.utc).isoformat()
         }
 
     async def _plan_schema(self) -> Dict:
@@ -2034,7 +2034,7 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
                 'score': data['score'],
                 'issues': data['issues'],
                 'passed': data['passed'],
-                'reviewed_at': datetime.utcnow().isoformat()
+                'reviewed_at': datetime.now(timezone.utc).isoformat()
             }).execute()
 
     async def _load_content(self) -> str:

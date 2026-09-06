@@ -70,7 +70,6 @@ class GenerateContentIn(BaseModel):
 
 
 @router.get("/writer/{website_id}/suggestions")
-@router.get("/api/writer/{website_id}/suggestions")
 async def get_writer_suggestions(website_id: str):
     """Provide intelligent topic ideas and keyword suggestions for the writer studio.
     Autonomous: aggregates research, GSC, daily_searches, then NIM-generated gap topics if DB sparse.
@@ -246,7 +245,6 @@ async def get_writer_suggestions(website_id: str):
 
 
 @router.get("/writer/{website_id}/wordpress-status")
-@router.get("/api/writer/{website_id}/wordpress-status")
 async def get_writer_wordpress_status(website_id: str):
     """Check WordPress connectivity for writer studio banner — friendly demo handling."""
     from services.wordpress_service import WordPressService
@@ -403,7 +401,6 @@ async def generate_content_endpoint(
 
 
 @router.get("/writer/job/{job_id}/stream")
-@router.get("/api/writer/job/{job_id}/stream")
 async def stream_writer_job(job_id: str):
     """Server-Sent Events stream of live article generation progress."""
     from services.event_bus import stream as bus_stream, get_history
@@ -431,7 +428,6 @@ async def stream_writer_job(job_id: str):
 
 
 @router.get("/writer/{website_id}/stream/{content_id}")
-@router.get("/api/writer/{website_id}/stream/{content_id}")
 async def stream_writer_content(website_id: str, content_id: str):
     """SSE stream alias scoped by website (used by the writer page right panel)."""
     return await stream_writer_job(content_id)
@@ -494,35 +490,6 @@ async def get_content_detail(website_id: str, content_id: str):
         "expert_reviews": reviews,
         "current_phase": logs[-1]["phase"] if logs else None,
         "total_steps": len(logs),
-    }
-
-
-@router.get("/writer/{website_id}/wordpress-status")
-async def get_writer_wordpress_status(website_id: str):
-    """Check whether WordPress is connected and able to draft/publish for this website."""
-    wp_svc = WordPressService(website_id)
-    base_url = wp_svc.get_base_url()
-    user, password = wp_svc._get_auth_tuple()
-
-    if not base_url or not user or not password:
-        return {
-            "connected": False,
-            "wordpress_url": base_url or "",
-            "message": "WordPress credentials not configured. Connect in /websites.",
-            "can_publish": False,
-            "roles": [],
-        }
-
-    test_res = await wp_svc.test_connection(base_url, user, password)
-    return {
-        "connected": bool(test_res.get("connected")),
-        "wordpress_url": base_url,
-        "username": user,
-        "user_name": test_res.get("user_name", user),
-        "message": test_res.get("message", "Connected" if test_res.get("connected") else "Connection failed"),
-        "roles": test_res.get("roles", []),
-        "can_publish": test_res.get("can_publish", True),
-        "warning": test_res.get("warning"),
     }
 
 

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
 from database import get_supabase
@@ -100,7 +100,7 @@ class ConnectionHealthMonitor:
             if expires_at:
                 try:
                     exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-                    if exp_dt < datetime.utcnow():
+                    if exp_dt < datetime.now(timezone.utc):
                         results["gsc"]["status"] = "expired"
                         expired_integrations.append("Google Search Console")
                 except Exception as e:
@@ -127,7 +127,7 @@ class ConnectionHealthMonitor:
         return {
             "success": True,
             "all_healthy": all_ok,
-            "checked_at": datetime.utcnow().isoformat(),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
             "results": results,
             "expired_count": len(expired_integrations),
             "duration_sec": duration

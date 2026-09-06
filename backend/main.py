@@ -826,7 +826,6 @@ async def delete_content_item(blog_id: str, request: Request):
 # Auth & Health
 app.include_router(auth_router, prefix="/api")                 # /api/auth/*
 app.include_router(health_router, prefix="/api")               # /api/health/*
-app.include_router(health_router)                              # /health
 
 # Websites & Workspaces
 app.include_router(websites_router, prefix="/api")                    # /api/websites/*

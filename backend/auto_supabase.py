@@ -515,6 +515,55 @@ TABLES = {
             created_at timestamptz DEFAULT now()
         )
     """,
+    "ai_visibility": """
+        CREATE TABLE IF NOT EXISTS ai_visibility (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            domain text,
+            checked_at timestamptz DEFAULT now(),
+            keywords_checked int DEFAULT 0,
+            ai_overview_appearances int DEFAULT 0,
+            cited_count int DEFAULT 0,
+            keyword_results jsonb DEFAULT '[]'::jsonb,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "article_markdown_cache": """
+        CREATE TABLE IF NOT EXISTS article_markdown_cache (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            wp_url text UNIQUE,
+            slug text,
+            markdown_content text,
+            updated_at timestamptz DEFAULT now()
+        )
+    """,
+    "reddit_opportunities": """
+        CREATE TABLE IF NOT EXISTS reddit_opportunities (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            thread_title text,
+            thread_url text,
+            subreddit text,
+            keyword text,
+            opportunity_type text,
+            status text DEFAULT 'pending',
+            generated_comment text,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
+    "aeo_citations": """
+        CREATE TABLE IF NOT EXISTS aeo_citations (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            website_id uuid,
+            query text,
+            llm_name text,
+            cited boolean DEFAULT false,
+            competitor_cited boolean DEFAULT false,
+            citation_snippet text,
+            schema_markup jsonb DEFAULT '{}'::jsonb,
+            created_at timestamptz DEFAULT now()
+        )
+    """,
 }
 
 # Schema patches for existing tables (handle RLS name column missing etc) - no simulation

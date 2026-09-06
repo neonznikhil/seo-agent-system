@@ -1,11 +1,11 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
 
 async def inject_citations(html_content: str, target_keyword: str, website_id: str) -> str:
     soup = BeautifulSoup(html_content, 'html.parser')
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
 
     citation_triggers = [
         r'\d+\s*%',
@@ -132,7 +132,7 @@ def inject_term_definitions(html_content: str, industry: str = "legal") -> str:
 
 def build_quick_facts_table(outline: dict, website_facts: dict, target_keyword: str) -> str:
     from datetime import datetime
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
 
     rows = []
 
@@ -159,7 +159,7 @@ def build_quick_facts_table(outline: dict, website_facts: dict, target_keyword: 
     if faq_count > 0:
         rows.append(("FAQs Answered", str(faq_count)))
 
-    rows.append(("Last Updated", datetime.utcnow().strftime("%B %Y")))
+    rows.append(("Last Updated", datetime.now(timezone.utc).strftime("%B %Y")))
     rows.append(("Content Type", "Legal Guide"))
 
     if not rows:

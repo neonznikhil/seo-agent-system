@@ -6,7 +6,7 @@ import uuid
 import logging
 import hashlib
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from bs4 import BeautifulSoup
@@ -329,7 +329,7 @@ class KnowledgeService:
         outdated_count = 0
         try:
             rows = supabase.table("knowledge_base").select("id, credibility_score, source_type, created_at, last_used").execute().data or []
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             for r in rows:
                 ts_str = r.get("last_used") or r.get("created_at") or now.isoformat()
                 ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
@@ -399,7 +399,7 @@ class KnowledgeService:
                             "embedding": new_emb,
                             "entities": new_entities,
                             "freshness_score": 1.0,
-                            "last_used": datetime.utcnow().isoformat()
+                            "last_used": datetime.now(timezone.utc).isoformat()
                         }).eq("id", doc_a["id"]).execute()
 
                         # Delete duplicate doc_b
@@ -457,7 +457,7 @@ class KnowledgeService:
             supabase.table("knowledge_base").update({
                 "validated": is_valid,
                 "validation_score": score,
-                "metadata": {"validation_reasoning": reasoning, "validated_at": datetime.utcnow().isoformat()}
+                "metadata": {"validation_reasoning": reasoning, "validated_at": datetime.now(timezone.utc).isoformat()}
             }).eq("id", doc_id).execute()
 
             return {
@@ -523,7 +523,7 @@ class KnowledgeService:
                         "target_id": other["id"],
                         "relation_type": rel_type,
                         "strength": round(max(0.4, min(1.0, strength)), 2),
-                        "created_at": datetime.utcnow().isoformat()
+                        "created_at": datetime.now(timezone.utc).isoformat()
                     }).execute()
         except Exception as e:
             logger.debug(f"Entity relation mapping failed: {e}")
@@ -603,8 +603,8 @@ class KnowledgeService:
                         row_copy = dict(row)
                         row_copy["similarity"] = max(sim, 0.60)
                         vector_results.append(row_copy)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_knowledge_service] operation failed: {e}")
 
         # 2. Keyword full-text match over retrieved rows
         k_tokens = [w.strip().lower() for w in keyword.split() if len(w.strip()) > 3]
@@ -658,10 +658,10 @@ class KnowledgeService:
             try:
                 supabase.table("knowledge_base").update({
                     "usage_count": int(doc.get("usage_count", 0)) + 1,
-                    "last_used": datetime.utcnow().isoformat()
+                    "last_used": datetime.now(timezone.utc).isoformat()
                 }).eq("id", doc["id"]).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_knowledge_service] operation failed: {e}")
 
         return top_results
 
@@ -756,13 +756,13 @@ class KnowledgeService:
                         if _cosine_similarity(ch_embedding, rec_emb) > 0.95:
                             supabase.table("knowledge_base").update({
                                 "freshness_score": 1.0,
-                                "last_used": datetime.utcnow().isoformat()
+                                "last_used": datetime.now(timezone.utc).isoformat()
                             }).eq("id", rec["id"]).execute()
                             is_dup = True
                             skipped_count += 1
                             break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_knowledge_service] operation failed: {e}")
 
             if not is_dup:
                 new_id = str(uuid.uuid4())
@@ -774,7 +774,7 @@ class KnowledgeService:
                     "fact_type": doc_type or "company_info",
                     "source_url": url or doc_title,
                     "embedding": ch_embedding,
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 try:
                     supabase.table("knowledge_base").insert(base_row).execute()
@@ -816,15 +816,15 @@ class KnowledgeService:
                 from .website_service import get_website_details
                 details = get_website_details(self.website_id) or {}
                 site_url = (details.get("url") or details.get("cms_url") or details.get("wordpress_url") or f"https://{details.get('domain','')}").rstrip("/")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_knowledge_service] operation failed: {e}")
             if not site_url or site_url == "https://":
                 try:
                     site_data = self.supabase.table("websites").select("url, domain, cms_url, wordpress_url").eq("id", self.website_id).single().execute().data
                     if site_data:
                         site_url = (site_data.get("url") or site_data.get("cms_url") or site_data.get("wordpress_url") or f"https://{site_data.get('domain')}").rstrip("/")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[services_knowledge_service] operation failed: {e}")
 
         if not site_url or site_url in ("https://", "http://"):
             return {"success": False, "message": "No target site configured for sitemap watcher", "new_pages_ingested": 0}
@@ -858,8 +858,8 @@ class KnowledgeService:
                 # absolute
                 if domain_clean in u:
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_knowledge_service] operation failed: {e}")
             return False
         def _to_absolute(href: str, base: str) -> Optional[str]:
             href = href.strip()
@@ -996,8 +996,8 @@ class KnowledgeService:
                     if any(bad in low for bad in ["/wp-admin","/wp-login","/cart","/checkout","?preview","/feed/","/author/","#"]):
                         continue
                     links.append(abs_u)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[services_knowledge_service] operation failed: {e}")
             return links
 
         # BFS discovery — fetch each seed to extract links, up to max_pages total (full-site)
@@ -1071,8 +1071,8 @@ class KnowledgeService:
                 existing_entry = []
                 try:
                     existing_entry = supabase.table("knowledge_base").select("id").eq("source_url", page_url).limit(1).execute().data or []
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[services_knowledge_service] operation failed: {e}")
 
                 if not existing_entry:
                     # Brand new page
@@ -1092,8 +1092,8 @@ class KnowledgeService:
         existing_kb = []
         try:
             existing_kb = supabase.table("knowledge_base").select("id").eq("website_id", self.website_id).limit(10).execute().data or []
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[services_knowledge_service] operation failed: {e}")
         local_kb = list_local_knowledge(self.website_id)
         total_known = len(existing_kb) + len(local_kb)
         
@@ -1135,7 +1135,7 @@ class KnowledgeService:
             "crawled_urls": crawled_detail[:50],
             "crawl_mode": "full-site BFS + recursive sitemap (all subpages)",
             "max_pages": max_pages,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     # ---------------------------------------------------------
@@ -1195,7 +1195,7 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
     try:
         supabase.table("websites").update({
             "status": "crawling",
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", website_id).execute()
     except Exception as e:
         err = f"Failed to update website status: {e}"
@@ -1382,7 +1382,7 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
         if not all_chunks:
             supabase.table("websites").update({
                 "status": "error",
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).eq("id", website_id).execute()
             results["errors"].append("No content extracted from any page")
             return results
@@ -1437,7 +1437,7 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
         try:
             supabase.table("websites").update({
                 "status": final_status,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).eq("id", website_id).execute()
         except Exception as e:
             logger.warning(f"[CRAWL] Failed to update website status: {e}")

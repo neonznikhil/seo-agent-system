@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import re
 import json
@@ -106,7 +106,7 @@ class SEOAgent:
                 "meta_description": meta_desc,
                 "slug": slug,
                 "keyword_density": density,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }).execute()
         except Exception as e:
             logger.warning(f"[agents_seo_agent] operation failed: {e}")

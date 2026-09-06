@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 logger = logging.getLogger("backend.services.ai_visibility_monitor")
@@ -16,7 +16,7 @@ async def check_ai_visibility(
     results = {
         "website_id": website_id,
         "domain": website_domain,
-        "checked_at": datetime.utcnow().isoformat(),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
         "keywords_checked": len(target_keywords),
         "ai_overview_appearances": 0,
         "cited_in_ai_results": 0,
@@ -96,7 +96,7 @@ async def create_system_alert(website_id: str, severity: str, message: str, aler
             "title": "AI Citation Detected",
             "description": message,
             "is_read": False,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
     except Exception:
         pass

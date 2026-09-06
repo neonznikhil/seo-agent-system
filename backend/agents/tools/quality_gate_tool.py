@@ -31,10 +31,10 @@ def _log_proof(website_id: str, agent: str, tool: str, real_api: str, action: st
             "status": "success",
             "result": {"real_api_called": real_api},
             "real_api_called": real_api,
-            "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+            "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[agents_tools_quality_gate_tool] operation failed: {e}")
 
 
 class QualityGateInput(BaseModel):
@@ -186,7 +186,7 @@ class QualityGateTool(BaseTool):
                 "knowledge_errors": knowledge_errors,
                 "factual_accuracy_pass": factual_accuracy_pass,
                 "overall_pass": overall_pass,
-                "checked_at": __import__("datetime").datetime.utcnow().isoformat(),
+                "checked_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
             }).execute()
             _log_proof(website_id, self._agent_name, "quality_gate", "supabase", "insert")
 

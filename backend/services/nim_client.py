@@ -244,14 +244,14 @@ def _log_nim_cost(agent_name: str, tokens: int, cost_usd: float):
     try:
         from database import get_supabase
         sb = get_supabase()
-        from datetime import datetime
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         payload = {
             "date": today,
             "agent_name": agent_name,
             "tokens": tokens,
             "cost_usd": round(cost_usd, 6),
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
         sb.table("daily_costs").insert(payload).execute()
     except Exception as e:

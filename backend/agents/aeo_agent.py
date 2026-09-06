@@ -3,7 +3,7 @@ import json
 import uuid
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 
@@ -48,6 +48,7 @@ class AEOAgent:
             }
 
         brand_keywords = [site_name.lower(), site_domain.lower()]
+        competitors: list = []
 
         citations_recorded = []
         brand_cited_count = 0
@@ -83,7 +84,7 @@ class AEOAgent:
                 "competitor_cited": is_competitor_cited,
                 "citation_snippet": response_text[:280] + "...",
                 "schema_markup": {},
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             
             try:
@@ -126,11 +127,20 @@ class AEOAgent:
                 "message": f"No website domain configured for website_id='{self.website_id}'. Set the domain before tracking AEO citations."
             }
         
+        site_url = None
+        if self.website_id:
+            try:
+                site = supabase.table("websites").select("url, domain").eq("id", self.website_id).single().execute().data
+                if site:
+                    site_url = site.get("url") or f"https://{site.get('domain')}"
+            except Exception as e:
+                logger.warning("[AEO] Website URL lookup failed: %s", e)
+        
         entity_map = {
             "@context": "https://schema.org",
             "@type": "Organization",
             "name": site_name,
-            "url": site_url.rstrip("/"),
+            "url": (site_url or f"https://{site_domain}").rstrip("/"),
             "description": f"Authoritative domain expertise and service solutions for {site_name}.",
             "sameAs": []
         }

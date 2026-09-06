@@ -5,7 +5,7 @@ import math
 import os
 from typing import Optional, Dict, List, Any
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
@@ -85,7 +85,7 @@ class HumanWriterAgent:
                 "payload": payload or {},
                 "result": result or {},
                 "real_api_called": "nvidia_nim",
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }).execute()
         except Exception as e:
             logger.debug(f"Task log note: {e}")
@@ -310,7 +310,7 @@ class HumanWriterAgent:
             "competitors_analyzed": len(benchmark_items),
             "benchmarks": benchmark_items,
             "data_source": "serp_crawl" if measured else "editorial_defaults",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
         # Store observed reality (or its absence) in brain_memory as experience
@@ -675,7 +675,7 @@ Output ONLY the full article Markdown — no introductory commentary, no convers
                 content += quote_snippet
 
         # 3. Ensure last updated timestamp in JSON-LD / footer
-        iso_timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        iso_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if "Last Updated:" not in content:
             footer_snippet = f"\n\n---\n*Last Updated: {iso_timestamp} | Verified by {self.company_name} Editorial Team*\n"
             content += footer_snippet
@@ -724,7 +724,7 @@ Output ONLY the full article Markdown — no introductory commentary, no convers
                     "status": "completed",
                     "step_name": "semantic_nlp_injection",
                     "result_data": {"injected_terms": injected_terms, "primary_keyword": primary_keyword},
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 }).execute()
             except Exception as e:
                 logger.warning(f"[HumanWriter] Failed to log semantic NLP injection: {e}")

@@ -3,7 +3,7 @@ Provides basic ping, deep subsystem telemetry, and real-time autonomous system s
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request
 
@@ -20,18 +20,16 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-@router.get("/api/health")
 async def basic_health():
     """Basic service liveness check."""
     return {
         "status": "ok",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "service": "RankForge Autonomous SEO Platform",
         "checks": {"status": "ok", "database": "connected", "ai_engine": "ready"},
     }
 
 
-@router.get("/api/health/autonomous")
 @router.get("/health/autonomous")
 async def get_autonomous_health(request: Request, website_id: Optional[str] = None):
     """Retrieve the real-time autonomous health diagnostic summary for Topbar indicator and floating panel."""
@@ -61,7 +59,6 @@ async def get_autonomous_health(request: Request, website_id: Optional[str] = No
     return dict(_latest_health_cache)
 
 
-@router.post("/api/health/autonomous/run")
 @router.post("/health/autonomous/run")
 async def run_autonomous_health_now(request: Request):
     """Trigger an immediate full health diagnostic and auto-repair sequence."""
@@ -74,7 +71,6 @@ async def run_autonomous_health_now(request: Request):
     }
 
 
-@router.get("/api/health/deep")
 @router.get("/health/deep")
 async def deep_health_check() -> Dict[str, Any]:
     """Comprehensive Enterprise Health Check testing all subsystems (0-100 score)."""
@@ -144,5 +140,5 @@ async def deep_health_check() -> Dict[str, Any]:
         "status": "healthy" if is_healthy else "degraded",
         "checks": checks,
         "services": checks,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
     }

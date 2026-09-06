@@ -4,7 +4,7 @@ Provides live status, decision engine evaluation, goals management, cost trackin
 
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -109,8 +109,8 @@ async def get_autonomous_goals():
                 "success_rate": success_rate,
                 "daily_costs": res[0].get("daily_costs") or {}
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     return {
         "goals": default_goals,
@@ -148,12 +148,12 @@ async def update_autonomous_goals(payload: AutonomousGoalsRequest):
         if existing:
             supabase.table("autonomous_settings").update({
                 "goals": goals_data,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).eq("id", existing[0]["id"]).execute()
         else:
             supabase.table("autonomous_settings").insert({
                 "goals": goals_data,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).execute()
             
         return {"success": True, "goals": goals_data, "message": "Autonomous goals updated."}
@@ -183,7 +183,7 @@ async def get_cost_tracking(website_id: Optional[str] = None):
     """Fetch daily token usage and USD costs per agent — real daily_costs query, empty if none."""
     supabase = get_supabase()
     try:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         q = supabase.table("daily_costs").select("cost_usd, tokens, agent_name, date, website_id, created_at").gte("created_at", f"{today}T00:00:00")
         if website_id:
             q = q.eq("website_id", website_id)
@@ -269,8 +269,8 @@ async def get_blog_settings(website_id: Optional[str] = None):
             res = supabase.table("websites").select("id").limit(1).execute()
             if res.data:
                 wid = res.data[0]["id"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
     if not wid:
         return {"daily_blog_target": 5, "blogs_generated_today": 0, "generation_interval_minutes": 288, "auto_topic_selection": True}
     settings = await get_autonomous_settings(wid)
@@ -280,7 +280,7 @@ async def get_blog_settings(website_id: Optional[str] = None):
     last_blog = await get_last_blog_time(wid)
     next_in_minutes = 0
     if last_blog:
-        mins_since = (datetime.utcnow() - last_blog).total_seconds() / 60
+        mins_since = (datetime.now(timezone.utc) - last_blog).total_seconds() / 60
         if mins_since < interval:
             next_in_minutes = int(interval - mins_since)
     # Developer mode override: 2-min cadence
@@ -288,12 +288,12 @@ async def get_blog_settings(website_id: Optional[str] = None):
         if _get_developer_mode_state():
             interval = 2
             if last_blog:
-                mins_since2 = (datetime.utcnow() - last_blog).total_seconds() / 60
+                mins_since2 = (datetime.now(timezone.utc) - last_blog).total_seconds() / 60
                 next_in_minutes = max(0, int(2 - mins_since2)) if mins_since2 < 2 else 0
             else:
                 next_in_minutes = 0
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
     # also fetch total articles
     total_blogs = 0
     try:
@@ -304,8 +304,8 @@ async def get_blog_settings(website_id: Optional[str] = None):
         try:
             from services.local_store import list_local_content
             total_blogs = len([c for c in list_local_content() if c.get("website_id") == wid])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
     # Fallback to local file if DB settings missing (table not in cache)
     try:
         import json as _json
@@ -329,8 +329,8 @@ async def get_blog_settings(website_id: Optional[str] = None):
                     "last_blog_time": last_blog.isoformat() if last_blog else None,
                     "last_reset_date": data[wid].get("last_reset_date", settings.get("last_reset_date")),
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
     return {
         "website_id": wid,
         "daily_blog_target": daily_target,
@@ -362,22 +362,22 @@ async def update_blog_settings(payload: BlogSettingsRequest):
             res = supabase.table("websites").select("id").limit(1).execute()
             if res.data:
                 wid = res.data[0]["id"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
         if not wid:
             try:
                 from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     wid = local[0].get("id")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[routers_autonomy] operation failed: {e}")
     if not wid:
         raise HTTPException(status_code=400, detail="No website_id provided and no default website found.")
     daily_target = max(1, min(10, int(payload.daily_blog_target or 5)))
     interval = (24 * 60) // daily_target
-    now_str = datetime.utcnow().isoformat()
-    today_str = datetime.utcnow().date().isoformat()
+    now_str = datetime.now(timezone.utc).isoformat()
+    today_str = datetime.now(timezone.utc).date().isoformat()
     def _save_local_blog_settings(wid_local: str, tgt: int, interval_local: int, auto_topic: bool):
         try:
             p = _Path(__file__).resolve().parent.parent / "local_data" / "blog_settings.json"
@@ -443,10 +443,10 @@ async def update_blog_settings(payload: BlogSettingsRequest):
             from agents.scheduler import scheduler
             try:
                 scheduler.reschedule_job("job_auto_blog_10min", trigger="interval", minutes=10)
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as e:
+                logger.warning(f"[routers_autonomy] operation failed: {e}")
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
         _save_local_blog_settings(wid, daily_target, interval, bool(payload.auto_topic_selection))
         return {
             "success": True,
@@ -490,16 +490,16 @@ async def get_blog_schedule(request: Request, website_id: Optional[str] = None):
             res = supabase.table("websites").select("id").limit(1).execute()
             if res.data:
                 wid = res.data[0]["id"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
         if not wid:
             try:
                 from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     wid = local[0].get("id")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[routers_autonomy] operation failed: {e}")
     if not wid:
         return {"generation_interval_minutes": 288, "schedule_label": "every 4.8 hours", "daily_blog_target": 5, "auto_generate_enabled": True}
     # Try DB first
@@ -516,8 +516,8 @@ async def get_blog_schedule(request: Request, website_id: Optional[str] = None):
                 "blogs_generated_today": row.get("blogs_generated_today", 0),
                 "last_reset_date": row.get("last_reset_date"),
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
     # Fallback local file
     try:
         import json as _json
@@ -536,8 +536,8 @@ async def get_blog_schedule(request: Request, website_id: Optional[str] = None):
                     "blogs_generated_today": loc.get("blogs_generated_today", 0),
                     "last_reset_date": loc.get("last_reset_date"),
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
     return {"website_id": wid, "generation_interval_minutes": 288, "schedule_label": "every 4.8 hours", "daily_blog_target": 5, "auto_generate_enabled": True}
 
 
@@ -561,16 +561,16 @@ async def save_blog_schedule(request: Request):
             res = supabase.table("websites").select("id").limit(1).execute()
             if res.data:
                 website_id = res.data[0]["id"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
         if not website_id:
             try:
                 from services.local_store import list_local_websites
                 local = list_local_websites()
                 if local:
                     website_id = local[0].get("id")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[routers_autonomy] operation failed: {e}")
     if not website_id:
         raise HTTPException(status_code=400, detail="website_id required")
     interval_minutes = int(body.get("interval_minutes") or body.get("generation_interval_minutes") or 288)
@@ -580,7 +580,7 @@ async def save_blog_schedule(request: Request):
         daily_target = max(1, min(10, round((24*60)/max(1,interval_minutes))))
     else:
         daily_target = max(1, min(10, int(daily_target)))
-    now_str = datetime.utcnow().isoformat()
+    now_str = datetime.now(timezone.utc).isoformat()
     # Save to database — source of truth, with fallback to local file if table cache miss
     saved = False
     try:
@@ -630,8 +630,8 @@ async def save_blog_schedule(request: Request):
                     goals.update({"generation_interval_minutes": interval_minutes, "schedule_label": label, "daily_blog_target": int(daily_target)})
                     supabase.table("autonomous_settings").update({"goals": goals, "updated_at": now_str}).eq("id", existing2[0]["id"]).execute()
                     saved = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[routers_autonomy] operation failed: {e}")
     # Always persist to local file for PostgREST cache miss resilience
     try:
         p = _Path(__file__).resolve().parent.parent / "local_data" / "blog_settings.json"
@@ -655,8 +655,8 @@ async def save_blog_schedule(request: Request):
         job_id = f"auto_blog_{website_id}"
         try:
             scheduler.remove_job(job_id)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
         # wrapper for per-website
         async def _per_site_wrapper(site_id=website_id):
             # call scheduler helper for single site — reuse run_autonomous_blog_generation filtered
@@ -688,13 +688,13 @@ async def save_blog_schedule(request: Request):
 async def update_autonomous_settings(payload: AutonomousSettingsRequest):
     """Update autonomous settings (toggle auto publish vs manual approval)."""
     supabase = get_supabase()
-    now_str = datetime.utcnow().isoformat()
+    now_str = datetime.now(timezone.utc).isoformat()
     # Handle developer_mode if provided (also set file for scheduler bypass)
     if payload.developer_mode is not None:
         try:
             _set_developer_mode_state(payload.developer_mode)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
         # Also return early with developer_mode status
         return {
             "success": True,
@@ -778,28 +778,28 @@ async def autonomy_overview():
         b_res = supabase.table("content_log").select("id, status, created_at").execute()
         rows = b_res.data or []
         total_blogs = len(rows)
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         published_today = sum(1 for r in rows if r.get("status") in ("published", "approved") and (r.get("created_at") or "").startswith(today_str))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
         app_res = supabase.table("approvals").select("id", count="exact").eq("status", "pending").execute()
         pending_approvals = app_res.count if app_res.count is not None else len(app_res.data or [])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
         mem_res = supabase.table("brain_memory").select("id", count="exact").execute()
         brain_memories = mem_res.count if mem_res.count is not None else len(mem_res.data or [])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
         kb_res = supabase.table("knowledge_base").select("id", count="exact").execute()
         kb_count = kb_res.count if kb_res.count is not None else len(kb_res.data or [])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
 
     return {
         "total_blogs": total_blogs,
@@ -833,8 +833,8 @@ def _get_developer_mode_state() -> bool:
                 data = _json.loads(p.read_text(encoding="utf-8"))
                 if data.get("enabled") is True or data.get("developer_mode") is True:
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[routers_autonomy] operation failed: {e}")
     try:
         supabase = get_supabase()
         rows = supabase.table("autonomous_settings").select("developer_mode").limit(1).execute().data or []
@@ -843,8 +843,8 @@ def _get_developer_mode_state() -> bool:
         rows2 = supabase.table("autonomous_settings").select("goals").limit(1).execute().data or []
         if rows2 and (rows2[0].get("goals") or {}).get("developer_mode") is True:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[routers_autonomy] operation failed: {e}")
     return False
 
 def _set_developer_mode_state(enabled: bool):
@@ -857,7 +857,7 @@ def _set_developer_mode_state(enabled: bool):
     ]:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            _json_data = {"enabled": enabled, "developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}
+            _json_data = {"enabled": enabled, "developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}
             p.write_text(_json.dumps(_json_data, indent=2), encoding="utf-8")
         except Exception as e:
             logger.warning(f"Failed to write developer_mode to {p}: {e}")
@@ -867,18 +867,18 @@ def _set_developer_mode_state(enabled: bool):
         existing = supabase.table("autonomous_settings").select("id").limit(1).execute().data or []
         if existing:
             try:
-                supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}).eq("id", existing[0]["id"]).execute()
+                supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]).execute()
             except Exception:
                 # fallback to goals JSON
                 cur = supabase.table("autonomous_settings").select("goals").eq("id", existing[0]["id"]).single().execute().data or {}
                 goals = cur.get("goals") or {}
                 goals["developer_mode"] = enabled
-                supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.utcnow().isoformat()}).eq("id", existing[0]["id"]).execute()
+                supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]).execute()
         else:
             try:
-                supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.utcnow().isoformat()}).execute()
+                supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
             except Exception:
-                supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.utcnow().isoformat()}).execute()
+                supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
     except Exception as e:
         logger.debug(f"DB developer_mode persist note: {e}")
     # Reschedule scheduler jobs for 1 blog per 2 min in dev mode
@@ -897,22 +897,22 @@ def _set_developer_mode_state(enabled: bool):
                     try:
                         scheduler.pause_job(job.id)
                         logger.info(f"[DeveloperMode] Paused {job.id} (global 2m handles it)")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"[routers_autonomy] operation failed: {e}")
         else:
             try:
                 scheduler.reschedule_job("job_auto_blog_10min", trigger=IntervalTrigger(minutes=10))
                 logger.info("[DeveloperMode] Rescheduled job_auto_blog_10min to 10 min")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[routers_autonomy] operation failed: {e}")
             for job in list(scheduler.get_jobs()):
                 if job.id.startswith("auto_blog_"):
                     try:
                         scheduler.resume_job(job.id)
                         # Restore original interval from DB or default 10
                         scheduler.reschedule_job(job.id, trigger=IntervalTrigger(minutes=10))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"[routers_autonomy] operation failed: {e}")
     except Exception as e:
         logger.debug(f"Developer mode reschedule note: {e}")
 

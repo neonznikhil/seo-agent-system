@@ -7,7 +7,7 @@ import os
 import time
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
 import httpx
@@ -44,8 +44,8 @@ _latest_health_cache: Dict[str, Any] = {
         "failed": 0,
     },
     "auto_fixes_applied": 0,
-    "last_check": datetime.utcnow().isoformat() + "Z",
-    "next_check": (datetime.utcnow() + timedelta(minutes=15)).isoformat() + "Z",
+    "last_check": datetime.now(timezone.utc).isoformat() + "Z",
+    "next_check": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat() + "Z",
     "issues": [],
     "auto_fixed": [],
 }
@@ -218,9 +218,9 @@ class AutonomousHealthService:
     async def check_scheduler(self) -> Dict[str, Any]:
         """Check 6 — Scheduler jobs execution analysis for today."""
         supabase = get_supabase()
-        today_start = datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
-        now_hour_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).hour
-        now_minute_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).minute
+        today_start = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+        now_hour_ist = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).hour
+        now_minute_ist = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).minute
 
         try:
             res = (
@@ -273,7 +273,7 @@ class AutonomousHealthService:
 
         # Fix 1: Clean up stuck content generations > 15 minutes
         try:
-            fifteen_mins_ago = (datetime.utcnow() - timedelta(minutes=15)).isoformat()
+            fifteen_mins_ago = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
             stuck_res = (
                 supabase.table("content_log")
                 .select("id, title")
@@ -349,8 +349,8 @@ class AutonomousHealthService:
                             "status": "new",
                             "source": "health_service_auto_heal",
                         }).execute()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"[services_autonomous_health_service] operation failed: {e}")
                 msg = f"Auto-populated keyword queue with {len(seeds)} items."
                 fixes_applied.append(msg)
                 logger.info(f"[AutoFix] {msg}")
@@ -369,7 +369,7 @@ class AutonomousHealthService:
 
         # Fix 5: Auto-queue missed daily scheduler job
         if scheduler_check.get("status") in ("down", "degraded"):
-            now_hour_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).hour
+            now_hour_ist = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).hour
             if now_hour_ist >= 11:
                 fixes_applied.append("Auto-queued missed job: Article Generation")
 
@@ -475,8 +475,8 @@ class AutonomousHealthService:
             "scheduler": sched_res.get("status", "ok"),
         }
 
-        now_iso = datetime.utcnow().isoformat() + "Z"
-        next_iso = (datetime.utcnow() + timedelta(minutes=15)).isoformat() + "Z"
+        now_iso = datetime.now(timezone.utc).isoformat() + "Z"
+        next_iso = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat() + "Z"
 
         result = {
             "health_score": final_score,
@@ -520,7 +520,7 @@ class AutonomousHealthService:
     # -----------------------------------------------------------------------
     async def _check_daily_0700_report(self):
         """Send comprehensive morning check report at 07:00 IST."""
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         # Check if between 07:00 and 07:15 IST
         if now_ist.hour == 7 and now_ist.minute < 16:
             supabase = get_supabase()
