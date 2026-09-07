@@ -38,27 +38,50 @@ logger = logging.getLogger("backend.routers.oauth_connectors")
 router = APIRouter(tags=["OAuth Connectors"])
 
 
+_in_memory_state_store: Dict[str, dict] = {}
+
+
 def _redis_set(key: str, value: str, ttl_sec: int = 600) -> bool:
     if _redis_available and _redis_client:
-        return _redis_client.setex(key, ttl_sec, value)
-    return False
+        try:
+            return bool(_redis_client.setex(key, ttl_sec, value))
+        except Exception:
+            pass
+    try:
+        _in_memory_state_store[key] = json.loads(value)
+    except Exception:
+        _in_memory_state_store[key] = {"data": value, "expires_at": time.time() + ttl_sec}
+    return True
 
 
 def _redis_get(key: str) -> Optional[dict]:
     if _redis_available and _redis_client:
-        val = _redis_client.get(key)
-        if val:
-            try:
-                return json.loads(val)
-            except (json.JSONDecodeError, TypeError):
-                return None
+        try:
+            val = _redis_client.get(key)
+            if val:
+                try:
+                    return json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    return None
+        except Exception:
+            pass
+    entry = _in_memory_state_store.get(key)
+    if entry:
+        if time.time() > entry.get("expires_at", 0):
+            _in_memory_state_store.pop(key, None)
+            return None
+        return entry
     return None
 
 
 def _redis_del(key: str) -> bool:
     if _redis_available and _redis_client:
-        return _redis_client.delete(key)
-    return False
+        try:
+            return bool(_redis_client.delete(key))
+        except Exception:
+            pass
+    _in_memory_state_store.pop(key, None)
+    return True
 
 
 def set_oauth_state(state: str, data: dict, ttl_sec: int = 600) -> bool:
@@ -73,7 +96,9 @@ def get_and_validate_oauth_state(state: str) -> Optional[dict]:
     if time.time() > entry.get("expires_at", 0):
         _redis_del(f"oauth_state:{state}")
         return None
-    return entry.get("data")
+    data = entry.get("data")
+    _redis_del(f"oauth_state:{state}")
+    return data
 
 
 def _popup_html(success: bool, provider: str, detail: str = "", extra_payload: str = "{}") -> HTMLResponse:

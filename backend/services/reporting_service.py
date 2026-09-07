@@ -9,6 +9,15 @@ import uuid
 
 logger = logging.getLogger("backend.services.reporting_service")
 
+try:
+    from database import get_supabase
+except ImportError:
+    from backend.database import get_supabase
+
+from .slack_service import send_slack_alert
+from .email_service import send_email_alert
+from .sse_service import push_sse_alert
+
 router = APIRouter()
 active_connections: Dict[str, List[WebSocket]] = {}
 
@@ -26,11 +35,6 @@ async def report_problem(
     ALWAYS report user - nothing is silent.
     Creates realtime_alerts row and pushes to all channels.
     """
-    from database import get_supabase
-    from .slack_service import send_slack_alert
-    from .email_service import send_email_alert
-    from .sse_service import push_sse_alert
-    
     try:
         alert = {
             "id": str(uuid.uuid4()),
@@ -47,15 +51,19 @@ async def report_problem(
             "created_at": datetime.utcnow().isoformat()
         }
         
-        result = get_supabase().table("realtime_alerts").insert(alert).execute()
-        if result.data:
-            alert = result.data[0]
+        res_exec = get_supabase().table("realtime_alerts").insert(alert)
+        if hasattr(res_exec, "data") and isinstance(res_exec.data, list) and res_exec.data:
+            alert = res_exec.data[0]
+        elif hasattr(res_exec, "execute"):
+            result = res_exec.execute()
+            if result and isinstance(getattr(result, "data", None), list) and result.data:
+                alert = result.data[0]
         
         web_data = json.dumps({
             "type": "alert",
-            "data": alert,
+            "data": alert if isinstance(alert, dict) else str(alert),
             "timestamp": datetime.utcnow().isoformat()
-        })
+        }, default=str)
         
         asyncio.create_task(push_sse_alert(website_id, web_data))
         

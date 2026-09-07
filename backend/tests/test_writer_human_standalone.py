@@ -3,16 +3,22 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-import importlib.util
-spec = importlib.util.spec_from_file_location("humanizer", "backend/agents/tools/humanizer.py")
-humanizer = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(humanizer)
-
-humanize_content = humanizer.humanize_content
-detect_ai_patterns = humanizer.detect_ai_patterns
-optimize_for_human_readability = humanizer.optimize_for_human_readability
-ensure_keyword_in_title_content = humanizer.ensure_keyword_in_title_content
-calculate_tone_match = humanizer.calculate_tone_match
+try:
+    from agents.tools.humanizer import (
+        humanize_content,
+        detect_ai_patterns,
+        optimize_for_human_readability,
+        ensure_keyword_in_title_content,
+        calculate_tone_match,
+    )
+except ImportError:
+    from backend.agents.tools.humanizer import (
+        humanize_content,
+        detect_ai_patterns,
+        optimize_for_human_readability,
+        ensure_keyword_in_title_content,
+        calculate_tone_match,
+    )
 
 
 class TestHumanizeContent:

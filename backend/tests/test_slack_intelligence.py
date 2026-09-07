@@ -8,8 +8,8 @@ from services.slack_app_service import SlackAppService
 async def test_slack_reports_generation():
     svc = SlackIntelligenceService()
     
-    with patch("backend.services.slack_app_service.slack_app_service.post_block_message", new=AsyncMock(return_value=True)):
-        with patch("backend.services.slack_intelligence_service.get_supabase") as mock_sup:
+    with patch("services.slack_app_service.slack_app_service.post_block_message", new=AsyncMock(return_value=True)):
+        with patch("services.slack_intelligence_service.get_supabase") as mock_sup:
             mock_sup.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
             
             # 1. Morning Brief

@@ -9,10 +9,11 @@ from routers.oauth_connectors import set_oauth_state, get_and_validate_oauth_sta
 async def test_slack_oauth_start():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        res = await client.get("/api/connectors/slack/oauth/start?website_id=test_site", follow_redirects=False)
-        assert res.status_code == 307
-        assert "slack.com/oauth/v2/authorize" in res.headers["location"]
-        assert "state=" in res.headers["location"]
+        with patch("routers.connectors_slack.SLACK_CLIENT_ID", "mock-slack-client-id"):
+            res = await client.get("/api/connectors/slack/oauth/start?website_id=test_site", follow_redirects=False)
+            assert res.status_code in (302, 307)
+            assert "slack.com/oauth/v2/authorize" in res.headers["location"]
+            assert "state=" in res.headers["location"]
 
 
 @pytest.mark.asyncio

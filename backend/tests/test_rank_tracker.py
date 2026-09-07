@@ -51,7 +51,7 @@ async def test_check_keyword_rankings_with_serper_mock():
         ]
     }
 
-    with patch("backend.services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serper_response)):
+    with patch("services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serper_response)):
         updated = await check_keyword_rankings("test_site_2")
         assert len(updated) >= 1
         target_rec = [u for u in updated if u.get("id") == "trk_test_1"][0]
@@ -78,8 +78,8 @@ async def test_rank_alert_on_significant_drop():
     mock_organic = [{"title": f"Comp {i}", "link": f"https://comp{i}.com"} for i in range(14)]
     mock_organic.append({"title": "Houston Law", "link": "https://houstonlaw.com/truck-accident"})
 
-    with patch("backend.services.serper_service.serper_service.search", new=AsyncMock(return_value={"organic": mock_organic})):
-        with patch("backend.services.rank_tracker.create_rank_alert", new=AsyncMock()) as mock_alert:
+    with patch("services.serper_service.serper_service.search", new=AsyncMock(return_value={"organic": mock_organic})):
+        with patch("services.rank_tracker.create_rank_alert", new=AsyncMock()) as mock_alert:
             await check_keyword_rankings("test_site_alert")
             assert mock_alert.called
             call_kwargs = mock_alert.call_args.kwargs

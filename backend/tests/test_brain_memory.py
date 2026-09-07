@@ -11,8 +11,8 @@ async def test_brain_memory_recall_and_write():
         {"id": "m1", "title": "Topical Authority in Texas Litigation", "content": "Statistics guides perform best.", "memory_type": "preference"}
     ]
     
-    with patch("backend.services.brain_service.BrainService.recall_preferences", new=AsyncMock(return_value=mock_memories)):
-        with patch("backend.services.brain_service.BrainService.remember", new=AsyncMock(return_value="mem_123")):
+    with patch("services.brain_service.BrainService.recall_preferences", new=AsyncMock(return_value=mock_memories)):
+        with patch("services.brain_service.BrainService.remember", new=AsyncMock(return_value="mem_123")):
             # Recall First
             recalled = await brain.recall_preferences("default", "Texas personal injury", top_k=1)
             assert len(recalled) == 1

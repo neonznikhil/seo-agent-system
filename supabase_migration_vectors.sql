@@ -45,6 +45,7 @@ BEGIN
     RAISE NOTICE 'knowledge_base backfill: % converted, % skipped (malformed)', converted, skipped;
 END $$;
 
+SET maintenance_work_mem = '64MB';
 CREATE INDEX IF NOT EXISTS idx_knowledge_base_vec
     ON public.knowledge_base USING ivfflat (embedding_vec vector_cosine_ops) WITH (lists = 100);
 
@@ -73,6 +74,7 @@ BEGIN
     RAISE NOTICE 'brain_memory backfill: % converted, % skipped (malformed)', converted, skipped;
 END $$;
 
+SET maintenance_work_mem = '64MB';
 CREATE INDEX IF NOT EXISTS idx_brain_memory_vec
     ON public.brain_memory USING ivfflat (embedding_vec vector_cosine_ops) WITH (lists = 100);
 

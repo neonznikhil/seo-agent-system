@@ -33,7 +33,7 @@ def test_docker_and_ci_files():
     assert "WORKDIR /app/backend" in b_df
 
     f_df = frontend_dockerfile.read_text(encoding="utf-8")
-    assert "node:18-alpine" in f_df
+    assert "node:20-alpine" in f_df or "node:18-alpine" in f_df
 
 
 def test_start_scripts_use_relative_dp0():

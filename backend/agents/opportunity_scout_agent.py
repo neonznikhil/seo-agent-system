@@ -27,15 +27,11 @@ class OpportunityScoutAgent:
         supabase = get_supabase()
         website_domain = None
         try:
-            w_res = supabase.table("websites").select("domain, focus_keywords, niche").eq("id", self.website_id).single().execute()
+            w_res = supabase.table("websites").select("domain, niche").eq("id", self.website_id).single().execute()
             if w_res.data:
                 website_domain = w_res.data.get("domain")
-                if not niche_keyword:
-                    fks = w_res.data.get("focus_keywords")
-                    if isinstance(fks, list) and fks:
-                        niche_keyword = fks[0]
-                    elif w_res.data.get("niche"):
-                        niche_keyword = w_res.data.get("niche")
+                if not niche_keyword and w_res.data.get("niche"):
+                    niche_keyword = w_res.data.get("niche")
         except Exception as e:
             logger.warning(f"[agents_opportunity_scout_agent] operation failed: {e}")
 

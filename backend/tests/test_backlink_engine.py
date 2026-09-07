@@ -18,8 +18,8 @@ async def test_opportunity_scout_agent_dr_filter():
         ]
     }
     
-    with patch("backend.services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serp)):
-        with patch("backend.agents.opportunity_scout_agent.get_supabase") as mock_sup:
+    with patch("services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serp)):
+        with patch("agents.opportunity_scout_agent.get_supabase") as mock_sup:
             mock_sup.return_value.table.return_value.insert.return_value.execute.return_value = MagicMock()
             mock_sup.return_value.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(data={"domain": "accident.innovatcs.com"})
             
@@ -33,8 +33,8 @@ async def test_authority_calibration_agent():
     calibrator = AuthorityCalibrationAgent(website_id="default")
     mock_llm_json = '{"opportunity_priority": ["statistics_citation"], "minimum_dr_threshold": 30, "priority_asset_type": "statistics_page", "strategic_rationale": "High conversion"}'
     
-    with patch("backend.agents.authority_calibration_agent.call_nim_llm", new=AsyncMock(return_value=mock_llm_json)):
-        with patch("backend.agents.authority_calibration_agent.get_supabase") as mock_sup:
+    with patch("agents.authority_calibration_agent.call_nim_llm", new=AsyncMock(return_value=mock_llm_json)):
+        with patch("agents.authority_calibration_agent.get_supabase") as mock_sup:
             mock_sup.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
             mock_sup.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock()
             

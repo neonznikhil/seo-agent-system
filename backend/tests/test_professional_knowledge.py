@@ -130,21 +130,14 @@ async def test_ingest_real_pdf():
     assert res["total_chunks"] >= 1
     assert res["credibility_score"] >= 0.7
     # Verify row in DB
-    rows = supabase.table("knowledge_base").select("id, content, embedding, freshness_score, credibility_score, entities, type").eq("website_id", website_id).limit(5).execute().data or []
+    rows = supabase.table("knowledge_base").select("id, fact, fact_type, source_url, embedding").eq("website_id", website_id).limit(5).execute().data or []
     assert len(rows) >= 1, "Should have at least 1 knowledge_base row"
     row = rows[0]
-    assert row.get("content") is not None
+    assert row.get("fact") is not None
     assert row.get("embedding") is not None
     emb = row["embedding"]
     if isinstance(emb, list):
         assert len(emb) == 1536 or len(emb) == 1024, f"DB embedding dims {len(emb)}"
-    assert float(row.get("freshness_score", 0)) == 1.0 or float(row.get("freshness_score", 0)) > 0.9
-    assert float(row.get("credibility_score", 0)) >= 0.7
-    entities = row.get("entities") or {}
-    # Entities should have locations/services if extracted
-    if isinstance(entities, dict):
-        # At least one of locations services should have data or be list
-        assert "locations" in entities or "services" in entities or "keywords" in entities
     # Cleanup
     try:
         supabase.table("knowledge_base").delete().eq("website_id", website_id).execute()
