@@ -784,7 +784,7 @@ async def autonomy_overview():
         logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
-        app_res = supabase.table("approvals").select("id", count="exact").eq("status", "pending").execute()
+        app_res = supabase.table("blog_approvals").select("id", count="exact").eq("status", "pending").execute()
         pending_approvals = app_res.count if app_res.count is not None else len(app_res.data or [])
     except Exception as e:
         logger.warning(f"[routers_autonomy] operation failed: {e}")
