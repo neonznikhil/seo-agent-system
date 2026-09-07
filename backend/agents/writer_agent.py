@@ -2209,19 +2209,19 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
             return {'verified': 0, 'failed': len(claims), 'needs_human_review': True}
 
     async def _verify_date_claims(self, claims: List[str]) -> Dict:
-        return {'verified': len(claims), 'outdated': 0}
+        return {'verified': len(claims), 'outdated': 0, 'performed': False}
 
     async def _check_outdated_information(self, content: str) -> List[str]:
         return []
 
     async def _validate_source_citations(self, claims: List[str]) -> Dict:
-        return {'valid': len(claims), 'invalid': 0}
+        return {'valid': len(claims), 'invalid': 0, 'performed': False}
 
     async def _verify_quotes_and_attributions(self, content: str) -> Dict:
-        return {'verified': 0, 'unverified': 0}
+        return {'verified': 0, 'unverified': 0, 'performed': False}
 
     async def _check_numerical_consistency(self, content: str) -> Dict:
-        return {'consistent': True, 'inconsistencies': []}
+        return {'consistent': True, 'inconsistencies': [], 'performed': False}
 
     async def _generate_fact_check_summary(self, claims, stat_results, date_results, citation_validity, quote_results, numerical_check):
         return {
@@ -2253,16 +2253,16 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
         return content
 
     async def _validate_link_structure(self, content: str) -> Dict:
-        return {'valid': True, 'link_count': 0}
+        return {'valid': True, 'link_count': 0, 'performed': False}
 
     async def _extract_citations(self, content: str) -> List[str]:
         return []
 
     async def _validate_citation_format(self, citations: List[str]) -> Dict:
-        return {'valid': True, 'total': len(citations)}
+        return {'valid': True, 'total': len(citations), 'performed': False}
 
     async def _verify_source_authority(self, citations: List[str]) -> Dict:
-        return {'valid': len(citations), 'low_authority_count': 0, 'high_authority_count': len(citations)}
+        return {'valid': len(citations), 'low_authority_count': 0, 'high_authority_count': len(citations), 'performed': False}
 
     async def _compile_quality_scores(self, final_scores: Dict, phase_results: Dict) -> Dict:
         return {
@@ -2279,7 +2279,8 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
             'passed': True,
             'content_length': len(content),
             'phases_validated': len(phase_results),
-            'issues': []
+            'issues': [],
+            'performed': False
         }
 
     async def _export_to_wordpress(self, content: str) -> Dict:
@@ -2288,6 +2289,14 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
         blog_approvals insertion is handled centrally by generate() so this only
         touches WordPress + the blogs mirror table.
         """
+        # Shared quality post-processing (same guards as the crew pipeline):
+        # fix broken LLM CSS values + resolve placeholder template text.
+        try:
+            from agents.crew_blog_writer import sanitize_css_in_html, fix_placeholder_text
+            content = sanitize_css_in_html(content)
+            content = fix_placeholder_text(content, self.primary_keyword or self.topic or "")
+        except Exception as e:
+            logger.debug(f"[Writer] shared sanitize note: {e}")
         from services.wordpress_service import get_wordpress_service
         ws = get_wordpress_service(self.website_id)
         result = await ws.draft_post(
@@ -2316,8 +2325,10 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
                 ]
                 sb.table("blogs").insert({
                     "id": str(uuid.uuid4()),
+                    "website_id": self.website_id,
                     "title": getattr(self, 'generated_title', None) or self.topic,
                     "primary_keyword": self.primary_keyword or self.topic,
+                    "target_keyword": self.primary_keyword or self.topic,
                     "content": content,
                     "html_content": self._markdown_to_html(content),
                     "seo_score": float(self.final_scores.get("expert", 0)) or None,

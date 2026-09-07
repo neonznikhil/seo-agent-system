@@ -5,6 +5,7 @@ Processes real-time alerts, aggregates authentic daily costs, and computes empir
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -88,7 +89,11 @@ async def run_monthly_goal_setting(website_id: str) -> Dict[str, Any]:
                 "backlink_agent": 1.1,
                 "tech_seo_agent": 1.0,
                 "refresh_agent": 1.3
-            }
+            },
+            # Honesty flag: LLM was unavailable, these are heuristic
+            # fallbacks, not model-generated goals.
+            "fallback_used": True,
+            "source": "heuristic_fallback_llm_unavailable"
         }
 
     # Save versioned goal
@@ -152,6 +157,9 @@ async def run_weekly_self_audit(website_id: str) -> Dict[str, Any]:
     
     completed_total = sum(s["completed"] for s in agent_stats.values())
     failed_total = sum(s["failed"] for s in agent_stats.values())
+    total_sample = sum(s["total_runs"] for s in agent_stats.values())
+    # Honesty marker: 100.0 with zero runs is "no data", not perfect health.
+    data_status = "live" if total_sample > 0 else "insufficient_data"
     
     if completed_total > 0:
         wins.append(f"Successfully executed {completed_total} autonomous SEO agent operations across 7 days.")
@@ -182,6 +190,8 @@ async def run_weekly_self_audit(website_id: str) -> Dict[str, Any]:
         "success": True,
         "website_id": website_id,
         "overall_health_score": overall_health,
+        "data_status": data_status,
+        "sample_size": total_sample,
         "agent_stats": agent_stats,
         "wins": wins,
         "failures": failures
@@ -198,6 +208,12 @@ async def run_autonomous_budget_manager(website_id: str) -> Dict[str, Any]:
     brain = BrainService(website_id=website_id)
     
     threshold = 150.0
+    try:
+        env_threshold = os.getenv("BUDGET_THRESHOLD_USD")
+        if env_threshold:
+            threshold = float(env_threshold)
+    except Exception:
+        pass
     try:
         res = supabase.table("autonomous_settings").select("budget_threshold").eq("website_id", website_id).single().execute()
         if res.data and res.data.get("budget_threshold"):

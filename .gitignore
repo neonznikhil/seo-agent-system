@@ -18,6 +18,7 @@ frontend-next/.env.production.local
 # Local Data & SQLite / JSON runtime caches
 data/
 backend/local_data/
+backups/
 *.sqlite
 *.db
 backend/storage/

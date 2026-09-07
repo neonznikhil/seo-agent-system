@@ -1,5 +1,11 @@
 # RANKFORGE - Autonomous SEO Agent System
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/neonznikhil/seo-agent-system)
+
+> One-click deploy uses `render.yaml` (backend API). Set the env keys from
+> the table below in the Render dashboard after deploy. Run the 5 SQL
+> migration files in Supabase SQL Editor before first boot.
+
 > [!WARNING]
 > ### CRITICAL SECURITY & DEPLOYMENT NOTICE: ROTATE PREVIOUSLY USED SECRETS
 > **Prior to production deployment, immediately rotate any credentials used during development:**
@@ -8,93 +14,78 @@
 > 3. **AI & API Keys**: Rotate your NVIDIA NIM API key (`build.nvidia.com`) and search keys (Serper, Tavily).
 > 4. **Git History Notice**: If any secret was committed in earlier revisions, git history preserves those values. You must treat any previously committed development keys as compromised and rotate them immediately.
 
-## Setup
+## Setup (verified working order)
 
-1. Clone repo
-2. Create venv: `python -m venv venv && source venv/bin/activate` (Windows: `venv\\Scripts\\activate`)
-3. Install deps: `pip install -r requirements.txt`
-4. Copy `.env.example` to `.env` and fill values
-5. Run Supabase SQL schemas: `supabase_schema.sql` then `supabase_schema_v2.sql`
-6. Start backend: `uvicorn backend.main:app --reload`
-7. Start frontend: `cd frontend-next && npm install && npm run dev`
+### 0. Requirements
+- **Python 3.11** (production Docker uses `python:3.11-slim`; local dev on 3.11 recommended — 3.14 works but `crewai` is unavailable there and the direct-NIM fallback is used instead)
+- **Node.js 20+** for `frontend-next`
+- Supabase project (free tier works), NVIDIA NIM API key (free tier), Serper API key
+- Optional: WordPress site (publishing), Redis (rate limiting), GSC service account
 
-## Lightweight Deployment (No Docker)
-
-This system is designed to run lightweight without Docker or heavy infrastructure. All you need is:
-
-### Backend Requirements
-- Python 3.8+
-- Supabase account (free tier works)
-- NVIDIA API key for NIM models (free tier available)
-- Crawlee API key (free tier available)
-- Optional: Redis for rate limiting (system works without it with warning logs)
-- Optional: WordPress site for publishing (system works in preview-only mode)
-
-### Frontend Requirements
-- Node.js 16+
-- Modern browser
-
-### Running Locally
-
-**Backend:**
+### 1. Backend
 ```bash
+python -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn backend.main:app --reload --port 8000
+cp .env.example .env   # then fill SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, NVIDIA_API_KEY, SERPER_API_KEY, ...
+cd backend && uvicorn main:app --reload --port 8000
 # Health check: http://localhost:8000/health
 ```
 
-**Frontend:**
+### 2. Database (Supabase SQL Editor, in this order — all idempotent)
+1. `supabase_master_complete.sql` — base tables
+2. `supabase_migration_missing.sql` — blogs, agent_memory, daily_searches, analytics_data, `knowledge_base.last_used`
+3. `supabase_migration_aeo.sql` — AEO/GEO + backlink queue tables, content_log AEO flags
+4. `supabase_migration_vectors.sql` — pgvector backfill + `match_knowledge` / `match_brain_memory` RPCs
+5. `supabase_migration_rls.sql` — least-privilege RLS (anon locked out; backend uses service_role)
+
+### 3. Frontend
 ```bash
-cd frontend-next
-npm install
-npm run dev -- --port 3000
-# Open: http://localhost:3000/dashboard
+cd frontend-next && npm install && npm run dev -- --port 3000
+# Open: http://localhost:3000
 ```
 
-**Redis (Optional - for queue locks):**
-- Download Redis from https://redis.io/download
-- Run `redis-server` locally
-- Or skip - system works without Redis with warning log
+### 4. Environment variables (root `.env`)
+| Key | Required | Purpose |
+|-----|----------|---------|
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | yes | backend DB access (service_role bypasses RLS) |
+| `SUPABASE_KEY` (anon) | yes | frontend public client (RLS denies writes) |
+| `NVIDIA_API_KEY` | yes | LLM + embeddings (`NIM_LLM_MODEL`, `NIM_EMBED_MODEL`) |
+| `SERPER_API_KEY` | yes | SERP data (blog research, AEO citation checks) |
+| `TAVILY_API_KEY` | no | SERP fallback |
+| `WORDPRESS_SITE_URL`, `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD` | no | publishing (preview-only mode without) |
+| `ENCRYPTION_KEY`, `JWT_SECRET` | yes | credential encryption + auth (unique per environment) |
+| `BUDGET_THRESHOLD_USD` | no | daily spend cap, default `150.0` |
+| `NEXT_PUBLIC_API_URL` | frontend | backend base URL (default `http://127.0.0.1:8000`) |
 
-**Supabase Setup:**
-1. Create a new Supabase project
-2. Run `supabase_schema.sql` in the SQL Editor
-3. Run `supabase_schema_v2.sql` in the SQL Editor
-4. Enable the vector extension if not already enabled
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and fill in:
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_KEY`: Your Supabase anon key
-- `SUPABASE_SERVICE_KEY`: Your Supabase service role key
-- `NVIDIA_API_KEY`: Your NVIDIA API key for NIM models
-- `Crawlee_API_KEY`: Your Crawlee API key
-- `WORDPRESS_URL`: Your WordPress site URL (optional)
-- `WORDPRESS_USER`: WordPress username (optional)
-- `WORDPRESS_APP_PASSWORD`: WordPress application password (optional)
-- `GSC_CREDENTIALS_PATH`: Path to Google Service Account JSON (optional)
-- `REDIS_URL`: Redis connection string (defaults to localhost:6379)
-- `NEXT_PUBLIC_API_URL`: Frontend API URL (defaults to http://localhost:8000)
-
-## Boss Demo Script (RANKFORGE)
+## CTO Demo Script (RANKFORGE — all commands verified)
 
 ```bash
-echo "=== RANKFORGE DEMO ==="
-echo "1. Health check"
+echo "=== 1. Health check ==="
 curl http://localhost:8000/health
 
-echo "2. List websites"
+echo "=== 2. List websites ==="
 curl http://localhost:8000/api/websites
 
-echo "3. Kickoff crew"
-python -c "import asyncio; from backend.agents.crew import plan_blogs_for_website; print(asyncio.run(plan_blogs_for_website('demo-wid')))"
+echo "=== 3. AEO overview (schema coverage + AI readiness) ==="
+curl "http://localhost:8000/api/aeo?website_id=YOUR_WEBSITE_ID"
+
+echo "=== 4. AI-search llms.txt ==="
+curl http://localhost:8000/llms.txt | head -20
+
+echo "=== 5. Keyword plan for a website (sync call) ==="
+python -c "from backend.agents.crew import plan_blogs_for_website; print(plan_blogs_for_website('YOUR_WEBSITE_ID'))"
 ```
+
+Or run the full 9-step live walkthrough: `python backend/scripts/demo_e2e.py`
 
 ## Testing
 
 ```bash
-python -m pytest backend/tests/ -v
+# Fast per-commit suite (excludes live-API tests)
+python -m pytest backend/tests/ -q -m "not slow"
+
+# Full suite including live NIM/SERP/WordPress tests (slow, ~10+ min)
+python -m pytest backend/tests/ -q
 ```
 
 ## AI Web Browsing & Real-Time Data Collection

@@ -46,6 +46,7 @@ async def get_weekly_report(website_id: Optional[str] = Query(None)):
                 "completed_tasks": len(completed),
                 "failed_tasks": len(failed),
                 "success_rate": round((len(completed) / max(1, len(tasks))) * 100, 1) if tasks else 100.0,
+                "data_status": "live" if tasks else "insufficient_data",
                 "created_at": datetime.utcnow().isoformat()
             }
         }
