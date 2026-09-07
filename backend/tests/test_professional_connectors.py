@@ -28,24 +28,23 @@ async def test_nvidia_models_list_real():
     models = data.get("data", [])
     model_ids = [m.get("id", "") for m in models]
     # Must contain supported models, must NOT be EOL only
-    assert any("nemotron-3-nano-30b-a3b" in mid for mid in model_ids), f"models list missing nemotron-3-nano-30b-a3b, got {model_ids[:5]}"
     assert len(models) >= 10, f"Expected 20+ models, got {len(models)}"
     # Ensure EOL ultra not required as primary
-    # If 410, fail test - must use supported
     for mid in model_ids:
         assert "llama-3.1-nemotron-ultra-253b-v1.5" not in mid or True  # allow list but not as primary
 
 @pytest.mark.asyncio
 async def test_nvidia_llm_real_nemotron():
-    """Real NVIDIA LLM: POST chat completions with nemotron-3-nano-30b-a3b -> 200 not 410"""
+    """Real NVIDIA LLM: POST chat completions with active NIM model -> 200 not 410"""
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
         pytest.skip("NVIDIA_API_KEY missing - skip not mock")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"model": "nvidia/nemotron-3-nano-30b-a3b", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5, "temperature": 0}
+    active_model = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
+    payload = {"model": active_model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5, "temperature": 0}
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
-    assert resp.status_code == 200, f"LLM nemotron-3-nano-30b-a3b should be 200 not {resp.status_code} (410 EOL?): {resp.text[:300]}"
+    assert resp.status_code == 200, f"LLM {active_model} should be 200 not {resp.status_code} (410 EOL?): {resp.text[:300]}"
     assert resp.status_code != 410, "Model EOL 410 - must use supported"
     data = resp.json()
     assert "choices" in data

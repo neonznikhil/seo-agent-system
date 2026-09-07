@@ -3,6 +3,7 @@ import os
 import re
 import pytest
 import uuid
+from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -10,15 +11,35 @@ load_dotenv()
 
 from database import get_supabase
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+def _resolve_path(rel_path: str) -> Path:
+    clean = rel_path[8:] if rel_path.startswith("backend/") else rel_path
+    for base in [PROJECT_ROOT, BACKEND_DIR, Path(".")]:
+        p = base / clean
+        if p.exists():
+            return p
+        p_raw = base / rel_path
+        if p_raw.exists():
+            return p_raw
+    return Path(rel_path)
+
+def _read_file(rel_path: str) -> str:
+    p = _resolve_path(rel_path)
+    if p.exists() and p.is_file():
+        return p.read_text(encoding="utf-8")
+    raise FileNotFoundError(f"Cannot find {rel_path} (resolved: {p})")
+
 def test_apscheduler_single_authority_ist():
     """APScheduler SINGLE AUTHORITY: scheduler.py:20 IST Asia/Kolkata, autonomous_loop while True removed, process_autonomous_cycle every 5m"""
-    content = open("backend/agents/scheduler.py", encoding="utf-8").read()
+    content = _read_file("backend/agents/scheduler.py")
     assert "Asia/Kolkata" in content, "Scheduler should use IST Asia/Kolkata"
     assert "Interval" in content or "interval" in content.lower()
     # Check autonomous_loop while True removed
-    autonomous_path = "backend/agents/autonomous_loop.py"
-    if os.path.exists(autonomous_path):
-        auto_content = open(autonomous_path, encoding="utf-8").read()
+    autonomous_path = _resolve_path("backend/agents/autonomous_loop.py")
+    if autonomous_path.exists():
+        auto_content = _read_file("backend/agents/autonomous_loop.py")
         # Should not have infinite while True without break
         # Allow but ensure lifespan not infinite loop
         assert "while True" not in auto_content or "process_autonomous_cycle" in auto_content, "autonomous_loop should not have raw while True infinite loop"
@@ -27,12 +48,12 @@ def test_apscheduler_single_authority_ist():
     assert "auto_publish" in content.lower()
     assert "content_refresh" in content.lower() or "refresh" in content.lower()
     # Check lifespan no infinite loop
-    main_content = open("backend/main.py", encoding="utf-8").read()
+    main_content = _read_file("backend/main.py")
     assert "lifespan" in main_content.lower() or "scheduler" in main_content.lower()
 
 def test_three_crew_jobs():
     """3 Crew jobs: job_daily_content_gap 09:00 IST, job_auto_publish_approval every 5m, job_content_refresh 10:30"""
-    sched_content = open("backend/agents/scheduler.py", encoding="utf-8").read()
+    sched_content = _read_file("backend/agents/scheduler.py")
     # Check 09:00
     assert "09:00" in sched_content or "9:00" in sched_content or "09" in sched_content, "Should have 09:00 job"
     # Check 10:30
@@ -45,10 +66,10 @@ def test_three_crew_jobs():
 
 def test_decision_engine_should_run():
     """Decision Engine should_run() specific logic"""
-    path = "backend/agents/autonomous_decision_engine.py"
-    if not os.path.exists(path):
+    path = _resolve_path("backend/agents/autonomous_decision_engine.py")
+    if not path.exists():
         pytest.skip("autonomous_decision_engine.py not found")
-    content = open(path, encoding="utf-8").read()
+    content = _read_file("backend/agents/autonomous_decision_engine.py")
     assert "should_run" in content, "Should have should_run method"
     assert "last_run" in content.lower() or "20h" in content or "20" in content
     assert "freshness" in content.lower() or "0.7" in content
@@ -58,27 +79,32 @@ def test_decision_engine_should_run():
 
 def test_self_healing():
     """Self-healing: NIM timeout retry fallback, WP 401 role check not deactivate if read 200, Supabase down queue, realtime_alerts critical x2"""
-    crew_content = open("backend/agents/crew_blog_writer.py", encoding="utf-8").read()
+    crew_content = _read_file("backend/agents/crew_blog_writer.py")
     assert "tenacity" in crew_content.lower() or "retry" in crew_content.lower()
     assert "fallback" in crew_content.lower()
     assert "nemotron-3-nano-30b-a3b" in crew_content
     # WP 401 role check not deactivate if read 200
-    wp_content = open("backend/services/wordpress_service.py", encoding="utf-8").read()
+    wp_content = _read_file("backend/services/wordpress_service.py")
     assert "is_active" in wp_content
     assert "401" in wp_content
     assert "rest_cannot_create" in wp_content or "role" in wp_content.lower()
     assert "Hostinger" in wp_content
     # Supabase down queue
-    assert "queue.json" in wp_content or "local_data" in open("backend/database.py", encoding="utf-8").read() or "queue" in crew_content.lower()
+    assert "queue.json" in wp_content or "local_data" in _read_file("backend/database.py") or "queue" in crew_content.lower()
     # realtime_alerts - check in strategy_agent or scheduler if not in crew
-    combined = crew_content.lower() + open("backend/agents/scheduler.py", encoding="utf-8").read().lower() + open("backend/services/slack_intelligence_service.py", encoding="utf-8", errors="ignore").read().lower() if os.path.exists("backend/services/slack_intelligence_service.py") else crew_content.lower()
+    slack_path = _resolve_path("backend/services/slack_intelligence_service.py")
+    slack_text = _read_file("backend/services/slack_intelligence_service.py").lower() if slack_path.exists() else ""
+    combined = crew_content.lower() + _read_file("backend/agents/scheduler.py").lower() + slack_text
     assert "realtime_alerts" in combined or "critical" in combined or "alert" in combined
 
 @pytest.mark.asyncio
 async def test_approval_queue_real_db():
     """Approval Queue: GET /api/approvals/list?website_id&status=pending JOIN blogs citations real, POST approve validates X-User-Id 401"""
     from httpx import AsyncClient, ASGITransport
-    from backend.main import app
+    try:
+        from main import app
+    except ImportError:
+        from backend.main import app
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # Without X-User-Id, approve should 401
@@ -105,21 +131,12 @@ async def test_approval_queue_real_db():
 @pytest.mark.asyncio
 async def test_dashboard_real_health():
     """Dashboard real health not 96.5, cost not 18.50, 7 jobs, logs 5s"""
-    # Check frontend dashboard code
-    dash_path = "frontend-next/app/page.tsx"
-    if not os.path.exists(dash_path):
-        dash_path = "frontend-next/app/dashboard/page.tsx"
-    if not os.path.exists(dash_path):
-        # Try find any dashboard file
-        import glob
-        candidates = glob.glob("frontend-next/**/page.tsx", recursive=True)
-        for c in candidates:
-            if "dashboard" in c.lower():
-                dash_path = c
-                break
-    if not os.path.exists(dash_path):
+    dash_path = _resolve_path("frontend-next/app/page.tsx")
+    if not dash_path.exists():
+        dash_path = _resolve_path("frontend-next/app/dashboard/page.tsx")
+    if not dash_path.exists():
         pytest.skip("Dashboard page.tsx not found")
-    content = open(dash_path, encoding="utf-8").read()
+    content = _read_file(str(dash_path))
     assert "Autonomous" in content or "autonomous" in content.lower()
     assert "11AM" in content or "11am" in content.lower() or "Next publish" in content
     assert "/api/autonomous/settings" in content or "autonomous" in content.lower()
@@ -146,8 +163,7 @@ async def test_dashboard_real_health():
 
 def test_e2e_script_9_steps_real():
     """E2E Script 9 steps real: website real id not simulated 602e397a, connectors, KB, gap, Crew, verify, publish, dashboard, DEMO_READY"""
-    demo_path = "backend/scripts/demo_e2e.py"
-    content = open(demo_path, encoding="utf-8").read()
+    content = _read_file("backend/scripts/demo_e2e.py")
     # Ensure no simulated website_id as hardcoded primary (allow mention in comment about previous state)
     simulated_602_count = content.count("602e397a")
     assert simulated_602_count <= 2, f"Should have at most comment about 602e397a, got {simulated_602_count}"
@@ -176,7 +192,7 @@ def test_e2e_script_9_steps_real():
 
 def test_scheduler_ist_config():
     """Verify scheduler uses IST timezone"""
-    sched = open("backend/agents/scheduler.py", encoding="utf-8").read()
+    sched = _read_file("backend/agents/scheduler.py")
     assert "Asia/Kolkata" in sched
     # Check not using UTC
     assert "IST" in sched or "Kolkata" in sched

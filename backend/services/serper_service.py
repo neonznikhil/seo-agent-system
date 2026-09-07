@@ -143,14 +143,18 @@ class SerperService:
         language: Optional[str] = "en",
         num: int = 10,
         search_type: str = "search",
-        auto_fallback: bool = True
+        auto_fallback: bool = True,
+        num_results: Optional[int] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """Primary search call returning structured organic, PAA, answerBox, knowledgeGraph, relatedSearches.
 
         Fallback order: Serper.dev -> Tavily -> Crawlee scrape. When every source
-        fails this returns EMPTY organic results with a structured error â€”
+        fails this returns EMPTY organic results with a structured error —
         fabricated SERP rows are never generated.
         """
+        if num_results is not None:
+            num = num_results
         _CONNECTOR_STATE["total_calls"] += 1
         payload = {"q": query, "location": location, "language": language, "num": num, "type": search_type}
 

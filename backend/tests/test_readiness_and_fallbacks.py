@@ -83,7 +83,7 @@ async def test_nim_generate_with_feedback_timeout():
         await asyncio.sleep(2.0)
         return "slow"
 
-    with patch("backend.services.nim_client.generate", new=slow_gen):
+    with patch("services.nim_client.generate", new=slow_gen):
         with pytest.raises(ValueError) as exc:
             await nim_generate_with_feedback("prompt", timeout_seconds=1, job_label="Test Call")
         assert "timed out after 1s" in str(exc.value)
@@ -91,7 +91,7 @@ async def test_nim_generate_with_feedback_timeout():
 
 @pytest.mark.asyncio
 async def test_nim_generate_with_feedback_401():
-    with patch("backend.services.nim_client.generate", side_effect=Exception("HTTP 401 Unauthorized")):
+    with patch("services.nim_client.generate", side_effect=Exception("HTTP 401 Unauthorized")):
         with pytest.raises(ValueError) as exc:
             await nim_generate_with_feedback("prompt", timeout_seconds=5)
         assert "API key is invalid or expired" in str(exc.value)
@@ -99,7 +99,7 @@ async def test_nim_generate_with_feedback_401():
 
 @pytest.mark.asyncio
 async def test_nim_generate_with_feedback_429():
-    with patch("backend.services.nim_client.generate", side_effect=Exception("HTTP 429 Rate Limit")):
+    with patch("services.nim_client.generate", side_effect=Exception("HTTP 429 Rate Limit")):
         with pytest.raises(ValueError) as exc:
             await nim_generate_with_feedback("prompt", timeout_seconds=5)
         assert "rate limit reached" in str(exc.value).lower()
@@ -110,7 +110,7 @@ async def test_nim_generate_with_feedback_429():
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_serper_search_safe_quota_exceeded():
-    with patch("backend.services.serper_service.serper_service.search", side_effect=Exception("403 Quota exceeded")):
+    with patch("services.serper_service.serper_service.search", side_effect=Exception("403 Quota exceeded")):
         results = await serper_search_safe("car accident law", num_results=5)
         assert results == []  # Never crashes caller
 
@@ -123,7 +123,7 @@ async def test_serper_search_safe_success():
             {"title": "Result 2", "link": "https://example.com/2"},
         ]
     }
-    with patch("backend.services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_results)):
+    with patch("services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_results)):
         results = await serper_search_safe("car accident law", num_results=2)
         assert len(results) == 2
         assert results[0]["title"] == "Result 1"

@@ -827,6 +827,12 @@ async def delete_content_item(blog_id: str, request: Request):
 app.include_router(auth_router, prefix="/api")                 # /api/auth/*
 app.include_router(health_router, prefix="/api")               # /api/health/*
 
+
+@app.get("/health", include_in_schema=False)
+async def _render_health_alias():
+    """Bare /health alias — render.yaml healthCheckPath points here."""
+    return {"status": "ok", "service": "rankforge-backend"}
+
 # Websites & Workspaces
 app.include_router(websites_router, prefix="/api")                    # /api/websites/*
 app.include_router(setup_router, prefix="/api")                # /api/setup/*
@@ -886,7 +892,7 @@ app.include_router(autonomy_router, prefix="/api")             # /api/autonomy/*
 app.include_router(scheduler_router, prefix="/api")            # /api/scheduler/*
 app.include_router(workforce_router, prefix="/api")            # /api/workforce/*
 app.include_router(dashboard_router, prefix="/api")            # /api/dashboard/*
-app.include_router(phase3_router, prefix="/api")               # /api/phase3/*
+app.include_router(phase3_router)                               # declares its own /api/* paths (must stay unprefixed)
 app.include_router(rank_tracker_router, prefix="/api")         # /api/rankings/*
 app.include_router(demo_router, prefix="/api")                 # /api/demo/*
 app.include_router(deep_diagnostic_router, prefix="/api")         # /api/system/*

@@ -5,8 +5,6 @@ from agents.writer_agent import WriterPipeline
 
 @pytest.mark.asyncio
 async def test_writer_pipeline_generation():
-    pipeline = WriterPipeline(website_id="default")
-    
     mock_draft = """# Complete Guide to Texas Commercial Vehicle Settlements
 
 This authoritative analysis explains statutory recovery frameworks under Texas law.
@@ -22,13 +20,16 @@ Settlement amounts vary based on medical damages and commercial insurance limits
 Under Texas statute of limitations, claims must be filed within 2 years.
 """
     mock_serp = {"organic": [{"title": "Texas Guide", "link": "https://example.com", "snippet": "Legal text"}]}
-    with patch("backend.database.call_nim_llm", new=AsyncMock(return_value=mock_draft)):
-        with patch("backend.services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serp)):
-            with patch("backend.agents.writer_agent.WriterPipeline._phase_multi_step_content_writing", new=AsyncMock(return_value={"content": mock_draft, "word_count": 1850})):
-                with patch("backend.database.get_supabase") as mock_sup:
+    with patch("database.call_nim_llm", new=AsyncMock(return_value=mock_draft)):
+        with patch("services.serper_service.serper_service.search", new=AsyncMock(return_value=mock_serp)):
+            with patch("agents.writer_agent.WriterPipeline._phase_multi_step_content_writing", new=AsyncMock(return_value={"content": mock_draft, "word_count": 1850})):
+                with patch("database.get_supabase") as mock_sup:
                     mock_sup.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(count=5, data=[{"id": "kb_1"}])
                     mock_sup.return_value.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": "test_draft_id"}])
                     mock_sup.return_value.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
+            
+                    pipeline = WriterPipeline(website_id="default")
+                    pipeline.supabase = mock_sup.return_value
             
                     # Run test generation
                     res = await pipeline.generate(

@@ -247,7 +247,13 @@ def get_nim_state() -> dict:
 
 def _log_task_fail(website_id, action, error: str) -> None:
     try:
-        from .services.website_service import get_default_website_id
+        try:
+            from services.website_service import get_default_website_id
+        except (ImportError, ValueError):
+            try:
+                from .services.website_service import get_default_website_id
+            except (ImportError, ValueError):
+                from backend.services.website_service import get_default_website_id
         resolved_id = website_id or get_default_website_id()
         payload = {
             "agent_name": "database",
@@ -319,7 +325,13 @@ async def _embed_request(payload: dict, headers: dict) -> List[float]:
 async def get_embedding(text: str, website_id: Optional[str] = None) -> List[float]:
     """Generate 1536-dimension dense vector via central nim_client with circuit breaker and fallback."""
     try:
-        from .services.nim_client import embed
+        try:
+            from services.nim_client import embed
+        except (ImportError, ValueError):
+            try:
+                from .services.nim_client import embed
+            except (ImportError, ValueError):
+                from backend.services.nim_client import embed
         vec = await embed(text)
         if not vec:
             raise NIMEmbeddingError(f"Embedding API returned empty vector for '{text[:50]}'")

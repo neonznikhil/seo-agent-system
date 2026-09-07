@@ -320,20 +320,24 @@ class AutonomousDecisionEngine:
         # 6. Generate from site niche or domain — but NEVER return generic fallback if not grounded
         # Instead return None to signal no grounded keyword available (forces skip rather than unrelated blog)
         try:
-            site = supabase.table("websites").select("niche, domain, name").eq("id", self.website_id).single().execute().data
+            site = supabase.table("websites").select("niche, domain").eq("id", self.website_id).single().execute().data
             if site:
-                niche = site.get("niche") or site.get("name") or site.get("domain")
+                niche = site.get("niche") or site.get("domain")
                 if niche and niche.lower() not in ["professional services", "strategy and best practices", "autonomous seo optimization strategy"]:
                     # Validate niche grounding
                     try:
                         from services.knowledge_service import KnowledgeService
                         ks = KnowledgeService(website_id=self.website_id)
                         hits = await ks.retrieve_relevant_hybrid(niche, top_k=3)
-                        if hits and sum(float(h.get("final_score", 0)) for h in hits)/len(hits) >= 0.55:
+                        if hits:
+                            avg_score = sum(float(h.get("final_score", 0)) for h in hits) / len(hits)
+                            if avg_score >= 0.55:
+                                return f"{niche} strategy and best practices"
+                        else:
                             return f"{niche} strategy and best practices"
                     except Exception as e:
                         logger.warning("[DecisionEngine] Niche grounding check failed: %s", e)
-                    # If not grounded, don't return generic
+                        return f"{niche} strategy and best practices"
                     return None
         except Exception as e:
             logger.warning("[DecisionEngine] Website niche fetch failed: %s", e)
