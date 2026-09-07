@@ -103,7 +103,11 @@ def _update_approval(approval_id: str, updates: dict):
         try:
             get_supabase().table("blog_approvals").update(safe_updates).eq("id", approval_id).execute()
         except Exception:
-            pass
+            try:
+                sb_safe = {k: v for k, v in safe_updates.items() if k not in ("wordpress_post_id", "wp_post_id")}
+                get_supabase().table("blog_approvals").update(sb_safe).eq("id", approval_id).execute()
+            except Exception:
+                pass
         save_local_approval(safe_updates)
 
 

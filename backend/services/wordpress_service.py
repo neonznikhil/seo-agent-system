@@ -428,8 +428,12 @@ class WordPressService:
         meta_desc = meta_description or (content[:155].replace("<p>", "").replace("</p>", "").strip() if content else "")
 
         try:
-            from agents.crew_blog_writer import wrap_tldr_css
+            from agents.crew_blog_writer import wrap_tldr_css, sanitize_css_in_html, replace_faq_with_accordion, _clean_pure_html, fix_blog_structure
+            content = _clean_pure_html(content)
+            content = replace_faq_with_accordion(content, {}, topic=title)
+            content = fix_blog_structure(content, title, {})
             content = wrap_tldr_css(content)
+            content = sanitize_css_in_html(content)
         except Exception as e:
             logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
@@ -479,20 +483,17 @@ class WordPressService:
                             link = draft.get("link") or edit_url
                             logger.info(f"Successfully created WordPress draft {draft_id} at {edit_url}")
 
-                            # Sync to Supabase content_log & blog_approvals if matching row
+                            # Sync to Supabase content_log if matching row
                             try:
                                 supabase = get_supabase()
                                 supabase.table("content_log").update({
                                     "wp_post_id": draft_id,
                                     "wp_draft_url": link,
+                                    "wordpress_url": link,
                                     "status": "draft"
                                 }).eq("website_id", website_id).eq("title", title).execute()
-                                supabase.table("blog_approvals").update({
-                                    "wordpress_post_id": draft_id,
-                                    "wordpress_url": link,
-                                }).eq("website_id", website_id).eq("title", title).execute()
                             except Exception as e:
-                                logger.warning(f"[services_wordpress_service] operation failed: {e}")
+                                logger.debug(f"[services_wordpress_service] content_log sync note: {e}")
 
                             return {
                                 "success": True,
@@ -530,6 +531,15 @@ class WordPressService:
 
         payload = {}
         if content is not None:
+            try:
+                from agents.crew_blog_writer import wrap_tldr_css, sanitize_css_in_html, replace_faq_with_accordion, _clean_pure_html, fix_blog_structure
+                content = _clean_pure_html(content)
+                content = replace_faq_with_accordion(content, {}, topic=title or "")
+                content = fix_blog_structure(content, title or "", {})
+                content = wrap_tldr_css(content)
+                content = sanitize_css_in_html(content)
+            except Exception as e:
+                logger.warning(f"[services_wordpress_service] update sanitize note: {e}")
             payload["content"] = content
         if title is not None:
             payload["title"] = title
@@ -764,8 +774,27 @@ class WordPressService:
             "focus_keyword": f_kw,
         }
         try:
-            from agents.crew_blog_writer import wrap_tldr_css
+            from agents.crew_blog_writer import wrap_tldr_css, sanitize_css_in_html, replace_faq_with_accordion, _clean_pure_html, fix_blog_structure
+            html_content = _clean_pure_html(html_content)
+            html_content = replace_faq_with_accordion(html_content, {}, topic=title)
+            html_content = fix_blog_structure(html_content, title, {})
             html_content = wrap_tldr_css(html_content)
+            html_to_publish = sanitize_css_in_html(html_content)
+            html_content = html_to_publish
+        except ImportError:
+            try:
+                import re as _re_css
+                def _fallback_sanitize(h: str) -> str:
+                    h = _re_css.sub(r'(\d*)\.px', lambda m: (m.group(1) or '0') + 'px', h)
+                    h = _re_css.sub(r'\b0 px px\b', '0 2px 4px', h)
+                    h = _re_css.sub(r'\b0 px\b', '0px', h)
+                    h = _re_css.sub(r'#([0-9a-fA-F]{2})\s+([0-9a-fA-F]{4})\b', r'#\1\2', h)
+                    h = _re_css.sub(r'#([0-9a-fA-F]{5})\s+([0-9a-fA-F]{1})\b', r'#\1\2', h)
+                    h = _re_css.sub(r'(\d+)\s+px\b', r'\1px', h)
+                    return h
+                html_content = _fallback_sanitize(html_content)
+            except Exception as e:
+                logger.warning(f"[services_wordpress_service] operation failed: {e}")
         except Exception as e:
             logger.warning(f"[services_wordpress_service] operation failed: {e}")
 

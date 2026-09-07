@@ -379,45 +379,83 @@ export default function WriterPage() {
       // Start generation
       const res = await post(`/api/crew/generate`, payload);
 
-      // Brief animation timeout (max 3.5 seconds)
-      if (eventSource) {
-        await new Promise<void>((resolve) => {
-          eventSource!.onmessage = (event) => {
+      if (res?.success === false) {
+        if (eventSource) eventSource.close();
+        throw new Error(res.detail || res.message || "Generation failed to start");
+      }
+
+      // Await real completion via SSE or polling (up to 180s)
+      let blog: any = null;
+      let statusRes: any = null;
+
+      await new Promise<void>((resolve) => {
+        let isDone = false;
+
+        const finish = () => {
+          if (!isDone) {
+            isDone = true;
+            try { eventSource?.close(); } catch {}
+            clearInterval(pollInterval);
+            clearTimeout(maxTimeout);
+            resolve();
+          }
+        };
+
+        if (eventSource) {
+          eventSource.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data);
               if (data.event === "phase_update") {
                 const entry = { phase: data.phase, status: data.status, message: data.message, ts: data.timestamp };
                 setPhaseHistory((prev) => [...prev, entry]);
                 setActiveStage(data.message);
-                if (data.phase === "complete") {
-                  eventSource?.close();
-                  resolve();
+                if (data.phase === "complete" || data.phase === "completed") {
+                  finish();
+                } else if (data.phase === "failed" || data.status === "failed") {
+                  finish();
                 }
               }
             } catch {}
           };
-          setTimeout(() => {
-            eventSource?.close();
-            resolve();
-          }, 3500);
-        });
-      }
+          eventSource.onerror = () => {
+            // connection dropped, fallback to polling
+          };
+        }
 
-      if (res.success === false) {
-        throw new Error(res.detail || res.message || "Generation failed");
-      }
+        // Periodic polling check every 3s
+        const pollInterval = setInterval(async () => {
+          try {
+            const s = await get(`/api/crew/status/${blogId}`);
+            if (s?.blog && (s.blog.status === "published" || s.blog.status === "draft" || s.blog.status === "pending" || s.status === "completed" || s.status === "published")) {
+              statusRes = s;
+              blog = s.blog;
+              finish();
+            }
+          } catch {}
+        }, 3000);
 
-      // Fetch final result
-      const statusRes = await get(`/api/crew/status/${blogId}`);
-      const blog = statusRes?.blog || res?.article || {};
+        // Max safety timeout (180s)
+        const maxTimeout = setTimeout(() => {
+          finish();
+        }, 180000);
+      });
+
+      // Fetch final result if not populated from polling
+      if (!blog) {
+        statusRes = await get(`/api/crew/status/${blogId}`);
+        blog = statusRes?.blog || res?.article || {};
+      }
 
       setActiveStage("✅ Complete!");
       setCompletedResult({ ...res, ...blog, blog_id: blogId });
 
-      if (res.real_wp_draft_created || res.wp_post_id) {
-        setWpDraftMsg(`✓ Real WordPress Draft #${res.wp_post_id} created in accident.innovatcs.com WP Admin!`);
-      } else if (blog.wordpress_url || res.wordpress_url) {
-        setWpDraftMsg(`WordPress draft ready: ${blog.wordpress_url || res.wordpress_url}`);
+      const wpPostId = blog.wp_post_id || blog.wordpress_post_id || res.wp_post_id;
+      const wpUrl = blog.wordpress_url || blog.wp_draft_url || res.wordpress_url;
+
+      if (wpPostId) {
+        setWpDraftMsg(`✓ Real WordPress Draft #${wpPostId} created in accident.innovatcs.com WP Admin!`);
+      } else if (wpUrl) {
+        setWpDraftMsg(`WordPress draft ready: ${wpUrl}`);
       }
       setStatusMessage(
         `✅ "${blog.title || targetTitle || kw}" generated — SEO ${blog.seo_score || 95}/100 · ${blog.word_count || wordCountTarget} words`

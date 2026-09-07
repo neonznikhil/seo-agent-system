@@ -1624,6 +1624,118 @@ async def identify_niche(kb_sample: List[Dict[str, Any]]) -> str:
     # fallback heuristic: first 3 words of most frequent?
     return "Professional Services"
 
+
+async def is_keyword_already_published(
+    keyword: str,
+    website_id: str
+) -> bool:
+    """
+    Checks BOTH the blogs table AND WordPress via API
+    before allowing a keyword to be used.
+    """
+    # Check local database
+    keyword_lower = (keyword or "").lower().strip()
+    if not keyword_lower:
+        return True
+    try:
+        from database import get_supabase
+        supabase = get_supabase()
+    except Exception:
+        try:
+            from backend.database import get_supabase
+            supabase = get_supabase()
+        except Exception:
+            return False
+
+    rows: list = []
+    for table, cols in [
+        ("blogs", "id, title, target_keyword"),
+        ("blog_approvals", "title, target_keyword"),
+        ("content_log", "title, keyword"),
+    ]:
+        try:
+            res = supabase.table(table)\
+                .select(cols)\
+                .eq("website_id", website_id)\
+                .execute()
+            rows.extend(res.data or [])
+        except Exception:
+            logger.debug(f"[SCHEDULER] is_keyword_already_published note: {table} lookup failed")
+
+    for blog in rows:
+        existing_kw = (blog.get("target_keyword") or blog.get("keyword") or "").lower().strip()
+        existing_title = (blog.get("title") or "").lower().strip()
+
+        # Exact match
+        if keyword_lower == existing_kw:
+            return True
+
+        # High similarity check — more than 70% words overlap
+        kw_words = set(keyword_lower.split())
+        existing_words = set(existing_kw.split())
+
+        if len(kw_words) > 0 and existing_words:
+            overlap = len(kw_words & existing_words) / len(kw_words)
+            if overlap > 0.7:
+                return True
+
+        # Title similarity
+        if existing_kw and (keyword_lower in existing_title or existing_kw in keyword_lower):
+            return True
+        if existing_title and keyword_lower in existing_title:
+            return True
+
+    return False
+
+
+async def get_topic_cluster_counts(website_id: str) -> dict:
+    """Returns count of articles per topic cluster."""
+    try:
+        from database import get_supabase
+        supabase = get_supabase()
+        blogs = supabase.table("blogs")\
+            .select("target_keyword")\
+            .eq("website_id", website_id)\
+            .execute()
+        rows = blogs.data or []
+    except Exception:
+        return {}
+
+    clusters: dict = {}
+    for blog in rows:
+        kw = (blog.get("target_keyword") or "").lower()
+
+        # Detect cluster by key terms
+        if any(w in kw for w in ["settlement", "payout", "compensation"]):
+            clusters["settlement"] = clusters.get("settlement", 0) + 1
+        elif any(w in kw for w in ["fault", "negligence", "liability"]):
+            clusters["liability"] = clusters.get("liability", 0) + 1
+        elif any(w in kw for w in ["what to do", "after accident", "steps"]):
+            clusters["after_accident"] = clusters.get("after_accident", 0) + 1
+        elif any(w in kw for w in ["lawyer", "attorney", "hire"]):
+            clusters["legal_help"] = clusters.get("legal_help", 0) + 1
+        elif any(w in kw for w in ["insurance", "claim", "filing"]):
+            clusters["insurance"] = clusters.get("insurance", 0) + 1
+
+    return clusters
+
+
+def _keyword_cluster(keyword: str) -> Optional[str]:
+    """Map a single keyword to its topic cluster (same rules as counts)."""
+    kw = (keyword or "").lower()
+    if any(w in kw for w in ["settlement", "payout", "compensation"]):
+        return "settlement"
+    if any(w in kw for w in ["fault", "negligence", "liability"]):
+        return "liability"
+    if any(w in kw for w in ["what to do", "after accident", "steps"]):
+        return "after_accident"
+    if any(w in kw for w in ["lawyer", "attorney", "hire"]):
+        return "legal_help"
+    if any(w in kw for w in ["insurance", "claim", "filing"]):
+        return "insurance"
+    return None
+
+
 async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: int) -> Optional[str]:
     """
     FIX PROBLEM 1 — WEBSITE CONTENT MUST BE READ FIRST BEFORE EVERY BLOG
@@ -1729,6 +1841,13 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
     written_keywords = [k for k in written_keywords if k]
     written_titles = [b.get("title") or "" for b in (existing_blogs_data or []) if b.get("title")]
 
+    # Topic-cluster balance: avoid oversaturated clusters (3+ articles)
+    try:
+        clusters = await get_topic_cluster_counts(website_id)
+    except Exception:
+        clusters = {}
+    oversaturated = [k for k, v in (clusters or {}).items() if v >= 3]
+
     # STEP 3: Ask AI to understand the website THEN pick a keyword
     from datetime import datetime as _dt
     from .crew_blog_writer import sanitize_keyword
@@ -1753,6 +1872,15 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
         
         ALREADY WRITTEN (do not repeat these):
         {written_keywords}
+
+        Topic clusters already covered (do NOT generate more articles
+        in these clusters — pick a completely different topic):
+        {oversaturated}
+
+        Current article counts per cluster:
+        {clusters}
+
+        Pick a keyword from an UNDERREPRESENTED cluster.
         
         Now pick ONE keyword to write about next. The keyword must:
         1. Be directly related to what this specific website does
@@ -1778,7 +1906,7 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
         logger.debug(f"[TOPIC PICKER] first NIM call failed: {e}")
         try:
             ai_response = await call_nim_llm(
-                prompt=f"Website content: {_json.dumps(content_profile)[:3000]} Already written: {written_keywords} Current year {current_year}. Pick ONE keyword directly related to website content. JSON only: {{\"website_topic\": \"...\",\"target_audience\": \"...\",\"selected_keyword\": \"...\",\"why_relevant\": \"...\",\"content_angle\": \"...\"}}",
+                prompt=f"Website content: {_json.dumps(content_profile)[:3000]} Already written: {written_keywords} Oversaturated clusters (avoid): {oversaturated} Cluster counts: {clusters} Current year {current_year}. Pick ONE keyword directly related to website content from an UNDERREPRESENTED cluster. JSON only: {{\"website_topic\": \"...\",\"target_audience\": \"...\",\"selected_keyword\": \"...\",\"why_relevant\": \"...\",\"content_angle\": \"...\"}}",
                 system="You are an SEO content strategist. Respond ONLY with valid JSON.",
                 website_id=website_id,
             )
@@ -1806,6 +1934,43 @@ async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: 
 
         if not keyword or len(keyword) < 5:
             return None
+
+        # Duplicate check BEFORE generation: skip already-published topics
+        try:
+            already_done = await is_keyword_already_published(keyword, website_id)
+        except Exception:
+            already_done = False
+        if already_done:
+            print(f"[KEYWORD] Skip '{keyword}' — already published")
+            try:
+                supabase.table("research").upsert({
+                    "website_id": website_id,
+                    "keyword": keyword,
+                    "status": "duplicate_skip"
+                }, on_conflict="website_id,keyword").execute()
+            except Exception:
+                logger.debug(f"[SCHEDULER] research duplicate_skip upsert note for '{keyword}'")
+            await log_autonomous_decision(
+                website_id=website_id,
+                decision="SKIP",
+                reason=f"Keyword '{keyword}' already published — skipping to avoid duplicate topic.",
+                job="keyword_picker"
+            )
+            return None
+
+        # Topic-cluster saturation guard: 3+ articles in a cluster → pick different cluster
+        try:
+            kw_cluster = _keyword_cluster(keyword)
+            if kw_cluster and (clusters or {}).get(kw_cluster, 0) >= 3:
+                await log_autonomous_decision(
+                    website_id=website_id,
+                    decision="SKIP",
+                    reason=f"Keyword '{keyword}' is in oversaturated cluster '{kw_cluster}' ({clusters.get(kw_cluster)} articles). Need new research.",
+                    job="keyword_picker"
+                )
+                return None
+        except Exception:
+            logger.debug(f"[SCHEDULER] cluster saturation check note for '{keyword}'")
 
         # STEP 4: Validate keyword against website content
         keyword_words = set(keyword.lower().split())
@@ -2067,17 +2232,22 @@ async def run_autonomous_blog_generation():
             )
             continue
 
-        # Similarity guard (final rule)
-        if await is_keyword_too_similar(keyword, website_id):
+        # Similarity guard (final rule) + already-published guard
+        _dup_final = False
+        try:
+            _dup_final = await is_keyword_already_published(keyword, website_id)
+        except Exception:
+            _dup_final = False
+        if _dup_final or await is_keyword_too_similar(keyword, website_id):
             # ask AI for alternative
             alt_kw = await ai_pick_best_keyword(website_id, blogs_today, daily_target)
-            if alt_kw and not await is_keyword_too_similar(alt_kw, website_id) and not _is_keyword_denied(alt_kw) and await _is_keyword_grounded_in_kb(alt_kw, website_id):
+            if alt_kw and not await is_keyword_too_similar(alt_kw, website_id) and not _is_keyword_denied(alt_kw) and await _is_keyword_grounded_in_kb(alt_kw, website_id) and not await is_keyword_already_published(alt_kw, website_id):
                 keyword = alt_kw
             else:
                 await log_autonomous_decision(
                     website_id=website_id,
                     decision="SKIP",
-                    reason=f"Keyword '{keyword}' too similar to existing content (>60% overlap).",
+                    reason=f"Keyword '{keyword}' too similar to existing content (>60% overlap) or already published.",
                     job="auto_blog_scheduler"
                 )
                 continue

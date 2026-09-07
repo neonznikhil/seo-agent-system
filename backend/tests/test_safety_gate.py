@@ -130,6 +130,7 @@ def test_5_delete_always_blocked():
 
 def test_6_agent_tools_no_publish():
     """Test that agents do not have direct publish tools."""
+    pytest.importorskip("crewai", reason="crewai not installed in this environment")
     from backend.agents.crew import writer_agent
     agent_tools = [t.name for t in writer_agent.tools]
     

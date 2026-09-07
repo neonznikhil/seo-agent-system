@@ -6,6 +6,7 @@ from agents.aeo_agent import AEOAgent
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_backlink_4_modules():
     """Test 4-module Backlink Engine: prospecting, qualification, personalized pitch, approval."""
     agent = BacklinkAgent()
@@ -29,6 +30,7 @@ async def test_backlink_opportunities_api():
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_aeo_4_modules_and_schema():
     """Test AEO citation tracking, Share of Voice calculation, and Schema JSON-LD injection."""
     aeo = AEOAgent()
@@ -51,6 +53,7 @@ async def test_aeo_4_modules_and_schema():
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_dynamic_llms_txt_and_full():
     """Test dynamic /llms.txt and /llms-full.txt endpoints return real business information."""
     transport = ASGITransport(app=app)

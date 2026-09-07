@@ -33,12 +33,24 @@ async def _run_generation(payload: CrewGenerateRequest):
         await generate_blog_with_self_healing(
             topic=payload.topic,
             website_id=payload.website_id or "",
-            user_id=payload.user_id,
+            user_id=payload.user_id or "user_manual",
             tone=payload.tone,
-            word_count=payload.word_count
+            word_count=payload.word_count,
+            blog_id=payload.blog_id
         )
     except Exception as e:
         logger.error(f"[CrewAPI] Background generation failed: {e}")
+        try:
+            from services.event_bus import publish
+            publish(f"crew:{payload.blog_id}", {
+                "event": "phase_update",
+                "phase": "failed",
+                "status": "failed",
+                "message": f"Generation failed: {str(e)[:200]}",
+                "blog_id": payload.blog_id
+            })
+        except Exception:
+            pass
 
 @router.post("/generate")
 @router.post("/api/crew/generate")
@@ -55,6 +67,8 @@ async def crew_generate(payload: CrewGenerateRequest, request: Request, backgrou
         raise HTTPException(status_code=400, detail="No website connected — Go to /websites to connect your domain first.")
     
     blog_id = payload.blog_id or str(uuid.uuid4())
+    payload.blog_id = blog_id
+    payload.website_id = website_id
     background_tasks.add_task(_run_generation, payload)
     
     return {"success": True, "blog_id": blog_id, "message": "Generation started — connect to SSE for progress"}
@@ -133,7 +147,20 @@ async def crew_status(blog_id: str):
         blog = get_local_content(blog_id) or get_local_approval(blog_id)
 
     if not blog:
-        raise HTTPException(status_code=404, detail="blog_id not found")
+        logs = []
+        try:
+            rows = supabase.table("content_pipeline_logs").select("*").eq("content_id", blog_id).order("step_number").limit(50).execute().data or []
+            logs = rows
+        except Exception:
+            pass
+        return {
+            "success": True,
+            "blog_id": blog_id,
+            "status": "generating",
+            "blog": None,
+            "pipeline_logs": logs,
+            "message": "Content generation is currently in progress",
+        }
 
     logs = []
     try:

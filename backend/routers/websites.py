@@ -31,6 +31,24 @@ _WEBSITE_SAFE_COLUMNS = (
 )
 
 
+def get_decrypted_wordpress_credentials(website_id: str):
+    """Shared helper used by AEO / llms.txt routes.
+
+    Returns (base_url, username, app_password) with all fallbacks
+    (websites table -> wordpress_connections -> local store -> env).
+    Returns ("", "", "") when nothing is configured instead of raising,
+    so callers can return a clean 400.
+    """
+    try:
+        from services.wordpress_service import WordPressService
+        svc = WordPressService(website_id)
+        user, pwd = svc._get_auth_tuple()
+        return (svc.get_base_url() or "", user or "", pwd or "")
+    except Exception as e:
+        logger.debug(f"[websites] WP credential lookup note for {website_id}: {e}")
+        return ("", "", "")
+
+
 class WebsiteIn(BaseModel):
     id: Optional[str] = None
     domain: Optional[str] = None

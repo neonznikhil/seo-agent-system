@@ -170,6 +170,7 @@ class TestFAQsAndCTAs:
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_full_15point_generation_pipeline_order():
     """End-to-end pipeline test generating 'statutory limitation period accident claims'."""
     topic = "statutory limitation period accident claims"
@@ -292,6 +293,7 @@ class TestWordCountValidationAndExpansion:
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_accident_liability_evidence_requirements_e2e():
     """
     VERIFICATION TEST FOR:

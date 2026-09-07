@@ -133,6 +133,13 @@ class BacklinkAgent:
         snippet = target.get("snippet", "")
         mod_type = target.get("module_type", "resource_page")
 
+        if not self.website_id or self.website_id in ("default", "all", "", "null", "undefined"):
+            try:
+                from services.website_service import get_default_website_id
+                self.website_id = get_default_website_id() or self.website_id
+            except Exception:
+                pass
+
         supabase = get_supabase()
         site_url = None
         if self.website_id:
@@ -182,6 +189,14 @@ class BacklinkAgent:
     # ---------------------------------------------------------
     async def run_prospecting_loop(self, keyword: str = "Houston accident lawyer resources") -> Dict[str, Any]:
         """Execute full 4-module loop with strict Memory Lifecycle: Recall -> Act -> Write Back."""
+        # Fall back to the default connected website so the loop works even
+        # when constructed without an explicit website_id (tests, ad-hoc runs).
+        if not self.website_id or self.website_id in ("default", "all", "", "null", "undefined"):
+            try:
+                from services.website_service import get_default_website_id
+                self.website_id = get_default_website_id() or self.website_id
+            except Exception:
+                pass
         brain = BrainService(website_id=self.website_id)
 
         # Step 1: RECALL FIRST
@@ -198,6 +213,9 @@ class BacklinkAgent:
         # Step 3: Personalize & Stage for Approval
         for target in qualified_targets[:5]:
             pitch_data = await self.generate_personalized_pitch(target, recalled_preferences=pref_summary)
+            if not isinstance(pitch_data, dict) or pitch_data.get("error"):
+                logger.warning(f"[BacklinkAgent] skipping pitch for {target.get('url')}: {pitch_data.get('message', 'pitch failed') if isinstance(pitch_data, dict) else 'bad pitch payload'}")
+                continue
             row = {
                 "id": str(uuid.uuid4()),
                 "website_id": self.website_id,

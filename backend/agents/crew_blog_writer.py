@@ -53,15 +53,16 @@ def sanitize_keyword(keyword: str, current_year: int) -> str:
     # Fix: word attached to year (e.g. "accident2026" -> "accident 2026")
     keyword = re.sub(r'([a-zA-Z])(\d{4})', r'\1 \2', keyword)
     
+    # Normalize durations FIRST like "2year", "2 year" -> "2-year"
+    # (must run before the stray-digit strip below, or "2year" loses its "2")
+    keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*years?\b', r'\1-year', keyword, flags=re.I)
+    keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*months?\b', r'\1-month', keyword, flags=re.I)
+    keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*days?\b', r'\1-day', keyword, flags=re.I)
+    
     # Fix: number directly attached to word without year (e.g. "2accident" -> "accident")
     # (?<!\d) ensures we don't match digits in the middle of a longer number like "2026"
     # Preserves "2-year", "3-month", "1st", "2nd", "3rd"
     keyword = re.sub(r'(?<!\d)(\d{1,3})(?!-|\s)(?!(?:st|nd|rd|th)\b|[0-9])([a-zA-Z]{2,})', r'\2', keyword)
-    
-    # Normalize durations like "2year", "2 year" -> "2-year"
-    keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*years?\b', r'\1-year', keyword, flags=re.I)
-    keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*months?\b', r'\1-month', keyword, flags=re.I)
-    keyword = re.sub(r'\b(\d+)\s*(?:-| )?\s*days?\b', r'\1-day', keyword, flags=re.I)
     
     # Fix: duplicate year in keyword (e.g. "2026 2026 accident")
     year_str = str(current_year)
@@ -349,20 +350,24 @@ Requirements:
         )
         ]
         
-        faq_or_conc = None
-        for h2 in soup.find_all('h2'):
-            if "frequently asked" in h2.get_text().lower() or "faq" in h2.get_text().lower() or "conclusion" in h2.get_text().lower():
-                faq_or_conc = h2
-                break
+        insert_target = soup.find('div', class_=re.compile(r'faq-section|rf-faq-wrapper|rffaqwrap|faq-wrapper'))
+        if not insert_target:
+            insert_target = soup.find('div', class_=re.compile(r'blog-cta|cta-section|cta-container'))
+        if not insert_target:
+            for h2 in soup.find_all('h2'):
+                if any(w in h2.get_text().lower() for w in ["frequently asked", "faq", "conclusion"]):
+                    parent_wrapper = h2.find_parent('div', class_=re.compile(r'faq-section|rf-faq-wrapper|rffaqwrap|faq-wrapper|blog-cta'))
+                    insert_target = parent_wrapper or h2
+                    break
                 
         for heading, body in supplemental_sections:
-            _, current_total = validate_word_count(str(soup), min_words=min_words, max_words=3200)
-            if current_total >= 2500:
+            _, current_total = validate_word_count(str(soup), min_words=min_words, max_words=4500)
+            if current_total >= max(2500, min_words):
                 break
             sec_soup = BeautifulSoup(f"<h2>{heading}</h2>\n" + body, 'html.parser')
-            if faq_or_conc:
+            if insert_target:
                 for elem in list(sec_soup.contents):
-                    faq_or_conc.insert_before(elem)
+                    insert_target.insert_before(elem)
             else:
                 for elem in list(sec_soup.contents):
                     soup.append(elem)
@@ -374,6 +379,19 @@ PLANNER_15POINT_SYSTEM_PROMPT = """You are an expert SEO content strategist. Bef
 you produce a complete 15-point outline that the Writer follows exactly.
 You research the keyword using SERP data, understand the reader's intent,
 and build an outline that will outrank current results.
+
+CRITICAL: Never use placeholder variables in the outline.
+Never write:
+- "this deadline" — write the actual deadline (e.g., "2-year statute of limitations")
+- "your claim" — write what the claim actually is
+- "the statutory timeframe" — write the actual timeframe
+- "[keyword]" — write the actual keyword phrase
+- "{anything}" — never use curly brace variables
+
+Every heading and key_point in the outline must be
+complete, specific English that the Writer can use directly.
+The outline is a blueprint — it must read like a real article outline,
+not a template with blanks.
 
 You respond ONLY with valid JSON. Nothing else."""
 
@@ -1692,6 +1710,190 @@ def clean_special_characters(html_content: str) -> str:
     for special_char, replacement in replacements.items():
         html_content = html_content.replace(special_char, replacement)
     
+    return html_content
+
+
+def sanitize_css_in_html(html_content: str) -> str:
+    """
+    Fixes broken CSS values that the LLM generates.
+    Runs on the entire HTML string before saving.
+    """
+    if not html_content:
+        return html_content
+
+    # Fix "1.px" → "1px" (number.px without the number)
+    html_content = re.sub(r'(\d*)\.px',
+                          lambda m: (m.group(1) or '0') + 'px',
+                          html_content)
+
+    # Fix "0 px px" patterns → "0 2px 4px"
+    html_content = re.sub(r'\b0 px px\b', '0 2px 4px', html_content)
+    html_content = re.sub(r'\b0 px\b', '0px', html_content)
+
+    # Fix hex colors with spaces: "#0d 9488" → "#0d9488"
+    html_content = re.sub(
+        r'#([0-9a-fA-F]{2})\s+([0-9a-fA-F]{4})\b',
+        r'#\1\2',
+        html_content
+    )
+
+    # Fix hex colors with spaces: "#64748 b" → "#64748b"
+    html_content = re.sub(
+        r'#([0-9a-fA-F]{5})\s+([0-9a-fA-F]{1})\b',
+        r'#\1\2',
+        html_content
+    )
+
+    # Fix "15.px" → "15px"
+    html_content = re.sub(r'(\d+)\.px', r'\1px', html_content)
+
+    # Fix "9999 px" → "9999px"
+    html_content = re.sub(r'(\d+)\s+px\b', r'\1px', html_content)
+
+    # Fix "border: px solid" → "border: 1px solid"
+    html_content = re.sub(
+        r'border:\s*px\s+solid',
+        'border: 1px solid',
+        html_content
+    )
+
+    # Fix "border-left: px solid" → "border-left: 4px solid"
+    html_content = re.sub(
+        r'border-left:\s*px\s+solid',
+        'border-left: 4px solid',
+        html_content
+    )
+
+    # Fix "border-radius: px" → "border-radius: 4px"
+    html_content = re.sub(
+        r'border-radius:\s*px\b',
+        'border-radius: 4px',
+        html_content
+    )
+
+    # Fix "padding: px" → "padding: 0"
+    html_content = re.sub(
+        r'padding:\s*px\b',
+        'padding: 0',
+        html_content
+    )
+
+    # Fix "gap: px" → "gap: 8px"
+    html_content = re.sub(
+        r'gap:\s*px\b',
+        'gap: 8px',
+        html_content
+    )
+
+    # Fix "width: px" → "width: 4px"
+    html_content = re.sub(
+        r'width:\s*px\b',
+        'width: 4px',
+        html_content
+    )
+
+    # Fix "#1f 2937" type broken colors (space in middle)
+    html_content = re.sub(
+        r'#([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\b',
+        lambda m: '#' + m.group(1) + m.group(2)
+                  if len(m.group(1) + m.group(2)) == 6
+                  else m.group(0),
+        html_content
+    )
+
+    return html_content
+
+
+def has_placeholder_text(html_content: str) -> bool:
+    """
+    Detects articles with unresolved placeholder text.
+    """
+    from bs4 import BeautifulSoup
+
+    if not html_content:
+        return False
+
+    soup = BeautifulSoup(html_content, 'html.parser')
+    text = soup.get_text().lower()
+
+    # Patterns that indicate unresolved placeholders
+    placeholder_patterns = [
+        r'this deadline',
+        r'the statutory timeframe',
+        r'your claim settlement',
+        r'help you complex',
+        r'help you claims',
+        r'navigate the complex process',
+        r'navigate the complexities',
+        r'you complex',
+        r'\[keyword\]',
+        r'\{keyword\}',
+        r'\[target keyword\]',
+        r'insert keyword',
+        r'placeholder',
+    ]
+
+    import re
+    for pattern in placeholder_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+
+    return False
+
+
+def fix_placeholder_text(html_content: str,
+                          target_keyword: str) -> str:
+    """
+    Attempts to fix common placeholder patterns
+    before rejecting the article.
+    """
+    import re
+
+    if not html_content:
+        return html_content
+
+    # "this deadline" → "the 2-year filing deadline"
+    html_content = re.sub(
+        r'\bthis deadline\b',
+        'the filing deadline',
+        html_content,
+        flags=re.IGNORECASE
+    )
+
+    # "the statutory timeframe" → "the statute of limitations period"
+    html_content = re.sub(
+        r'\bthe statutory timeframe\b',
+        'the statute of limitations period',
+        html_content,
+        flags=re.IGNORECASE
+    )
+
+    # "your claim settlement" → use the target keyword
+    kw_short = (target_keyword or "").split()[0:3]
+    kw_phrase = ' '.join(kw_short) if kw_short else 'your settlement'
+    html_content = re.sub(
+        r'\byour claim settlement\b',
+        kw_phrase,
+        html_content,
+        flags=re.IGNORECASE
+    )
+
+    # "help you complex" → "help you navigate"
+    html_content = re.sub(
+        r'help you complex\s+(\w+)',
+        r'help you navigate the \1',
+        html_content,
+        flags=re.IGNORECASE
+    )
+
+    # "help you claims" → "help with claims"
+    html_content = re.sub(
+        r'help you claims\b',
+        'help with claims',
+        html_content,
+        flags=re.IGNORECASE
+    )
+
     return html_content
 
 
@@ -3326,7 +3528,7 @@ def __getattr__(name: str) -> Any:
 # Planner / Writer / Editor Agents factory (requires crewai, fallback to direct NIM if missing)
 # ---------------------------------------------------------------------------
 
-def _make_agents_and_tasks(topic: str, website_id: str, business_name: str, knowledge_hits: List[Dict], tone: str, analytics_learnings: List[Dict]):
+def _make_agents_and_tasks(topic: str, website_id: str, business_name: str, knowledge_hits: List[Dict], tone: str, analytics_learnings: List[Dict], word_count_target: int = 2500):
     """Create CrewAI agents/tasks or fallback task descriptors for direct NIM path."""
     KnowledgeRAGTool, SerperTavilyTool, WordPressTool = _get_tool_classes()
     # Tools instances
@@ -3408,7 +3610,7 @@ def _make_agents_and_tasks(topic: str, website_id: str, business_name: str, know
             outline=_outline_preview,
             brand_facts=json.dumps(knowledge_hits[:3], default=str)[:1200],
             tone=tone or 'Professional',
-            word_count_target=1200,
+            word_count_target=word_count_target,
         )
         writer_task = Task(
             description=_writer_prompt_with_lock,
@@ -3502,7 +3704,10 @@ async def run_planner_agent(topic: str, website_id: str, business_name: str, ton
     kb_context = "\n".join(f"[{i+1}] {c.get('title','Fact')}: {(c.get('content') or '')[:350]}" for i, c in enumerate(kb_chunks[:10])) or f"{business_name} personal injury and accident claim representation."
 
     # 2. Real SERP Search (Top 10 competitors)
-    serp_tool = SerperTavilyTool()
+    # NOTE: resolve via factory — module __getattr__ does not fire for bare
+    # globals inside functions, so reference the class explicitly.
+    _, _SerperTavilyTool, _ = _get_tool_classes()
+    serp_tool = _SerperTavilyTool()
     serp_json = await serp_tool._asearch(topic)
     serp_data = json.loads(serp_json) if serp_json else {}
     competitors = serp_data.get("organic", [])[:10]
@@ -3758,11 +3963,26 @@ def _clean_pure_html(raw_html: str) -> str:
     # 1. Strip <think>...</think> tags if any model outputs internal reasoning
     text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.I | re.DOTALL).strip()
     
-    # 2. Strip codeblock wrappers
+    # 2. Strip codeblock wrappers and trailing assistant review notes
     if "```html" in text:
         text = text.split("```html")[1].split("```")[0].strip()
     elif "```" in text:
-        text = text.split("```")[1].split("```")[0].strip()
+        parts = text.split("```")
+        if "<h1" in parts[0].lower() or "<h2" in parts[0].lower() or "<p" in parts[0].lower():
+            text = parts[0].strip()
+        elif len(parts) > 1:
+            text = parts[1].strip()
+
+    # Strip editor / assistant review monologue at the end
+    monologue_patterns = [
+        r"(?:^|\n+)\s*(?:`+\s*}?\s*`+)?\s*(?:I have revised the content|Here is the revised|Summary of (?:changes|revisions)|Revision Notes|Editorial Notes|I've updated the article|Here is the updated HTML)[\s\S]*$",
+        r"(?:^|\n+)\s*SEO score:\s*\d+[\s\S]*$",
+        r"(?:^|\n+)\s*Validation score:\s*[\d.]+[\s\S]*$",
+        r"(?:^|\n+)\s*`+\s*}?\s*`+\s*$",
+    ]
+    for pat in monologue_patterns:
+        text = re.sub(pat, "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"[`}\s]+$", "", text).strip()
 
     # 3. Strip any preamble before the first HTML tag
     first_tag_idx = text.find("<")
@@ -3900,7 +4120,9 @@ def _clean_pure_html(raw_html: str) -> str:
             "<p>...</p>", "must be exactly 2 paragraphs", "must include the exact phrase",
             "the phrase must appear", "since we have only two paragraphs", "since we have only",
             "paragraph 1 target", "paragraph 2 target", "word count target", "paragraph 1 draft",
-            "paragraph 2 draft", "count words in", "internal notes", "commentary:"
+            "paragraph 2 draft", "count words in", "internal notes", "commentary:",
+            "i have revised the content", "seo score:", "validation score:", "grounding score:",
+            "summary of changes", "revision notes"
         ]):
             continue
         if not b.startswith("<") and not b.startswith("Meta Description:"):
@@ -4028,14 +4250,14 @@ Failing Areas: {json.dumps(res['breakdown'])}
 REQUIRED FIXES:
 1. Ensure H1 and first paragraph explicitly contain '{topic}'.
 2. Ensure at least 4 distinct <h2> sections with 300+ words each.
-3. Ensure <h2>Frequently Asked Questions</h2> with 4+ <h3> questions is present.
+3. Ensure comprehensive coverage of reader questions with clear subsections.
 4. Ensure at least one internal link: <a href="/guide">Learn More</a>.
 5. Zero markdown. Clean HTML only.
 
-Output the corrected full HTML article."""
+Output ONLY the corrected full HTML article. Do NOT output any conversational notes, summaries, or review text like 'I have revised the content...'. Start directly with <h1>."""
 
         try:
-            revised_raw = await _call_nvidia_with_fallback(fix_prompt, system="You are the SEO Editor. Output only corrected pure HTML.")
+            revised_raw = await _call_nvidia_with_fallback(fix_prompt, system="You are the SEO Editor. Output only corrected pure HTML without markdown fences or review comments.")
             current_html = _clean_pure_html(revised_raw)
             res = calculate_seo_quality_score(current_html, topic, meta_desc)
         except Exception as e:
@@ -4247,7 +4469,8 @@ async def generate_blog_autonomous(
     website_id: str,
     user_id: Optional[str] = None,
     tone: Optional[str] = None,
-    word_count: Optional[int] = None
+    word_count: Optional[int] = None,
+    blog_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """8-step autonomous CrewAI pipeline (Planner->Writer->Editor) with Quality Gate + WP + RAG.
 
@@ -4262,8 +4485,8 @@ async def generate_blog_autonomous(
     8. return {blog_id, html, seo_score, status, wordpress_url}
     """
     supabase = get_supabase()
-    content_id = str(uuid.uuid4())
-    blog_id = str(uuid.uuid4())
+    blog_id = blog_id or str(uuid.uuid4())
+    content_id = blog_id
     start_ts = datetime.now(timezone.utc)
 
     # Event bus helper for real-time frontend updates
@@ -4515,7 +4738,17 @@ async def generate_blog_autonomous(
                     except Exception as heal_err:
                         logger.warning(f"[Crew] Quality self-healing pass non-fatal error: {heal_err}")
 
-                crew_result = {"planner_outline": {}, "writer_html": final_html, "final_html": final_html, "seo_score": seo_score, "validation_score": val_score, "grounding_score": ground_score, "feedback": "CrewAI sequential output", "knowledge_used": knowledge_hits}
+                if not final_html or len(final_html.strip()) < 500 or ("<p>" not in final_html and "<h2>" not in final_html):
+                    logger.warning(f"[Crew] Kickoff output too short or missing HTML tags ({len(final_html or '')} chars), falling back to direct NIM...")
+                    await publish_phase("writer", "running", "Drafting comprehensive article with NIM...")
+                    crew_result = await _direct_nim_crew_fallback(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, content_id)
+                    final_html = crew_result["final_html"]
+                    planner_outline = crew_result["planner_outline"]
+                    seo_score = crew_result["seo_score"]
+                    val_score = crew_result["validation_score"]
+                    ground_score = crew_result["grounding_score"]
+                else:
+                    crew_result = {"planner_outline": {}, "writer_html": final_html, "final_html": final_html, "seo_score": seo_score, "validation_score": val_score, "grounding_score": ground_score, "feedback": "CrewAI sequential output", "knowledge_used": knowledge_hits}
                 await publish_phase("writer", "completed", f"Draft complete ({len(final_html)} chars) — Editor reviewing...")
                 await _log_phase(website_id, content_id, "crew_kickoff", 4, "completed", {"html_length": len(final_html), "seo_score": seo_score}, inputs)
             except Exception as e:
@@ -4561,21 +4794,27 @@ async def generate_blog_autonomous(
     val_score = crew_result.get("validation_score", 0.92)
     ground_score = crew_result.get("grounding_score", 0.88)
 
-    # Strict validation per spec — if still missing, raise to trigger regeneration
+    # Clean pure HTML to strip any monologue / editor notes
+    final_html = _clean_pure_html(final_html)
+
+    # Ensure TL;DR block exists; inject if missing rather than failing pipeline
     if not validate_tldr_exists(final_html):
-        try:
-            from .scheduler import log_autonomous_decision as _log_tldr2
-            await _log_tldr2(
-                website_id=website_id,
-                decision="VALIDATION_FAILED",
-                reason="TL;DR block missing from generated content. Triggering regeneration.",
-                job="content_validator"
-            )
-        except Exception:
-            logger.debug(f"[BLOG_WRITER] log_tldr2 note for {website_id}")
-        raise ValueError("TL;DR block missing — regenerating")
+        final_html = ensure_tldr_exists(final_html, topic)
+
+    # Ensure single interactive FAQ accordion and proper blog structure
+    final_html = replace_faq_with_accordion(final_html, planner_outline or {}, topic=topic)
+    final_html = fix_blog_structure(final_html, topic, planner_outline or {})
+
     if not final_html or len(final_html.strip()) < 500:
-        raise Exception("Crew generated HTML too short (<500 chars) — aborting")
+        logger.warning("[Crew] final_html too short before editor gate, executing direct NIM fallback...")
+        crew_result = await _direct_nim_crew_fallback(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, content_id)
+        final_html = crew_result["final_html"]
+        planner_outline = crew_result.get("planner_outline", {})
+        seo_score = crew_result.get("seo_score", 88)
+        val_score = crew_result.get("validation_score", 0.92)
+        ground_score = crew_result.get("grounding_score", 0.88)
+        if not validate_tldr_exists(final_html):
+            final_html = ensure_tldr_exists(final_html, topic)
 
      # FIX Problem 2: Final off-topic validation before saving (prevents wrong-topic articles being stored)
     try:
@@ -4671,8 +4910,12 @@ async def generate_blog_autonomous(
         general_legal_terms = ['lawyer', 'attorney', 'legal', 'law']
         has_general_legal = any(term in topic_lower for term in general_legal_terms)
         if has_general_legal:
-            is_off_topic = True
-            logger.warning(f"[Crew] OFF-TOPIC: Blog '{topic}' has legal term but no niche keywords ({niche_keywords}) — skipping WP draft")
+            if user_id:
+                logger.info(f"[Crew] Blog '{topic}' has legal terms with 0 niche matches, but requested by user — proceeding with WP draft")
+                is_off_topic = False
+            else:
+                is_off_topic = True
+                logger.warning(f"[Crew] OFF-TOPIC: Blog '{topic}' has legal term but no niche keywords ({niche_keywords}) — skipping WP draft")
     
     if not is_off_topic:
         # 6. Gate decision + WordPress — autonomous draft-first philosophy
@@ -4687,9 +4930,15 @@ async def generate_blog_autonomous(
         meta_desc_val = (planner_outline.get("meta_description") or f"{topic} — guide from {business_name}")[:160]
         slug_val = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")[:80]
         # Attempt WP draft creation for every generation (draft for WordPress)
-        # PROBLEM 4 FIX STEP 2 — wrap with TLDR CSS for WordPress
-        # Also compute cleaned title for WP draft from final_html H1
+        final_html = _clean_pure_html(final_html)
+        final_html = replace_faq_with_accordion(final_html, planner_outline or {}, topic=topic)
+        final_html = fix_blog_structure(final_html, topic, planner_outline or {})
+        # Wrap with TLDR CSS for WordPress
         final_html = wrap_tldr_css(final_html)
+        try:
+            final_html = sanitize_css_in_html(final_html)
+        except Exception:
+            logger.debug(f"[BLOG_WRITER] pre-WP sanitize note for {website_id}")
         wp_title = planner_outline.get("h1_suggestion") or topic
         try:
             _h1m = re.search(r"<h1[^>]*>(.*?)</h1>", final_html, flags=re.I | re.S)
@@ -4701,7 +4950,7 @@ async def generate_blog_autonomous(
             logger.debug(f"[BLOG_WRITER] wp_title H1 extraction note for {website_id}")
         wp_content = final_html
         
-        # DUPLICATE CHECK: Skip WP draft if post with same/similar title exists
+        # DUPLICATE CHECK: Differentiate title if post with same/similar title exists
         duplicate_found = False
         
         # Normalize title for comparison (lowercase, remove extra spaces)
@@ -4709,11 +4958,9 @@ async def generate_blog_autonomous(
             return ' '.join(t.lower().split()).strip()
         
         wp_title_norm = normalize_title(wp_title)
-        # Also create a slug-like version for fuzzy matching
         wp_slug = re.sub(r"[^a-z0-9]+", "-", wp_title_norm).strip("-")
         
         try:
-            # Check Supabase blog_approvals table (exact + similar)
             existing = supabase.table("blog_approvals").select("id,title,status").eq("website_id", website_id).execute()
             for row in (existing.data or []):
                 row_title_norm = normalize_title(row.get("title", ""))
@@ -4727,7 +4974,6 @@ async def generate_blog_autonomous(
         
         if not duplicate_found:
             try:
-                # Check local store
                 from services.local_store import list_local_content
                 local_posts = list_local_content(website_id) or []
                 for post in local_posts:
@@ -4742,10 +4988,8 @@ async def generate_blog_autonomous(
         
         if not duplicate_found:
             try:
-                # Check WordPress directly via API - ALL statuses
                 from services.wordpress_service import WordPressService
                 _wp_check = WordPressService(website_id)
-                # Check multiple statuses
                 for wp_status in ['draft', 'publish', 'pending', 'future']:
                     try:
                         existing_posts = await _wp_check.get_posts(per_page=50, search=wp_title[:20], status=wp_status)
@@ -4763,28 +5007,31 @@ async def generate_blog_autonomous(
             except Exception:
                 logger.debug(f"[BLOG_WRITER] WordPress duplicate check note for {website_id}")
         
-        if not duplicate_found:
-            try:
-                from services.wordpress_service import WordPressService
-                _wp_svc = WordPressService(website_id)
-                _base = _wp_svc.get_base_url()
-                if _base:
-                    try:
-                        draft_res = await _wp_svc.create_draft(website_id=website_id, title=wp_title, content=wp_content, keywords=[topic])
-                        if draft_res.get("success"):
-                            wp_post_id = draft_res.get("wp_post_id")
-                            wordpress_url = draft_res.get("link") or draft_res.get("edit_url")
-                            wp_draft_url = draft_res.get("edit_url") or wordpress_url
-                            edit_url = wp_draft_url
-                            logger.info(f"[Crew] WP draft created #{wp_post_id} for '{topic}' -> {wordpress_url}")
-                        else:
-                            logger.debug(f"[Crew] WP draft not created: {draft_res.get('message')}")
-                    except Exception as _draft_e:
-                        logger.debug(f"[Crew] WP draft attempt note: {_draft_e}")
-            except Exception as _wp_e:
-                logger.debug(f"[Crew] WP draft outer note: {_wp_e}")
-        else:
-            logger.info(f"[Crew] Skipping WP draft for '{wp_title}' — duplicate detected")
+        if duplicate_found:
+            unique_suffix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            logger.info(f"[Crew] Duplicate detected for '{wp_title}' — creating unique version for WP draft")
+            wp_title = f"{wp_title} ({unique_suffix})"
+            slug_val = f"{slug_val}-{int(datetime.now(timezone.utc).timestamp()) % 10000}"
+
+        try:
+            from services.wordpress_service import WordPressService
+            _wp_svc = WordPressService(website_id)
+            _base = _wp_svc.get_base_url()
+            if _base:
+                try:
+                    draft_res = await _wp_svc.create_draft(website_id=website_id, title=wp_title, content=wp_content, keywords=[topic], slug=slug_val)
+                    if draft_res.get("success"):
+                        wp_post_id = draft_res.get("wp_post_id")
+                        wordpress_url = draft_res.get("link") or draft_res.get("edit_url")
+                        wp_draft_url = draft_res.get("edit_url") or wordpress_url
+                        edit_url = wp_draft_url
+                        logger.info(f"[Crew] WP draft created #{wp_post_id} for '{topic}' -> {wordpress_url}")
+                    else:
+                        logger.warning(f"[Crew] WP draft not created: {draft_res.get('message')}")
+                except Exception as _draft_e:
+                    logger.error(f"[Crew] WP draft attempt exception: {_draft_e}")
+        except Exception as _wp_e:
+            logger.error(f"[Crew] WP draft outer exception: {_wp_e}")
     else:
         # Off-topic blog — set status and skip WordPress
         status = "pending"
@@ -4819,7 +5066,8 @@ async def generate_blog_autonomous(
         elif auto_publish and not wp_post_id:
             # auto_publish ON but draft failed (no credentials) — publish via WordPressTool fallback
             try:
-                wp_tool = WordPressTool(website_id=website_id)
+                _, _, _WordPressTool = _get_tool_classes()
+                wp_tool = _WordPressTool(website_id=website_id)
                 wp_json = await wp_tool._apublish(topic, wp_content, meta_desc_val, slug_val)
                 wp_res = json.loads(wp_json) if isinstance(wp_json, str) else wp_json
                 if wp_res.get("success") or wp_res.get("wordpress_url") or wp_res.get("link"):
@@ -4848,6 +5096,17 @@ async def generate_blog_autonomous(
         })
 
     # 7. Save to blogs + blog_approvals + pipeline_logs + brain_memory + daily_costs
+    # Sanitize CSS + placeholders BEFORE saving to blog_approvals and BEFORE pushing to WordPress
+    try:
+        final_html = sanitize_css_in_html(final_html)
+        final_html = fix_placeholder_text(final_html, topic)
+    except Exception:
+        logger.debug(f"[BLOG_WRITER] pre-save sanitize note for {website_id}")
+    if has_placeholder_text(final_html):
+        raise ValueError(
+            "Article contains unresolved placeholder text. "
+            "The Writer failed to complete the template. Regenerating."
+        )
     # PROBLEM 2: Clean title before saving
     raw_title = planner_outline.get("H1") or planner_outline.get("h1") or planner_outline.get("h1_suggestion") or topic
     # Also extract H1 from final_html if planner title is bad
@@ -4901,7 +5160,7 @@ async def generate_blog_autonomous(
         "wp_post_id": wp_post_id,
         "wordpress_url": wordpress_url,
         "wp_draft_url": wp_draft_url or wordpress_url,
-        "wordpress_post_id": wp_post_id,
+        "word_count": words_total,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -4913,33 +5172,27 @@ async def generate_blog_autonomous(
         supabase.table("blogs").insert(blog_row).execute()
     except Exception as e3:
         logger.debug(f"[Crew] blogs insert note: {e3}")
-    save_local_content(cl_payload)
+    save_local_content(dict(cl_payload, blog_id=blog_id, wordpress_post_id=wp_post_id))
 
     # blog_approvals
     approval_id = str(uuid.uuid4())
     app_payload = {
         "id": approval_id,
         "website_id": website_id,
+        "content_log_id": content_id,
         "title": blog_row["title"],
         "content": final_html,
-        "html_content": final_html,
         "target_keyword": topic,
         "seo_score": seo_score,
-        "validation_score": val_score,
-        "grounding_score": ground_score,
+        "word_count": words_total,
         "status": "pending",
-        "wp_post_id": wp_post_id,
-        "wordpress_post_id": wp_post_id,
-        "wordpress_url": wordpress_url,
-        "wp_draft_url": wp_draft_url or wordpress_url,
-        "pending_reason": pending_reason,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         supabase.table("blog_approvals").insert(app_payload).execute()
     except Exception as e:
         logger.debug(f"[Crew] blog_approvals insert note: {e}")
-    save_local_approval(app_payload)
+    save_local_approval(dict(app_payload, blog_id=blog_id, html_content=final_html, validation_score=val_score, grounding_score=ground_score, wp_post_id=wp_post_id, wordpress_url=wordpress_url, wp_draft_url=wp_draft_url or wordpress_url, pending_reason=pending_reason))
 
     # Send real Slack notification
     try:
@@ -5087,12 +5340,13 @@ async def generate_blog_with_self_healing(
     website_id: str,
     user_id: Optional[str] = None,
     tone: Optional[str] = None,
-    word_count: Optional[int] = None
+    word_count: Optional[int] = None,
+    blog_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Call generate_blog_autonomous with self-healing: on 2nd failure, StrategyAgent alternative."""
     key = f"{website_id}:{topic}"
     try:
-        return await generate_blog_autonomous(topic=topic, website_id=website_id, user_id=user_id, tone=tone, word_count=word_count)
+        return await generate_blog_autonomous(topic=topic, website_id=website_id, user_id=user_id, tone=tone, word_count=word_count, blog_id=blog_id)
     except Exception as e:
         count = _crew_failure_counts.get(key, 0) + 1
         _crew_failure_counts[key] = count
@@ -5164,85 +5418,30 @@ async def run_writer(outline: Dict[str, Any], target_keyword: str, brand_facts: 
 
 def ensure_faqs_and_ctas(html_content: str, outline: Optional[dict] = None) -> str:
     """
-    Ensures <h2>Frequently Asked Questions</h2> and at least 4 <h3> FAQs exist.
-    Also ensures at least one CTA block exists.
+    Ensures at least one CTA block exists, and delegates FAQ formatting directly
+    to replace_faq_with_accordion to guarantee only ONE interactive accordion exists.
     """
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_content, 'html.parser')
-    
-    def _get_faq_h2_and_count(soup):
-        for h2 in soup.find_all('h2'):
-            if 'frequently asked' in h2.get_text().lower() or 'faqs' in h2.get_text().lower():
-                count = 0
-                current = h2.next_sibling
-                while current and getattr(current, 'name', None) != 'h2':
-                    if hasattr(current, 'name') and current.name == 'h3':
-                        count += 1
-                    current = current.next_sibling
-                return h2, count
-        return None, 0
-
-    faq_h2, faq_question_count = _get_faq_h2_and_count(soup)
-    has_faq_h2 = faq_h2 is not None
-    
-    if not has_faq_h2 or faq_question_count < 4:
-        faqs = []
-        if outline:
-            faqs = outline.get("point_13_faqs", [])
-            if not faqs and "faqs" in outline:
-                faqs = outline["faqs"]
-                
-        if not faqs or len(faqs) < 4:
-            faqs = [
-                {"question": "What is the statutory limitation period for accident claims?", "answer_draft": "In most jurisdictions, personal injury claims have a statutory limitation period of two to three years from the date of the collision to file a lawsuit in civil court."},
-                {"question": "What happens if you miss the statutory limitation deadline?", "answer_draft": "If you miss the statutory limitation deadline, the court will dismiss your claim with prejudice, permanently barring you from recovering financial compensation."},
-                {"question": "Can the statutory limitation period be extended or paused?", "answer_draft": "Yes, under specific tolling doctrines such as when the victim is a minor, the defendant left the state, or the injury could not be reasonably discovered immediately."},
-                {"question": "Does negotiating with an insurance adjuster pause the deadline?", "answer_draft": "No, ongoing insurance negotiations do not pause or extend the statutory limitation period. You must file a lawsuit before the statutory deadline regardless of pending settlement talks."}
-            ]
-            
-        # Remove any partial FAQ section to replace cleanly
-        for h2 in list(soup.find_all('h2')):
-            if "frequently asked" in h2.get_text().lower() or "faqs" in h2.get_text().lower():
-                curr = h2.next_sibling
-                while curr and getattr(curr, 'name', None) != 'h2':
-                    nxt = curr.next_sibling
-                    curr.extract()
-                    curr = nxt
-                h2.extract()
-                
-        faq_section_html = "<h2>Frequently Asked Questions</h2>\n"
-        for f in faqs[:5]:
-            q = f.get("question", "")
-            a = f.get("answer_draft") or f.get("answer_approach", "")
-            faq_section_html += f"<h3>{q}</h3>\n<p>{a}</p>\n"
-            
-        faq_soup = BeautifulSoup(faq_section_html, 'html.parser')
-        
-        conclusion_h2 = None
-        for h2 in soup.find_all('h2'):
-            if "conclusion" in h2.get_text().lower() or "next step" in h2.get_text().lower() or "summary" in h2.get_text().lower():
-                conclusion_h2 = h2
-                break
-                
-        if conclusion_h2:
-            for el in reversed(list(faq_soup.children)):
-                conclusion_h2.insert_before(el)
-        else:
-            soup.append(faq_soup)
 
     has_cta = any("cta-block" in str(div) or "cta" in div.get("class", []) for div in soup.find_all("div"))
     if not has_cta:
         cta_text = "Schedule a free consultation with our experienced accident claim attorneys today to review your case and protect your statutory rights before deadlines pass."
-        if outline:
-            cta_info = outline.get("point_14_cta", {})
-            cta_text = cta_info.get("primary_cta_text") or cta_text
+        if outline and isinstance(outline, dict):
+            cta_info = outline.get("point_14_cta", {}) or outline.get("point_13_ctas", {})
+            if isinstance(cta_info, dict):
+                cta_text = cta_info.get("primary_cta_text") or cta_info.get("cta_text") or cta_text
             
         cta_html = f'''<div class="cta-block" style="background:#f0fdf4; border-left:4px solid #16a34a; padding:16px; margin:24px 0; border-radius:4px;">
 <p><strong>Take Action Today:</strong> {cta_text}</p>
 </div>'''
         soup.append(BeautifulSoup(cta_html, 'html.parser'))
         
-    return str(soup)
+    topic = ""
+    if outline and isinstance(outline, dict):
+        topic = outline.get("primary_keyword") or outline.get("topic") or outline.get("target_keyword", "")
+
+    return replace_faq_with_accordion(str(soup), outline or {}, topic=topic)
 
 
 def ensure_each_section_minimum_length(html_content: str) -> str:
@@ -5432,9 +5631,13 @@ def remove_duplicate_tables(html_content: str) -> str:
 
 
 def fix_broken_sentences(html_content: str) -> str:
-    """Removes paragraphs ending mid-sentence."""
+    """Removes paragraphs ending mid-sentence; rejoins sentences split mid-clause."""
     from bs4 import BeautifulSoup
     import re
+    # First: rejoin sentences the LLM split after a dangling word
+    # (e.g. "applied then.\nwe calculate" -> "applied then we calculate")
+    html_content = re.sub(r'\b(then|these|and|or|because|when|with|if|that|which)\.\s*\n+\s*([a-z])', r'\1 \2', html_content)
+    html_content = re.sub(r'\b(then|these|and|or|because|when|with|if|that|which)\.\s*</p>\s*<p>\s*([a-z])', r'\1 \2', html_content)
     soup = BeautifulSoup(html_content, 'html.parser')
     broken_endings = [
         r'\bof$', r'\bthe$', r'\band$', r'\bto$', r'\ba$',
@@ -5459,194 +5662,147 @@ def fix_broken_sentences(html_content: str) -> str:
 
 def build_faq_accordion(faq_items: list, topic: str = "") -> str:
     """
-    Minimal FAQ accordion: neutral styling, no icons, click-to-expand,
-    optional search filter, mobile-friendly.
+    Builds the user's faq-card accordion design (faq-section / faq-card /
+    faq-trigger / faq-num / faq-qtext / faq-icon / faq-body / faq-divider).
+
+    WordPress-safe:
+    - ALL CSS values are hardcoded — never LLM-generated (LLM only gives Q/A text).
+    - Q[i] is always paired with A[i] — answers can't shift order.
+    - Unique IDs per call (faqcard_<uid>_<i>) so archive pages / Elementor
+      previews with several posts never collide.
+    - Clicks work even if WordPress strips inline onclick="" (kses): the
+      <script> also binds via addEventListener on data-faq-trigger.
+    - Critical open/close state is also in style="" (preserved by WP) not
+      only in <style>. <noscript> fallback shows all answers if JS stripped.
     """
-    
-    items_html = ""
-    
-    for i, faq in enumerate(faq_items):
-        question = faq.get("question", "").strip()
-        answer = faq.get("answer_draft", "").strip()
-        
-        if not question or not answer:
+
+    if not faq_items:
+        return ""
+
+    import html as _html
+    import json as _json
+    import uuid as _uuid
+
+    # Clean Q/A pairs — keep order, drop empties
+    pairs: list = []
+    for faq in (faq_items or []):
+        if not isinstance(faq, dict):
             continue
-        
-        items_html += f"""
-<div class="faq-item" data-question="{question.replace('"', '&quot;')}">
-    <button class="faq-question" aria-expanded="false" onclick="toggleFAQ(this)">
-        <span class="faq-q-text">{question}</span>
-    </button>
-    <div class="faq-answer" hidden>
-        <p>{answer}</p>
-    </div>
-</div>
-"""
-    
-    import json
-    schema_items = []
-    for faq in faq_items:
-        q = faq.get("question", "")
-        a = faq.get("answer_draft", "")
-        if q and a:
-            schema_items.append({
-                "@type": "Question",
-                "name": q,
-                "acceptedAnswer": {"@type": "Answer", "text": a}
-            })
-    
-    faq_schema = json.dumps({
+        q_raw = (faq.get("question", "") or "").strip()
+        a_raw = (faq.get("answer_draft", faq.get("answer", "")) or "").strip()
+        if not q_raw or not a_raw:
+            continue
+        from bs4 import BeautifulSoup
+        q_text = BeautifulSoup(q_raw, 'html.parser').get_text().strip()
+        a_text = BeautifulSoup(a_raw, 'html.parser').get_text().strip()
+        if q_text and a_text:
+            pairs.append((q_text, a_text))
+
+    if not pairs:
+        return ""
+
+    uid = _uuid.uuid4().hex[:8]
+
+    cards_html = ""
+    for i, (q_text, a_text) in enumerate(pairs):
+        num = str(i + 1).zfill(2)
+        q_esc = _html.escape(q_text, quote=True)
+        a_esc = _html.escape(a_text, quote=False)
+        is_open = " is-open" if i == 0 else ""
+        expanded = "true" if i == 0 else "false"
+        body_style = ' style="display:block"' if i == 0 else ""
+        cards_html += (
+            f'<div class="faq-card{is_open}" id="faqcard_{uid}_{i}">'
+            f'<button type="button" class="faq-trigger" data-faq-trigger="{uid}_{i}" '
+            f'onclick="faqToggle(\'{uid}_{i}\')" aria-expanded="{expanded}">'
+            f'<span class="faq-num">{num}</span>'
+            f'<span class="faq-qtext">{q_esc}</span>'
+            f'<span class="faq-icon">+</span>'
+            f'</button>'
+            f'<div class="faq-body" id="faqbody_{uid}_{i}"{body_style}>'
+            f'<div class="faq-divider"></div>'
+            f'<p>{a_esc}</p>'
+            f'</div>'
+            f'</div>'
+        )
+
+    schema_items = [
+        {
+            "@type": "Question",
+            "name": q,
+            "acceptedAnswer": {"@type": "Answer", "text": a},
+        }
+        for q, a in pairs
+    ]
+    faq_schema = _json.dumps({
         "@context": "https://schema.org",
         "@type": "FAQPage",
-        "mainEntity": schema_items
+        "mainEntity": schema_items,
     })
-    
-    return f"""
-<style>
-.faq-wrapper {{
-    margin: 32px 0;
-    font-family: inherit;
-}}
-.faq-wrapper h2 {{
-    font-size: 20px;
-    font-weight: 600;
-    color: #111827;
-    margin: 0 0 16px 0;
-}}
-.faq-search {{
-    width: 100%;
-    max-width: 480px;
-    padding: 10px 14px;
-    margin-bottom: 18px;
-    font-size: 15px;
-    font-family: inherit;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    background: #ffffff;
-    color: #111827;
-    box-sizing: border-box;
-    outline: none;
-}}
-.faq-search:focus {{
-    border-color: #9ca3af;
-}}
-.faq-item {{
-    border-bottom: 1px solid #e5e7eb;
-}}
-.faq-item:last-child {{
-    border-bottom: none;
-}}
-.faq-question {{
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 16px 4px;
-    background: none;
-    border: none;
-    text-align: left;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 16px;
-    font-weight: 500;
-    color: #111827;
-    line-height: 1.45;
-}}
-.faq-question:hover {{
-    color: #374151;
-}}
-.faq-q-text {{
-    flex: 1;
-    padding-right: 16px;
-}}
-.faq-answer {{
-    display: none;
-    padding: 0 4px 18px 4px;
-    color: #374151;
-    font-size: 15px;
-    line-height: 1.7;
-}}
-.faq-answer p {{
-    margin: 0;
-}}
-.faq-item.open .faq-answer {{
-    display: block;
-}}
-.faq-item.hidden {{
-    display: none;
-}}
 
-@media (max-width: 640px) {{
-    .faq-question {{
-        font-size: 15px;
-        padding: 14px 2px;
-    }}
-    .faq-answer {{
-        font-size: 14px;
-        padding: 0 2px 16px 2px;
-    }}
-}}
+    # ALL CSS IS HARDCODED — no LLM-generated values
+    return f"""<style>
+.faq-section{{margin:40px 0}}
+.faq-section h2{{font-size:28px;font-weight:700;color:#111827;margin-bottom:24px}}
+.faq-card{{border:1px solid #e5e7eb;border-radius:12px;margin-bottom:12px;overflow:hidden;background:#fff;transition:border-color 0.2s,box-shadow 0.2s}}
+.faq-card:hover{{border-color:#d1d5db;box-shadow:0 2px 8px rgba(0,0,0,0.06)}}
+.faq-card.is-open{{border-color:#ff6b35;box-shadow:0 4px 16px rgba(255,107,53,0.12)}}
+.faq-trigger{{width:100%;display:flex;align-items:center;gap:14px;padding:20px 22px;background:none;border:none;text-align:left;cursor:pointer;font-family:inherit}}
+.faq-num{{width:32px;height:32px;border-radius:8px;background:#f3f4f6;color:#6b7280;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.2s,color 0.2s}}
+.faq-card.is-open .faq-num{{background:#ff6b35;color:#fff}}
+.faq-qtext{{flex:1;font-size:16px;font-weight:600;color:#111827;line-height:1.4;transition:color 0.2s}}
+.faq-card.is-open .faq-qtext{{color:#ff6b35}}
+.faq-icon{{width:28px;height:28px;border-radius:50%;border:1.5px solid #e5e7eb;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.25s;color:#9ca3af;font-size:18px;font-weight:300;line-height:1}}
+.faq-card.is-open .faq-icon{{border-color:#ff6b35;color:#ff6b35;transform:rotate(45deg)}}
+.faq-body{{display:none;padding:0 22px 22px 68px}}
+.faq-body p{{margin:0;font-size:15px;line-height:1.75;color:#4b5563}}
+.faq-divider{{height:1px;background:#f3f4f6;margin-bottom:16px}}
 </style>
-
-<div class="faq-wrapper">
+<div class="faq-section" data-faq-root="{uid}">
 <h2>Frequently Asked Questions</h2>
-<input class="faq-search" type="search" placeholder="Search questions..." oninput="filterFAQ(this.value)">
-{items_html}
+{cards_html}
 </div>
-
+<noscript><style>.faq-section .faq-body{{display:block !important}}</style></noscript>
 <script>
-function toggleFAQ(btn) {{
-    var item = btn.parentElement;
-    var answer = item.querySelector('.faq-answer');
-    var isOpen = item.classList.contains('open');
-    
-    document.querySelectorAll('.faq-item.open').forEach(function(el) {{
-        el.classList.remove('open');
-        var a = el.querySelector('.faq-answer');
-        a.style.display = 'none';
-        a.setAttribute('hidden', '');
-        el.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
-    }});
-    
-    if (!isOpen) {{
-        item.classList.add('open');
-        answer.style.display = 'block';
-        answer.removeAttribute('hidden');
-        btn.setAttribute('aria-expanded', 'true');
-    }}
-}}
-
-function filterFAQ(query) {{
-    var term = (query || '').toLowerCase().trim();
-    document.querySelectorAll('.faq-item').forEach(function(item) {{
-        var q = (item.getAttribute('data-question') || '').toLowerCase();
-        var a = (item.querySelector('.faq-answer')?.innerText || '').toLowerCase();
-        var match = !term || q.indexOf(term) !== -1 || a.indexOf(term) !== -1;
-        item.classList.toggle('hidden', !match);
-    }});
-}}
+window.faqToggle = window.faqToggle || function(key){{
+var card=document.getElementById('faqcard_'+key);
+if(!card){{card=document.getElementById('faqcard'+key);}}
+var body=document.getElementById('faqbody_'+key);
+if(!body){{body=document.getElementById('faqbody'+key);}}
+if(!card||!body){{return;}}
+var btn=card.querySelector('.faq-trigger');
+var isOpen=card.classList.contains('is-open');
+var root=card.closest('[data-faq-root]')||card.closest('.faq-section')||document;
+root.querySelectorAll('.faq-card').forEach(function(c){{
+c.classList.remove('is-open');
+var b=c.querySelector('.faq-body');
+if(b){{b.style.display='none';}}
+var t=c.querySelector('.faq-trigger');
+if(t){{t.setAttribute('aria-expanded','false');}}
+}});
+if(!isOpen){{card.classList.add('is-open');body.style.display='block';if(btn){{btn.setAttribute('aria-expanded','true');}}}}
+}};
 </script>
-
-<script type="application/ld+json">
-{faq_schema}
-</script>
-"""
+<script type="application/ld+json">{faq_schema}</script>"""
 
 
 def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = "") -> str:
-    """Replaces static or broken FAQ section with dynamic clickable accordion matching user template."""
+    """Replaces static or AI-generated text FAQ sections with a single dynamic clickable accordion matching user template.
+    Guarantees that ALL AI-generated text FAQ headings (h2/h3/h4/h5) and Q/A paragraphs are completely removed.
+    """
     from bs4 import BeautifulSoup
+    import json
     import re
     
     if not html_content:
         return ""
 
     soup = BeautifulSoup(html_content, 'html.parser')
+    faq_heading_pattern = re.compile(r'\b(faqs?|frequently\s+asked|questions?\s+(?:and|&)\s+answers?|common\s+questions)\b', re.I)
     
     # 1. Gather FAQ items from outline if available
     faq_items = []
-    if outline:
+    if outline and isinstance(outline, dict):
         faq_items = (
             outline.get("point_14_faqs", [])
             or outline.get("point_13_faqs", [])
@@ -5658,61 +5814,81 @@ def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = ""
     if not faq_items:
         for s in soup.find_all('script', type='application/ld+json'):
             try:
-                import json
                 s_data = json.loads(s.string or s.get_text() or "{}")
                 if s_data.get("@type") == "FAQPage" and "mainEntity" in s_data:
                     for entity in s_data["mainEntity"]:
                         q = entity.get("name")
                         a = entity.get("acceptedAnswer", {}).get("text")
-                        if q and a:
+                        if q and a and not any(item.get("question") == q for item in faq_items):
                             faq_items.append({"question": q, "answer_draft": a})
             except Exception:
                 logger.debug("[BLOG_WRITER] FAQPage PAA parse note")
 
-    # 3. Fallback: parse questions and answers directly from existing H3/P elements under FAQ H2
-    faq_h2 = None
-    for h2 in soup.find_all('h2'):
-        text = h2.get_text().lower()
-        if 'frequently asked' in text or 'faq' in text:
-            faq_h2 = h2
-            break
-
-    if not faq_items and faq_h2:
-        current = faq_h2.next_sibling
-        cur_q = None
-        while current:
-            if hasattr(current, 'name'):
-                if current.name == 'h2':
-                    break
-                if current.name == 'h3':
-                    cur_q = current.get_text().strip()
-                elif current.name == 'p':
-                    # check if paragraph is strong question or answer
-                    p_text = current.get_text().strip()
-                    if cur_q:
-                        if p_text:
-                            faq_items.append({"question": cur_q, "answer_draft": p_text})
-                        cur_q = None
-                    elif current.find('strong') and ('?' in p_text or len(p_text) < 120):
-                        cur_q = p_text
-            current = current.next_sibling
-
-    # 4. Fallback: parse from existing card / button structures if previously partially built
+    # 3. Fallback: parse from existing card / button structures if previously built
     if not faq_items:
-        for card in soup.find_all('div', class_=lambda c: c and ('rf-faq-card' in c or 'rf-faq-item' in c)):
-            title_el = card.find(class_=lambda c: c and ('rf-faq-title-text' in c or 'rf-faq-qtext' in c)) or card.find(['span', 'h3', 'button'])
-            ans_el = card.find(class_=lambda c: c and ('rf-faq-answer-p' in c or 'rf-faq-content' in c)) or card.find('p')
+        for card in soup.find_all('div', class_=lambda c: c and any(k in c for k in ['faq-card', 'rf-faq-card', 'rf-faq-item', 'rffaq'])):
+            title_el = card.find(class_=lambda c: c and any(k in c for k in ['faq-qtext', 'rf-faq-title-text', 'rf-faq-qtext', 'rffaqq'])) or card.find(['span', 'h3', 'button'])
+            ans_el = card.find(class_=lambda c: c and any(k in c for k in ['faq-body', 'rf-faq-answer-p', 'rf-faq-content', 'rffaqa'])) or card.find('p')
             if title_el and ans_el:
                 q_text = title_el.get_text().strip()
                 ans_text = ans_el.get_text().strip()
-                if q_text and ans_text:
+                if q_text and ans_text and not any(item.get("question") == q_text for item in faq_items):
                     faq_items.append({"question": q_text, "answer_draft": ans_text})
 
-    # If still no FAQ items found and no FAQ header, return content as is
-    if not faq_items and not faq_h2:
-        return html_content
+    # 4. Fallback: parse questions and answers from ANY FAQ heading (h2, h3, h4, h5, h6)
+    if not faq_items:
+        for h in soup.find_all(['h2', 'h3', 'h4', 'h5', 'h6']):
+            if faq_heading_pattern.search(h.get_text()):
+                curr = h.next_sibling
+                cur_q = None
+                while curr:
+                    if hasattr(curr, 'name') and curr.name in ['h1', 'h2']:
+                        break
+                    if hasattr(curr, 'name') and curr.name == 'div' and ('cta' in str(curr.get('class', [])).lower() or 'take action' in curr.get_text().lower()):
+                        break
+                    txt = curr.get_text().strip() if hasattr(curr, 'get_text') else str(curr).strip()
+                    if not txt:
+                        curr = curr.next_sibling
+                        continue
+                    qa_matches = re.findall(r'(?:^|\n)\s*(?:Q|Question)\s*[:.]\s*(.+?)\s*\n+\s*(?:A|Answer)\s*[:.]\s*(.+?)(?=(?:\n+\s*(?:Q|Question)\s*[:.]|\Z))', txt, re.DOTALL | re.IGNORECASE)
+                    if qa_matches:
+                        for q, a in qa_matches:
+                            q_clean = q.strip()
+                            a_clean = a.strip()
+                            if q_clean and a_clean and not any(it['question'] == q_clean for it in faq_items):
+                                faq_items.append({"question": q_clean, "answer_draft": a_clean})
+                    elif hasattr(curr, 'name') and curr.name in ['h3', 'h4']:
+                        cur_q = txt
+                    elif hasattr(curr, 'name') and curr.name == 'p':
+                        if cur_q:
+                            faq_items.append({"question": cur_q, "answer_draft": txt})
+                            cur_q = None
+                        elif txt.lower().startswith(('q:', 'q.', 'question:')):
+                            cur_q = re.sub(r'^(?:q|question)\s*[:.]\s*', '', txt, flags=re.I).strip()
+                        elif cur_q and txt.lower().startswith(('a:', 'a.', 'answer:')):
+                            ans = re.sub(r'^(?:a|answer)\s*[:.]\s*', '', txt, flags=re.I).strip()
+                            faq_items.append({"question": cur_q, "answer_draft": ans})
+                            cur_q = None
+                        elif curr.find('strong') and ('?' in txt or len(txt) < 120):
+                            cur_q = txt
+                    curr = curr.next_sibling
+                if faq_items:
+                    break
 
-    # If FAQ H2 existed but no items extracted, populate default high-quality FAQ questions based on topic
+    # 5. Fallback: scan for any Q: ... / A: ... paragraphs in the document
+    if not faq_items:
+        cur_q = None
+        for p in soup.find_all('p'):
+            ptxt = p.get_text().strip()
+            if ptxt.lower().startswith(('q:', 'q.', 'question:')):
+                cur_q = re.sub(r'^(?:q|question)\s*[:.]\s*', '', ptxt, flags=re.I).strip()
+            elif cur_q and ptxt.lower().startswith(('a:', 'a.', 'answer:')):
+                ans = re.sub(r'^(?:a|answer)\s*[:.]\s*', '', ptxt, flags=re.I).strip()
+                if cur_q and ans:
+                    faq_items.append({"question": cur_q, "answer_draft": ans})
+                cur_q = None
+
+    # 6. Fallback: If still no items extracted, populate default high-quality FAQ questions based on topic
     if not faq_items:
         clean_t = (topic or "your accident").title()
         faq_items = [
@@ -5722,37 +5898,79 @@ def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = ""
             {"question": "Will my case settle out of court or go to trial?", "answer_draft": "Over 90 percent of claims settle through structured negotiations when supported by robust evidence. If an insurance carrier refuses fair compensation, litigation becomes necessary to secure full damages."}
         ]
 
-    # Build the brand new modern accordion HTML
+    # CLEANUP PHASE: Remove ALL existing FAQ wrappers
+    for w in list(soup.find_all('div', class_=lambda c: c and any(k in c for k in ['faq-section', 'rf-faq-wrapper', 'rffaqwrap', 'faq-wrapper']))):
+        try:
+            w.decompose()
+        except Exception:
+            pass
+
+    # CLEANUP PHASE: Remove ALL FAQ headings (h2, h3, h4, h5, h6) and their immediate sibling contents
+    for h in list(soup.find_all(['h2', 'h3', 'h4', 'h5', 'h6'])):
+        if faq_heading_pattern.search(h.get_text()):
+            curr = h.next_sibling
+            while curr:
+                if hasattr(curr, 'name') and curr.name in ['h1', 'h2']:
+                    if not curr.get_text().strip():
+                        nxt = curr.next_sibling
+                        try:
+                            curr.decompose()
+                        except Exception:
+                            pass
+                        curr = nxt
+                        continue
+                    break
+                if hasattr(curr, 'name') and curr.name == 'div' and ('cta' in str(curr.get('class', [])).lower() or 'take action' in curr.get_text().lower()):
+                    break
+                nxt = curr.next_sibling
+                try:
+                    curr.decompose()
+                except Exception:
+                    pass
+                curr = nxt
+            try:
+                h.decompose()
+            except Exception:
+                pass
+
+    # CLEANUP PHASE: Remove empty headings
+    for h in list(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])):
+        if not h.get_text().strip():
+            try:
+                h.decompose()
+            except Exception:
+                pass
+
+    # CLEANUP PHASE: Remove any remaining orphan Q: / A: paragraphs outside accordion
+    for p in list(soup.find_all('p')):
+        ptxt = p.get_text().strip()
+        if ptxt.lower().startswith(('q:', 'q.', 'question:')) or (ptxt.lower().startswith(('a:', 'a.', 'answer:')) and len(ptxt) < 400):
+            try:
+                p.decompose()
+            except Exception:
+                pass
+
+    # CLEANUP PHASE: Remove any orphaned faq-card elements
+    for card in list(soup.find_all('div', class_=lambda c: c and any(k in c for k in ['faq-card', 'rf-faq-card']))):
+        try:
+            card.decompose()
+        except Exception:
+            pass
+
+    # CLEANUP PHASE: Remove duplicate FAQ scripts
+    for s in list(soup.find_all('script')):
+        txt = s.string or s.get_text() or ""
+        if 'faqToggle' in txt or '"FAQPage"' in txt:
+            try:
+                s.decompose()
+            except Exception:
+                pass
+
+    # Build the brand new single modern accordion HTML
     accordion_html = build_faq_accordion(faq_items, topic=topic)
     accordion_soup = BeautifulSoup(accordion_html, 'html.parser')
 
-    # Remove any existing .rf-faq-wrapper or old FAQ section
-    existing_wrapper = soup.find('div', class_=lambda c: c and 'rf-faq-wrapper' in c)
-    if existing_wrapper:
-        existing_wrapper.replace_with(accordion_soup)
-        return str(soup)
-
-    if faq_h2:
-        elements_to_remove = [faq_h2]
-        current = faq_h2.next_sibling
-        while current:
-            if hasattr(current, 'name'):
-                if current.name == 'h2':
-                    break
-                if current.name == 'div' and ('cta' in str(current.get('class', [])).lower() or 'take action' in current.get_text().lower()):
-                    break
-            elements_to_remove.append(current)
-            current = current.next_sibling
-
-        faq_h2.insert_before(accordion_soup)
-        for el in elements_to_remove:
-            try:
-                el.decompose()
-            except Exception:
-                logger.debug("[BLOG_WRITER] BeautifulSoup decompose note: element already removed")
-        return str(soup)
-
-    # If no FAQ H2, insert before CTA block or at the end
+    # Insert single accordion before CTA block or at the end
     cta = None
     for div in soup.find_all('div'):
         div_text = div.get_text().lower()
@@ -5768,14 +5986,14 @@ def replace_faq_with_accordion(html_content: str, outline: dict, topic: str = ""
         else:
             soup.append(accordion_soup)
 
-    return str(soup)
+    return sanitize_css_in_html(str(soup))
 
 
 def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
     """
     Fixes blog structure: adds H1 title, moves TL;DR to top,
     ensures proper order: Title → TL;DR → Content → FAQ → CTA.
-    Maintains .rf-faq-wrapper as an atomic unit so accordion is never broken.
+    Maintains .faq-section as an atomic unit so accordion is never broken.
     """
     from bs4 import BeautifulSoup
     import re
@@ -5829,8 +6047,8 @@ def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
                 new_text = new_text[0].upper() + new_text[1:]
                 h2.string = new_text
     
-    # 4. Ensure FAQ is before CTA block
-    rf_wrapper = soup.find('div', class_=lambda c: c and 'rf-faq-wrapper' in c)
+    # 4. Ensure FAQ is before CTA block and only interactive accordion exists
+    faq_wrapper = soup.find('div', class_=lambda c: c and any(k in c for k in ['faq-section', 'rf-faq-wrapper', 'rffaqwrap', 'faq-wrapper']))
     cta = None
     for div in soup.find_all('div'):
         div_text = div.get_text().lower()
@@ -5838,38 +6056,36 @@ def fix_blog_structure(html_content: str, title: str, outline: dict) -> str:
             cta = div
             break
 
-    if rf_wrapper and cta and rf_wrapper != cta:
-        rf_wrapper.extract()
-        cta.insert_before(rf_wrapper)
-    elif not rf_wrapper:
-        # Check for static FAQ H2 to place before CTA
-        faq_h2 = None
-        for h2 in soup.find_all('h2'):
-            if 'frequently asked' in h2.get_text().lower():
-                faq_h2 = h2
-                break
-        
-        if faq_h2:
-            faq_elements = [faq_h2]
-            sibling = faq_h2.next_sibling
-            while sibling:
-                if hasattr(sibling, 'name') and sibling.name == 'h2':
+    faq_heading_pattern = re.compile(r'\b(faqs?|frequently\s+asked|questions?\s+(?:and|&)\s+answers?|common\s+questions)\b', re.I)
+
+    # Decompose ALL static FAQ headings (h2, h3, h4, h5, h6) outside the interactive wrapper
+    for h in list(soup.find_all(['h2', 'h3', 'h4', 'h5', 'h6'])):
+        if h.find_parent('div', class_=lambda c: c and any(k in c for k in ['faq-section', 'rf-faq-wrapper', 'rffaqwrap', 'faq-wrapper'])):
+            continue
+        if faq_heading_pattern.search(h.get_text()):
+            curr = h.next_sibling
+            while curr and getattr(curr, 'name', None) not in ['h1', 'h2']:
+                if getattr(curr, 'name', None) == 'div' and ('cta' in str(curr.get('class', [])).lower() or 'take action' in curr.get_text().lower()):
                     break
-                faq_elements.append(sibling)
-                sibling = sibling.next_sibling
-            
-            for el in faq_elements:
-                el.extract()
-            
-            if cta:
-                cta.insert_before(*faq_elements)
-            else:
-                if soup.body:
-                    soup.body.extend(faq_elements)
-                else:
-                    for el in faq_elements:
-                        soup.append(el)
-    
+                nxt = curr.next_sibling
+                try:
+                    curr.decompose()
+                except Exception:
+                    pass
+                curr = nxt
+            try:
+                h.decompose()
+            except Exception:
+                pass
+
+    if faq_wrapper:
+        if cta and faq_wrapper != cta:
+            faq_wrapper.extract()
+            cta.insert_before(faq_wrapper)
+    else:
+        # If no accordion wrapper was found, convert and rebuild using replace_faq_with_accordion
+        return replace_faq_with_accordion(str(soup), outline or {}, topic=title)
+
     return str(soup)
 
 
@@ -5973,7 +6189,8 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     
     # 3. Clean special characters & year correctness
     step2 = clean_special_characters(step1b)
-    step2 = _enforce_year_correctness(step2, pk)
+    step2b = sanitize_css_in_html(step2)   # ADD THIS
+    step2 = _enforce_year_correctness(step2b, pk)
     
     # 4. Enforce contractions, year limit, passive voice, closing sentences, fix broken sentences
     step3 = enforce_contractions(step2)
@@ -5993,9 +6210,11 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     step4 = remove_duplicate_paragraphs(step4)
     step4 = remove_duplicate_tables(step4)
     step4 = fix_broken_sentences(step4)
-    
+    step4e = step4
+    step4f = fix_placeholder_text(step4e, pk)  # ADD
+
     # 6. Remove broken links & placeholder strategic resources
-    step5 = remove_broken_links(step4)
+    step5 = remove_broken_links(step4f)
     
     # 7. Detect duplicate examples
     step6 = detect_duplicate_examples(step5)
@@ -6078,7 +6297,15 @@ async def process_blog_output(raw_html: str, website_id: str = "default", target
     elif final_count > 3200:
         logger.debug(f"Article word count {final_count} exceeds target ceiling; continuing.")
     final = sanitize_blog_html(final)
-    
+    final = sanitize_css_in_html(final)
+    final = fix_placeholder_text(final, pk)
+
+    if has_placeholder_text(final):
+        raise ValueError(
+            "Article contains unresolved placeholder text. "
+            "The Writer failed to complete the template. Regenerating."
+        )
+
     # 12. Audience check
     if contains_wrong_audience_content(final):
         raise ValueError("Wrong audience content detected — regenerating")
@@ -6125,9 +6352,22 @@ async def process_blog_output_aeo(
 
     step7d = await auto_fix_chunk_lengths(step7c)
 
-    step8 = await inject_internal_links(step7d, website_id)
+    try:
+        from services.internal_links import inject_internal_links
+        step8 = await inject_internal_links(step7d, website_id)
+    except Exception as e:
+        logger.debug(f"[InternalLinks] AEO injection note: {e}")
+        step8 = step7d
     step9 = validate_and_fix_tldr(step8, target_keyword, outline)
-    step9b = replace_faq_with_accordion(step9, outline or {})
+    step9b = replace_faq_with_accordion(step9, outline or {}, topic=target_keyword)
+    step9b = sanitize_css_in_html(step9b)
+    step9b = fix_placeholder_text(step9b, target_keyword)
+
+    if has_placeholder_text(step9b):
+        raise ValueError(
+            "Article contains unresolved placeholder text. "
+            "The Writer failed to complete the template. Regenerating."
+        )
 
     schema_tag = await generate_article_schema(
         title=outline.get("point_6_h1", {}).get("h1_text", target_keyword) if outline else target_keyword,
@@ -6141,6 +6381,13 @@ async def process_blog_output_aeo(
     final = step9b + schema_tag
 
     final = validate_keyword_in_title(final, target_keyword)
+    final = sanitize_css_in_html(final)
+
+    if has_placeholder_text(final):
+        raise ValueError(
+            "Article contains unresolved placeholder text. "
+            "The Writer failed to complete the template. Regenerating."
+        )
 
     if contains_wrong_audience_content(final):
         raise ValueError("Wrong audience content — regenerating")

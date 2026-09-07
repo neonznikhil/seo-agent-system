@@ -848,7 +848,7 @@ app.include_router(keywords_router, prefix="/api")             # /api/keywords/*
 app.include_router(clusters_router, prefix="/api")             # /api/clusters/*
 app.include_router(serp_router, prefix="/api")                 # /api/serp/*
 app.include_router(research_router, prefix="/api")             # /api/research/*
-app.include_router(seo_aeo_geo_router, prefix="/api")                 # /api/seo-analysis, /api/aeo-score, /api/geo-readiness
+app.include_router(seo_aeo_geo_router)                                 # declares its own /api/* + bare variants (incl. /api/aeo/*)
 app.include_router(aeo_router, prefix="/api")                           # /api/aeo/*
 app.include_router(tech_seo_router, prefix="/api")                    # /api/tech-seo/*
 app.include_router(gsc_router, prefix="/api")                         # /api/gsc/*
@@ -866,7 +866,7 @@ app.include_router(memory_router, prefix="/api")                      # /api/mem
 app.include_router(knowledge_router, prefix="/api")            # /api/knowledge/*
 app.include_router(rag_router, prefix="/api")                  # /api/rag/*
 app.include_router(chat_router, prefix="/api")                 # /api/chat/*
-app.include_router(llms_txt_router, prefix="/api")                    # /api/llms-txt/*
+app.include_router(llms_txt_router)                                      # declares its own /llms.txt + /api/* variants (must stay unprefixed)
 
 # WordPress CMS & OAuth Connectors
 app.include_router(wordpress_router, prefix="/api")            # /api/wordpress/*
