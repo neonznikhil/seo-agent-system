@@ -4658,7 +4658,7 @@ async def generate_blog_autonomous(
     final_html = ""
     planner_outline = {}
     try:
-        spec = _make_agents_and_tasks(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings)
+        spec = _make_agents_and_tasks(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, word_count_target=word_count or 2500)
         if spec["use_crewai"]:
             from crewai import Crew, Process
             # Build crew with real agents/tasks
@@ -4794,17 +4794,6 @@ async def generate_blog_autonomous(
     val_score = crew_result.get("validation_score", 0.92)
     ground_score = crew_result.get("grounding_score", 0.88)
 
-    # Clean pure HTML to strip any monologue / editor notes
-    final_html = _clean_pure_html(final_html)
-
-    # Ensure TL;DR block exists; inject if missing rather than failing pipeline
-    if not validate_tldr_exists(final_html):
-        final_html = ensure_tldr_exists(final_html, topic)
-
-    # Ensure single interactive FAQ accordion and proper blog structure
-    final_html = replace_faq_with_accordion(final_html, planner_outline or {}, topic=topic)
-    final_html = fix_blog_structure(final_html, topic, planner_outline or {})
-
     if not final_html or len(final_html.strip()) < 500:
         logger.warning("[Crew] final_html too short before editor gate, executing direct NIM fallback...")
         crew_result = await _direct_nim_crew_fallback(topic, website_id, business_name, knowledge_hits, tone, analytics_learnings, content_id)
@@ -4815,6 +4804,32 @@ async def generate_blog_autonomous(
         ground_score = crew_result.get("grounding_score", 0.88)
         if not validate_tldr_exists(final_html):
             final_html = ensure_tldr_exists(final_html, topic)
+
+    # Clean pure HTML to strip any monologue / editor notes
+    final_html = _clean_pure_html(final_html)
+
+    # Ensure TL;DR block exists; inject if missing rather than failing pipeline
+    if not validate_tldr_exists(final_html):
+        final_html = ensure_tldr_exists(final_html, topic)
+
+    # Check and enforce minimum word count for long-form blog quality (2,500 - 3,500 words)
+    target_wc = word_count or 2500
+    is_valid_wc, current_words = validate_word_count(final_html, min_words=2400, max_words=4500)
+    if not is_valid_wc and current_words < 2400:
+        logger.info(f"[Crew] Blog word count {current_words} below target, expanding to {target_wc}+ words...")
+        final_html = await ensure_minimum_word_count(
+            html_content=final_html,
+            outline=planner_outline or {},
+            target_keyword=topic,
+            website_id=website_id,
+            current_word_count=current_words,
+            min_words=target_wc
+        )
+        final_html = ensure_each_section_minimum_length(final_html)
+
+    # Ensure single interactive FAQ accordion and proper blog structure
+    final_html = replace_faq_with_accordion(final_html, planner_outline or {}, topic=topic)
+    final_html = fix_blog_structure(final_html, topic, planner_outline or {})
 
      # FIX Problem 2: Final off-topic validation before saving (prevents wrong-topic articles being stored)
     try:
