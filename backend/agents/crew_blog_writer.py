@@ -789,13 +789,9 @@ async def build_grounding_bundle(website_id: str, topic: str) -> Dict[str, Any]:
     except Exception as e:
         logger.debug(f"[GroundingBundle] Internal links lookup note: {e}")
 
-    if not real_internal_links:
-        base_slug = re.sub(r"[^a-z0-9]+", "-", clean_kw.lower()).strip("-")
-        real_internal_links = [
-            {"url": f"/{base_slug}-overview", "anchor": f"overview of {clean_kw}"},
-            {"url": f"/services", "anchor": f"specialized {niche} solutions"},
-            {"url": f"/insights", "anchor": f"{niche} practical insights"},
-        ]
+    # HONEST: no invented URLs. Fabricated /services + /insights links taught
+    # the model that guessing URLs is acceptable. Empty means "omit links".
+    internal_links_provenance = "measured" if real_internal_links else "empty"
 
     # 5. Live SERP & Competitor Intelligence (Serper/Google)
     serp_competitors = []
@@ -819,15 +815,111 @@ async def build_grounding_bundle(website_id: str, topic: str) -> Dict[str, Any]:
     except Exception as e:
         logger.debug(f"[GroundingBundle] SERP intelligence fetch note: {e}")
 
-    if len(paa_questions) < 4:
-        paa_questions.extend([
-            f"What is {clean_kw} and how does it work?",
-            f"What are the essential requirements and best practices for {clean_kw} in 2026?",
-            f"What common mistakes should you avoid with {clean_kw}?",
-            f"How do you evaluate performance and success in {clean_kw}?",
-            f"What are the most effective strategies for {clean_kw}?",
-        ])
+    # HONEST: no template questions. Generic filler trained the model to pad.
+    # Real PAA only; otherwise the writer authors its own FAQs (QA checks
+    # presence, not source).
     paa_questions = paa_questions[:5]
+    paa_provenance = "measured" if paa_questions else "none"
+    # 6. SEO performance context: what already ranks, what's close, what
+    # competes, what worked. All measured-or-empty; absence is reported, not
+    # filled. This is what stops the model picking topics in a vacuum.
+    topic_terms = {t for t in re.findall(r"[a-z]{4,}", clean_kw.lower())}
+    striking_keywords = []
+    gsc_queries = []
+    cannibalization_warning = None
+    past_wins = []
+
+    def _shares_topic(text):
+        words = set(re.findall(r"[a-z]{4,}", (text or "").lower()))
+        return bool(words & topic_terms)
+
+    # 6a. Striking-distance keywords on this topic (positions 11-20).
+    try:
+        from services.seo_constants import is_striking_distance
+        tracked = supabase.table("rank_tracking").select(
+            "target_keyword, current_position, wp_url, title").eq(
+            "website_id", website_id).execute().data or []
+        for r in tracked:
+            kw = r.get("target_keyword") or ""
+            if kw and _shares_topic(kw) and is_striking_distance(r.get("current_position")):
+                striking_keywords.append({
+                    "keyword": kw, "position": r.get("current_position"),
+                    "url": r.get("wp_url") or "", "title": r.get("title") or "",
+                    "provenance": "measured",
+                })
+        striking_keywords = sorted(
+            striking_keywords, key=lambda k: k["position"] if k["position"] is not None else 99)[:5]
+    except Exception as e:
+        logger.debug(f"[GroundingBundle] striking lookup note: {e}")
+
+    # 6b. GSC-measured queries already earning impressions on this topic.
+    try:
+        for table in ("keyword_opportunities", "analytics_data"):
+            try:
+                grows = supabase.table(table).select(
+                    "keyword, impressions, clicks, position").eq(
+                    "website_id", website_id).execute().data or []
+            except Exception:
+                continue
+            for r in grows:
+                kw = r.get("keyword") or r.get("query") or ""
+                if kw and _shares_topic(kw) and (r.get("impressions") or 0) > 0:
+                    if not any(g["keyword"].lower() == kw.lower() for g in gsc_queries):
+                        gsc_queries.append({
+                            "keyword": kw, "impressions": r.get("impressions"),
+                            "clicks": r.get("clicks"), "position": r.get("position"),
+                            "provenance": "measured",
+                        })
+            if gsc_queries:
+                break
+        gsc_queries = sorted(gsc_queries,
+                             key=lambda g: g.get("impressions") or 0, reverse=True)[:5]
+    except Exception as e:
+        logger.debug(f"[GroundingBundle] GSC query lookup note: {e}")
+
+    # 6c. Cannibalization guard: is another page already targeting this topic?
+    try:
+        from services.cannibalization_service import detect_cannibalization
+        cand_rows = []
+        try:
+            trows = supabase.table("rank_tracking").select(
+                "target_keyword, wp_url, title, current_position").eq(
+                "website_id", website_id).execute().data or []
+            for r in trows:
+                if _shares_topic(r.get("target_keyword") or ""):
+                    cand_rows.append({"keyword": r.get("target_keyword"),
+                                      "url": r.get("wp_url") or "",
+                                      "title": r.get("title") or "",
+                                      "position": r.get("current_position")})
+        except Exception:
+            pass
+        try:
+            crows = supabase.table("content_log").select(
+                "keyword, title").eq("website_id", website_id).limit(200).execute().data or []
+            for r in crows:
+                if _shares_topic(r.get("keyword") or ""):
+                    cand_rows.append({"keyword": r.get("keyword"), "url": "",
+                                      "title": r.get("title") or "", "position": None})
+        except Exception:
+            pass
+        hits = detect_cannibalization(cand_rows)
+        cannibalization_warning = hits[0] if hits else None
+    except Exception as e:
+        logger.debug(f"[GroundingBundle] cannibalization lookup note: {e}")
+
+    # 6d. Past wins: site pages already ranking top-10. Mirror what worked.
+    try:
+        wrows = supabase.table("rank_tracking").select(
+            "target_keyword, title, current_position, best_position").eq(
+            "website_id", website_id).execute().data or []
+        wins = [r for r in wrows
+                if isinstance(r.get("current_position"), (int, float))
+                and r["current_position"] <= 10]
+        wins = sorted(wins, key=lambda r: r["current_position"])[:3]
+        past_wins = [{"keyword": r.get("target_keyword"), "title": r.get("title"),
+                      "position": r.get("current_position")} for r in wins]
+    except Exception as e:
+        logger.debug(f"[GroundingBundle] past-wins lookup note: {e}")
 
     return {
         "website_id": website_id,
@@ -847,8 +939,14 @@ async def build_grounding_bundle(website_id: str, topic: str) -> Dict[str, Any]:
         "knowledge_hits": knowledge_hits,
         "knowledge_facts_str": knowledge_facts_str,
         "internal_links": real_internal_links,
+        "internal_links_provenance": internal_links_provenance,
         "serp_competitors": serp_competitors,
         "paa_questions": paa_questions,
+        "paa_provenance": paa_provenance,
+        "striking_keywords": striking_keywords,
+        "gsc_queries": gsc_queries,
+        "cannibalization_warning": cannibalization_warning,
+        "past_wins": past_wins,
     }
 
 
@@ -1569,6 +1667,17 @@ def _build_writer_task_prompt(target_keyword: str, outline: Any, brand_facts: st
     
     brand_facts_block = "\n\n".join(all_facts_parts) if all_facts_parts else "Ground all statements in authoritative, objective domain expertise. Do not fabricate statistics, fictitious case names, or non-existent laws."
 
+    # 2b. Approved vs rejected examples: show, don't just tell.
+    good_ex = bundle.get("good_examples") or []
+    bad_ex = bundle.get("bad_examples") or []
+    example_lines = []
+    for g in good_ex[:2]:
+        example_lines.append("APPROVED EXAMPLE (write like this):\n" + str(g)[:600])
+    for b in bad_ex[:2]:
+        example_lines.append("REJECTED EXAMPLE (never write like this):\n" + str(b)[:600])
+    examples_block = ("\n\n".join(example_lines) if example_lines
+                      else "(No approved/rejected examples saved yet — add them in Brand Voice.)")
+
     # 3. Real Internal Links Block
     internal_links = bundle.get("internal_links") or []
     if internal_links:
@@ -1579,14 +1688,20 @@ def _build_writer_task_prompt(target_keyword: str, outline: Any, brand_facts: st
             internal_links_lines.append(f"- URL: {url} | Anchor Text: \"{anchor}\"")
         internal_links_block = "Embed these REAL internal links into relevant sections naturally using <a href=\"URL\">Anchor Text</a>:\n" + "\n".join(internal_links_lines)
     else:
-        internal_links_block = "Include contextual internal links to relevant service and guide pages on the site."
+        internal_links_block = ("No verified internal URLs were found for this site. "
+            "Do NOT invent links, slugs, or service pages. Include zero internal "
+            "links rather than a single guessed URL.")
 
     # 4. Competitor & Search Intent Insights Block
     serp_comps = bundle.get("serp_competitors") or []
     paa_qs = bundle.get("paa_questions") or []
     insights_lines = []
+    paa_prov = bundle.get("paa_provenance", "measured")
     if paa_qs:
-        insights_lines.append("Common Questions Readers Ask (PAA / Intent):")
+        insights_lines.append(
+            "Common Questions Readers Ask (live user questions from search):"
+            if paa_prov == "measured" else
+            "Common Questions Readers Ask:")
         for q in paa_qs[:5]:
             insights_lines.append(f"• {q}")
     if serp_comps:
@@ -1598,7 +1713,32 @@ def _build_writer_task_prompt(target_keyword: str, outline: Any, brand_facts: st
     serp_insights_block = "\n".join(insights_lines) if insights_lines else f"Target search intent for '{target_keyword}' with practical, highly educational answers."
 
     outline_json_str = json.dumps(outline_dict, indent=2)
-    
+
+    # 5. SEO performance context: rank reality for THIS topic.
+    seo_lines = []
+    for sk in (bundle.get("striking_keywords") or [])[:5]:
+        seo_lines.append(
+            f"- Striking keyword '{sk['keyword']}' sits at position {sk['position']} "
+            f"(page {(sk.get('url') or 'unlinked')}). Weave it into an H2 to push page 1.")
+    for gq in (bundle.get("gsc_queries") or [])[:5]:
+        seo_lines.append(
+            f"- Measured query '{gq['keyword']}': {gq.get('impressions')} impressions, "
+            f"{gq.get('clicks')} clicks. Answer its intent directly.")
+    cann = bundle.get("cannibalization_warning")
+    if cann:
+        seo_lines.append(
+            f"- CANNIBALIZATION WARNING: {cann['page_count']} pages already target "
+            f"'{cann['keyword']}' (best #{cann['best_position']}). {cann['recommendation']}")
+    for w in (bundle.get("past_wins") or [])[:3]:
+        seo_lines.append(
+            f"- Proven pattern: '{w.get('title')}' ranks #{w.get('position')} for "
+            f"'{w.get('keyword')}'. Mirror its structure and depth.")
+    if not seo_lines:
+        seo_lines.append(
+            "- No measured ranking data for this topic yet (no GSC connection and no "
+            "tracked positions). Write the definitive article so future runs can measure it.")
+    seo_context_block = "SITE RANK REALITY FOR THIS TOPIC (measured where stated):\n" + "\n".join(seo_lines)
+
     return WRITER_TASK_PROMPT_TEMPLATE.format(
         current_date_str=current_date_str,
         current_year=current_year,
@@ -1608,8 +1748,10 @@ def _build_writer_task_prompt(target_keyword: str, outline: Any, brand_facts: st
         word_count_target=word_count_target,
         brand_voice_block=brand_voice_block,
         brand_facts_block=brand_facts_block,
+        examples_block=examples_block,
         internal_links_block=internal_links_block,
         serp_insights_block=serp_insights_block,
+        seo_context_block=seo_context_block,
         tone=tone
     )
 
@@ -1635,6 +1777,11 @@ Target Tone: {tone}
 {brand_voice_block}
 
 ================================================================================
+APPROVED VS REJECTED EXAMPLES (MATCH THE APPROVED STYLE):
+================================================================================
+{examples_block}
+
+================================================================================
 VERIFIED KNOWLEDGE & GROUNDING FACTS (STRICT FACTUAL ACCURACY):
 ================================================================================
 {brand_facts_block}
@@ -1648,6 +1795,11 @@ REAL INTERNAL LINKS TO EMBED:
 SEARCH INTENT & COMPETITOR INTELLIGENCE:
 ================================================================================
 {serp_insights_block}
+
+================================================================================
+SITE RANK REALITY — READ BEFORE WRITING:
+================================================================================
+{seo_context_block}
 
 ================================================================================
 OUTLINE TO FOLLOW:
@@ -4998,8 +5150,8 @@ async def generate_blog_autonomous(
                 logger.warning(f"[Crew] Synthetic knowledge fallback note: {synth_err}")
 
         if kb_count < 5:
-            logger.info(f"[Crew] Knowledge base count is {kb_count}, proceeding with available facts and site domain context")
-            kb_count = max(kb_count, 5)
+            logger.info(f"[Crew] Knowledge base count is {kb_count} (thin) — proceeding; "
+                        f"downstream grounding gates still apply and may block")
     
     await publish_phase("knowledge", "completed", f"Knowledge base ready ({kb_count} entries)")
 
@@ -5591,6 +5743,21 @@ async def generate_blog_autonomous(
     }
     from services.local_store import save_local_content, save_local_approval
 
+    grounding_summary = {
+        "knowledge_hits": len(grounding_bundle.get("knowledge_hits", [])),
+        "verified_facts": len(grounding_bundle.get("verified_facts", [])),
+        "internal_links": len(grounding_bundle.get("internal_links", [])),
+        "internal_links_provenance": grounding_bundle.get("internal_links_provenance", "empty"),
+        "serp_competitors": len(grounding_bundle.get("serp_competitors", [])),
+        "paa_count": len(grounding_bundle.get("paa_questions", [])),
+        "paa_provenance": grounding_bundle.get("paa_provenance", "none"),
+        "striking_keywords": len(grounding_bundle.get("striking_keywords", [])),
+        "gsc_queries": len(grounding_bundle.get("gsc_queries", [])),
+        "cannibalization_warning": bool(grounding_bundle.get("cannibalization_warning")),
+        "past_wins": len(grounding_bundle.get("past_wins", [])),
+        "examples_shown": len(grounding_bundle.get("good_examples", [])) + len(
+            grounding_bundle.get("bad_examples", [])),
+    }
     cl_payload = {
         "id": content_id,
         "website_id": website_id,
@@ -5604,12 +5771,19 @@ async def generate_blog_autonomous(
         "wordpress_url": wordpress_url,
         "wp_draft_url": wp_draft_url or wordpress_url,
         "word_count": words_total,
+        "grounding_summary": grounding_summary,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         supabase.table("content_log").insert(cl_payload).execute()
     except Exception as e2:
         logger.debug(f"[Crew] content_log insert note: {e2}")
+        try:
+            fallback_payload = {k: v for k, v in cl_payload.items()
+                                if k != "grounding_summary"}
+            supabase.table("content_log").insert(fallback_payload).execute()
+        except Exception as e3:
+            logger.debug(f"[Crew] content_log fallback insert note: {e3}")
     # also try blogs table for dashboard metrics that read from blogs
     try:
         supabase.table("blogs").insert(blog_row).execute()

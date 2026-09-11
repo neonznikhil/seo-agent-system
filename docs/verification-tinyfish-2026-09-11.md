@@ -4,6 +4,30 @@ Follow-up to `rankforge-seo-audit.md`. All P0/P1/P2 fixes were re-verified
 with real checks (no mocks), and TinyFish was integrated as the free,
 cost-aware research layer. Method: CHECK → BUILD → TEST → VERIFY per task.
 
+## 0d. Fifth pass: agent data flow enrichment (better blogs + SEO)
+
+The writer assembled KB chunks + SERP + brand voice but was blind to rank
+reality, and padded gaps with invented links, template FAQs, and an
+inflated KB count. Fixed in `build_grounding_bundle` + prompt:
+
+- Deleted the fabricated `/services`-style internal-link fallback and the
+  five template PAA questions; both now return honest empty + provenance
+  flags, and the prompt instructs "omit, never invent".
+- New measured-or-empty context per topic: striking keywords (11–20),
+  GSC impression queries, cannibalization warning (reuses the detector),
+  past top-10 wins to mirror. Absence is reported, not filled.
+- Approved/rejected examples were collected but never reached the prompt;
+  now injected as a dedicated block (capped), with a fallback line when
+  none are saved.
+- New `SITE RANK REALITY` prompt section; PAA labeled live-vs-absent.
+- `kb_count` no longer inflated to 5; each draft records a
+  `grounding_summary` (per-source counts + provenance) to `content_log`
+  (new `supabase_migration_agent_context.sql` + `schemas/011`, with
+  insert fallback if the column is absent).
+- Tests: `test_grounding_bundle.py` (no invented filler, measured
+  filtering, prompt wiring). 34 tests green with honesty/cannibalization/
+  QA/writer suites; verification script 23/23.
+
 ## 0c. Fourth pass: remaining partials closed (suggestions, cannibalization, QA display, brand history, fix-task schema)
 
 - **Suggestions honesty**: deleted "Curated Ideas" padding and all volume
