@@ -14,14 +14,20 @@ const coreNav = [
 ];
 
 const seoNav = [
+  { label: "Indexation", href: "/indexation" },
   { label: "Tech SEO", href: "/tech-seo" },
   { label: "Monitoring", href: "/monitoring" },
+  { label: "Keyword Research", href: "/research" },
+  { label: "Internal Links", href: "/links" },
+  { label: "Content Decay", href: "/decay" },
+  { label: "Cannibalization", href: "/cannibalization" },
   { label: "Backlinks", href: "/backlinks" },
 ];
 
 const aiNav = [
   { label: "Crew", href: "/crew" },
   { label: "Brain", href: "/brain" },
+  { label: "Brand Voice", href: "/brand-voice" },
   { label: "AEO / Schema", href: "/aeo" },
   { label: "LLMs.txt", href: "/llms-txt" },
 ];

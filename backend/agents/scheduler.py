@@ -68,16 +68,25 @@ def _add_log(job_name: str, status: str, message: str, details: Optional[Dict] =
     logger.info(f"[Scheduler] [{job_name}] {status.upper()}: {message}")
 
 
-async def is_auto_publish_enabled() -> bool:
-    """Check if autonomous direct publishing is ON."""
+async def is_auto_publish_enabled(website_id: Optional[str] = None) -> bool:
+    """Check if autonomous direct publishing is explicitly opted in.
+
+    DRAFTS ONLY BY DEFAULT: returns False unless a settings row explicitly
+    sets auto_publish=True (per site when website_id is given). Never
+    defaults to True — publishing without opt-in is not permitted.
+    """
     try:
         from database import get_supabase
-        res = get_supabase().table("autonomous_settings").select("auto_publish").limit(1).execute().data
-        if res and res[0].get("auto_publish") is not None:
-            return bool(res[0]["auto_publish"])
+        q = get_supabase().table("autonomous_settings").select("auto_publish")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        res = q.limit(1).execute().data
+        if res and res[0].get("auto_publish") is True:
+            return True
+        return False
     except Exception:
-        logger.warning("[SCHEDULER] auto_publish lookup failed, defaulting to True")
-    return True
+        logger.warning("[SCHEDULER] auto_publish lookup failed, defaulting to False (drafts only)")
+    return False
 
 
 async def _get_target_website_ids(website_id: Optional[str] = None) -> List[str]:
@@ -1450,7 +1459,8 @@ async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
     supabase = get_supabase()
     defaults = {
         "auto_generate_enabled": True,
-        "auto_publish": True,
+        # Drafts only by default: publishing requires explicit opt-in.
+        "auto_publish": False,
         "daily_blog_target": 5,
         "blogs_generated_today": 0,
         "last_reset_date": datetime.now(timezone.utc).date().isoformat(),
@@ -1734,6 +1744,122 @@ def _keyword_cluster(keyword: str) -> Optional[str]:
     if any(w in kw for w in ["insurance", "claim", "filing"]):
         return "insurance"
     return None
+
+
+async def get_gsc_query_gaps(website_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Queries with impressions but no ranking content: GSC rows whose query
+    terms match no existing content keyword. Returns [] when GSC is down."""
+    try:
+        from database import get_supabase
+        supabase = get_supabase()
+        try:
+            rows = supabase.table("keyword_opportunities").select(
+                "keyword, query, impressions, position").eq(
+                "website_id", website_id).order("impressions", desc=True).limit(50).execute().data or []
+        except Exception:
+            rows = []
+        if not rows:
+            return []
+        try:
+            existing = supabase.table("content_log").select("keyword").eq(
+                "website_id", website_id).limit(200).execute().data or []
+            covered = {(r.get("keyword") or "").lower() for r in existing}
+        except Exception:
+            covered = set()
+        gaps = [r for r in rows
+                if (r.get("keyword") or r.get("query") or "").lower() not in covered
+                and (r.get("impressions") or 0) > 0]
+        return gaps[:limit]
+    except Exception as e:
+        logger.debug(f"[SCHEDULER] GSC gap lookup note: {e}")
+        return []
+
+
+async def get_data_driven_keyword(website_id: str, blogs_today: int = 0,
+                                  daily_target: int = 5) -> Optional[str]:
+    """Topics come from real data in priority order — never AI guessing alone.
+
+    1. Striking-distance keywords (positions 11-20) from rank_tracking.
+    2. High-impression GSC gaps with no ranking content.
+    3. Decay candidates: refresh beats new articles, so skip new content
+       this cycle and let the refresh queue take precedence.
+    4. AI suggestion grounded in KB + cluster coverage (last resort).
+    Returns a keyword string, or None when nothing data-backed is available.
+    """
+    from database import get_supabase
+    supabase = get_supabase()
+
+    # Priority 1: striking distance — closest to page 1 wins.
+    try:
+        from seo_constants import STRIKING_DISTANCE_MIN, STRIKING_DISTANCE_MAX
+    except (ImportError, ValueError):
+        from backend.seo_constants import STRIKING_DISTANCE_MIN, STRIKING_DISTANCE_MAX
+    try:
+        striking = supabase.table("rank_tracking").select(
+            "keyword, target_keyword, current_position").eq(
+            "website_id", website_id).gte(
+            "current_position", STRIKING_DISTANCE_MIN).lte(
+            "current_position", STRIKING_DISTANCE_MAX).order(
+            "current_position").limit(5).execute().data or []
+        # Exclude keywords we already published for.
+        if striking:
+            try:
+                done = supabase.table("content_log").select("keyword").eq(
+                    "website_id", website_id).limit(200).execute().data or []
+                done_set = {(r.get("keyword") or "").lower() for r in done}
+            except Exception:
+                done_set = set()
+            for row in striking:
+                kw = row.get("keyword") or row.get("target_keyword") or ""
+                if kw and kw.lower() not in done_set and not _is_keyword_denied(kw):
+                    try:
+                        grounded = await _is_keyword_grounded_in_kb(kw, website_id)
+                    except Exception:
+                        grounded = True
+                    if grounded:
+                        logger.info(f"[KeywordPicker] data-driven pick (striking): '{kw}'")
+                        return kw
+    except Exception as e:
+        logger.debug(f"[SCHEDULER] striking pick note: {e}")
+
+    # Priority 2: GSC query gaps.
+    try:
+        gaps = await get_gsc_query_gaps(website_id)
+        for g in gaps:
+            kw = g.get("keyword") or g.get("query") or ""
+            if kw and not _is_keyword_denied(kw):
+                logger.info(f"[KeywordPicker] data-driven pick (GSC gap): '{kw}'")
+                return kw
+    except Exception as e:
+        logger.debug(f"[SCHEDULER] GSC gap pick note: {e}")
+
+    # Priority 3: decay candidates — refresh first, skip new article.
+    try:
+        decay = supabase.table("content_decay_logs").select(
+            "page_url, primary_keyword").eq(
+            "website_id", website_id).eq("status", "detected").limit(1).execute().data or []
+        if decay:
+            dk = decay[0].get("primary_keyword") or decay[0].get("page_url")
+            await log_autonomous_decision(
+                website_id=website_id,
+                decision="SKIP",
+                reason=(f"Refresh takes precedence over new content: "
+                        f"'{dk}' is decaying. Run decay refresh before new articles."),
+                job="auto_blog_scheduler"
+            )
+            return None
+    except Exception as e:
+        logger.debug(f"[SCHEDULER] decay precedence note: {e}")
+
+    # Priority 4: AI with data context (last resort) — still KB-grounded.
+    try:
+        clusters = await get_topic_cluster_counts(website_id)
+        kb_sample = await get_knowledge_base_sample(website_id)
+        logger.debug(f"[SCHEDULER] AI fallback context: {len(clusters) if isinstance(clusters, dict) else 0} clusters, "
+                     f"{len(kb_sample or [])} KB samples")
+    except Exception as e:
+        logger.debug(f"[SCHEDULER] AI context note: {e}")
+    return await ai_pick_best_keyword(website_id, blogs_today, daily_target)
 
 
 async def ai_pick_best_keyword(website_id: str, blogs_today: int, daily_target: int) -> Optional[str]:
@@ -2211,15 +2337,36 @@ async def run_autonomous_blog_generation():
                 job="auto_blog_scheduler"
             )
             continue
+
+        # Indexation gate: below-threshold sites pause new drafts and get
+        # internal-link / fix tasks instead. Unknown rate warns but allows.
+        try:
+            from services.indexation_service import indexation_gate_check
+            gate = await indexation_gate_check(website_id)
+            if gate.get("gate") == "blocked":
+                await log_autonomous_decision(
+                    website_id=website_id,
+                    decision="INDEXATION_GATE_BLOCKED",
+                    reason=gate.get("reason", "Indexation below threshold. Pausing blog creation and dispatching internal linking."),
+                    job="indexation_gate"
+                )
+                try:
+                    from services.internal_link_service import run_internal_link_optimization
+                    asyncio.create_task(run_internal_link_optimization(website_id))
+                except Exception as _e:
+                    logger.debug(f"[SCHEDULER] internal linking dispatch note: {_e}")
+                continue
+        except Exception as e:
+            logger.debug(f"[SCHEDULER] indexation gate note for {website_id}: {e}")
         
-        # AI picks the topic — no user input needed
-        # First check auto_topic_selection toggle; if off, fall back to get_next_target_keyword queue
+        # AI picks the topic — data-driven priority order, never AI guessing alone.
+        # Priority: striking distance -> GSC gaps -> decay refresh -> AI w/ context.
         auto_topic = settings.get("auto_topic_selection", True)
         if auto_topic is False:
             keyword = await get_next_target_keyword(website_id)
         else:
-            keyword = await ai_pick_best_keyword(website_id, blogs_today, daily_target)
-            # fallback if AI returns None
+            keyword = await get_data_driven_keyword(website_id, blogs_today, daily_target)
+            # fallback to legacy queue only if data-driven pick returns nothing
             if not keyword:
                 keyword = await get_next_target_keyword(website_id)
         
@@ -2390,40 +2537,62 @@ async def job_tech_seo_audit(website_id: Optional[str] = None):
 # 8b. Every 5 min - Auto Publish Approval Queue (NEW)
 # ---------------------------------------------------------
 async def job_auto_publish_approval(website_id: Optional[str] = None):
-    """Every 5 min: SELECT pending blog_approvals where auto_publish ON, quality gate passes -> publish via WordPress."""
+    """Every 5 min: publish ONLY human-approved drafts where auto_publish is
+    explicitly opted in per site. Three gates, all must pass:
+
+    1. autonomous_settings.auto_publish is explicitly True for this site
+       (drafts-only default: missing/False/lookup-failure all mean SKIP).
+    2. blog_approvals row has status="approved" AND approved_by is a real
+       user identity (never "human-approved", never null).
+    3. wordpress_connections has an active (is_active) row for this site.
+    If any check fails: log SKIP with reason, do not publish.
+    """
     job_name = "auto_publish_approval"
     for target_id in await _get_target_website_ids(website_id):
         engine = AutonomousDecisionEngine(website_id=target_id)
         decision = await engine.should_run(job_name)
         if not decision.get("should_run"):
             continue
-        # Check auto_publish flag
+        # Gate 1: explicit per-site opt-in. No default-True anywhere.
         try:
             from database import get_supabase
             supabase = get_supabase()
             settings = supabase.table("autonomous_settings").select("auto_publish").eq("website_id", target_id).limit(1).execute().data
-            # Also check general table without website_id filter
             if not settings:
                 settings = supabase.table("autonomous_settings").select("auto_publish").limit(1).execute().data
             auto_on = bool(settings and settings[0].get("auto_publish") is True)
-            # Also check general is_active? default true for demo if table empty
-            if not settings:
-                auto_on = True
         except Exception:
             auto_on = False
 
         if not auto_on:
+            _add_log(job_name, "skipped", f"Auto-publish is OFF for {target_id} (explicit opt-in required). Skipping.")
             logger.debug(f"[Scheduler] [{job_name}] auto_publish disabled on {target_id}")
             continue
 
-        _add_log(job_name, "running", f"Processing pending approvals for auto-publish on {target_id}")
+        _add_log(job_name, "running", f"Processing human-approved drafts for auto-publish on {target_id}")
         try:
             from database import get_supabase
             from services.wordpress_service import WordPressService
             supabase = get_supabase()
-            pending = supabase.table("blog_approvals").select("*").eq("website_id", target_id).eq("status", "pending").limit(10).execute().data or []
+            # Gate 3 (checked before per-item work): active WP connection required.
+            try:
+                wp_conns = supabase.table("wordpress_connections").select("id").eq("website_id", target_id).eq("is_active", True).limit(1).execute().data or []
+            except Exception:
+                wp_conns = []
+            if not wp_conns:
+                _add_log(job_name, "skipped", f"No active WordPress connection for {target_id}. Skipping auto-publish.")
+                continue
+            # Gate 2: ONLY human-approved rows with a real approver identity.
+            candidates = supabase.table("blog_approvals").select("*").eq("website_id", target_id).eq("status", "approved").limit(10).execute().data or []
+            pending = [
+                a for a in candidates
+                if (a.get("approved_by") or "") not in ("", "human-approved", "autonomous", "system")
+            ]
+            skipped_unapproved = len(candidates) - len(pending)
+            if skipped_unapproved:
+                _add_log(job_name, "skipped", f"{skipped_unapproved} approval(s) on {target_id} lack a real human approver. Skipping.")
             if not pending:
-                _add_log(job_name, "completed", f"No pending approvals on {target_id}")
+                _add_log(job_name, "completed", f"No human-approved drafts on {target_id}")
                 continue
             published = 0
             for appr in pending:
@@ -2445,7 +2614,7 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                 supabase.table("blogs").update({"status": "published", "wordpress_url": pub.get("wordpress_url"), "wordpress_post_id": pub.get("wordpress_post_id")}).eq("id", appr.get("blog_id")).execute()
                             except Exception:
                                 logger.debug(f"[SCHEDULER] blogs status update note for approval {appr.get('id')} on {target_id}")
-                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": "autonomous", "wordpress_url": pub.get("wordpress_url")}, "created_at": datetime.now(timezone.utc).isoformat()}).execute()
+                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": appr.get("approved_by"), "wordpress_url": pub.get("wordpress_url")}, "created_at": datetime.now(timezone.utc).isoformat()}).execute()
                             published += 1
                             await engine.track_cost("AutoPublish", 800)
                             _add_log(job_name, "completed", f"Auto-published '{title[:40]}' on {target_id} -> {pub.get('wordpress_url')}")
@@ -2502,7 +2671,7 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                             engine.queue_job_for_retry(job_name, {"approval_id": appr["id"]}, msg)
                 else:
                     if published == 0:
-                        _add_log(job_name, "completed", f"Checked {len(pending)} pending on {target_id} — none passed gate (need SEO≥85 Val≥0.8 Ground≥0.75)")
+                        _add_log(job_name, "completed", f"Checked {len(pending)} human-approved on {target_id} — none passed gate (need SEO≥85 Val≥0.8 Ground≥0.75)")
                     else:
                         _add_log(job_name, "completed", f"Auto-published {published}/{len(pending)} on {target_id}")
         except Exception as e:
@@ -2876,6 +3045,22 @@ def setup_scheduler() -> AsyncIOScheduler:
         CronTrigger(day_of_week="sun", hour=21, minute=0, timezone=IST),
         id="job_authority_calibration",
         name="Sun 21:00 AuthorityCalibrationAgent 90-Day Strategy Calibration",
+        replace_existing=True
+    )
+
+    # Daily 08:00 IST (02:30 UTC) - Indexation check for all sites.
+    # Feeds the indexation gate that pauses content when the rate is low.
+    async def _job_indexation_check():
+        from services.indexation_service import run_indexation_check_all_sites
+        res = await run_indexation_check_all_sites()
+        _add_log("job_indexation_check", "completed",
+                 f"Indexation sweep ran for {res.get('ran', 0)} site(s)")
+
+    scheduler.add_job(
+        _job_indexation_check,
+        CronTrigger(hour=2, minute=30, timezone=IST),
+        id="job_indexation_check",
+        name="Daily Indexation Check (08:00 IST)",
         replace_existing=True
     )
 

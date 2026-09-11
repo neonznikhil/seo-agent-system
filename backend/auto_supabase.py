@@ -385,7 +385,8 @@ TABLES = {
         CREATE TABLE IF NOT EXISTS autonomous_settings (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id text,
-            auto_publish boolean DEFAULT true,
+            -- Drafts only by default: publishing requires explicit opt-in.
+            auto_publish boolean default false,
             auto_generate boolean DEFAULT true,
             auto_refresh boolean DEFAULT true,
             goals jsonb DEFAULT '{"target_articles_per_week": 5, "target_traffic_growth": 15.0, "focus_keywords": ["Houston car accident lawyer", "Texas commercial truck claims"]}'::jsonb,
@@ -609,6 +610,9 @@ SCHEMA_PATCHES = [
     "ALTER TABLE IF EXISTS websites DISABLE ROW LEVEL SECURITY",
     "ALTER TABLE IF EXISTS tasks DISABLE ROW LEVEL SECURITY",
     "ALTER TABLE IF EXISTS autonomous_settings DISABLE ROW LEVEL SECURITY",
+    # Drafts only by default, including databases created before the DDL fix:
+    # new autonomous_settings rows default to auto_publish=false.
+    "ALTER TABLE IF EXISTS autonomous_settings ALTER COLUMN auto_publish SET DEFAULT false",
 ]
 
 RPCS = {

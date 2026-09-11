@@ -19,6 +19,14 @@ export default function ProposalsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [rejectModalId, setRejectModalId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>("");
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchProposals = useCallback(async () => {
     const wid = getCurrentWebsiteId();
@@ -54,21 +62,22 @@ export default function ProposalsPage() {
     try {
       const activeWebsiteId = getWebsiteId() || websiteId;
       await post(`/api/proposals/${activeWebsiteId}/approve/${proposalId}`);
-      alert("✅ Approved successfully!");
+      showToast("✓ Proposal approved successfully!");
       fetchProposals();
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
     }
   };
 
   const handleReject = async (id: string) => {
-    const reason = prompt("Rejection reason:");
-    if (!reason) return;
     try {
-      await post(`/api/proposals/reject/${id}`, { reason });
+      await post(`/api/proposals/reject/${id}`, { reason: rejectReason.trim() });
       setProposals((prev) => prev.map((p) => (p.id === id ? { ...p, status: "rejected" } : p)));
+      setRejectModalId(null);
+      setRejectReason("");
+      showToast("Proposal marked as rejected");
     } catch (e: any) {
-      alert("Reject failed: " + e.message);
+      showToast("Reject failed: " + e.message);
     }
   };
 
@@ -109,6 +118,50 @@ export default function ProposalsPage() {
 
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            background: "var(--ink)",
+            color: "var(--bg)",
+            padding: "10px 18px",
+            borderRadius: "6px",
+            fontSize: "12px",
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            zIndex: 9999,
+          }}
+        >
+          {toast}
+        </div>
+      )}
+
+      {/* REJECT MODAL */}
+      {rejectModalId && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "24px", maxWidth: "480px", width: "90%", borderRadius: "4px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--red)" }}>Reject Proposal</h3>
+            <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "12px" }}>
+              Provide a reason for rejecting this change proposal.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Action unnecessary, conflicts with manual campaign, or low priority."
+              style={{ width: "100%", height: "90px", padding: "10px", fontSize: "12px", border: "1px solid var(--line)", background: "var(--input-bg)", color: "var(--ink)", marginBottom: "16px" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button className="btn" onClick={() => setRejectModalId(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={() => handleReject(rejectModalId)}>
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="page-heading">Agent Change Proposals</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
@@ -164,7 +217,7 @@ export default function ProposalsPage() {
                         <button onClick={() => handleApprove(p.id)} className="btn btn-accent" style={{ padding: "4px 10px", fontSize: "11px" }}>
                           Approve
                         </button>
-                        <button onClick={() => handleReject(p.id)} className="btn" style={{ padding: "4px 10px", fontSize: "11px" }}>
+                        <button onClick={() => { setRejectModalId(p.id); setRejectReason(""); }} className="btn btn-danger" style={{ padding: "4px 10px", fontSize: "11px" }}>
                           Reject
                         </button>
                       </div>

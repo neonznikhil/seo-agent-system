@@ -32,6 +32,33 @@ logger = logging.getLogger("backend.services.knowledge_service")
 VECTOR_DIM = 1536
 
 
+async def fetch_clean_page_markdown(page_url: str) -> Dict[str, Any]:
+    """Fetch one page as clean rendered markdown via TinyFish Fetch (free).
+
+    Server-side rendering handles React/Next.js/Webflow shells that raw
+    httpx misses, and strips nav/cookie/chrome noise (50-70% fewer tokens).
+    Returns {"markdown": str|None, "title": str, "source": ...} — markdown
+    None means "unavailable here, caller must fall back", never fake text.
+    """
+    try:
+        try:
+            from .tinyfish_service import get_tinyfish_service
+        except (ImportError, ValueError):
+            from backend.services.tinyfish_service import get_tinyfish_service
+        svc = get_tinyfish_service()
+        if not svc.is_configured:
+            return {"markdown": None, "title": "", "source": "tinyfish_unconfigured"}
+        res = await svc.fetch([page_url], format="markdown")
+        rows = (res or {}).get("results", []) or []
+        if rows and rows[0].get("markdown"):
+            return {"markdown": rows[0]["markdown"], "title": rows[0].get("title", ""),
+                    "source": "tinyfish_fetch", "provenance": "observed"}
+        return {"markdown": None, "title": "", "source": "tinyfish_empty"}
+    except Exception as e:
+        logger.debug(f"[CRAWL] TinyFish fetch note {page_url}: {e}")
+        return {"markdown": None, "title": "", "source": "tinyfish_failed"}
+
+
 def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
     """Calculate cosine similarity between two float vectors."""
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
@@ -766,12 +793,24 @@ class KnowledgeService:
 
             if not is_dup:
                 new_id = str(uuid.uuid4())
+                valid_fact_types = {'product_name', 'pricing', 'feature', 'company_info', 'tone_rule'}
+                type_map = {
+                    'business_info': 'company_info',
+                    'service': 'feature',
+                    'faq': 'company_info',
+                    'competitor': 'company_info',
+                    'testimonial': 'company_info',
+                    'case_study': 'feature',
+                    'law_statute': 'company_info',
+                    'analytics_learning': 'feature'
+                }
+                sanitized_fact_type = type_map.get(str(doc_type).lower(), doc_type if doc_type in valid_fact_types else 'company_info')
                 base_row = {
                     "id": new_id,
                     "website_id": self.website_id,
                     "account_id": self.account_id,
                     "fact": ch_text,
-                    "fact_type": doc_type or "company_info",
+                    "fact_type": sanitized_fact_type,
                     "source_url": url or doc_title,
                     "embedding": ch_embedding,
                     "created_at": datetime.now(timezone.utc).isoformat()
@@ -1298,84 +1337,103 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
         if not pages:
             pages = [site_url]
 
-        # STEP 3: Crawl each page and extract content
+        # STEP 3: Crawl each page and extract content.
+        # Rendered-markdown first (TinyFish Fetch: JS-rendered, de-chromed),
+        # raw httpx+BeautifulSoup only as fallback for unconfigured/failure.
         all_chunks = []
 
         for page_url in pages[:max_pages]:
+            text = ""
+            title = ""
+            fetched_via = "httpx"
             try:
-                r = await client.get(page_url)
-                if r.status_code != 200:
-                    continue
-
-                soup = BeautifulSoup(r.text, 'html.parser')
-
-                # Remove noise elements
-                for tag in soup.find_all([
-                    'script', 'style', 'nav', 'footer',
-                    'header', 'aside', 'form', 'noscript',
-                    'iframe', 'svg', 'button'
-                ]):
-                    tag.decompose()
-
-                # Extract main content
-                main_content = (
-                    soup.find('main') or
-                    soup.find('article') or
-                    soup.find(class_=re.compile(
-                        r'content|post|entry|article|main', re.I
-                    )) or
-                    soup.find('body')
-                )
-
-                if not main_content:
-                    continue
-
-                # Get page title
-                title = ""
-                title_tag = soup.find('h1') or soup.find('title')
-                if title_tag:
-                    title = title_tag.get_text().strip()[:200]
-
-                # Get clean text
-                text = main_content.get_text(separator=' ')
-                text = re.sub(r'\s+', ' ', text).strip()
-
-                if len(text) < 200:
-                    continue
-
-                results["pages_crawled"] += 1
-
-                # STEP 4: Chunk the content
-                chunk_size = 1500
-                overlap = 200
-                chunks = []
-                start = 0
-
-                while start < len(text):
-                    end = start + chunk_size
-                    if end < len(text):
-                        last_period = text.rfind('.', start, end)
-                        if last_period > start + (chunk_size // 2):
-                            end = last_period + 1
-                    chunk_text = text[start:end].strip()
-                    if len(chunk_text) > 100:
-                        # Prepend title for context
-                        titled_chunk = f"Page: {title}\n\n{chunk_text}" if title else chunk_text
-                        chunks.append({
-                            "fact": titled_chunk,
-                            "source_url": page_url,
-                            "fact_type": "company_info"
-                        })
-                    start = end - overlap
-
-                all_chunks.extend(chunks)
-                results["chunks_created"] += len(chunks)
-
+                clean = await fetch_clean_page_markdown(page_url)
+                if clean.get("markdown") and len(clean["markdown"]) >= 200:
+                    text = re.sub(r"\s+", " ", clean["markdown"]).strip()
+                    title = (clean.get("title") or "")[:200]
+                    fetched_via = "tinyfish_fetch"
+                    logger.info(f"[CRAWL] Rendered markdown for {page_url} ({len(text)} chars)")
             except Exception as e:
-                err = f"Failed to crawl {page_url}: {e}"
-                results["errors"].append(err)
-                logger.error(f"[CRAWL] {err}")
+                logger.debug(f"[CRAWL] rendered fetch note {page_url}: {e}")
+
+            if not text:
+                try:
+                    r = await client.get(page_url)
+                    if r.status_code != 200:
+                        continue
+
+                    soup = BeautifulSoup(r.text, 'html.parser')
+
+                    # Remove noise elements
+                    for tag in soup.find_all([
+                        'script', 'style', 'nav', 'footer',
+                        'header', 'aside', 'form', 'noscript',
+                        'iframe', 'svg', 'button'
+                    ]):
+                        tag.decompose()
+
+                    # Extract main content
+                    main_content = (
+                        soup.find('main') or
+                        soup.find('article') or
+                        soup.find(class_=re.compile(
+                            r'content|post|entry|article|main', re.I
+                        )) or
+                        soup.find('body')
+                    )
+
+                    if not main_content:
+                        continue
+
+                    # Get page title
+                    title = ""
+                    title_tag = soup.find('h1') or soup.find('title')
+                    if title_tag:
+                        title = title_tag.get_text().strip()[:200]
+
+                    # Get clean text
+                    text = main_content.get_text(separator=' ')
+                    text = re.sub(r'\s+', ' ', text).strip()
+
+                    if len(text) < 200:
+                        continue
+                except Exception as e:
+                    logger.debug(f"[CRAWL] httpx fallback note {page_url}: {e}")
+                    continue
+
+            if not text or len(text) < 200:
                 continue
+
+            results["pages_crawled"] += 1
+            if fetched_via == "tinyfish_fetch":
+                results.setdefault("rendered_pages", 0)
+                results["rendered_pages"] += 1
+
+            # STEP 4: Chunk the content
+            chunk_size = 1500
+            overlap = 200
+            chunks = []
+            start = 0
+
+            while start < len(text):
+                end = start + chunk_size
+                if end < len(text):
+                    last_period = text.rfind('.', start, end)
+                    if last_period > start + (chunk_size // 2):
+                        end = last_period + 1
+                chunk_text = text[start:end].strip()
+                if len(chunk_text) > 100:
+                    # Prepend title for context
+                    titled_chunk = f"Page: {title}\n\n{chunk_text}" if title else chunk_text
+                    chunks.append({
+                        "fact": titled_chunk,
+                        "source_url": page_url,
+                        "fact_type": "company_info"
+                    })
+                start = end - overlap
+
+            all_chunks.extend(chunks)
+            results["chunks_created"] += len(chunks)
 
         logger.info(f"[CRAWL] Total chunks created: {len(all_chunks)}")
 

@@ -341,20 +341,38 @@ async def process_autonomous_cycle(website_id: Optional[str] = None) -> Dict[str
 
 
 async def _auto_publish_inline(website_id: Optional[str] = None):
-    """Inline fallback for auto_publish when scheduler job not yet loaded."""
+    """Inline fallback for auto_publish when scheduler job not yet loaded.
+
+    Same three gates as job_auto_publish_approval: explicit per-site opt-in,
+    human-approved status with a real approver identity, active WP
+    connection. Anything else is logged as SKIP, never published.
+    """
     supabase = get_supabase()
-    # Find pending approvals where auto_publish ON
     for target_id in ([website_id] if website_id else []):
         try:
-            # Check auto_publish flag
+            # Gate 1: explicit opt-in only. Missing/False/failure all mean OFF.
             try:
                 row = supabase.table("autonomous_settings").select("auto_publish").eq("website_id", target_id).limit(1).execute().data
-                auto_on = bool(row and row[0].get("auto_publish"))
+                auto_on = bool(row and row[0].get("auto_publish") is True)
             except Exception:
                 auto_on = False
             if not auto_on:
+                logger.info(f"[AutoLoop] Auto-publish is OFF for {target_id}. Skipping.")
                 continue
-            pending = supabase.table("blog_approvals").select("*").eq("website_id", target_id).eq("status", "pending").limit(10).execute().data or []
+            # Gate 3: active WP connection required.
+            try:
+                wp_conns = supabase.table("wordpress_connections").select("id").eq("website_id", target_id).eq("is_active", True).limit(1).execute().data or []
+            except Exception:
+                wp_conns = []
+            if not wp_conns:
+                logger.info(f"[AutoLoop] No active WordPress connection for {target_id}. Skipping auto-publish.")
+                continue
+            # Gate 2: human-approved rows with a real approver identity only.
+            candidates = supabase.table("blog_approvals").select("*").eq("website_id", target_id).eq("status", "approved").limit(10).execute().data or []
+            pending = [
+                a for a in candidates
+                if (a.get("approved_by") or "") not in ("", "human-approved", "autonomous", "system")
+            ]
             for appr in pending:
                 seo = float(appr.get("seo_score") or 0)
                 val = float(appr.get("validation_score") or appr.get("validation") or 0.85)
@@ -377,7 +395,7 @@ async def _auto_publish_inline(website_id: Optional[str] = None):
                                 supabase.table("blogs").update({"status": "published", "wordpress_url": pub.get("wordpress_url")}).eq("id", appr.get("blog_id")).execute()
                             except Exception as e:
                                 logger.warning("[AutoLoop] Blog status update failed: %s", e)
-                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": "autonomous"}, "created_at": datetime.utcnow().isoformat()}).execute()
+                            supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": appr.get("approved_by")}, "created_at": datetime.utcnow().isoformat()}).execute()
                     except Exception as e:
                         logger.warning(f"[AutoPublish] failed for {appr.get('id')}: {e}")
                         # Handle 401 -> deactivate

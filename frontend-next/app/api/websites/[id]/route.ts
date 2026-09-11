@@ -18,18 +18,26 @@ export async function GET(
     // Fall through
   }
 
-  return NextResponse.json({
-    id: id || "f8d16d12-bf91-4d92-9134-8fa29813e31e",
-    name: "Innovatcs Accident Law",
-    domain: "accident.innovatcs.com",
-    url: "https://your-wordpress-site.com",
-    status: "active",
-    autonomous_mode: true,
-    health_score: 98,
-    keywords_count: 24,
-    articles_published: 12,
-    created_at: "2026-08-20T00:00:00Z",
-  });
+  // HONEST: backend unreachable means the site is UNKNOWN, never a
+  // hardcoded demo site with invented stats.
+  return NextResponse.json(
+    {
+      error: "Backend unavailable — site data unknown",
+      connected: false,
+      id: id || null,
+      name: null,
+      domain: null,
+      url: null,
+      status: "unknown",
+      autonomous_mode: false,
+      health_score: null,
+      health_label: "No audit yet",
+      keywords_count: null,
+      articles_published: null,
+      created_at: null,
+    },
+    { status: 502 }
+  );
 }
 
 export async function PUT(

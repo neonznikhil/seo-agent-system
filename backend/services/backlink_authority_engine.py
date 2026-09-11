@@ -211,15 +211,16 @@ class BacklinkAuthorityEngine:
                 supabase.table("pending_fixes").insert({
                     "website_id": self.website_id,
                     "fix_type": "301_redirect",
-                    "title": f"301 Redirect: Recover Lost Backlink from {ll['linking_domain']}",
-                    "details": {
+                    "fix_payload": {
+                        "title": f"301 Redirect: Recover Lost Backlink from {ll['linking_domain']}",
                         "source_url": ll["lost_url"],
                         "target_url": ll["recommended_destination"],
                         "linking_domain": ll["linking_domain"],
                         "dr": ll["domain_rating"],
                         "anchor": ll["anchor_text"]
                     },
-                    "status": "pending_human_approval",
+                    "status": "pending_approval",
+                    "proposed_by": "backlink_authority",
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
             except Exception as e:

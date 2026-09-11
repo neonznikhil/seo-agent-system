@@ -133,6 +133,10 @@ class HumanWriterAgent:
         except Exception:
             self.tone_profile = {}
 
+        # 2b. Brand Voice Guide placeholder — loaded async in write_blog
+        # (setup_profile is sync) and rendered by _build_brief.
+        self.brand_voice_guide = None
+
         # 3. Website Info
         try:
             site_row = (
@@ -343,6 +347,21 @@ class HumanWriterAgent:
             parts.append(f"Preferred vocabulary: {', '.join(map(str, vocab[:10]))}")
         return "\n".join(parts) if parts else "Tone: Authoritative, deeply informative, human-written, and transparent."
 
+    def _brand_voice_block(self) -> str:
+        """Render the versioned brand-voice guide block for the brief."""
+        try:
+            from services.brand_voice_service import build_brand_voice_block
+        except (ImportError, ValueError):
+            from backend.services.brand_voice_service import build_brand_voice_block
+        guide = getattr(self, "brand_voice_guide", None) or {}
+        if not guide:
+            try:
+                from services.brand_voice_service import DEFAULT_BRAND_VOICE
+            except (ImportError, ValueError):
+                from backend.services.brand_voice_service import DEFAULT_BRAND_VOICE
+            guide = dict(DEFAULT_BRAND_VOICE)
+        return build_brand_voice_block(guide)
+
     def _build_brief(self, title: str, outline: dict, keywords: list,
                      benchmark: Dict[str, Any], serp_brief: Dict[str, Any]) -> str:
         """Assemble the complete pre-writing brief with ALL real variables & competitive benchmarks."""
@@ -386,6 +405,8 @@ COMPETITIVE BENCHMARK & TARGETS (MANDATORY):
 BRAND VOICE RULES:
 {self._tone_directives()}
 
+{self._brand_voice_block()}
+
 BRAND BRAIN:
 {self.brand_brain[:500] if self.brand_brain else 'Focus on high-converting factual breakdowns with structured FAQs and clear legal definitions.'}
 
@@ -409,7 +430,17 @@ INTERNAL LINKS (insert 2-3 REAL links with natural anchor text):
                          tone: str = "authoritative and engaging") -> str:
         """Write the unranked-beater article with multi-pass expansion if word count is short."""
         primary_keyword = keywords[0] if keywords else title
-        
+
+        # Load the versioned brand voice guide (async) before briefing.
+        try:
+            from services.brand_voice_service import load_brand_voice
+        except (ImportError, ValueError):
+            from backend.services.brand_voice_service import load_brand_voice
+        try:
+            self.brand_voice_guide = await load_brand_voice(self.website_id)
+        except Exception:
+            self.brand_voice_guide = None
+
         # 1. Pre-flight Competitive Sweep
         benchmark = await self.preflight_competitive_benchmark(primary_keyword)
         target_words = benchmark.get("target_min_word_count", 1900)

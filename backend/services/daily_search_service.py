@@ -55,10 +55,14 @@ async def daily_search_job(website_id: str) -> Dict[str, Any]:
             start_date=start_date, end_date=end_date, row_limit=2000
         )
         keywords = perf.get("keywords", [])
+        try:
+            from seo_constants import is_striking_distance
+        except (ImportError, ValueError):
+            from backend.seo_constants import is_striking_distance
         striking = [
             k
             for k in keywords
-            if 11 <= (k.get("position") or 0) <= 20 and (k.get("impressions") or 0) >= 50
+            if is_striking_distance(k.get("position")) and (k.get("impressions") or 0) >= 50
         ][:10]
 
         for kw_data in striking:

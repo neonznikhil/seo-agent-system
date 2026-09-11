@@ -275,11 +275,28 @@ async def get_gap_domains(website_id: str = "default"):
 @router.post("/api/backlinks/scout")
 @router.post("/backlinks/scout")
 async def scout_backlink_opportunities(payload: ScoutBacklinksRequest):
-    """Trigger 5-tier technical backlink scout sweep into database and Brain memory."""
+    """Trigger 5-tier technical backlink scout sweep into database and Brain memory.
+
+    Wrapped in a run envelope so consecutive sweeps diff discovered domains.
+    """
+    from services.run_service import run_with_envelope
     wid = payload.website_id or "default"
     engine = BacklinkAcquisitionEngine(website_id=wid)
     keyword = payload.niche_keyword or "primary service resources"
-    result = await engine.run_full_weekly_cycle(keyword)
+
+    def _snapshot(result):
+        res = result.get("result", result) if isinstance(result, dict) else {}
+        opps = res.get("opportunities", []) or res.get("prospects", []) or []
+        ids = []
+        for o in opps:
+            if isinstance(o, dict) and (o.get("domain") or o.get("url") or o.get("prospect_url")):
+                ids.append(o.get("domain") or o.get("url") or o.get("prospect_url"))
+        return {"issue_ids": ids}
+
+    result = await run_with_envelope(
+        wid, "backlink_prospecting",
+        lambda: engine.run_full_weekly_cycle(keyword),
+        _snapshot)
     return {"success": True, "scout_result": result}
 
 

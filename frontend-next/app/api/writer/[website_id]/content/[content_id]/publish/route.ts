@@ -21,14 +21,16 @@ export async function POST(
     // Fall through
   }
 
-  const postId = 1045;
-  const postUrl = `https://your-wordpress-site.com/steps-after-car-accident`;
-
-  return NextResponse.json({
-    success: true,
-    status: "published",
-    wp_post_id: postId,
-    post_url: postUrl,
-    message: `Published live to WordPress successfully (Post ID #${postId})`,
-  });
+  // HONEST: backend unreachable means the publish did NOT happen.
+  // Never claim a live publish with an invented post ID.
+  return NextResponse.json(
+    {
+      success: false,
+      status: "failed",
+      wp_post_id: null,
+      post_url: null,
+      error: "Backend unavailable — article was NOT published. Retry when the backend is reachable.",
+    },
+    { status: 502 }
+  );
 }

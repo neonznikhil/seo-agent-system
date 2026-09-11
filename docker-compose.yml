@@ -25,7 +25,7 @@ services:
       - ENCRYPTION_SECRET=${ENCRYPTION_SECRET:-${ENCRYPTION_KEY}}
       - JWT_SECRET=${JWT_SECRET}
       - NIM_LLM_MODEL=${NIM_LLM_MODEL:-meta/llama-3.2-11b-vision-instruct}
-      - NIM_LLM_FALLBACK=${NIM_LLM_FALLBACK:-poolside/laguna-xs-2.1}
+      - NIM_LLM_FALLBACK=${NIM_LLM_FALLBACK:-meta/llama-3.2-11b-vision-instruct}
       - NIM_EMBED_MODEL=${NIM_EMBED_MODEL:-nvidia/nemotron-3-embed-1b}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - BACKEND_HOST=0.0.0.0

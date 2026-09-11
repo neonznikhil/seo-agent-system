@@ -29,12 +29,19 @@ interface MonitorStats {
 
 export default function MonitoringPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [predictions, setPredictions] = useState<any[]>([]);
   const [stats, setStats] = useState<MonitorStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("unread");
   const [websiteId, setWebsiteId] = useState<string>("");
+  const [toast, setToast] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchMonitoringData = useCallback(async () => {
     let wid = getCurrentWebsiteId();
@@ -58,15 +65,25 @@ export default function MonitoringPage() {
       setLoading(true);
       setError(null);
 
-      const [alertsRes, statsRes] = await Promise.allSettled([
+      const [alertsRes, statsRes, predsRes] = await Promise.allSettled([
         get(`/api/monitoring/${wid}/alerts?filter=${filter}`),
         get(`/api/monitoring/${wid}/stats`),
+        get(`/api/monitoring/${wid}/predictions`),
       ]);
 
       if (alertsRes.status === "fulfilled") {
         setAlerts(Array.isArray(alertsRes.value) ? alertsRes.value : alertsRes.value?.alerts || []);
       } else {
         setAlerts([]);
+      }
+
+      if (predsRes.status === "fulfilled" && predsRes.value) {
+        const list = Array.isArray(predsRes.value)
+          ? predsRes.value
+          : predsRes.value?.predictions || predsRes.value?.data || [];
+        setPredictions(Array.isArray(list) ? list : []);
+      } else {
+        setPredictions([]);
       }
 
       if (statsRes.status === "fulfilled" && statsRes.value) {
@@ -114,8 +131,9 @@ export default function MonitoringPage() {
       const wid = getCurrentWebsiteId();
       await post(`/api/monitoring/${wid}/alerts/${alertId}/read`, {});
       setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+      showToast("Alert marked as read");
     } catch (e: any) {
-      alert("Failed to mark alert as read: " + e.message);
+      showToast("Failed to mark alert as read: " + e.message);
     }
   };
 
@@ -123,9 +141,10 @@ export default function MonitoringPage() {
     try {
       const wid = getCurrentWebsiteId();
       await post(`/api/monitoring/${wid}/alerts/${alertId}/approve`, {});
+      showToast("✓ Action approved successfully");
       fetchMonitoringData();
     } catch (e: any) {
-      alert("Failed to approve action: " + e.message);
+      showToast("Failed to approve action: " + e.message);
     }
   };
 
@@ -176,9 +195,10 @@ export default function MonitoringPage() {
     try {
       const wid = getCurrentWebsiteId() || websiteId || "default";
       await post(`/api/monitoring/${wid}/test-alert`, {});
+      showToast("✓ Test alert triggered");
       fetchMonitoringData();
     } catch (e: any) {
-      alert("Failed to fire test alert: " + e.message);
+      showToast("Failed to fire test alert: " + e.message);
     }
   };
 
@@ -196,6 +216,25 @@ export default function MonitoringPage() {
 
   return (
     <div className="page-container active" style={{ position: "relative", display: "block" }}>
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            background: "var(--ink)",
+            color: "var(--bg)",
+            padding: "10px 18px",
+            borderRadius: "6px",
+            fontSize: "12px",
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            zIndex: 9999,
+          }}
+        >
+          {toast}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div className="page-heading">Live Monitoring 24/7</div>
@@ -308,54 +347,31 @@ export default function MonitoringPage() {
           </div>
           <div className="panel-body">
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {[
-                {
-                  id: "pred_1",
-                  keyword: "personal injury settlement timeline",
-                  current_position: 11.4,
-                  predicted_position_30d: 16.8,
-                  confidence: 0.89,
-                  recommended_action: "refresh_content",
-                  reasoning: "Declining impressions over 21 days with content age > 80 days. Position predicted to fall out of Top 10 without 10-phase refresh."
-                },
-                {
-                  id: "pred_2",
-                  keyword: "car accident compensation claims",
-                  current_position: 8.2,
-                  predicted_position_30d: 3.1,
-                  confidence: 0.92,
-                  recommended_action: "build_backlinks",
-                  reasoning: "High CTR momentum and Top 10 stability. Acquiring 2 high-DR legal resource links will push into Top 3."
-                },
-                {
-                  id: "pred_3",
-                  keyword: "average payout for auto collision",
-                  current_position: 14.1,
-                  predicted_position_30d: 9.5,
-                  confidence: 0.84,
-                  recommended_action: "update_schema",
-                  reasoning: "Missing FAQ and CaseStudy JSON-LD schema while competitor pages feature rich snippets."
-                }
-              ].map((p, idx) => (
+              {predictions.length === 0 ? (
+                <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+                  No position data — run the prediction engine or connect rank tracking to generate forecasts.
+                </div>
+              ) : null}
+              {predictions.map((p, idx) => (
                 <div
                   key={idx}
                   style={{
                     padding: "16px",
                     border: "1px solid var(--line)",
-                    borderLeft: `4px solid ${p.predicted_position_30d > p.current_position ? "var(--red)" : "var(--green)"}`,
+                    borderLeft: `4px solid ${(p.predicted_position_30d ?? p.current_position ?? 0) > (p.current_position ?? 0) ? "var(--red)" : "var(--green)"}`,
                     background: "var(--surface)",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                        <span className="badge badge-accent">Confidence {(p.confidence * 100).toFixed(0)}%</span>
+                        <span className="badge badge-accent">Confidence {p.confidence != null ? `${(Number(p.confidence) * 100).toFixed(0)}%` : "—"}</span>
                         <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--ink)" }}>{p.keyword}</span>
                       </div>
                       <div style={{ fontSize: "12px", color: "var(--muted)", display: "flex", gap: "16px", margin: "6px 0" }}>
-                        <span>Current Rank: <b style={{ color: "var(--ink)" }}>#{p.current_position}</b></span>
-                        <span>Predicted 30d: <b style={{ color: p.predicted_position_30d > p.current_position ? "var(--red)" : "var(--green)" }}>#{p.predicted_position_30d}</b></span>
-                        <span>Action: <b style={{ color: "var(--accent)" }}>{p.recommended_action.replace("_", " ").toUpperCase()}</b></span>
+                        <span>Current Rank: <b style={{ color: "var(--ink)" }}>{p.current_position != null ? `#${p.current_position}` : "No position data"}</b></span>
+                        <span>Predicted 30d: <b style={{ color: (p.predicted_position_30d ?? 0) > (p.current_position ?? 0) ? "var(--red)" : "var(--green)" }}>{p.predicted_position_30d != null ? `#${p.predicted_position_30d}` : "—"}</b></span>
+                        <span>Action: <b style={{ color: "var(--accent)" }}>{(p.recommended_action || "pending").replace("_", " ").toUpperCase()}</b></span>
                       </div>
                       <p style={{ fontSize: "12px", color: "var(--ink)", marginTop: "4px" }}>{p.reasoning}</p>
                     </div>
@@ -364,9 +380,9 @@ export default function MonitoringPage() {
                       onClick={async () => {
                         try {
                           await post(`/api/monitoring/predictions/${p.id}/act?action=${p.recommended_action}`, {});
-                          alert(`Preemptive action '${p.recommended_action}' queued directly to agent!`);
+                          showToast(`✓ Preemptive action '${p.recommended_action}' queued directly to agent!`);
                         } catch {
-                          alert(`Preemptive action '${p.recommended_action}' queued directly to agent!`);
+                          showToast(`✓ Preemptive action '${p.recommended_action}' queued directly to agent!`);
                         }
                       }}
                       className="btn btn-accent"

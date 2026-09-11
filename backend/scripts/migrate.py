@@ -92,11 +92,18 @@ def run_migrations() -> dict:
         supabase = get_supabase()
         print("  [NOTICE] Direct Postgres URL (DATABASE_URL) is not set in backend/.env.")
         print("  PostgREST does not support arbitrary DDL (CREATE/ALTER TABLE).")
-        print("  To apply migrations, run the master schema in your Supabase SQL Editor:")
-        print(f"  File: {schemas_dir / 'supabase_master_complete.sql'}")
+        print("  To apply migrations, run these in your Supabase SQL Editor (repo root, in order):")
+        print("    1. supabase_master_complete.sql")
+        print("    2. supabase_migration_missing.sql")
+        print("    3. supabase_migration_aeo.sql")
+        print("    4. supabase_migration_vectors.sql  (creates match_knowledge / match_brain_memory RPCs)")
+        print("    5. supabase_migration_rls.sql")
+        print("    6. supabase_migration_indexation_runs.sql  (indexation_checks, runs, brand_voice_guides, fact_verifications)")
+        print("  Plus backend/schemas/009_autonomous_settings_missing.sql for auto_refresh + keyword_research.intent.")
 
         # Check existing tables via REST probe
-        test_tables = ["accounts", "websites", "content_log", "realtime_alerts", "autonomous_settings", "daily_costs"]
+        test_tables = ["accounts", "websites", "content_log", "realtime_alerts", "autonomous_settings", "daily_costs",
+                       "indexation_checks", "runs", "brand_voice_guides"]
         print("\n  Probing Supabase PostgREST tables status:")
         for tbl in test_tables:
             try:

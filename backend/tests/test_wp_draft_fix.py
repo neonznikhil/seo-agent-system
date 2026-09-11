@@ -44,14 +44,49 @@ async def test_publish_post_existing_draft():
     mock_resp.status_code = 200
     mock_resp.json.return_value = {"id": 789, "status": "publish"}
 
+    mock_get = MagicMock()
+    mock_get.status_code = 200
+    mock_get.json.return_value = {"id": 789, "status": "publish",
+                                  "link": "https://mysite.com/?p=789"}
+
     with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
-        res = await svc.publish_post(
-            website_id="test_wid",
-            wp_post_id=789,
-            user_id="admin_user",
-        )
-        assert res["published"] is True
-        assert res["post_id"] == 789
+        with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=mock_get)):
+            res = await svc.publish_post(
+                website_id="test_wid",
+                wp_post_id=789,
+                user_id="admin_user",
+            )
+            assert res["published"] is True
+            assert res["post_id"] == 789
+
+
+@pytest.mark.asyncio
+async def test_publish_post_unconfirmed_is_not_published():
+    """No re-GET confirmation -> published False, never optimistic True."""
+    svc = WordPressService("test_wid")
+    svc.site = {
+        "wordpress_url": "https://mysite.com",
+        "wordpress_user": "myuser",
+        "wordpress_password": "mypassword",
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"id": 789, "status": "publish"}
+
+    mock_get = MagicMock()
+    mock_get.status_code = 404
+    mock_get.json.return_value = {}
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
+        with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=mock_get)):
+            res = await svc.publish_post(
+                website_id="test_wid",
+                wp_post_id=789,
+                user_id="admin_user",
+            )
+            assert res["published"] is False
+            assert "reason" in res
 
 
 @pytest.mark.asyncio

@@ -65,6 +65,10 @@ export default function ApprovalsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState<boolean>(false);
+  const [rejectModalId, setRejectModalId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>("");
+  const [deleteModalItem, setDeleteModalItem] = useState<{ id: string; title: string } | null>(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState<boolean>(false);
 
   const load = useCallback(async () => {
     const wid = getCurrentWebsiteId();
@@ -125,20 +129,28 @@ export default function ApprovalsPage() {
     }
   };
 
-  // TASK 4.2 — BULK APPROVE BUTTON: Publishes all passing (SEO >= 85) in sequence
-  const handleBulkApprovePassing = async () => {
+  // TASK 4.2 — BULK APPROVE BUTTON: Publishes all passing (SEO >= 85) in sequence.
+  // Unscored drafts (seo_score == null) are EXCLUDED — only positively
+  // verified passing scores may bulk-publish. Null must never mean pass.
+  const handleBulkApprovePassing = () => {
     const passingPending = items.filter(
-      (a) => a.status === "pending" && (a.seo_score == null || a.seo_score >= 85)
+      (a) => a.status === "pending" && a.seo_score != null && a.seo_score >= 85
     );
 
     if (passingPending.length === 0) {
-      alert("No pending articles with SEO Score >= 85 found.");
+      setNotice("No pending articles with SEO Score ≥ 85 found.");
       return;
     }
 
-    if (!confirm(`Approve and publish all ${passingPending.length} articles with SEO Score >= 85 to WordPress?`)) {
-      return;
-    }
+    setBulkConfirmOpen(true);
+  };
+
+  const executeBulkApprove = async () => {
+    setBulkConfirmOpen(false);
+    const passingPending = items.filter(
+      (a) => a.status === "pending" && a.seo_score != null && a.seo_score >= 85
+    );
+    if (passingPending.length === 0) return;
 
     setIsBulkApproving(true);
     setBulkProgress(`Starting bulk approval of ${passingPending.length} articles...`);
@@ -161,13 +173,14 @@ export default function ApprovalsPage() {
     setTimeout(() => setBulkProgress(null), 5000);
   };
 
-  const reject = async (id: string) => {
-    const reason = window.prompt("Reason for rejection (optional):") || "";
+  const executeReject = async (id: string) => {
     setBusyId(id);
     setNotice(null);
     try {
-      await post(`/api/approvals/${id}/reject`, { reason });
+      await post(`/api/approvals/${id}/reject`, { reason: rejectReason.trim() });
       setNotice("Post rejected - it will not be published.");
+      setRejectModalId(null);
+      setRejectReason("");
       await load();
     } catch (e: any) {
       setNotice(`Reject failed: ${e.message}`);
@@ -176,12 +189,14 @@ export default function ApprovalsPage() {
     }
   };
 
-  const deleteApproval = async (id: string, title: string) => {
-    if (!confirm(`Permanently delete "${title}"?`)) return;
+  const executeDelete = async () => {
+    if (!deleteModalItem) return;
+    const { id } = deleteModalItem;
     setBusyId(id);
     try {
       await del(`/api/approvals/${id}`);
       setNotice("Draft deleted.");
+      setDeleteModalItem(null);
       await load();
     } catch (e: any) {
       setNotice(`Delete failed: ${e.message}`);
@@ -320,6 +335,66 @@ export default function ApprovalsPage() {
         </div>
       )}
 
+      {/* REJECT MODAL */}
+      {rejectModalId && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "24px", maxWidth: "480px", width: "90%", borderRadius: "4px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--red)" }}>Reject Draft</h3>
+            <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "12px" }}>
+              Provide a reason for rejection (optional). This rejection feedback trains future generation prompts.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Tone too generic, missed key state statute, or keyword intent mismatch."
+              style={{ width: "100%", height: "90px", padding: "10px", fontSize: "12px", border: "1px solid var(--line)", background: "var(--input-bg)", color: "var(--ink)", marginBottom: "16px" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button className="btn" onClick={() => setRejectModalId(null)}>Cancel</button>
+              <button className="btn btn-danger" disabled={busyId === rejectModalId} onClick={() => executeReject(rejectModalId)}>
+                {busyId === rejectModalId ? "Rejecting..." : "Confirm Rejection"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRM MODAL */}
+      {deleteModalItem && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "24px", maxWidth: "440px", width: "90%", borderRadius: "4px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--red)" }}>Delete Draft</h3>
+            <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "16px" }}>
+              Are you sure you want to permanently delete <strong>&ldquo;{deleteModalItem.title}&rdquo;</strong>? This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button className="btn" onClick={() => setDeleteModalItem(null)}>Cancel</button>
+              <button className="btn btn-danger" disabled={busyId === deleteModalItem.id} onClick={executeDelete}>
+                {busyId === deleteModalItem.id ? "Deleting..." : "Permanently Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BULK APPROVE CONFIRM MODAL */}
+      {bulkConfirmOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "24px", maxWidth: "460px", width: "90%", borderRadius: "4px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px" }}>⚡ Bulk Approve & Publish</h3>
+            <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "16px" }}>
+              This will approve and publish all pending drafts with an SEO Quality Score ≥ 85 directly to your connected WordPress instance.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button className="btn" onClick={() => setBulkConfirmOpen(false)}>Cancel</button>
+              <button className="btn btn-accent" onClick={executeBulkApprove}>
+                Proceed & Publish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>Loading approvals...</div>
       ) : items.length === 0 ? (
@@ -380,8 +455,23 @@ export default function ApprovalsPage() {
                     </span>
                   )}
                   {a.wordpress_url && (
-                    <a href={a.wordpress_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
-                      WordPress Link ↗
+                    <a
+                      href={a.wordpress_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        color: "var(--accent)",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                      }}
+                    >
+                      <span className="badge badge-accent" style={{ fontSize: "10px", padding: "2px 6px" }}>
+                        🔒 DRAFT PREVIEW
+                      </span>
+                      <span>{a.wordpress_url.includes("preview=true") ? "Authenticated Preview Link" : "WordPress Link"} ↗</span>
                     </a>
                   )}
                   {a.rejection_reason && !a.rejection_reason.startsWith("Revised:") && (
@@ -407,7 +497,11 @@ export default function ApprovalsPage() {
                       >
                         REQUEST REVISION
                       </button>
-                      <button className="btn btn-danger" disabled={busyId === a.id} onClick={() => reject(a.id)}>
+                      <button
+                        className="btn btn-danger"
+                        disabled={busyId === a.id}
+                        onClick={() => { setRejectModalId(a.id); setRejectReason(""); }}
+                      >
                         REJECT
                       </button>
                     </>
@@ -433,7 +527,7 @@ export default function ApprovalsPage() {
                     className="btn"
                     style={{ color: "var(--red)", borderColor: "rgba(255,85,85,0.4)" }}
                     disabled={busyId === a.id}
-                    onClick={() => deleteApproval(a.id, a.title)}
+                    onClick={() => setDeleteModalItem({ id: a.id, title: a.title })}
                   >
                     🗑️ Delete
                   </button>

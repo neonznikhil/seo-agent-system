@@ -403,5 +403,81 @@ def get_local_autonomous_settings() -> Dict[str, Any]:
         "daily_blog_target": 5,
         "generation_interval": 288,
         "auto_topic_selection": True,
-        "auto_publish": True,
+        # Drafts only by default: publishing requires explicit opt-in.
+        "auto_publish": False,
     }
+
+
+# ============================================================================
+# COMPETITORS
+# ============================================================================
+
+def save_local_competitor(comp: Dict[str, Any]) -> Dict[str, Any]:
+    competitors = _load_json("competitors.json")
+    comp_id = comp.get("id") or str(uuid.uuid4())
+    comp["id"] = comp_id
+    comp["created_at"] = comp.get("created_at") or datetime.utcnow().isoformat()
+    updated = False
+    for i, c in enumerate(competitors):
+        if c.get("id") == comp_id or (c.get("domain") == comp.get("domain") and c.get("website_id") == comp.get("website_id")):
+            competitors[i] = {**c, **comp}
+            updated = True
+            break
+    if not updated:
+        competitors.append(comp)
+    _save_json("competitors.json", competitors)
+    return comp
+
+
+def list_local_competitors(website_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    competitors = _load_json("competitors.json")
+    if not website_id:
+        return competitors
+    return [c for c in competitors if not c.get("website_id") or c.get("website_id") == website_id]
+
+
+# ============================================================================
+# INDEXATION CHECKS
+# ============================================================================
+
+def save_local_indexation_check(check: Dict[str, Any]) -> Dict[str, Any]:
+    checks = _load_json("indexation_checks.json")
+    check_id = check.get("id") or str(uuid.uuid4())
+    check["id"] = check_id
+    if "checked_at" not in check:
+        check["checked_at"] = datetime.utcnow().isoformat()
+    checks.insert(0, check)
+    # Keep last 100 checks
+    _save_json("indexation_checks.json", checks[:100])
+    return check
+
+
+def list_local_indexation_checks(website_id: Optional[str] = None, limit: int = 30) -> List[Dict[str, Any]]:
+    checks = _load_json("indexation_checks.json")
+    if website_id and website_id not in ("all", "default"):
+        checks = [c for c in checks if not c.get("website_id") or c.get("website_id") == website_id]
+    return checks[:limit]
+
+
+# ============================================================================
+# BRAND VOICE GUIDES
+# ============================================================================
+
+def save_local_brand_voice(website_id: str, guide: Dict[str, Any]) -> Dict[str, Any]:
+    guides = _load_json("brand_voice_guides.json")
+    existing = [g for g in guides if g.get("website_id") == website_id]
+    version = max([g.get("version", 0) for g in existing], default=0) + 1
+    record = {**guide, "website_id": website_id, "version": version, "updated_at": datetime.utcnow().isoformat()}
+    guides.append(record)
+    _save_json("brand_voice_guides.json", guides)
+    return record
+
+
+def get_local_brand_voice(website_id: str) -> Optional[Dict[str, Any]]:
+    guides = _load_json("brand_voice_guides.json")
+    matching = [g for g in guides if g.get("website_id") == website_id]
+    if not matching:
+        return None
+    matching.sort(key=lambda g: g.get("version", 0), reverse=True)
+    return matching[0]
+

@@ -14,10 +14,13 @@ export async function GET() {
     // Fall through
   }
 
+  // HONEST FALLBACK: backend unreachable means publishing state is UNKNOWN.
+  // Never default auto_publish to true — drafts-only is the safe default.
   return NextResponse.json({
-    auto_publish: true,
-    auto_generate: true,
-    auto_refresh: true,
+    auto_publish: false,
+    auto_generate: false,
+    auto_refresh: false,
+    connected: false,
   });
 }
 

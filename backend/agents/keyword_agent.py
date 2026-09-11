@@ -69,14 +69,22 @@ class KeywordAgent:
         try:
             raw = await call_nim_llm(prompt, system="You are an SEO keyword strategist. Return only valid JSON.", website_id=self.website_id)
             data = self._parse_json(raw)
+            llm_ok = bool(data.get("primary_keyword"))
         except Exception as e:
             logger.warning(f"NIM keyword generation error: {e}")
             data = {}
+            llm_ok = False
 
         data.setdefault("primary_keyword", topic)
+        # HONEST FALLBACK: invented placeholders are labeled estimated with
+        # null difficulty — never a confident-looking 45 or fake volumes.
         data.setdefault("secondary_keywords", [f"{topic} guide", f"best {topic}", f"{topic} tips", f"{topic} examples", f"how to {topic}", f"{topic} cost"])
-        data.setdefault("difficulty_score", 45)
+        if not llm_ok or data.get("difficulty_score") is None:
+            data["difficulty_score"] = None
         data.setdefault("intent", preferred_intent)
+        data["provenance"] = "estimated"
+        data["source"] = "keyword_agent_llm"
+        data["llm_verified"] = llm_ok
         if not data.get("clusters"):
             sec = data["secondary_keywords"]
             data["clusters"] = [sec[:2], sec[2:4], sec[4:6]]
@@ -85,19 +93,22 @@ class KeywordAgent:
         # Step 3: WRITE BACK AFTER
         # ---------------------------------------------------------
         supabase = get_supabase()
+        # HONEST STORE: LLM-derived keywords go to keyword_positions labeled
+        # estimated — NEVER to gsc_keywords (that table is measured GSC truth;
+        # writing invented rows there with default volumes poisoned monitors).
         try:
-            supabase.table("gsc_keywords").insert({
+            supabase.table("keyword_positions").insert({
                 "website_id": self.website_id,
                 "keyword": data["primary_keyword"],
-                "impressions": research_output.get("search_volume", 5000),
-                "clicks": 0,
-                "ctr": 0.0,
-                "position": 0,
-                "is_active": True,
-                "created_at": datetime.utcnow().isoformat()
+                "impressions": None,
+                "clicks": None,
+                "search_volume": None,
+                "difficulty": data.get("difficulty_score"),
+                "provenance": "estimated",
+                "source": "keyword_agent_llm",
             }).execute()
         except Exception as e:
-            logger.warning(f"[KeywordAgent] Failed to insert gsc_keywords: {e}")
+            logger.warning(f"[KeywordAgent] Failed to insert keyword_positions: {e}")
 
         # Write to brain_memory
         await brain.remember(

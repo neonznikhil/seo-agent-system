@@ -15,19 +15,7 @@ export async function GET(req: Request) {
     // Fall through to native fallback
   }
 
-  // Fallback website list from configured project
-  return NextResponse.json([
-    {
-      id: "f8d16d12-bf91-4d92-9134-8fa29813e31e",
-      name: "Innovatcs Accident Law",
-      domain: "accident.innovatcs.com",
-      url: "https://your-wordpress-site.com",
-      status: "active",
-      autonomous_mode: true,
-      health_score: 98,
-      keywords_count: 24,
-      articles_published: 12,
-      created_at: "2026-08-20T00:00:00Z",
-    },
-  ]);
+  // HONEST: backend unreachable means NO sites. Never invent a demo site —
+  // every downstream call would attribute content to someone else's domain.
+  return NextResponse.json([]);
 }

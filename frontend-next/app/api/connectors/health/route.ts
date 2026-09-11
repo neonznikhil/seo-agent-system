@@ -16,15 +16,20 @@ export async function GET(req: Request) {
     // Fall through
   }
 
-  return NextResponse.json({
-    health_score: 100,
-    status: "healthy",
-    all_connected: true,
-    domain: "accident.innovatcs.com",
-    nvidia: "connected",
-    supabase: "connected",
-    wordpress: "connected",
-    serper: "connected",
-    missing: [],
-  });
+  // HONEST: backend unreachable means health is UNKNOWN, never "healthy".
+  return NextResponse.json(
+    {
+      health_score: null,
+      health_label: "Unknown — backend unreachable",
+      status: "unknown",
+      all_connected: false,
+      domain: null,
+      nvidia: "unknown",
+      supabase: "unknown",
+      wordpress: "unknown",
+      serper: "unknown",
+      missing: ["backend connection"],
+    },
+    { status: 502 }
+  );
 }

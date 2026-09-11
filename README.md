@@ -37,6 +37,7 @@ cd backend && uvicorn main:app --reload --port 8000
 3. `supabase_migration_aeo.sql` — AEO/GEO + backlink queue tables, content_log AEO flags
 4. `supabase_migration_vectors.sql` — pgvector backfill + `match_knowledge` / `match_brain_memory` RPCs
 5. `supabase_migration_rls.sql` — least-privilege RLS (anon locked out; backend uses service_role)
+6. `supabase_migration_indexation_runs.sql` — `indexation_checks`, `runs`, `brand_voice_guides`, `fact_verifications` (SEO outcomes layer)
 
 ### 3. Frontend
 ```bash

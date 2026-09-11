@@ -161,9 +161,13 @@ class RealDataService:
                 if seed_keyword.lower() in kw.get('keyword', '').lower()
             ]
             
+            try:
+                from seo_constants import is_striking_distance
+            except (ImportError, ValueError):
+                from backend.seo_constants import is_striking_distance
             striking_distance = [
                 kw for kw in all_keywords
-                if 10 < kw.get('position', 0) <= 20 and kw.get('impressions', 0) > 100
+                if is_striking_distance(kw.get('position')) and kw.get('impressions', 0) > 100
             ]
             
             competitors = [

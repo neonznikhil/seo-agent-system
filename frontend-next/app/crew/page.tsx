@@ -30,7 +30,8 @@ export default function CrewPage() {
   const [keyword, setKeyword] = useState("car accident lawyer Houston");
   const [websiteId, setWebsiteId] = useState("");
   const [loading, setLoading] = useState(false);
-  const [autoPublish, setAutoPublish] = useState(true);
+  // Drafts only by default: OFF until the backend confirms explicit opt-in.
+  const [autoPublish, setAutoPublish] = useState(false);
   const [todayCost, setTodayCost] = useState<number>(0);
   const [costTokens, setCostTokens] = useState<number>(0);
   const [healthScore, setHealthScore] = useState<number>(96);
@@ -116,10 +117,17 @@ export default function CrewPage() {
 
   const toggleAutoPublish = async () => {
     const nextVal = !autoPublish;
+    // Explicit opt-in requires confirmation: auto-publish skips manual review.
+    if (nextVal) {
+      const ok = window.confirm(
+        "This will automatically publish approved content to WordPress without manual review. Are you sure?"
+      );
+      if (!ok) return;
+    }
     setAutoPublish(nextVal);
     try {
       await post("/api/autonomous/settings", { auto_publish: nextVal });
-      showToast(`Autonomous Auto-Publish switched ${nextVal ? "ON" : "OFF"}`);
+      showToast(`Auto-publish switched ${nextVal ? "ON (explicit opt-in)" : "OFF (drafts only)"}`);
     } catch (e: any) {
       showToast(`Setting update note: ${e.message}`);
     }

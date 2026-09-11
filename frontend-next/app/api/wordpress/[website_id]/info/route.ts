@@ -5,17 +5,15 @@ export async function GET(
   { params }: { params: Promise<{ website_id: string }> }
 ) {
   const { website_id } = await params;
+  // HONEST: no verified connection means unknown info, never a demo site.
   return NextResponse.json({
-    status: "connected",
-    connected: true,
+    status: "unknown",
+    connected: false,
     website_id,
     site: {
-      url: "https://your-wordpress-site.com",
-      name: "Innovatcs Accident Law",
+      url: null,
+      name: null,
     },
-    user: {
-      username: "editor",
-      role: "administrator",
-    },
+    user: null,
   });
 }

@@ -27,12 +27,14 @@ _SERPER_CIRCUIT = {
 
 
 class SerperService:
-    """Real-time search backbone for the SEO agent group via Serper.dev API.
-    
-    Fallback chain:
-    1. Serper.dev API (Primary)
-    2. Tavily API (Secondary)
-    3. Crawlee SERP Scrape (Tertiary)
+    """Real-time search backbone for the SEO agent group.
+
+    Fallback chain (cost-aware):
+    1. TinyFish Search API (FREE, agent-tailored JSON) — when configured
+    2. Serper.dev API (paid, full SERP features)
+    3. Tavily API (paid secondary)
+    4. Explicit degraded {"source": "unavailable", "organic": []} — never
+       mock results, never direct Google scraping (CAPTCHA/blocked).
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -149,14 +151,27 @@ class SerperService:
     ) -> Dict[str, Any]:
         """Primary search call returning structured organic, PAA, answerBox, knowledgeGraph, relatedSearches.
 
-        Fallback order: Serper.dev -> Tavily -> Crawlee scrape. When every source
-        fails this returns EMPTY organic results with a structured error —
-        fabricated SERP rows are never generated.
+        Fallback order: TinyFish (free) -> Serper.dev -> Tavily -> honest
+        degraded empty. When every source fails this returns EMPTY organic
+        results with a structured error — fabricated SERP rows are never
+        generated, and Google is never scraped directly (blocked/CAPTCHA).
         """
         if num_results is not None:
             num = num_results
         _CONNECTOR_STATE["total_calls"] += 1
         payload = {"q": query, "location": location, "language": language, "num": num, "type": search_type}
+
+        # Step 0: TinyFish Search (FREE) — agent-tailored JSON, zero credits.
+        if auto_fallback:
+            try:
+                tiny_res = await self._fallback_tinyfish_search(query, num=num)
+                if tiny_res and tiny_res.get("organic"):
+                    _CONNECTOR_STATE["successful_calls"] += 1
+                    _CONNECTOR_STATE["last_successful_call"] = datetime.now(timezone.utc).isoformat()
+                    _CONNECTOR_STATE["last_error"] = None
+                    return tiny_res
+            except Exception as e:
+                logger.debug(f"TinyFish search fallback note: {e}")
 
         # Step 1: Serper.dev Primary
         if self.is_configured() and self.is_enabled() and not self.is_circuit_open():
@@ -202,21 +217,15 @@ class SerperService:
             except Exception as e:
                 logger.warning(f"Tavily fallback also failed: {e}")
 
-        # Step 3: Fallback to Crawlee SERP scrape
-        if auto_fallback:
-            try:
-                logger.info(f"[SerperFallback] Trying Crawlee SERP scrape for '{query}'")
-                crawlee_res = await self._fallback_crawlee_search(query)
-                if crawlee_res and crawlee_res.get("organic"):
-                    return crawlee_res
-            except Exception as e:
-                logger.warning(f"Crawlee fallback also failed: {e}")
+        # Step 3: No direct Google scraping. Crawlee SERP scraping hits
+        # CAPTCHAs/blocks and burns local browser RAM for unreliable data,
+        # so the chain ends here with an explicit degraded result.
 
-        # All sources unavailable â€” honest empty result. Callers must treat an
+        # All sources unavailable — honest empty result. Callers must treat an
         # empty organic list as 'no live SERP data', never invent competitors.
         error_detail = _CONNECTOR_STATE.get("last_error") or (
-            "No search source available: configure SERPER_API_KEY in Connectors "
-            "or ensure the Crawlee scraper is functional."
+            "No search source available: set TINYFISH_API_KEY (free) or "
+            "SERPER_API_KEY in Connectors."
         )
         return {
             "source": "unavailable",
@@ -470,32 +479,51 @@ class SerperService:
                 }
         return None
 
-    async def _fallback_crawlee_search(self, query: str) -> Optional[Dict[str, Any]]:
-        """Tertiary fallback using Crawlee SERP scraping."""
+    async def _fallback_tinyfish_search(self, query: str, num: int = 10) -> Optional[Dict[str, Any]]:
+        """Zero-cost fallback using the free TinyFish Search API.
+
+        Returns None (not degraded) when unconfigured/failed so the paid
+        chain can continue. Provenance is always 'observed'.
+        """
         try:
-            from .crawlee_service import CrawleeService
-            crawler = CrawleeService()
-            landscape = await crawler.extract_serp_landscape(query)
-            if landscape and landscape.get("top_pages"):
-                organic = [
-                    {
-                        "title": p.get("title", f"Result {idx+1}"),
-                        "link": p.get("url"),
-                        "snippet": p.get("meta_description", ""),
-                        "position": p.get("position", idx + 1)
-                    }
-                    for idx, p in enumerate(landscape.get("top_pages", []))
-                ]
+            try:
+                from .tinyfish_service import get_tinyfish_service
+            except (ImportError, ValueError):
+                from backend.services.tinyfish_service import get_tinyfish_service
+            svc = get_tinyfish_service()
+            if not svc.is_configured:
+                return None
+            res = await svc.search(query, limit=num)
+            if res.get("status") == "success" and res.get("organic"):
+                organic = []
+                for idx, item in enumerate(res["organic"][:num]):
+                    organic.append({
+                        "title": item.get("title", ""),
+                        "link": item.get("link", ""),
+                        "snippet": item.get("snippet", ""),
+                        "position": item.get("position", 0) or idx + 1,
+                    })
                 return {
-                    "source": "crawlee_fallback",
+                    "source": "tinyfish_search",
                     "query": query,
                     "organic": organic,
-                    "peopleAlsoAsk": [{"question": q} for q in landscape.get("questions", [])],
-                    "relatedSearches": [{"query": t} for t in landscape.get("trends", [])],
-                    "credits_used": 0
+                    "peopleAlsoAsk": [],
+                    "knowledgeGraph": {},
+                    "answerBox": {},
+                    "relatedSearches": [],
+                    "credits_used": 0,
+                    "fetched_at": res.get("fetched_at"),
+                    "provenance": "observed",
                 }
         except Exception as e:
-            logger.debug(f"Crawlee SERP fallback failed: {e}")
+            logger.debug(f"TinyFish search fallback failed: {e}")
+        return None
+
+    async def _fallback_crawlee_search(self, query: str) -> Optional[Dict[str, Any]]:
+        """RETIRED: direct Google scraping is CAPTCHA-blocked and burns local
+        browser RAM for unreliable data. Kept as an explicit None so any
+        lingering caller degrades honestly instead of scraping."""
+        logger.debug(f"Crawlee SERP scrape retired for query '{query}' — returning None")
         return None
 
     # ---------------------------------------------------------

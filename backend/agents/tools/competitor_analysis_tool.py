@@ -60,10 +60,55 @@ class CompetitorAnalysisTool(BaseTool):
         return json.dumps(results, indent=2)
 
     def _analyze_url(self, url: str) -> Dict[str, Any]:
+        # Cloud-first: server-rendered markdown via the research provider
+        # (TinyFish Fetch, free, concurrent server-side). Local Playwright
+        # stays only as fallback when the provider is unconfigured/failing.
+        try:
+            import asyncio as _asyncio
+            import re as _re
+
+            async def _fetch_competitor():
+                try:
+                    from services.web_research_provider import get_web_research_provider
+                except (ImportError, ValueError):
+                    from backend.services.web_research_provider import get_web_research_provider
+                return await get_web_research_provider().fetch([url], website_id=self._website_id)
+
+            rr = _asyncio.run(_fetch_competitor())
+            rows = (rr.data.get("results", []) or []) if rr.status == "success" else []
+            if rows and rows[0].get("markdown"):
+                md = rows[0]["markdown"]
+                title = rows[0].get("title", "") or ""
+                headings = [h.strip() for h in _re.findall(r"^#{1,4}\s+(.+)$", md, flags=_re.M)]
+                words = md.split()
+                links = _re.findall(r"\[([^\]]{1,100})\]\((https?://[^)]+)\)", md)
+                result = {
+                    "url": url,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "source": rr.source,
+                    "provenance": "observed",
+                    "title": title,
+                    "meta_description": "",
+                    "h1": headings[0] if headings else "",
+                    "content_length": len(md),
+                    "word_count": len(words),
+                    "internal_links": len(links),
+                    "images": 0,
+                    "headings": headings[:20],
+                    "headings_structure": True,
+                    "structured_data": "schema.org" in md or "application/ld+json" in md,
+                    "last_analyzed": datetime.utcnow().isoformat(),
+                }
+                _log_proof(self._website_id, "competitor_analysis", "analysis",
+                           rr.source, f"url={url}")
+                return result
+        except Exception as e:
+            logger.debug(f"[Competitor] provider fetch note {url}: {e}")
+
         from playwright.sync_api import sync_playwright
         from bs4 import BeautifulSoup
-        
-        result = {"url": url, "timestamp": datetime.utcnow().isoformat()}
+
+        result = {"url": url, "timestamp": datetime.utcnow().isoformat(), "source": "local_playwright"}
         
         try:
             with sync_playwright() as p:

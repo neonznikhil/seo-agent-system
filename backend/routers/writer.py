@@ -71,22 +71,29 @@ class GenerateContentIn(BaseModel):
 
 @router.get("/writer/{website_id}/suggestions")
 async def get_writer_suggestions(website_id: str):
-    """Provide intelligent topic ideas and keyword suggestions for the writer studio.
-    Autonomous: aggregates research, GSC, daily_searches, then NIM-generated gap topics if DB sparse.
-    Also reports WordPress connectivity so UI can drive draft creation.
+    """Provide topic ideas grounded in real site data.
+
+    Every suggestion carries provenance: measured (GSC/API counts),
+    observed (rows in research tables), or estimated (LLM guesses, volume
+    unknown). The endpoint never invents volumes and never pads with
+    hardcoded topics — an empty list means "no data", not "no ideas".
     """
+    from services.website_service import get_website_details
+    from database import get_supabase
     from services.website_service import get_website_details
     from database import get_supabase
     
     supabase = get_supabase()
     site = get_website_details(website_id) or {}
-    domain = site.get("domain") or site.get("url") or "accident.innovatcs.com"
-    niche = site.get("niche") or site.get("business_name") or "Personal Injury Law"
-    business_name = site.get("business_name") or site.get("domain") or "InnovatCS Accident Law"
+    # HONEST: no hardcoded demo domain/niche. Unknown site fields are null
+    # so the UI renders "not configured" instead of someone else's business.
+    domain = site.get("domain") or site.get("url")
+    niche = site.get("niche") or site.get("business_name")
+    business_name = site.get("business_name") or site.get("domain")
 
     suggestions = []
     
-    # 1. Research table keywords
+    # 1. Research table keywords (observed: mined into the research table)
     try:
         res = supabase.table("keyword_research").select("keyword, intent, search_volume").eq("website_id", website_id).limit(10).execute()
         for r in (res.data or []):
@@ -95,13 +102,14 @@ async def get_writer_suggestions(website_id: str):
                     "keyword": r["keyword"],
                     "title": f"The Complete 2026 Guide to {r['keyword'].title()}",
                     "category": r.get("intent", "Commercial"),
-                    "volume": r.get("search_volume", 1200),
+                    "volume": r.get("search_volume"),
+                    "provenance": "observed",
                     "source": "Research"
                 })
     except Exception as e:
         logger.warning(f"[routers_writer] operation failed: {e}")
 
-    # 2. Daily searches keywords
+    # 2. Daily searches keywords (observed: SERP trend rows)
     try:
         ds = supabase.table("daily_searches").select("keyword, search_volume").eq("website_id", website_id).order("search_volume", desc=True).limit(10).execute()
         for r in (ds.data or []):
@@ -110,13 +118,14 @@ async def get_writer_suggestions(website_id: str):
                     "keyword": r["keyword"],
                     "title": f"{r['keyword'].title()}: 2026 Strategy & Best Practices",
                     "category": "High Volume",
-                    "volume": r.get("search_volume", 2400),
+                    "volume": r.get("search_volume"),
+                    "provenance": "observed",
                     "source": "SERP Trends"
                 })
     except Exception as e:
         logger.warning(f"[routers_writer] operation failed: {e}")
 
-    # 2b. GSC keywords (high-impression gaps)
+    # 2b. GSC keywords (measured: real impression counts, no fallbacks)
     try:
         gsc_rows = supabase.table("analytics_data").select("keyword, impressions").eq("website_id", website_id).order("impressions", desc=True).limit(8).execute().data or []
         for r in gsc_rows:
@@ -126,7 +135,8 @@ async def get_writer_suggestions(website_id: str):
                     "keyword": kw,
                     "title": f"{kw.title()}: Ranking Strategy & 2026 Playbook",
                     "category": "GSC Opportunity",
-                    "volume": int(r.get("impressions") or 1800),
+                    "volume": r.get("impressions"),
+                    "provenance": "measured",
                     "source": "GSC Insights"
                 })
     except Exception as e:
@@ -148,47 +158,17 @@ async def get_writer_suggestions(website_id: str):
                     "keyword": kw,
                     "title": f"{kw.title()} — Gap Content Opportunity (High Demand)",
                     "category": "Content Gap",
-                    "volume": int(r.get("search_volume") or 1500),
+                    "volume": r.get("search_volume"),
+                    "provenance": "observed",
                     "source": "Gap Analysis"
                 })
     except Exception as e:
         logger.warning(f"[routers_writer] operation failed: {e}")
 
-    # 3. Domain / Niche Curated High-Value Topics (always ensure minimum 8)
-    niche_lower = (niche or "").lower()
-    domain_lower = (domain or "").lower()
-    is_legal = any(k in niche_lower or k in domain_lower for k in ["accident", "law", "injury", "attorney", "legal"])
-    
-    if is_legal:
-        curated = [
-            ("Houston Car Accident Lawyer 2026 Guide", "Houston Car Accident Lawyer", "Commercial", 3800),
-            ("Truck Accident Settlement Process & Timeline in Texas", "Truck Accident Settlement Process Texas", "Informational", 2100),
-            ("How to File a Personal Injury Claim After a Collision", "How to File Personal Injury Claim Collision", "How-To", 1900),
-            ("Statute of Limitations for Texas Auto Injury Claims", "Texas Auto Accident Statute of Limitations", "Legal Guide", 2600),
-            ("Motorcycle Accident Compensation: Steps to Maximize Recovery", "Motorcycle Accident Compensation Steps", "Commercial", 1500),
-            ("Understanding Comparative Fault in Texas Crash Cases", "Comparative Fault Rules Texas", "Educational", 1300),
-            ("What to Do Immediately After a Rideshare (Uber/Lyft) Accident", "Rideshare Accident Legal Guide", "Checklist", 2900),
-            ("Wrongful Death Claims: Texas Law & Settlement Guidelines", "Texas Wrongful Death Settlement", "High Value", 2200),
-        ]
-    else:
-        curated = [
-            (f"{domain} Comprehensive 2026 Strategic Guide", f"{domain} Strategic Guide", "High Intent", 3200),
-            (f"Top 10 Best Practices for {niche} in 2026", f"Best Practices {niche} 2026", "Listicle", 2400),
-            (f"Step-by-Step Implementation Framework for {niche}", f"{niche} Implementation Framework", "How-To", 1800),
-            (f"How to Maximize ROI and Efficiency in {niche}", f"Maximize ROI {niche}", "Commercial", 2100),
-            (f"Critical Mistakes to Avoid with {niche} in 2026", f"Mistakes to Avoid {niche}", "Guide", 1600),
-            (f"Emerging Trends and AI Solutions for {niche}", f"AI Trends {niche} 2026", "Trends", 2700),
-        ]
-
-    for title, kw, cat, vol in curated:
-        if not any(s["keyword"].lower() == kw.lower() for s in suggestions):
-            suggestions.append({
-                "keyword": kw,
-                "title": title,
-                "category": cat,
-                "volume": vol,
-                "source": "Curated Ideas"
-            })
+    # 3. NO curated padding. Hardcoded topic lists with invented volumes
+    # ("Curated Ideas") violated data-driven content: topics must come from
+    # real rows above or be explicitly labeled AI estimates below. An empty
+    # list is honest ("run research first"), filler is not.
 
     # 4. NIM autonomous generation if still sparse (<6) — ask LLM for fresh gap topics
     if len(suggestions) < 6:
@@ -208,8 +188,11 @@ async def get_writer_suggestions(website_id: str):
                             "keyword": kw,
                             "title": title,
                             "category": item.get("category","AI Suggestion"),
-                            "volume": 1700,
-                            "source": "AI Autonomous"
+                            # Estimated: the model guessed this topic. Volume
+                            # is unknown (null), never a plausible 1700.
+                            "volume": None,
+                            "provenance": "estimated",
+                            "source": "AI Suggestion (unverified)"
                         })
         except Exception as e:
             logger.warning(f"[routers_writer] operation failed: {e}")
@@ -346,6 +329,27 @@ async def generate_content_endpoint(
             )
     except HTTPException:
         raise
+
+    # 2b. Indexation Pacing Gate (Gate publishing pace on indexation < 80%)
+    try:
+        from services.indexation_service import indexation_gate_check
+        gate = await indexation_gate_check(website_id)
+        if gate.get("gate") == "blocked":
+            try:
+                from services.internal_link_service import run_internal_link_optimization
+                background_tasks.add_task(run_internal_link_optimization, website_id)
+            except Exception:
+                pass
+            rate_pct = f"{gate.get('rate', 0) * 100:.1f}%" if gate.get('rate') is not None else "unknown"
+            raise HTTPException(
+                status_code=422,
+                detail=f"Indexation gate blocked: Site indexation rate ({rate_pct}) is below 80% threshold. Adding new content is paused until existing pages get indexed. Dispatched internal linking optimization job instead."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"[WriterAPI] Indexation gate check note: {e}")
+
     # 3. Monthly Article Quota Check
     account_id = getattr(request.state, "account_id", None) if request else None
     if account_id:
@@ -500,13 +504,18 @@ async def approve_draft_endpoint(
     request: Request = None,
 ):
     """Creates a DRAFT in WordPress (status: draft) upon human approval."""
-    user_id = "a0000000-0000-0000-0000-000000000001"
+    # CLOSED GATE: no fallback identity. If the human gate cannot verify
+    # the caller, the request is denied — never attributed to a dummy UUID.
     try:
         from middleware.human_gate import require_human_for_request
-        if request:
-            user_id = await require_human_for_request(request) or user_id
+        user_id = await require_human_for_request(request)
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"[routers_writer] operation failed: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"Cannot verify identity for publishing: {str(e)}"
+        )
     supabase = get_supabase()
 
     content = None
@@ -625,13 +634,18 @@ async def publish_content_endpoint(
     request: Request = None,
 ):
     """Publishes the post live to WordPress upon human approval."""
-    user_id = "a0000000-0000-0000-0000-000000000001"
+    # CLOSED GATE: no fallback identity. If the human gate cannot verify
+    # the caller, the request is denied — never attributed to a dummy UUID.
     try:
         from middleware.human_gate import require_human_for_request
-        if request:
-            user_id = await require_human_for_request(request) or user_id
+        user_id = await require_human_for_request(request)
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"[routers_writer] operation failed: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"Cannot verify identity for publishing: {str(e)}"
+        )
 
     supabase = get_supabase()
     content = None
@@ -671,11 +685,27 @@ async def publish_content_endpoint(
         except Exception as e:
             logger.warning(f"WordPress draft-before-publish failed: {e}")
 
+    publish_receipt = None
     if wp_post_id:
         try:
-            await wp_service.publish_post(website_id, wp_post_id, user_id)
+            publish_receipt = await wp_service.publish_post(website_id, wp_post_id, user_id)
         except Exception as e:
             logger.warning(f"WordPress publish remote call warning: {e}")
+            publish_receipt = {"published": False, "reason": str(e)[:200]}
+
+    # Verified receipt only: without a confirmed publish the content stays
+    # a draft and the caller gets a 502 — never a false "published".
+    if wp_post_id and not (publish_receipt or {}).get("published"):
+        try:
+            supabase.table("content_log").update({
+                "status": "draft",
+                "approved_by": user_id,
+            }).eq("id", content_id).execute()
+        except Exception as e:
+            logger.warning(f"Could not mark content as draft: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"WordPress publish not confirmed: {(publish_receipt or {}).get('reason', 'no receipt')}. Content kept as draft.")
 
     try:
         supabase.table("content_log").update({
@@ -727,4 +757,49 @@ async def expert_reviews(website_id: str, content_id: str):
             "average_score": average_score,
         },
         "reviews": reviews,
+    }
+@router.get("/writer/{website_id}/content/{content_id}/qa")
+@router.get("/api/writer/{website_id}/content/{content_id}/qa")
+async def content_qa_detail(website_id: str, content_id: str):
+    """Run the deterministic QA gate over the stored draft RIGHT NOW.
+
+    Returns per-check PASS/WARN/FAIL details (title, meta, H1, word count,
+    internal links, placeholders, fact-check state) plus the persisted
+    expert-review summary. This is the same gate that blocks publishing —
+    not a cached score.
+    """
+    from services.seo_quality_gate import run_qa_gate
+    supabase = get_supabase()
+    try:
+        content = supabase.table("content_log").select(
+            "id, title, content, html_content, keyword, primary_keyword, "
+            "meta_description"
+        ).eq("id", content_id).eq("website_id", website_id).single().execute().data
+    except Exception:
+        content = None
+    if not content:
+        raise HTTPException(404, "Content not found")
+    html = content.get("html_content") or content.get("content") or ""
+    keyword = content.get("keyword") or content.get("primary_keyword") or ""
+    qa = run_qa_gate(html, keyword=keyword,
+                     meta_description=content.get("meta_description") or "")
+    try:
+        reviews = supabase.table("content_expert_reviews").select(
+            "expert_name, score, passed").eq("content_id", content_id).execute().data or []
+    except Exception:
+        reviews = []
+    passed_experts = len([r for r in reviews if r.get("passed")])
+    return {
+        "success": True,
+        "content_id": content_id,
+        "gate": qa.get("gate"),
+        "hard_fails": qa.get("hard_fails", []),
+        "warnings": qa.get("warnings", []),
+        "details": qa.get("details", {}),
+        "expert_reviews": {
+            "total": len(reviews),
+            "passed": passed_experts,
+            "failed": len(reviews) - passed_experts,
+            "reviews": reviews,
+        },
     }

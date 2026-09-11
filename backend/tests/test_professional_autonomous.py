@@ -137,8 +137,11 @@ async def test_dashboard_real_health():
     if not dash_path.exists():
         pytest.skip("Dashboard page.tsx not found")
     content = _read_file(str(dash_path))
-    assert "Autonomous" in content or "autonomous" in content.lower()
-    assert "11AM" in content or "11am" in content.lower() or "Next publish" in content
+    assert "Autonomous" in content or "autonomous" in content.lower() or "auto-publish" in content.lower()
+    # Honest copy: auto-publish is off by default (drafts only). The old
+    # "Next publish 11AM IST" marketing line must not come back.
+    assert "off by default" in content.lower() or "drafts only" in content.lower()
+    assert "Next publish 11AM" not in content
     assert "/api/autonomous/settings" in content or "autonomous" in content.lower()
     assert "scheduler" in content.lower()
     assert "logs" in content.lower() or "polling" in content.lower()

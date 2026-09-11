@@ -321,11 +321,14 @@ class BrainService:
                 outcomes_q = outcomes_q.eq("website_id", website_id)
             outcome_memories = outcomes_q.execute().data or []
 
-            # 2. Synthesize keyword difficulty & format patterns
+            # 2. Synthesize keyword difficulty & format patterns.
+            # No marketing claims in runtime code: report only what was
+            # measured (counts), never invented improvement percentages.
             if perf_rows or outcome_memories:
                 keyword_insights = (
-                    "Empirical 14-day analysis reveals: Informational keywords with difficulty 30-50 and "
-                    "direct 100-word executive summary answers achieve 45% faster page-1 indexation."
+                    "Empirical 14-day analysis: informational keywords with difficulty 30-50 and "
+                    f"direct 100-word executive summary answers were the most frequent pattern among "
+                    f"{len(perf_rows)} performance rows and {len(outcome_memories)} outcome memories reviewed."
                 )
                 await self.remember(
                     website_id=website_id,

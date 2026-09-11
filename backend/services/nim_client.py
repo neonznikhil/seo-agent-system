@@ -44,12 +44,8 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
 LLM_MODELS: List[str] = [
     os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct"),
-    os.getenv("NIM_LLM_FALLBACK", "poolside/laguna-xs-2.1"),
+    os.getenv("NIM_LLM_FALLBACK", "meta/llama-3.2-11b-vision-instruct"),
     "meta/llama-3.2-11b-vision-instruct",
-    "poolside/laguna-xs-2.1",
-    "nvidia/nemotron-3.5-lightning-30b-a3b",
-    "openai/gpt-oss-20b",
-    "google/diffusiongemma-26b-a4b-it",
 ]
 # Add OpenRouter free model as final fallback if key available
 _or_key = os.getenv("OPENROUTER_API_KEY", "")

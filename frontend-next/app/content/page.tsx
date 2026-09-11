@@ -53,6 +53,31 @@ export default function ContentPage() {
   const [error, setError] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
   const [copied, setCopied] = useState<boolean>(false);
+  const [qaArticle, setQaArticle] = useState<BlogArticle | null>(null);
+  const [qaResult, setQaResult] = useState<any | null>(null);
+  const [qaLoading, setQaLoading] = useState<boolean>(false);
+
+  const countWords = (html: string): number | string => {
+    const text = (html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (!text) return "—";
+    return text.split(" ").length;
+  };
+
+  const openQa = async (a: BlogArticle) => {
+    setQaArticle(a);
+    setQaResult(null);
+    if (!websiteId) return;
+    setQaLoading(true);
+    try {
+      // Runs the real deterministic QA gate over the stored draft right now.
+      const res = await get(`/api/writer/${websiteId}/content/${a.id}/qa`);
+      setQaResult(res);
+    } catch (e: any) {
+      setQaResult({ error: e.message || "QA check failed" });
+    } finally {
+      setQaLoading(false);
+    }
+  };
 
   const loadArticles = useCallback(async () => {
     const wid = getCurrentWebsiteId() || getWebsiteId();
@@ -440,6 +465,47 @@ export default function ContentPage() {
         </div>
       )}
 
+      {/* QA DETAIL MODAL — per-check PASS/WARN/FAIL from the real gate */}
+      {qaArticle && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "24px", maxWidth: "640px", width: "90%", maxHeight: "85vh", display: "flex", flexDirection: "column", borderRadius: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <div>
+                <h3 style={{ fontSize: "15px", fontWeight: 600 }}>QA Gate — {qaArticle.title}</h3>
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  {qaResult && !qaResult.error ? (
+                    <>Gate: <strong style={{ color: qaResult.gate === "HARD_FAIL" ? "var(--red)" : "var(--green)" }}>{qaResult.gate}</strong>
+                    {qaResult.hard_fails?.length > 0 && <> · hard fails: {qaResult.hard_fails.join(", ")}</>}
+                    {qaResult.warnings?.length > 0 && <> · warnings: {qaResult.warnings.join(", ")}</>}</>
+                  ) : ("Running the deterministic gate over the stored draft…")}
+                </span>
+              </div>
+              <button className="btn" style={{ fontSize: "11px", padding: "4px 10px" }} onClick={() => { setQaArticle(null); setQaResult(null); }}>
+                ✕ Close
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+              {qaLoading && <div style={{ fontSize: "12px", color: "var(--muted)" }}>Checking title, meta, H1, word count, links, placeholders…</div>}
+              {qaResult?.error && <div style={{ fontSize: "12px", color: "var(--red)" }}>{qaResult.error}</div>}
+              {qaResult?.details && Object.entries(qaResult.details).map(([name, d]: [string, any]) => (
+                <div key={name} style={{ display: "flex", justifyContent: "space-between", gap: "12px", padding: "8px 10px", border: "1px solid var(--line)", borderRadius: "3px", fontSize: "11.5px" }}>
+                  <span style={{ fontWeight: 600 }}>{name.replace(/_/g, " ")}</span>
+                  <span className={`badge ${d.status === "FAIL" ? "badge-red" : d.status === "WARN" ? "badge-amber" : "badge-green"}`} style={{ fontSize: "9.5px" }}>
+                    {d.status}
+                  </span>
+                  <span style={{ color: "var(--muted)", flex: 1, textAlign: "right" }}>{d.detail}</span>
+                </div>
+              ))}
+              {qaResult?.expert_reviews && qaResult.expert_reviews.total > 0 && (
+                <div style={{ marginTop: "8px", fontSize: "11px", color: "var(--muted)" }}>
+                  Expert reviews: {qaResult.expert_reviews.passed}/{qaResult.expert_reviews.total} passed
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ARTICLES TABLE */}
       <div className="panel">
         <div className="panel-head">
@@ -477,8 +543,8 @@ export default function ContentPage() {
                 </tr>
               ) : (
                 filteredArticles.map((a) => {
-                  const score = a.seo_score ?? 85;
-                  const scoreBadge = score >= 85 ? "badge-green" : score >= 70 ? "badge-amber" : "badge-red";
+                  const score = a.seo_score;
+                  const scoreBadge = score == null ? "" : score >= 85 ? "badge-green" : score >= 70 ? "badge-amber" : "badge-red";
                   const isPublished = a.status === "published" || a.status === "approved";
                   return (
                     <tr key={a.id}>
@@ -487,10 +553,10 @@ export default function ContentPage() {
                         <span style={{ fontSize: "11px", color: "var(--ink)" }}>{a.keyword || "—"}</span>
                       </td>
                       <td>
-                        <span className={`badge ${scoreBadge}`}>{score}/100</span>
+                        <span className={`badge ${scoreBadge}`}>{score == null ? "—" : `${score}/100`}</span>
                       </td>
                       <td>
-                        <span style={{ fontSize: "11px", color: "var(--muted)" }}>{a.word_count || 1200}w</span>
+                        <span style={{ fontSize: "11px", color: "var(--muted)" }}>{countWords(a.html_content || a.content || "")}w</span>
                       </td>
                       <td>
                         <span className={`badge ${isPublished ? "badge-green" : a.status === "pending" ? "badge-accent" : "badge-ink"}`}>
@@ -517,6 +583,13 @@ export default function ContentPage() {
                             onClick={() => setPreviewArticle(a)}
                           >
                             Preview HTML
+                          </button>
+                          <button
+                            className="btn"
+                            style={{ padding: "3px 8px", fontSize: "10.5px" }}
+                            onClick={() => openQa(a)}
+                          >
+                            QA Checks
                           </button>
                           {a.status === "pending" && a.approval_id && (
                             <button

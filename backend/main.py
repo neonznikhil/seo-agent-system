@@ -39,6 +39,9 @@ from middleware.sanitize_response import SanitizeResponseMiddleware
 from services.autonomous_health_service import autonomous_health_service
 
 from routers.websites import router as websites_router
+from routers.indexation import router as indexation_router
+from routers.brand_voice import router as brand_voice_router
+from routers.cannibalization import router as cannibalization_router
 from routers.proposals import router as proposals_router
 from routers.memory import router as memory_router
 from routers.llms_txt import router as llms_txt_router
@@ -87,6 +90,7 @@ from routers.auth import router as auth_router
 from routers.rank_tracker import router as rank_tracker_router
 from routers.demo import router as demo_router
 from routers.deep_diagnostic import router as deep_diagnostic_router
+from routers.workflows import router as workflows_router
 from scripts.migrate import run_migrations
 from agents.seo_agent_group import seo_agent_group
 
@@ -223,24 +227,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[ContinuousMonitor] Startup failed: {e}")
 
-    # 7. Seed initial system status alert if table is empty
-    try:
-        from database import get_supabase
-        sb = get_supabase()
-        existing_alerts = sb.table("realtime_alerts").select("id").limit(1).execute().data
-        if not existing_alerts or len(existing_alerts) == 0:
-            sb.table("realtime_alerts").insert({
-                "severity": "info",
-                "title": "Autonomous SEO Monitoring Active",
-                "description": "Autonomous SEO Monitoring active. 6 background agents running (Rank, SERP, Competitor, Tech, Geo, Structure).",
-                "source": "continuous_monitor",
-                "is_read": False,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }).execute()
-            logger.info("[RealtimeAlerts] Seeded initial system status alert.")
-    except Exception as e:
-        logger.debug(f"[RealtimeAlerts] Seed alert note: {e}")
-
+    # 7. No seeded alerts: an empty alerts table is honest (0 alerts).
+    # Never invent a "Monitoring Active" alert to make the dashboard look alive.
     yield
 
     # Shutdown
@@ -630,24 +618,6 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
             except Exception:
                 return []
 
-        def _fetch_memories():
-            try:
-                q = supabase.table("brain_memory").select("id")
-                if website_id:
-                    q = q.eq("website_id", website_id)
-                return q.execute().data or []
-            except Exception:
-                return []
-
-        def _fetch_knowledge():
-            try:
-                q = supabase.table("knowledge_base").select("id")
-                if website_id:
-                    q = q.eq("website_id", website_id)
-                return q.execute().data or []
-            except Exception:
-                return []
-
         def _fetch_websites():
             try:
                 q = supabase.table("websites").select("id, domain, status")
@@ -657,53 +627,35 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
             except Exception:
                 return []
 
-        def _fetch_backlinks():
-            try:
-                q = supabase.table("backlinks").select("id")
-                if website_id:
-                    q = q.eq("website_id", website_id)
-                return q.execute().data or []
-            except Exception:
-                return []
-
-        def _fetch_health():
-            try:
-                q = supabase.table("technical_audits").select("health_score")
-                if website_id:
-                    q = q.eq("website_id", website_id)
-                audits = q.order("created_at", desc=True).limit(1).execute().data or []
-                if audits and audits[0].get("health_score") is not None:
-                    return round(float(audits[0]["health_score"]))
-            except Exception as e:
-                logger.warning("[Main] Health score fetch failed: %s", e)
-            return 94
-
-        rows, all_logs, memories_data, knowledge_data, wp_rows, backlinks_data, health_score = await asyncio.gather(
+        # Shared counters: same source of truth as /api/dashboard metrics
+        # (services/dashboard_metrics.py). No per-endpoint fallbacks.
+        from services.dashboard_metrics import get_site_counts
+        rows, all_logs, wp_rows, counts = await asyncio.gather(
             _fetch_coro(_fetch_recent),
             _fetch_coro(_fetch_all_logs),
-            _fetch_coro(_fetch_memories),
-            _fetch_coro(_fetch_knowledge),
             _fetch_coro(_fetch_websites),
-            _fetch_coro(_fetch_backlinks),
-            _fetch_coro(_fetch_health),
+            get_site_counts(supabase, website_id),
         )
+        health_score = counts["health_score"]
 
         local_k_count = len(list_local_knowledge(website_id))
         local_m_count = len(list_local_brain_memory(website_id))
         local_c_count = len(list_local_content(website_id))
         local_w_rows = list_local_websites()
 
-        memories_count = max(len(memories_data), local_m_count)
-        knowledge_count = max(len(knowledge_data), local_k_count)
+        memories_count = max(counts["memories_count"], local_m_count)
+        knowledge_count = max(counts["knowledge_count"], local_k_count)
         all_websites = wp_rows + [w for w in local_w_rows if not any(r.get("id") == w.get("id") for r in wp_rows)]
         wp_connected = any(w.get("status") == "active" or w.get("wordpress_configured") for w in all_websites)
-        backlinks_count = len(backlinks_data)
-        total_articles = max(len(all_logs), local_c_count)
+        # Shared truth with /api/dashboard metrics: same counts, same health.
+        backlinks_count = counts["backlinks_count"]
+        total_articles = max(counts["total_articles"], local_c_count)
 
         res_payload = {
             "total_articles": total_articles,
             "pending_articles": len([r for r in all_logs if r.get("status") in ("pending_approval", "draft")]),
             "health_score": health_score,
+            "health_label": "Latest technical audit" if health_score is not None else "No audit yet",
             "memories_count": memories_count,
             "knowledge_count": knowledge_count,
             "backlinks_count": backlinks_count,
@@ -720,7 +672,8 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
         return {
             "total_articles": 0,
             "pending_articles": 0,
-            "health_score": 94,
+            "health_score": None,
+            "health_label": "No audit yet",
             "memories_count": 0,
             "knowledge_count": local_k_count,
             "backlinks_count": 0,
@@ -835,6 +788,9 @@ async def _render_health_alias():
 
 # Websites & Workspaces
 app.include_router(websites_router, prefix="/api")                    # /api/websites/*
+app.include_router(indexation_router, prefix="/api")                  # /api/indexation/*
+app.include_router(brand_voice_router, prefix="/api")                 # /api/brand-voice/*
+app.include_router(cannibalization_router, prefix="/api")             # /api/cannibalization/*
 app.include_router(setup_router, prefix="/api")                # /api/setup/*
 app.include_router(settings_router, prefix="/api")             # /api/settings/*
 
@@ -896,6 +852,7 @@ app.include_router(phase3_router)                               # declares its o
 app.include_router(rank_tracker_router, prefix="/api")         # /api/rankings/*
 app.include_router(demo_router, prefix="/api")                 # /api/demo/*
 app.include_router(deep_diagnostic_router, prefix="/api")         # /api/system/*
+app.include_router(workflows_router, prefix="/api")               # /api/workflows/*
 
 
 @app.get("/api/seo-agent-group/status")

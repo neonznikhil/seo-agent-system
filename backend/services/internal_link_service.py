@@ -421,14 +421,15 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         fix = {
             "website_id": website_id,
             "fix_type": "internal_link_orphan",
-            "title": f"Internal Link: Rescue Orphan Page {orphan_url}",
-            "details": {
+            "fix_payload": {
+                "title": f"Internal Link: Rescue Orphan Page {orphan_url}",
                 "orphan_url": orphan_url,
                 "recommended_source": fallback_source,
                 "suggested_anchor": "Related Domain Guide",
                 "pass": "orphan_rescue"
             },
-            "status": "pending_human_approval",
+            "status": "pending_approval",
+            "proposed_by": "internal_link_service",
             "created_at": datetime.utcnow().isoformat()
         }
         try:
@@ -442,14 +443,15 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         star_fix = {
             "website_id": website_id,
             "fix_type": "internal_link_pagerank",
-            "title": f"Internal Link: Sculpt PageRank to {pages[0]}",
-            "details": {
+            "fix_payload": {
+                "title": f"Internal Link: Sculpt PageRank to {pages[0]}",
                 "target_star_url": pages[0],
                 "high_pr_source": site_url,
                 "suggested_anchor": "Core Domain Guide",
                 "pass": "pagerank_sculpting"
             },
-            "status": "pending_human_approval",
+            "status": "pending_approval",
+            "proposed_by": "internal_link_service",
             "created_at": datetime.utcnow().isoformat()
         }
         try:
@@ -464,13 +466,14 @@ async def run_autonomous_internal_link_optimization(website_id: str) -> Dict[str
         anchor_fix = {
             "website_id": website_id,
             "fix_type": "internal_link_anchor_diversification",
-            "title": f"Internal Link: Diversify Anchor Text for {target_page}",
-            "details": {
+            "fix_payload": {
+                "title": f"Internal Link: Diversify Anchor Text for {target_page}",
                 "target_url": target_page,
                 "suggested_variations": ["Explore our guide", "Read complete analysis", "Full overview"],
                 "pass": "anchor_diversification"
             },
-            "status": "pending_human_approval",
+            "status": "pending_approval",
+            "proposed_by": "internal_link_service",
             "created_at": datetime.utcnow().isoformat()
         }
         try:

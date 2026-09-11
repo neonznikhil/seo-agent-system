@@ -19,7 +19,8 @@ interface TopicSuggestion {
   keyword: string;
   title: string;
   category?: string;
-  volume?: number;
+  volume?: number | null;
+  provenance?: "measured" | "observed" | "estimated" | string;
   source?: string;
   difficulty?: number;
   intent?: string;
@@ -65,7 +66,7 @@ export default function WriterPage() {
   const [keywordsInput, setKeywordsInput] = useState("");
   const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
   const [loadingKeywords, setLoadingKeywords] = useState<boolean>(false);
-  const [suggestionsMeta, setSuggestionsMeta] = useState<{ niche?: string; domain?: string; wordpress_connected?: boolean; wordpress_url?: string } | null>(null);
+  const [suggestionsMeta, setSuggestionsMeta] = useState<{ niche?: string | null; domain?: string | null; wordpress_connected?: boolean; wordpress_url?: string | null } | null>(null);
 
   const [contentList, setContentList] = useState<ContentItem[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<ContentItem | null>(null);
@@ -172,21 +173,18 @@ export default function WriterPage() {
         data = await get(`/api/writer/suggestions?website_id=${wid}`);
       }
       let list: TopicSuggestion[] = Array.isArray(data?.suggestions) ? data.suggestions : [];
-      if (list.length === 0) {
-        list = [
-          { keyword: "what to do immediately after a car accident in California", title: "What to Do Immediately After a Car Accident in California: Complete Checklist", category: "Legal Checklist", volume: 14200, difficulty: 28, intent: "Informational", opportunity: "High", source: "Research" },
-          { keyword: "motorcycle lane splitting accident liability laws", title: "Motorcycle Lane Splitting Accident Liability: Rights & Settlements", category: "Motorcycle Law", volume: 8900, difficulty: 34, intent: "Commercial", opportunity: "High", source: "GSC Gap" },
-          { keyword: "average settlement payout for rear end collision with whiplash", title: "Average Settlement Payout for Rear-End Collision with Whiplash (2026 Guide)", category: "Settlements", volume: 12100, difficulty: 31, intent: "Informational", opportunity: "High", source: "Competitor SERP" },
-          { keyword: "how long do you have to file an injury claim after a crash", title: "Statute of Limitations: How Long Do You Have to File an Injury Claim?", category: "Legal Guides", volume: 6700, difficulty: 22, intent: "Informational", opportunity: "Medium", source: "SERP" },
-        ];
-      }
+      // HONEST: no invented keyword volumes. Empty means the backend returned
+      // nothing (or was unreachable) — the UI must say so, not fill in demo data.
       setSuggestions(list);
       setSuggestionsMeta({
-        niche: data?.niche || "Personal Injury & Vehicle Accidents",
-        domain: data?.domain || "accident.innovatcs.com",
-        wordpress_connected: data?.wordpress_connected ?? true,
-        wordpress_url: data?.wordpress_url || "https://your-wordpress-site.com",
+        niche: data?.niche || null,
+        domain: data?.domain || null,
+        wordpress_connected: data?.wordpress_connected ?? false,
+        wordpress_url: data?.wordpress_url || null,
       });
+      if (list.length === 0) {
+        setAutonomousHint("No keyword suggestions available — connect GSC/Serper or run research first. Topics come from real data only.");
+      }
       // Autonomous prefill: if input empty, select highest volume suggestion (use functional check to avoid dep loop)
       setKeywordsInput((prev) => {
         if (prev) return prev;
@@ -201,18 +199,15 @@ export default function WriterPage() {
         return prev;
       });
     } catch {
-      const fallback: TopicSuggestion[] = [
-        { keyword: "what to do immediately after a car accident in California", title: "What to Do Immediately After a Car Accident in California: Complete Checklist", category: "Legal Checklist", volume: 14200, difficulty: 28, intent: "Informational", opportunity: "High", source: "Research" },
-        { keyword: "motorcycle lane splitting accident liability laws", title: "Motorcycle Lane Splitting Accident Liability: Rights & Settlements", category: "Motorcycle Law", volume: 8900, difficulty: 34, intent: "Commercial", opportunity: "High", source: "GSC Gap" },
-        { keyword: "average settlement payout for rear end collision with whiplash", title: "Average Settlement Payout for Rear-End Collision with Whiplash (2026 Guide)", category: "Settlements", volume: 12100, difficulty: 31, intent: "Informational", opportunity: "High", source: "Competitor SERP" },
-      ];
-      setSuggestions(fallback);
+      // HONEST: backend unreachable = no suggestions, not demo data.
+      setSuggestions([]);
       setSuggestionsMeta({
-        niche: "Personal Injury & Vehicle Accidents",
-        domain: "accident.innovatcs.com",
-        wordpress_connected: true,
-        wordpress_url: "https://your-wordpress-site.com",
+        niche: null,
+        domain: null,
+        wordpress_connected: false,
+        wordpress_url: null,
       });
+      setAutonomousHint("Suggestion service unreachable — check backend connection.");
     } finally {
       setLoadingKeywords(false);
     }
@@ -302,14 +297,19 @@ export default function WriterPage() {
 
   const handleAutonomousPick = () => {
     if (suggestions.length === 0) return;
-    // Pick highest volume or gap/ AI source first
-    const sorted = [...suggestions].sort((a, b) => (b.volume || 0) - (a.volume || 0));
-    // Prefer Gap Analysis / AI Autonomous if present
-    const autonomousFirst = sorted.find((s) => s.source === "Gap Analysis" || s.source === "AI Autonomous") || sorted[0];
+    // Data first: measured/observed suggestions outrank unverified estimates.
+    // Null volume sorts as -1 so estimates never win on "highest volume".
+    const rank = (s: TopicSuggestion) => (s.provenance === "estimated" ? -1 : (s.volume ?? -1));
+    const sorted = [...suggestions].sort((a, b) => rank(b) - rank(a));
+    // Prefer Gap Analysis / Research over raw AI guesses
+    const autonomousFirst = sorted.find((s) => s.provenance !== "estimated") || sorted[0];
     if (autonomousFirst) {
       setKeywordsInput(autonomousFirst.keyword);
       setTitle(autonomousFirst.title);
-      setAutonomousHint(`🤖 Autonomous suggestion: "${autonomousFirst.title}" — highest opportunity gap (${autonomousFirst.volume?.toLocaleString()} vol)`);
+      setAutonomousHint(
+        `Autonomous suggestion: "${autonomousFirst.title}" — ${autonomousFirst.source || ""}` +
+        (autonomousFirst.volume != null ? ` (${autonomousFirst.volume.toLocaleString()} vol)` : " (volume unknown — unverified estimate)")
+      );
     }
   };
 
@@ -453,7 +453,7 @@ export default function WriterPage() {
       const wpUrl = blog.wordpress_url || blog.wp_draft_url || res.wordpress_url;
 
       if (wpPostId) {
-        setWpDraftMsg(`✓ Real WordPress Draft #${wpPostId} created in accident.innovatcs.com WP Admin!`);
+        setWpDraftMsg(`WordPress draft #${wpPostId} created${wpUrl ? ` — ${wpUrl}` : ""}.`);
       } else if (wpUrl) {
         setWpDraftMsg(`WordPress draft ready: ${wpUrl}`);
       }
@@ -676,7 +676,7 @@ export default function WriterPage() {
                     maxWidth: "100%",
                     textAlign: "left",
                   }}
-                  title={`${sugg.keyword} · ${sugg.category || ""} · ${sugg.source || ""} · ${sugg.volume || ""} vol`}
+                  title={`${sugg.keyword} · ${sugg.category || ""} · ${sugg.source || ""} · ${sugg.volume != null ? `${sugg.volume} vol (${sugg.provenance || "observed"})` : "volume unknown"}`}
                 >
                   <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "280px" }}>{sugg.title}</span>
                   {sugg.category && (
@@ -684,9 +684,13 @@ export default function WriterPage() {
                       {sugg.category}
                     </span>
                   )}
-                  {sugg.volume != null && (
+                  {sugg.volume != null ? (
                     <span style={{ fontSize: "9.5px", opacity: 0.8, padding: "1px 5px", background: "rgba(34,197,94,0.10)", borderRadius: "2px", color: "var(--green)", fontWeight: 600 }}>
-                      {sugg.volume.toLocaleString()} vol
+                      {sugg.volume.toLocaleString()} vol{sugg.provenance === "measured" ? "" : "~"}
+                    </span>
+                  ) : (
+                    <span title="No measured volume — topic is an unverified estimate, not researched demand" style={{ fontSize: "9.5px", opacity: 0.8, padding: "1px 5px", background: "rgba(245,158,11,0.12)", borderRadius: "2px", color: "var(--amber)", fontWeight: 600 }}>
+                      vol ?{sugg.provenance === "estimated" ? " (est.)" : ""}
                     </span>
                   )}
                 </button>

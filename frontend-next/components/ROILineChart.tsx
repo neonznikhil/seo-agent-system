@@ -2,17 +2,24 @@
 
 import { useState } from "react";
 
-const data = [
-  { day: "Mon", clicks: 120 },
-  { day: "Tue", clicks: 150 },
-  { day: "Wed", clicks: 180 },
-  { day: "Thu", clicks: 140 },
-  { day: "Fri", clicks: 200 },
-  { day: "Sat", clicks: 170 },
-  { day: "Sun", clicks: 210 },
-];
+export interface ROIPoint {
+  day: string;
+  clicks: number;
+}
 
-export function ROILineChart() {
+interface ROILineChartProps {
+  /** Real click data, e.g. from rank_tracking or GSC. Empty/omitted = honest empty state. */
+  data?: ROIPoint[];
+}
+
+export function ROILineChart({ data = [] }: ROILineChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+        No data yet — connect GSC or run rank tracking to populate this chart.
+      </div>
+    );
+  }
   const max = Math.max(...data.map((d) => d.clicks));
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 

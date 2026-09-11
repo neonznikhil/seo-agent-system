@@ -139,25 +139,34 @@ async def create_research(body: ResearchIn):
 @router.get("/research/competitors")
 @router.get("/api/research/competitors")
 async def list_competitors(website_id: Optional[str] = None):
+    from services.local_store import list_local_competitors
     try:
         query = get_supabase().table("competitors").select("*")
         if website_id:
             query = query.eq("website_id", website_id)
         res = query.execute()
-        return {"success": True, "data": res.data or []}
+        db_comps = res.data or []
     except Exception:
-        return {"success": True, "data": []}
+        db_comps = []
+    
+    local_comps = list_local_competitors(website_id)
+    seen = {c.get("domain") for c in db_comps if c.get("domain")}
+    merged = list(db_comps) + [c for c in local_comps if c.get("domain") not in seen]
+    return {"success": True, "data": merged}
 
 
 @router.post("/research/competitors")
 @router.post("/api/research/competitors")
 async def create_competitor(body: CompetitorIn):
+    from services.local_store import save_local_competitor
+    data = body.model_dump()
     try:
-        res = get_supabase().table("competitors").insert(body.model_dump()).execute()
-        row = res.data[0] if res.data else body.model_dump()
-        return {"success": True, "data": row}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        res = get_supabase().table("competitors").insert(data).execute()
+        row = res.data[0] if res.data else data
+    except Exception:
+        row = data
+    saved = save_local_competitor(row)
+    return {"success": True, "data": saved}
 
 
 class ContentGapRequest(BaseModel):
@@ -197,9 +206,12 @@ async def run_content_gap_analysis(body: ContentGapRequest):
     for idx, item in enumerate(organic, start=1):
         title = item.get("title", "")
         clean_kw = title.split("-")[0].split("|")[0].strip()
+        # MODELED, not measured: rank-order heuristics. No volume/CPC/
+        # difficulty provider is wired, so these decrease with competitor
+        # rank by formula. Labeled estimated; never presented as data.
         est_vol = max(800, 3800 - (idx * 250))
         est_traffic_val = round(est_vol * 0.18 * 4.5, 2) # Est. CTR * Average CPC ($4.50)
-        
+
         gap_opportunities.append({
             "keyword": clean_kw,
             "competitor_url": item.get("link"),
@@ -207,6 +219,8 @@ async def run_content_gap_analysis(body: ContentGapRequest):
             "estimated_search_volume": est_vol,
             "estimated_traffic_value": est_traffic_val,
             "difficulty": min(85, 30 + (idx * 5)),
+            "provenance": "estimated",
+            "estimation_method": "rank-order heuristic: volume=max(800, 3800-rank*250); value=vol*0.18*$4.50; difficulty=min(85, 30+rank*5). No measured keyword data.",
             "action": "create_counter_article"
         })
 

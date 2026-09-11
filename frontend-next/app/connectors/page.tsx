@@ -75,7 +75,8 @@ export default function ConnectorsPage() {
   const [perplexityKey, setPerplexityKey] = useState("");
 
   // Autonomous Mode
-  const [autoPublish, setAutoPublish] = useState(true);
+  // Drafts only by default: OFF until the backend confirms explicit opt-in.
+  const [autoPublish, setAutoPublish] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -110,7 +111,8 @@ export default function ConnectorsPage() {
           try { localStorage.setItem("rankforge_wp_credentials", JSON.stringify(parsed)); } catch {}
         }
       } else {
-        setWpUrl("https://your-wordpress-site.com");
+        // No stored URL: leave empty so the user must enter the real one.
+        setWpUrl("");
         setWpUser("");
       }
     } catch {}
@@ -402,7 +404,11 @@ export default function ConnectorsPage() {
     }
   };
 
-  const healthScore = typeof status?.health_score === "number" ? status.health_score : (status?.connected_count ? status.connected_count * 25 : 0);
+  // HONEST: null means unknown/unverified — never render a number then.
+  const healthScore: number | null =
+    typeof status?.health_score === "number"
+      ? status.health_score
+      : (status?.connected_count ? status.connected_count * 25 : null);
 
   return (
     <div className="page-container active" style={{ padding: "24px", position: "relative" }}>
@@ -738,7 +744,7 @@ export default function ConnectorsPage() {
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="panel-label">Google Search Console</span>
                   <span className={`badge ${status?.gsc?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.gsc?.status_label || "Connected"}
+                    {status?.gsc?.status_label || (status?.gsc?.connected ? "Connected" : "Not connected")}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -774,7 +780,7 @@ export default function ConnectorsPage() {
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="panel-label">Google Analytics 4</span>
                   <span className={`badge ${status?.ga4?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.ga4?.status_label || "Ready"}
+                    {status?.ga4?.status_label || (status?.ga4?.connected ? "Connected" : "Not connected")}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -877,11 +883,11 @@ export default function ConnectorsPage() {
           <div className="panel" style={{ padding: "16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
               <span className="panel-label">Connection Health</span>
-              <strong style={{ color: "var(--green)", fontSize: "16px" }}>{healthScore}%</strong>
+              <strong style={{ color: healthScore === null ? "var(--muted)" : "var(--green)", fontSize: "16px" }}>{healthScore === null ? "—" : `${healthScore}%`}</strong>
             </div>
 
             <div style={{ width: "100%", height: "6px", background: "var(--bg)", borderRadius: "3px", overflow: "hidden", marginBottom: "16px" }}>
-              <div style={{ width: `${healthScore}%`, height: "100%", background: "var(--green)", transition: "width 0.3s" }}></div>
+              <div style={{ width: `${healthScore ?? 0}%`, height: "100%", background: "var(--green)", transition: "width 0.3s" }}></div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "11px" }}>
@@ -928,18 +934,23 @@ export default function ConnectorsPage() {
 
           {/* Autonomous Mode Toggle */}
           <div className="panel" id="autonomous" style={{ padding: "16px" }}>
-            <div className="panel-label" style={{ marginBottom: "8px" }}>Autonomous Publishing</div>
+            <div className="panel-label" style={{ marginBottom: "8px" }}>Auto-publish (off by default — requires explicit opt-in)</div>
             <p style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "12px" }}>
-              When ON, the scheduler automatically generates and publishes SEO articles directly to WordPress once quality scores pass.
+              When ON, approved drafts publish to WordPress automatically without manual review. Drafts only when OFF.
             </p>
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
                 className={`btn ${autoPublish ? "btn-accent" : ""}`}
-                onClick={() => setAutoPublish(true)}
+                onClick={() => {
+                  const ok = window.confirm(
+                    "This will automatically publish approved content to WordPress without manual review. Are you sure?"
+                  );
+                  if (ok) setAutoPublish(true);
+                }}
                 style={{ flex: 1, fontSize: "11px", padding: "6px" }}
               >
-                ON (Default)
+                ON (explicit opt-in)
               </button>
               <button
                 type="button"
@@ -947,7 +958,7 @@ export default function ConnectorsPage() {
                 onClick={() => setAutoPublish(false)}
                 style={{ flex: 1, fontSize: "11px", padding: "6px" }}
               >
-                OFF (Manual)
+                OFF (drafts only)
               </button>
             </div>
           </div>

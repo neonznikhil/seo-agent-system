@@ -40,6 +40,8 @@ export async function POST(req: Request) {
     blogs_generated_today: sharedSchedule.blogs_generated_today + 1,
   });
 
+  // Never claim a site-specific success. Report only what the WP client proved.
+  const draftSite = body.wordpress_site_url || body.site_url || null;
   return NextResponse.json({
     success: true,
     blog_id: article.id,
@@ -51,7 +53,7 @@ export async function POST(req: Request) {
     wordpress_url: article.wordpress_url,
     real_wp_draft_created: wpDraftResult.success,
     message: wpDraftResult.success
-      ? `✓ CrewAI 3-Agent generated & created real WordPress draft #${article.wp_post_id} at accident.innovatcs.com!`
+      ? `WordPress draft #${article.wp_post_id} created${draftSite ? ` at ${draftSite}` : ""}.`
       : (wpDraftResult.error || `Article generated — enter WordPress App Password in /connectors to draft directly to WP Admin`),
   });
 }

@@ -42,7 +42,43 @@ class WebBrowserTool(BaseTool):
     def _run(self, url: str, wait_time: int = 5, extract: str = "content") -> str:
         if not self._website_id:
             return json.dumps({"error": "website_id not set"})
-        
+
+        # Cloud-first: server-rendered markdown via the research provider
+        # (TinyFish Fetch, free) avoids spawning a 500MB+ local Chromium per
+        # call. Local Playwright remains only as a last-resort fallback for
+        # extract types markdown cannot serve (links/images/tables/seo_data)
+        # or when no provider is configured.
+        if extract == "content":
+            try:
+                import asyncio as _asyncio
+
+                async def _fetch_markdown():
+                    try:
+                        from services.web_research_provider import get_web_research_provider
+                    except (ImportError, ValueError):
+                        from backend.services.web_research_provider import get_web_research_provider
+                    return await get_web_research_provider().fetch([url], website_id=self._website_id)
+
+                rr = _asyncio.run(_fetch_markdown())
+                if rr.status == "success" and rr.data.get("results"):
+                    md = rr.data["results"][0].get("markdown", "")
+                    if md and len(md) >= 100:
+                        _log_proof(self._website_id, self._agent_name, "web_browser",
+                                   rr.source, f"url={url}")
+                        return json.dumps({
+                            "url": url,
+                            "status": "success",
+                            "source": rr.source,
+                            "provenance": "observed",
+                            "fetched_at": rr.fetched_at,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "data": {"content": md[:50000]},
+                        })
+                if rr.status == "degraded":
+                    logger.info(f"[WebBrowser] provider degraded ({rr.data.get('reason')}) — local fallback for {url}")
+            except Exception as e:
+                logger.debug(f"[WebBrowser] provider fetch note: {e}")
+
         try:
             from playwright.sync_api import sync_playwright
             from bs4 import BeautifulSoup

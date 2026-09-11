@@ -17,10 +17,16 @@ export async function POST(
     });
   }
 
-  // Find content article
-  const article = articlesStore.find((a) => a.id === content_id || a.wp_post_id === Number(content_id)) || articlesStore[0];
-  const title = article?.title || body.title || "Autonomous SEO Article";
-  const content = article?.html_content || article?.content || body.content || "<p>Autonomous article content</p>";
+  // Find content article — no fallback to an unrelated article.
+  const article = articlesStore.find((a) => a.id === content_id || a.wp_post_id === Number(content_id));
+  if (!article && !body.title && !body.content) {
+    return NextResponse.json(
+      { success: false, error: "Article not found and no content supplied." },
+      { status: 404 }
+    );
+  }
+  const title = article?.title || body.title || "Untitled draft";
+  const content = article?.html_content || article?.content || body.content || "";
 
   // Call real WordPress REST API
   const wpDraftResult = await createRealWordPressDraft(
@@ -36,26 +42,27 @@ export async function POST(
     }
   );
 
-  const draftId = wpDraftResult.wp_post_id || 1046;
-  const editUrl = wpDraftResult.edit_url || `https://your-wordpress-site.com/wp-admin/post.php?post=${draftId}&action=edit`;
-  const wpDraftUrl = wpDraftResult.link || `https://your-wordpress-site.com/?p=${draftId}&preview=true`;
+  const draftSite = body.wordpress_site_url || body.site_url || null;
+  const draftId = wpDraftResult.wp_post_id || null;
+  const editUrl = wpDraftResult.edit_url || null;
+  const wpDraftUrl = wpDraftResult.link || null;
 
   if (article && wpDraftResult.wp_post_id) {
     article.wp_post_id = wpDraftResult.wp_post_id;
-    article.edit_url = editUrl;
-    article.wordpress_url = wpDraftUrl;
+    article.edit_url = editUrl || "";
+    article.wordpress_url = wpDraftUrl || "";
     article.status = "draft";
   }
 
   return NextResponse.json({
-    success: true,
-    status: "draft",
+    success: wpDraftResult.success,
+    status: wpDraftResult.success ? "draft" : "failed",
     wp_post_id: draftId,
     edit_url: editUrl,
     wordpress_url: wpDraftUrl,
     real_wp_draft_created: wpDraftResult.success,
     message: wpDraftResult.success
-      ? `✓ Real WordPress Draft created (Post ID #${draftId}) at accident.innovatcs.com!`
-      : (wpDraftResult.error || `Article staged — enter WordPress App Password in /connectors to sync to WP Admin`),
+      ? `WordPress draft created (Post ID #${draftId})${draftSite ? ` at ${draftSite}` : ""}.`
+      : (wpDraftResult.error || `Draft not created — enter WordPress App Password in /connectors to sync to WP Admin`),
   });
 }

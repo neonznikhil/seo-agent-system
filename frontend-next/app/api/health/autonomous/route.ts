@@ -15,27 +15,32 @@ export async function GET(req: Request) {
     // Fall through
   }
 
-  return NextResponse.json({
-    health_score: 99,
-    status: "healthy",
-    checks: {
-      nvidia_nim: "ok",
-      supabase: "ok",
-      serper: "ok",
-      scheduler: "ok",
-      wordpress: "ok",
-      monitors: "ok",
+  // HONEST: backend unreachable means health is UNKNOWN, never 99/healthy.
+  return NextResponse.json(
+    {
+      health_score: null,
+      health_label: "Unknown — backend unreachable",
+      status: "unknown",
+      checks: {
+        nvidia_nim: "unknown",
+        supabase: "unknown",
+        serper: "unknown",
+        scheduler: "unknown",
+        wordpress: "unknown",
+        monitors: "unknown",
+      },
+      jobs_today: {
+        due: null,
+        completed: null,
+        failed: null,
+        active_now: null,
+      },
+      auto_fixes_applied: 0,
+      issues: [],
+      auto_fixed: [],
+      service: "RankForge Autonomous Engine",
+      timestamp: new Date().toISOString(),
     },
-    jobs_today: {
-      due: 8,
-      completed: 8,
-      failed: 0,
-      active_now: 1,
-    },
-    auto_fixes_applied: 0,
-    issues: [],
-    auto_fixed: [],
-    service: "RankForge Autonomous Engine",
-    timestamp: new Date().toISOString(),
-  });
+    { status: 502 }
+  );
 }

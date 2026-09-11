@@ -209,7 +209,7 @@ export default function BacklinksPage() {
       <div className="page-heading">Backlinks & Authority</div>
       <div className="page-sub">
         <span className="sub-sq"></span>
-        5-Tier Technical Link Acquisition · Zero Outreach · Pure Authority Engineering
+        Prospect discovery & outreach tracking · actual links require real-world outreach
       </div>
 
       {/* KPI & DA SUMMARY PANEL */}
@@ -223,7 +223,7 @@ export default function BacklinksPage() {
             <div style={{ display: "flex", gap: "28px" }}>
               <div>
                 <div style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "22px", color: "var(--ink)" }}>
-                  {metrics.active_citations}
+                  {loading ? "—" : metrics.active_citations}
                 </div>
                 <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: ".06em" }}>
                   Active Citations
@@ -231,7 +231,7 @@ export default function BacklinksPage() {
               </div>
               <div>
                 <div style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "22px", color: "var(--accent)" }}>
-                  {metrics.tier1_prospects}
+                  {loading ? "—" : metrics.tier1_prospects}
                 </div>
                 <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: ".06em" }}>
                   Tier-1 Prospects
@@ -239,7 +239,7 @@ export default function BacklinksPage() {
               </div>
               <div>
                 <div style={{ fontFamily: "'DotGothic16', sans-serif", fontSize: "22px", color: "var(--green)" }}>
-                  +{metrics.velocity_30d}/mo
+                  {loading ? "—" : `+${metrics.velocity_30d}/mo`}
                 </div>
                 <div style={{ fontSize: "9px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: ".06em" }}>
                   Link Velocity

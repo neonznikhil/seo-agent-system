@@ -97,7 +97,7 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
 NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
-NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "poolside/laguna-xs-2.1")
+NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "meta/llama-3.2-11b-vision-instruct")
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -105,9 +105,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 _LLM_MODELS = [
     NIM_LLM_MODEL,
     NIM_LLM_FALLBACK,
-    "nvidia/nemotron-3.5-lightning-30b-a3b",
-    "openai/gpt-oss-20b",
-    "google/diffusiongemma-26b-a4b-it",
+    "meta/llama-3.2-11b-vision-instruct",
 ]
 _EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nemotron-3-embed-1b"]
 NIM_API_KEY = os.getenv("NVIDIA_API_KEY", "")

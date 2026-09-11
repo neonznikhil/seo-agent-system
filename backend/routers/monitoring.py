@@ -310,14 +310,16 @@ async def approve_fix(website_id: str, fix_id: str, request: Request):
                 "status": "approved",
                 "approved_by": user_id,
                 "applied_at": datetime.utcnow().isoformat(),
-                "action_taken": "redirect_added" if wp_result else "manual_review"
+                "fix_payload": {**(fix.get("fix_payload") or {}),
+                                "action_taken": "redirect_added" if wp_result else "manual_review"}
             }
         else:
             fix_updates = {
                 "status": "approved",
                 "approved_by": user_id,
                 "applied_at": datetime.utcnow().isoformat(),
-                "action_taken": "manual_review"
+                "fix_payload": {**(fix.get("fix_payload") or {}),
+                                "action_taken": "manual_review"}
             }
         
         result = get_supabase().table("pending_fixes").update(fix_updates).eq("id", fix_id).eq("website_id", website_id).execute()

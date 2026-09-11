@@ -43,9 +43,25 @@ async def trigger_rank_check(
     set_account_context(supabase, account_id)
 
     target_wid = website_id or "default"
-    updated = await check_keyword_rankings(target_wid)
+    from services.run_service import run_with_envelope
+
+    def _snapshot(updated):
+        rows = updated.get("result", updated) if isinstance(updated, dict) else updated
+        rows = rows if isinstance(rows, list) else updated.get("rankings", [])
+        ids = []
+        for r in rows or []:
+            if isinstance(r, dict) and (r.get("keyword") or r.get("query")):
+                ids.append(f"{r.get('keyword') or r.get('query')}:pos={r.get('current_position')}")
+        return {"issue_ids": ids}
+
+    enveloped = await run_with_envelope(
+        target_wid, "rank_tracking_check",
+        lambda: check_keyword_rankings(target_wid),
+        _snapshot)
+    rankings = enveloped.get("result", []) if isinstance(enveloped, dict) else []
     return {
         "website_id": target_wid,
-        "updated_count": len(updated),
-        "rankings": updated,
+        "updated_count": len(rankings) if isinstance(rankings, list) else 0,
+        "rankings": rankings,
+        "run": enveloped.get("_run") if isinstance(enveloped, dict) else None,
     }

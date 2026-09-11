@@ -20,11 +20,14 @@ async function handleProxy(req: Request, slug: string[]) {
       body = await req.text().catch(() => undefined);
     }
 
+    const isLongRunning = path.includes("/generate") || path.includes("/crawl") || path.includes("/crew") || path.includes("/cluster") || path.includes("/blog");
+    const timeoutMs = isLongRunning ? 300000 : 30000;
+
     const res = await fetch(targetUrl, {
       method: req.method,
       headers,
       body,
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     // If backend returns ok or valid application data, return it

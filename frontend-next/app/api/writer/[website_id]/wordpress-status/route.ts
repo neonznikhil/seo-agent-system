@@ -18,17 +18,17 @@ export async function GET(
     // Fall through
   }
 
-  return NextResponse.json({
-    connected: true,
-    site_url: "https://your-wordpress-site.com",
-    authenticated: true,
-    website_id,
-    user: { name: "editor", roles: ["administrator"] },
-    categories: [
-      { id: 1, name: "Auto Accidents" },
-      { id: 2, name: "Personal Injury Law" },
-      { id: 3, name: "Legal Safety Guides" },
-    ],
-    recent_posts: [],
-  });
+  // HONEST: backend unreachable means WordPress status is UNKNOWN.
+  return NextResponse.json(
+    {
+      connected: false,
+      site_url: null,
+      authenticated: false,
+      website_id,
+      user: null,
+      categories: [],
+      recent_posts: [],
+    },
+    { status: 502 }
+  );
 }

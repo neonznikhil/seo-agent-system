@@ -105,10 +105,11 @@ class SelfTrainingService:
             except Exception:
                 pass
 
-        # Notify via Slack about new learning
+        # Notify via Slack about new learning — report only measured samples,
+        # never invented improvement percentages.
         await slack_intelligence_service.send_new_learning_alert(
             website_id=self.website_id,
-            pattern_name="Commercial intent and comparison guides rank 40% faster in legal niche",
+            pattern_name="Commercial intent and comparison guides (28 sampled drafts under review)",
             behavior_change="Candidate prompt v2.5 adopted for 50% of drafts; Backlink DR threshold tuned to 30",
             confidence=0.94,
             samples_count=28

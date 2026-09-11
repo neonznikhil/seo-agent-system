@@ -277,11 +277,15 @@ def get_tracked_rankings(website_id: str) -> List[Dict[str, Any]]:
         current = p.get("current_position")
         status_label = "Checking..."
         if current is not None:
+            try:
+                from seo_constants import STRIKING_DISTANCE_MIN
+            except (ImportError, ValueError):
+                from backend.seo_constants import STRIKING_DISTANCE_MIN
             if current <= 3:
                 status_label = "Top 3"
             elif current <= 10:
                 status_label = "Page 1"
-            elif current <= 20:
+            elif current <= 20 and current >= STRIKING_DISTANCE_MIN:
                 status_label = "Striking Distance"
             else:
                 status_label = "Needs Work"

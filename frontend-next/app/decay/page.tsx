@@ -19,6 +19,9 @@ export default function DecayPage() {
   const [decayItems, setDecayItems] = useState<DecayItem[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [detecting, setDetecting] = useState<boolean>(false);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [websiteId, setWebsiteId] = useState<string>("");
 
@@ -50,13 +53,45 @@ export default function DecayPage() {
         setStats(statsRes.value);
       }
     } catch (e: any) {
-      // warn removed
       setError(e.message || "Failed to load content decay metrics");
       setDecayItems([]);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleDetectDecay = async () => {
+    if (!websiteId) return;
+    try {
+      setDetecting(true);
+      setError(null);
+      setSuccessMsg(null);
+      const res = await post(`/api/decay/${websiteId}/detect`, {});
+      const count = res?.data?.decayed_pages?.length ?? 0;
+      setSuccessMsg(`Decay scan completed under run envelope. Found ${count} decaying page(s).`);
+      await loadDecayData();
+    } catch (e: any) {
+      setError(e.message || "Decay detection scan failed");
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleTriggerRefresh = async (item: DecayItem) => {
+    if (!websiteId || !item.id) return;
+    try {
+      setRefreshingId(item.id);
+      setError(null);
+      setSuccessMsg(null);
+      const res = await post(`/api/decay/${item.id}/refresh?website_id=${websiteId}`, {});
+      setSuccessMsg(`AI content refresh generated and staged in Approvals queue for '${item.keyword}'.`);
+      await loadDecayData();
+    } catch (e: any) {
+      setError(e.message || "Failed to trigger AI content refresh");
+    } finally {
+      setRefreshingId(null);
+    }
+  };
 
   useEffect(() => {
     loadDecayData();
@@ -108,6 +143,11 @@ export default function DecayPage() {
             {error}
           </span>
         )}
+        {successMsg && (
+          <span className="badge badge-green" style={{ marginLeft: "12px" }}>
+            {successMsg}
+          </span>
+        )}
       </div>
 
       <div className="kpi-strip" style={{ marginBottom: "20px" }}>
@@ -126,16 +166,26 @@ export default function DecayPage() {
       </div>
 
       <div className="panel">
-        <div className="panel-head">
+        <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span className="panel-label">Decaying Articles & Pages</span>
-          <button className="panel-action" onClick={loadDecayData}>
-            Refresh
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              className="btn btn-accent"
+              onClick={handleDetectDecay}
+              disabled={detecting}
+              style={{ fontSize: "11px", padding: "4px 10px" }}
+            >
+              {detecting ? "Scanning Live..." : "⚡ Scan For Decaying Content"}
+            </button>
+            <button className="panel-action" onClick={loadDecayData}>
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="panel-body" style={{ padding: "0" }}>
           {decayItems.length === 0 ? (
             <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-              ✓ Zero decaying content found. All ranked pages are maintaining their positions.
+              ✓ Zero decaying content found. All ranked pages are maintaining their positions. Click "Scan For Decaying Content" to check live positions.
             </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12px" }}>
@@ -146,13 +196,17 @@ export default function DecayPage() {
                   <th style={{ padding: "10px 14px" }}>Old Rank</th>
                   <th style={{ padding: "10px 14px" }}>Current Rank</th>
                   <th style={{ padding: "10px 14px" }}>Drop</th>
-                  <th style={{ padding: "10px 14px" }}>Action</th>
+                  <th style={{ padding: "10px 14px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {decayItems.map((item, i) => (
                   <tr key={item.id || i} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td style={{ padding: "10px 14px", fontWeight: 600 }}>{item.url}</td>
+                    <td style={{ padding: "10px 14px", fontWeight: 600 }}>
+                      <a href={item.url} target="_blank" rel="noreferrer" style={{ color: "var(--ink)", textDecoration: "none" }}>
+                        {item.url} ↗
+                      </a>
+                    </td>
                     <td style={{ padding: "10px 14px" }}>{item.keyword}</td>
                     <td style={{ padding: "10px 14px" }}>#{item.old_rank}</td>
                     <td style={{ padding: "10px 14px" }}>
@@ -162,13 +216,23 @@ export default function DecayPage() {
                       ↓ {item.change > 0 ? `+${item.change}` : item.change}
                     </td>
                     <td style={{ padding: "10px 14px" }}>
-                      <Link
-                        href={`/writer`}
-                        className="btn btn-accent"
-                        style={{ textDecoration: "none", fontSize: "10px", padding: "4px 8px" }}
-                      >
-                        ⚡ Refresh Post
-                      </Link>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                        <button
+                          onClick={() => handleTriggerRefresh(item)}
+                          disabled={refreshingId === item.id}
+                          className="btn btn-accent"
+                          style={{ fontSize: "10px", padding: "4px 8px", whiteSpace: "nowrap" }}
+                        >
+                          {refreshingId === item.id ? "Refreshing..." : "⚡ 1-Click AI Refresh"}
+                        </button>
+                        <Link
+                          href={`/writer?topic=${encodeURIComponent(item.keyword)}`}
+                          className="btn btn-secondary"
+                          style={{ textDecoration: "none", fontSize: "10px", padding: "4px 8px", whiteSpace: "nowrap" }}
+                        >
+                          Manual Edit
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

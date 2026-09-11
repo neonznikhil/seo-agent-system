@@ -4,17 +4,14 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const website_id = url.searchParams.get("website_id") || "default";
 
+  // HONEST: never claim a WordPress connection we have not verified.
   return NextResponse.json({
-    connected: true,
-    site_url: "https://accident.innovatcs.com",
-    authenticated: true,
+    connected: false,
+    site_url: null,
+    authenticated: false,
     website_id,
-    user: { name: "editor", roles: ["administrator"] },
-    categories: [
-      { id: 1, name: "Auto Accidents" },
-      { id: 2, name: "Personal Injury Law" },
-      { id: 3, name: "Legal Safety Guides" },
-    ],
+    user: null,
+    categories: [],
     recent_posts: [],
   });
 }

@@ -242,15 +242,20 @@ async def get_autonomous_settings():
     try:
         res = supabase.table("autonomous_settings").select("*").limit(1).execute().data
         if res:
+            row = res[0]
+            goals = row.get("goals") or {}
+            # auto_refresh may live in goals JSONB when the column has not
+            # been migrated yet (see backend/schemas/009_autonomous_settings_missing.sql)
+            auto_refresh = row.get("auto_refresh", goals.get("auto_refresh", True))
             return {
-                "auto_publish": res[0].get("auto_publish", True),
-                "auto_generate": res[0].get("auto_generate", True),
-                "auto_refresh": res[0].get("auto_refresh", True),
-                "updated_at": res[0].get("updated_at")
+                "auto_publish": row.get("auto_publish", True),
+                "auto_generate": row.get("auto_generate", True),
+                "auto_refresh": auto_refresh,
+                "updated_at": row.get("updated_at")
             }
     except Exception as e:
         logger.warning(f"Could not read autonomous_settings table: {e}")
-        
+
     return default_settings
 
 
@@ -722,7 +727,7 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
                 "auto_refresh": payload.auto_refresh,
                 "updated_at": now_str
             }).execute()
-            
+
         return {
             "success": True,
             "settings": {
@@ -733,6 +738,41 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
             "message": f"Autonomous mode updated: auto_publish={'ON' if payload.auto_publish else 'OFF'}"
         }
     except Exception as e:
+        # Schema drift fallback: live DB may lack the auto_refresh column
+        # (PGRST204). Persist core toggles + stash auto_refresh in goals JSONB
+        # so GET round-trips correctly until the migration is applied.
+        err_msg = str(e)
+        if "auto_refresh" in err_msg or "PGRST204" in err_msg:
+            try:
+                existing2 = supabase.table("autonomous_settings").select("id, goals").limit(1).execute().data
+                if existing2:
+                    goals = (existing2[0].get("goals") or {})
+                    goals["auto_refresh"] = payload.auto_refresh
+                    supabase.table("autonomous_settings").update({
+                        "auto_publish": payload.auto_publish,
+                        "auto_generate": payload.auto_generate,
+                        "goals": goals,
+                        "updated_at": now_str
+                    }).eq("id", existing2[0]["id"]).execute()
+                else:
+                    supabase.table("autonomous_settings").insert({
+                        "auto_publish": payload.auto_publish,
+                        "auto_generate": payload.auto_generate,
+                        "goals": {"auto_refresh": payload.auto_refresh},
+                        "updated_at": now_str
+                    }).execute()
+                logger.info("Autonomous settings persisted via goals fallback (auto_refresh column missing)")
+                return {
+                    "success": True,
+                    "settings": {
+                        "auto_publish": payload.auto_publish,
+                        "auto_generate": payload.auto_generate,
+                        "auto_refresh": payload.auto_refresh
+                    },
+                    "message": f"Autonomous mode updated: auto_publish={'ON' if payload.auto_publish else 'OFF'}"
+                }
+            except Exception as e2:
+                logger.warning(f"Goals-fallback persist failed: {e2}")
         logger.warning(f"Failed to update autonomous settings in database: {e}")
         return {
             "success": True,

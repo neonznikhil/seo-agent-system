@@ -18,19 +18,20 @@ export interface BlogSettingsState {
 }
 
 export const sharedSchedule: BlogSettingsState = {
-  auto_publish: true,
+  // Drafts only by default: auto_publish is explicit opt-in, never on at boot.
+  auto_publish: false,
   auto_generate: true,
   frequency: "every_3_min",
   posts_per_day: 10,
   daily_blog_target: 10,
-  blogs_generated_today: 1,
+  blogs_generated_today: 0,
   generation_interval_minutes: 3,
   schedule_label: "Every 3 min",
   auto_topic_selection: true,
   next_blog_in_minutes: 3,
   next_run_timestamp: Date.now() + 3 * 60 * 1000,
-  niche: "Personal Injury Law",
-  domain: "accident.innovatcs.com",
+  niche: "",
+  domain: "",
   language: "en",
   updated_at: new Date().toISOString(),
 };

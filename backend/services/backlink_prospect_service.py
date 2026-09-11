@@ -32,6 +32,42 @@ def _score_prospect(
     return score
 
 
+async def verify_prospect_contact_via_agent(
+    prospect_url: str, website_id: Optional[str] = None
+) -> Optional[str]:
+    """Metered browser-agent contact discovery (opt-in only).
+
+    Visits the prospect site with a natural-language goal to locate guest-
+    post guidelines or a contact form and extract the editor email or form
+    action URL. Returns the email/URL or None. Only call when
+    TINYFISH_AGENT_ENABLED is set — each run costs metered agent budget.
+    """
+    try:
+        try:
+            from .web_research_provider import get_web_research_provider
+        except (ImportError, ValueError):
+            from backend.services.web_research_provider import get_web_research_provider
+        rr = await get_web_research_provider().browser_task(
+            prospect_url,
+            "Locate the editorial guidelines or contact form for guest submissions. "
+            "Extract the editor's email address or the form action URL. Return JSON.",
+            max_steps=10,
+            website_id=website_id,
+        )
+        if rr.status != "success":
+            return None
+        blob = json.dumps(rr.data, default=str)
+        emails = re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", blob)
+        for em in emails:
+            if "noreply" not in em.lower() and "no-reply" not in em.lower():
+                return em
+        urls = re.findall(r"https?://[^\s\"']+", blob)
+        return urls[0] if urls else None
+    except Exception as exc:
+        logger.debug("Agent contact discovery note %s: %s", prospect_url, exc)
+        return None
+
+
 async def find_backlink_prospects(
     website_id: str,
     primary_keyword: str,
@@ -78,56 +114,53 @@ async def find_backlink_prospects(
         queries.append(f"link:{competitor_domain} -site:{competitor_domain}")
 
     prospect_urls: List[Dict[str, str]] = []
-    from crawlee.crawlers import PlaywrightCrawler
+    # Discovery via the research provider (TinyFish Search free, then paid
+    # Serper). Direct Google scraping with a local crawler is retired: it is
+    # CAPTCHA-blocked almost immediately and burns browser RAM.
+    try:
+        try:
+            from .web_research_provider import get_web_research_provider
+        except (ImportError, ValueError):
+            from backend.services.web_research_provider import get_web_research_provider
+        provider = get_web_research_provider()
+    except Exception as e:
+        logger.warning("Web research provider unavailable: %s", e)
+        provider = None
 
-    for query in queries:
-        search_url = (
-            "https://www.google.com/search?q=" + query.replace(" ", "+") + "&num=20"
-        )
-        if _is_url_blocked(search_url):
-            continue
-        crawler = PlaywrightCrawler(max_requests_per_crawl=1, headless=True)
-        serp_results: List[Dict[str, str]] = []
+    if provider is not None:
+        import asyncio as _asyncio
 
-        @crawler.router.default_handler
-        async def handler(context):
-            page = context.page
-            try:
-                items = await page.locator("div.g").all()
-                for item in items[:20]:
-                    try:
-                        title_el = item.locator("h3").first
-                        title = (
-                            await title_el.inner_text()
-                            if await title_el.count()
-                            else ""
-                        )
-                        link_el = item.locator("a").first
-                        href = (
-                            await link_el.get_attribute("href")
-                            if await link_el.count()
-                            else ""
-                        )
-                        snippet_el = item.locator("div.VwiC3b").first
-                        snippet = (
-                            await snippet_el.inner_text()
-                            if await snippet_el.count()
-                            else ""
-                        )
-                        if href and href.startswith("http"):
-                            serp_results.append(
-                                {"url": href, "title": title, "snippet": snippet}
-                            )
-                    except Exception:
-                        continue
-            except Exception as exc:
-                logger.warning("SERP parse failed: %s", exc)
+        async def _discover():
+            found = []
+            for query in queries:
+                if _is_url_blocked(f"https://www.google.com/search?q={query}"):
+                    continue
+                try:
+                    rr = await provider.search(query, limit=20, website_id=website_id)
+                    if rr.status == "success":
+                        for item in (rr.data.get("organic", []) or [])[:20]:
+                            link = item.get("link") or item.get("url") or ""
+                            if link and link.startswith("http"):
+                                found.append({
+                                    "url": link,
+                                    "title": item.get("title", ""),
+                                    "snippet": item.get("snippet", ""),
+                                    "source": rr.source,
+                                })
+                    else:
+                        logger.info("Prospect discovery degraded for %r: %s",
+                                    query, (rr.data or {}).get("reason"))
+                except Exception as exc:
+                    logger.warning("Prospect discovery failed for %r: %s", query, exc)
+            return found
 
         try:
-            await crawler.run([search_url])
+            prospect_urls.extend(_asyncio.run(_discover()))
         except Exception as exc:
-            logger.warning("Google search crawl failed: %s", exc)
-        prospect_urls.extend(serp_results)
+            logger.warning("Prospect discovery run failed: %s", exc)
+
+    # NOTE: direct-Google scraping with a local PlaywrightCrawler lived here.
+    # It is retired (CAPTCHA-blocked, OOM-prone); discovery above replaces it.
 
     seen = set()
     unique_prospects: List[Dict[str, str]] = []
@@ -146,39 +179,68 @@ async def find_backlink_prospects(
             continue
 
         page_data: Dict[str, Any] = {}
+        # Cloud-first: rendered markdown via the research provider (TinyFish
+        # Fetch, free). Markdown links [anchor](url) give us links + emails
+        # without a local crawler. Legacy BeautifulSoup crawl is the fallback.
+        fetched_markdown = ""
         try:
-            from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler
-
-            crawler = BSCrawler(max_requests_per_crawl=1, headless=True)
-
-            @crawler.router.default_handler
-            async def handler(context):
-                if _is_url_blocked(context.request.url):
-                    return
-                soup = context.soup
-                page_data["title"] = (
-                    soup.title.string.strip()
-                    if soup.title and soup.title.string
-                    else prospect.get("title", "")
-                )
-                page_data["text"] = soup.get_text(separator=" ", strip=True)[:5000]
-                page_data["links"] = []
-                for a in soup.find_all("a", href=True):
-                    href = a["href"]
-                    if href.startswith("/"):
-                        href = urljoin(p_url, href)
-                    if href.startswith("http"):
-                        page_data["links"].append(
-                            {"href": href, "anchor": a.get_text(strip=True)}
-                        )
+            try:
+                from .web_research_provider import get_web_research_provider as _get_provider
+            except (ImportError, ValueError):
+                from backend.services.web_research_provider import get_web_research_provider as _get_provider
+            _rr = await _get_provider().fetch([p_url], website_id=website_id)
+            _rows = (_rr.data.get("results", []) or []) if _rr.status == "success" else []
+            if _rows and _rows[0].get("markdown"):
+                fetched_markdown = _rows[0]["markdown"]
+                page_data["title"] = _rows[0].get("title", "") or prospect.get("title", "")
+                page_data["text"] = re.sub(r"\s+", " ", re.sub(
+                    r"!?\[[^\]]*\]\([^)]+\)", " ", fetched_markdown))[:5000]
+                page_data["links"] = [
+                    {"href": href, "anchor": anchor.strip()[:120]}
+                    for anchor, href in re.findall(
+                        r"\[([^\]]{1,120})\]\((https?://[^)\s]+)\)", fetched_markdown)
+                    if href.startswith("http")
+                ][:200]
                 page_data["emails"] = re.findall(
-                    r"[\w\.-]+@[\w\.-]+\.\w+", page_data.get("text", "")
-                )
-
-            await crawler.run([p_url])
+                    r"[\w\.-]+@[\w\.-]+\.\w+", page_data.get("text", ""))
+                page_data["source"] = _rows[0].get("source", "tinyfish_fetch")
         except Exception as exc:
-            logger.warning("Prospect crawl failed %s: %s", p_url, exc)
-            continue
+            logger.debug("Prospect provider fetch note %s: %s", p_url, exc)
+
+        if not page_data:
+            try:
+                from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler
+
+                crawler = BSCrawler(max_requests_per_crawl=1, headless=True)
+
+                @crawler.router.default_handler
+                async def handler(context):
+                    if _is_url_blocked(context.request.url):
+                        return
+                    soup = context.soup
+                    page_data["title"] = (
+                        soup.title.string.strip()
+                        if soup.title and soup.title.string
+                        else prospect.get("title", "")
+                    )
+                    page_data["text"] = soup.get_text(separator=" ", strip=True)[:5000]
+                    page_data["links"] = []
+                    for a in soup.find_all("a", href=True):
+                        href = a["href"]
+                        if href.startswith("/"):
+                            href = urljoin(p_url, href)
+                        if href.startswith("http"):
+                            page_data["links"].append(
+                                {"href": href, "anchor": a.get_text(strip=True)}
+                            )
+                    page_data["emails"] = re.findall(
+                        r"[\w\.-]+@[\w\.-]+\.\w+", page_data.get("text", "")
+                    )
+
+                await crawler.run([p_url])
+            except Exception as exc:
+                logger.warning("Prospect crawl failed %s: %s", p_url, exc)
+                continue
 
         if not page_data:
             continue
@@ -261,31 +323,54 @@ async def find_backlink_prospects(
                 break
         if not contact_email:
             contact_url = urljoin(p_url, "/contact")
+            # Provider fetch first (free). Metered browser agent only when
+            # explicitly enabled — never by default.
             try:
-                from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler2
-
-                cc = BSCrawler2(max_requests_per_crawl=1, headless=True)
-                contact_captured: Dict[str, Any] = {}
-
-                @cc.router.default_handler
-                async def handler2(context):
-                    if _is_url_blocked(context.request.url):
-                        return
-                    s = context.soup
-                    contact_captured["text"] = s.get_text(separator=" ", strip=True)[
-                        :3000
-                    ]
-
-                await cc.run([contact_url])
-                emails2 = re.findall(
-                    r"[\w\.-]+@[\w\.-]+\.\w+", contact_captured.get("text", "")
-                )
-                for em in emails2:
-                    if "noreply" not in em.lower() and "no-reply" not in em.lower():
-                        contact_email = em
-                        break
+                try:
+                    from .web_research_provider import get_web_research_provider as _get_provider2
+                except (ImportError, ValueError):
+                    from backend.services.web_research_provider import get_web_research_provider as _get_provider2
+                _crr = await _get_provider2().fetch([contact_url], website_id=website_id)
+                _crows = (_crr.data.get("results", []) or []) if _crr.status == "success" else []
+                if _crows and _crows[0].get("markdown"):
+                    emails2 = re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", _crows[0]["markdown"])
+                    for em in emails2:
+                        if "noreply" not in em.lower() and "no-reply" not in em.lower():
+                            contact_email = em
+                            break
             except Exception:
                 pass
+            if not contact_email and os.getenv("TINYFISH_AGENT_ENABLED", "").lower() in ("1", "true", "yes"):
+                agent_hit = await verify_prospect_contact_via_agent(
+                    contact_url, website_id=website_id)
+                if agent_hit:
+                    contact_email = agent_hit
+            if not contact_email:
+                try:
+                    from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler2
+
+                    cc = BSCrawler2(max_requests_per_crawl=1, headless=True)
+                    contact_captured: Dict[str, Any] = {}
+
+                    @cc.router.default_handler
+                    async def handler2(context):
+                        if _is_url_blocked(context.request.url):
+                            return
+                        s = context.soup
+                        contact_captured["text"] = s.get_text(separator=" ", strip=True)[
+                            :3000
+                        ]
+
+                    await cc.run([contact_url])
+                    emails2 = re.findall(
+                        r"[\w\.-]+@[\w\.-]+\.\w+", contact_captured.get("text", "")
+                    )
+                    for em in emails2:
+                        if "noreply" not in em.lower() and "no-reply" not in em.lower():
+                            contact_email = em
+                            break
+                except Exception:
+                    pass
 
         if broken_link_url:
             strategy = "broken_link"

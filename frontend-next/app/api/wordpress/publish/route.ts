@@ -17,20 +17,21 @@ export async function POST(req: Request) {
     }
   );
 
-  const postId = wpResult.wp_post_id || 1045;
-  const postUrl = wpResult.link || `https://accident.innovatcs.com/?p=${postId}&preview=true`;
+  // HONEST: report only the WP client result. No invented post IDs/URLs.
+  const postId = wpResult.wp_post_id || null;
+  const postUrl = wpResult.link || wpResult.edit_url || null;
 
   return NextResponse.json({
-    success: true,
+    success: wpResult.success,
     published: wpResult.success,
     real_wp: wpResult.success,
     post_id: postId,
     wp_post_id: postId,
     url: postUrl,
     link: postUrl,
-    edit_url: wpResult.edit_url,
+    edit_url: wpResult.edit_url || null,
     message: wpResult.success
-      ? `✓ Real WordPress post created (Post ID #${postId})!`
-      : (wpResult.error || `Article staged — enter WordPress password in dashboard settings`),
+      ? `WordPress post created (Post ID #${postId}).`
+      : (wpResult.error || `Article NOT published — enter WordPress password in dashboard settings`),
   });
 }

@@ -455,12 +455,23 @@ async def reject_approval(approval_id: str, request: Request, body: Optional[dic
 
     # Save reason to agent_memory type feedback for brain learn
     try:
-        wid = res.data.get("website_id")
+        wid = existing_row.get("website_id")
+        content = existing_row.get("html_content") or existing_row.get("content") or ""
+        title = existing_row.get("title") or "Article"
+        
+        # Closed-loop brand voice training: record rejected piece as bad_example
+        try:
+            from services.brand_voice_service import record_article_example
+            if wid and content:
+                await record_article_example(website_id=wid, article_html=content, approved=False, reason=reason)
+        except Exception as _bve:
+            logger.debug(f"[Approvals] brand voice reject record note: {_bve}")
+
         brain = BrainService(website_id=wid)
         await brain.remember(
             website_id=wid,
             memory_type="feedback",
-            title=f"User rejected: {res.data.get('title')[:50]}",
+            title=f"User rejected: {title[:50]}",
             content=f"User rejected because {reason} avoid — learn to avoid similar",
             source_type="approvals_reject",
             confidence=0.9
@@ -475,7 +486,7 @@ async def reject_approval(approval_id: str, request: Request, body: Optional[dic
     except Exception as e:
         logger.debug(f"[Approvals] reject feedback memory note: {e}")
 
-    logger.info(f"[Approvals] Rejected: {res.data.get('title')}")
+    logger.info(f"[Approvals] Rejected: {existing_row.get('title')}")
     return {"id": approval_id, "status": "rejected"}
 
 
@@ -544,7 +555,9 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
     if not candidate_user_id or candidate_user_id in ("dashboard", "admin", "anonymous"):
         # Try get_current_account_id as fallback but still validate exists
         candidate_user_id = get_current_account_id(request)
-    # Validate against users table
+    # Validate against users table. No test-identity exemptions: an identity
+    # either exists in the database or the request is denied — even when
+    # the lookup itself fails (fail closed, never attribute to a dummy).
     if candidate_user_id:
         try:
             supabase_chk = get_supabase()
@@ -552,16 +565,13 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
             if not chk:
                 # Also check websites account_id existence as proxy for valid user
                 chk2 = supabase_chk.table("websites").select("id").eq("account_id", candidate_user_id).limit(1).execute().data
-                if not chk2 and candidate_user_id != "a0000000-0000-0000-0000-000000000001":
+                if not chk2:
                     raise HTTPException(status_code=401, detail=f"user_id {candidate_user_id} not found in users table")
         except HTTPException:
             raise
         except Exception as e:
             logger.debug(f"user validation note: {e}")
-            # Allow default account for demo
-            if candidate_user_id != "a0000000-0000-0000-0000-000000000001":
-                # Still allow but log
-                pass
+            raise HTTPException(status_code=401, detail="Cannot verify user identity right now. Retry when the database is reachable.")
     else:
         raise HTTPException(status_code=401, detail="user_id required and must exist in users table")
     user_id = candidate_user_id
@@ -610,8 +620,13 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
             if not draft.get("success"):
                 raise HTTPException(502, f"WordPress draft creation failed: {draft.get('message')}")
             wp_post_id = draft.get("wp_post_id")
-            await wp.publish_post(website_id=website_id, wp_post_id=wp_post_id, user_id=user_id)
-            wordpress_url = draft.get("link") or draft.get("edit_url")
+            # Verified receipt only: publish_post confirms via re-GET.
+            pub_receipt = await wp.publish_post(website_id=website_id, wp_post_id=wp_post_id, user_id=user_id)
+            if not (pub_receipt or {}).get("published"):
+                raise HTTPException(
+                    502,
+                    f"WordPress publish not confirmed: {(pub_receipt or {}).get('reason', 'no receipt')}")
+            wordpress_url = (pub_receipt or {}).get("url") or draft.get("link") or draft.get("edit_url")
 
         _update_approval(
             approval_id,
@@ -621,6 +636,14 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
                 "wordpress_post_id": wp_post_id,
             },
         )
+
+        # Closed-loop brand voice training: record approved piece as good_example
+        try:
+            from services.brand_voice_service import record_article_example
+            if website_id and html:
+                await record_article_example(website_id=website_id, article_html=html, approved=True)
+        except Exception as _bve:
+            logger.debug(f"[Approvals] brand voice approve record note: {_bve}")
 
         try:
             if row.get("blog_id"):

@@ -50,15 +50,32 @@ async def get_linking_suggestions(
             q = supabase.table("content_log").select("id, title, keyword").eq("website_id", website_id)
             rows = q.limit(10).execute().data or []
 
-        suggestions = [
-            {
+        # Relevance is computed from keyword overlap between the candidate
+        # target and the rest of the corpus. It is a heuristic ranker, not a
+        # measurement: null + note when there is nothing to compare against.
+        corpus_terms = set()
+        for r in rows:
+            for token in ((r.get("primary_keyword") or r.get("keyword") or r.get("title") or "").lower().split()):
+                if len(token) > 3:
+                    corpus_terms.add(token)
+
+        suggestions = []
+        for r in rows:
+            anchor = r.get("primary_keyword") or r.get("keyword") or r.get("title")
+            anchor_terms = {t for t in (anchor or "").lower().split() if len(t) > 3}
+            if corpus_terms and anchor_terms:
+                relevance = round(len(anchor_terms & corpus_terms) / max(1, len(anchor_terms)), 3)
+            else:
+                relevance = None
+            suggestions.append({
                 "target_title": r.get("title"),
                 "target_url": f"/{r.get('slug') or r.get('id', '')}",
-                "recommended_anchor": r.get("primary_keyword") or r.get("keyword") or r.get("title"),
-                "relevance_score": 0.92
-            }
-            for r in rows
-        ]
+                "recommended_anchor": anchor,
+                "relevance_score": relevance,
+                "relevance_note": ("keyword-overlap heuristic, not a measured signal"
+                                   if relevance is not None else
+                                   "Embeddings not computed — no basis for a score"),
+            })
         return {"success": True, "website_id": website_id, "suggestions": suggestions}
     except Exception as e:
         logger.warning(f"Error generating link suggestions: {e}")

@@ -4,20 +4,31 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const website_id = url.searchParams.get("website_id") || "default";
 
+  // HONEST: no invented keyword volumes. Suggestions come only from the
+  // backend keyword pipeline (GSC/Serper grounded). This route proxies it.
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  try {
+    const res = await fetch(
+      `${backendUrl}/api/keywords/opportunities?website_id=${encodeURIComponent(website_id)}`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return NextResponse.json(data);
+    }
+  } catch {
+    // Fall through to honest empty
+  }
+
   return NextResponse.json({
-    success: true,
+    success: false,
     website_id,
-    niche: "Personal Injury & Vehicle Accidents",
-    domain: "accident.innovatcs.com",
-    wordpress_connected: true,
-    wordpress_url: "https://accident.innovatcs.com",
-    suggestions: [
-      { keyword: "what to do immediately after a car accident in California", volume: 14200, difficulty: 28, intent: "Informational", opportunity: "High" },
-      { keyword: "motorcycle lane splitting accident liability laws", volume: 8900, difficulty: 34, intent: "Commercial", opportunity: "High" },
-      { keyword: "average settlement payout for rear end collision with whiplash", volume: 12100, difficulty: 31, intent: "Informational", opportunity: "High" },
-      { keyword: "how long do you have to file an injury claim after a crash", volume: 6700, difficulty: 22, intent: "Informational", opportunity: "Medium" },
-      { keyword: "commercial truck accident federal safety regulation violations", volume: 5400, difficulty: 39, intent: "Commercial", opportunity: "High" },
-      { keyword: "uber passenger injury insurance coverage guide", volume: 7800, difficulty: 26, intent: "Informational", opportunity: "High" },
-    ],
+    niche: null,
+    domain: null,
+    wordpress_connected: false,
+    wordpress_url: null,
+    suggestions: [],
+    connected: false,
+    note: "No keyword suggestions available — backend unreachable. Suggestions are generated from real GSC/Serper data only.",
   });
 }

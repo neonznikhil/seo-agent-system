@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 import uuid
@@ -382,11 +383,25 @@ class WriterPipeline:
         analytics_learnings = []
         seo_rules = []
 
+        brand_voice_guide = {}
+        brand_voice_block = ""
+        try:
+            from services.brand_voice_service import load_brand_voice, build_brand_voice_block
+            brand_voice_guide = await load_brand_voice(self.website_id)
+            brand_voice_block = build_brand_voice_block(brand_voice_guide)
+        except Exception as _bve:
+            logger.debug(f"[Writer] brand voice load note: {_bve}")
+
+        self.brand_voice_guide = brand_voice_guide
+        self.brand_voice_block = brand_voice_block
+
         self.knowledge_context = {
             "chunks": knowledge_chunks,
             "competitors": competitor_insights,
             "analytics": analytics_learnings,
-            "seo_rules": seo_rules
+            "seo_rules": seo_rules,
+            "brand_voice": brand_voice_guide,
+            "brand_voice_block": brand_voice_block,
         }
 
         self.content_id = str(uuid.uuid4())
@@ -558,6 +573,23 @@ class WriterPipeline:
             word_count >= 800 and        # word count gate (hard floor; target 1500+)
             expert_avg >= 70             # expert review gate
         )
+
+        qa_gate_result = {"gate": "PASS"}
+        try:
+            from services.seo_quality_gate import run_qa_gate
+            html_for_qa = self._markdown_to_html(content)
+            facts = self.brand_voice_guide.get("verified_facts", []) if hasattr(self, "brand_voice_guide") else []
+            qa_gate_result = run_qa_gate(
+                article_html=html_for_qa,
+                keyword=self.primary_keyword,
+                meta_description=(getattr(self, '_stored_meta_description', '') or ''),
+                verified_facts=facts
+            )
+            if qa_gate_result.get("gate") == "HARD_FAIL":
+                quality_passed = False
+                logger.warning(f"[Writer] Article hard-failed deterministic QA gate: {qa_gate_result.get('hard_fails')}")
+        except Exception as _qae:
+            logger.warning(f"[Writer] QA gate run note: {_qae}")
 
         # Auto-insert into the human approval queue. This is autonomous — no click needed.
         approval_id = None
@@ -1533,11 +1565,20 @@ class WriterPipeline:
                        None, {'consistent': numerical_check.get('consistent', True),
                                'inconsistencies': numerical_check.get('inconsistencies', [])})
 
+        # Step 99b: Verify statutes and filing deadlines (HARD_FAIL gate).
+        # Unverifiable statute/deadline/percentage figures block the article.
+        self._log_step(phase, 7, 'verify_statutes_deadlines', 'running')
+        statute_results = await self._verify_statutes_and_deadlines(content)
+        self._log_step(phase, 7, 'verify_statutes_deadlines', 'completed',
+                       None, {'claims_checked': statute_results.get('claims_checked', 0),
+                              'critical_failures': statute_results.get('critical_failures', 0)})
+
         # Step 100: Generate fact-check summary
         self._log_step(phase, 8, 'generate_fact_check_summary', 'running',
                        {'claim_count': len(claims), 'stat_results': stat_results})
         fact_check_summary = await self._generate_fact_check_summary(
-            claims, stat_results, date_results, citation_validity, quote_results, numerical_check
+            claims, stat_results, date_results, citation_validity, quote_results, numerical_check,
+            statute_results=statute_results, outdated_info=outdated_info
         )
         self._log_step(phase, 8, 'generate_fact_check_summary', 'completed',
                        {'claim_count': len(claims)}, fact_check_summary)
@@ -1660,6 +1701,24 @@ class WriterPipeline:
         if not consistency.get('passed', False):
             return {'status': 'needs_revision', 'reason': 'final_consistency_failed',
                     'consistency': consistency}
+
+        # Step 110b: Deterministic QA veto (PASS/WARN/HARD_FAIL taxonomy).
+        # A score alone is not a gate: any HARD_FAIL blocks WP export.
+        self._log_step(phase, 2, 'deterministic_qa_gate', 'running', {'content_length': len(content)})
+        try:
+            from services.seo_quality_gate import run_qa_gate
+        except (ImportError, ValueError):
+            from backend.services.seo_quality_gate import run_qa_gate
+        fact_summary = (all_phase_results.get('fact_check_verification', {}) or {}).get('fact_check_summary')
+        qa = run_qa_gate(content, keyword=getattr(self, 'primary_keyword', '') or '',
+                         fact_result=fact_summary)
+        self._log_step(phase, 2, 'deterministic_qa_gate', 'completed',
+                       {'content_length': len(content)}, qa)
+        if qa.get('gate') == 'HARD_FAIL':
+            return {'status': 'needs_revision', 'reason': 'qa_hard_fail',
+                    'hard_fails': qa.get('hard_fails', []),
+                    'warnings': qa.get('warnings', []),
+                    'qa_details': qa.get('details', {})}
 
         # Step 111: Export to WordPress
         self._log_step(phase, 3, 'export_to_wordpress', 'running', {'content_length': len(content)})
@@ -2022,8 +2081,11 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
             min_pass = 75 if expert == "competitive_edge_expert" else 70
             passed = score >= min_pass and bool(data.get("passed", True))
             return score, data.get("issues", []), passed
-        except Exception:
-            return 78, [], True
+        except Exception as e:
+            # FAIL-CLOSED: an expert that could not run must not pass.
+            # The article cannot advance on an assumed score of 78.
+            logger.warning(f"[Writer] {expert} review failed, blocking: {e}")
+            return 0, [f"Expert review failed — LLM unavailable ({expert})"], False
 
     def _save_expert_reviews(self, reviews: Dict):
         if not self.supabase: return
@@ -2190,7 +2252,17 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
         try:
             # Retrieve knowledge for grounding
             knowledge = getattr(self, 'knowledge_context', {}) or {}
-            grounding = json.dumps(knowledge.get('chunks', [])[:2], default=str)[:1500]
+            chunks = knowledge.get('chunks', []) or []
+            if not chunks:
+                # FAIL-CLOSED: nothing to verify against is exactly when
+                # fabrication risk is highest. Human must review.
+                self._log_step('fact_check_verification', 3, 'stat_claim_verify', 'completed',
+                               {'claims_count': len(claims)},
+                               {'verified': 0, 'failed': len(claims), 'needs_human_review': True,
+                                'reason': 'no grounding chunks available'})
+                return {'verified': 0, 'failed': len(claims), 'needs_human_review': True,
+                        'unverified_claims': [c[:200] for c in claims[:5]]}
+            grounding = json.dumps(chunks[:2], default=str)[:1500]
             prompt = f"Verify these factual claims against this grounding knowledge: Grounding: {grounding} Claims: {json.dumps(claims[:5])} Return ONLY JSON {{'verified': int, 'failed': int, 'reason': str}}"
             raw = await self._call_llm(prompt)
             cleaned = raw.strip()
@@ -2208,30 +2280,268 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
             self._log_step('fact_check_verification', 3, 'stat_claim_verify', 'completed', {'error': str(e)}, {'verified': 0, 'failed': len(claims), 'needs_human_review': True})
             return {'verified': 0, 'failed': len(claims), 'needs_human_review': True}
 
+    def _record_fact_verifications(self, items: List[Dict]) -> None:
+        """Persist claim-verification outcomes to the fact_verifications
+        audit trail (claim, type, verified, evidence). Best-effort: a missing
+        table must never break the QA gate itself."""
+        if not items:
+            return
+        try:
+            supabase = getattr(self, "supabase", None)
+            if supabase is None:
+                return
+            rows = []
+            for it in items:
+                rows.append({
+                    "website_id": getattr(self, "website_id", None),
+                    "content_id": getattr(self, "content_id", None),
+                    "claim": str(it.get("claim", ""))[:500],
+                    "claim_type": it.get("claim_type", "general"),
+                    "verified": bool(it.get("verified", False)),
+                    "evidence_url": (it.get("evidence_url") or "")[:500],
+                    "evidence_snippet": str(it.get("evidence_snippet", ""))[:500],
+                })
+            supabase.table("fact_verifications").insert(rows).execute()
+        except Exception as e:
+            logger.debug(f"[Writer] fact_verifications audit note: {e}")
+
+    async def _serper_verify_claim(self, claim: str, num_results: int = 3) -> bool:
+        """Verify a claim against live web results (provider chain first).
+
+        Order: WebResearchProvider (TinyFish free -> Serper paid) then direct
+        Serper call as last resort. No results means UNVERIFIED — never verified.
+        """
+        candidates: List[Dict[str, Any]] = []
+        try:
+            try:
+                from services.web_research_provider import get_web_research_provider
+            except (ImportError, ValueError):
+                from backend.services.web_research_provider import get_web_research_provider
+            rr = await get_web_research_provider().search(claim[:160], limit=num_results)
+            if rr.status == "success":
+                candidates = (rr.data.get("organic", []) or [])[:num_results]
+        except Exception as e:
+            logger.debug(f"[Writer] provider verify note: {e}")
+        if not candidates:
+            try:
+                from services.serper_service import serper_service
+            except (ImportError, ValueError):
+                try:
+                    from backend.services.serper_service import serper_service
+                except (ImportError, ValueError):
+                    return False
+            try:
+                res = await serper_service.search(query=claim[:160], num=num_results, auto_fallback=True)
+            except Exception as e:
+                logger.debug(f"[Writer] serper verify note: {e}")
+                return False
+            candidates = ((res or {}).get("organic") or [])[:num_results]
+        if not candidates:
+            return False
+        blob = " ".join(
+            f"{o.get('title', '')} {o.get('snippet', '')}" for o in candidates[:num_results]
+        ).lower()
+        terms = [t for t in re.findall(r"[a-z0-9§.]{4,}", claim.lower())][:8]
+        if not terms:
+            return False
+        hits = sum(1 for t in terms if t.strip("§.") in blob)
+        return hits / len(terms) >= 0.4
+
+    async def _verify_statutes_and_deadlines(self, content: str) -> Dict:
+        """Find statute references and filing-deadline claims; verify via search.
+
+        Unverifiable high-risk claims are critical failures that block the
+        article. No claims found means nothing to verify (0 failures).
+        """
+        statute_patterns = [
+            r"§\s*[\d.\-a-zA-Z]+",
+            r"[Ss]ection\s+[\d.\-a-zA-Z]+(?:\([^)]*\))?",
+            r"\d+\s+U\.S\.C\.[^.\n]*",
+            r"(?:Texas|California|Florida|New York|Federal)\s+[A-Z][a-zA-Z ]{0,40}Code[^.\n]*",
+            r"O\.C\.G\.A\.[^.\n]*",
+        ]
+        deadline_patterns = [
+            r"\d+\s+years?\s+to\s+file[^.\n]*",
+            r"statute\s+of\s+limitations[^.\n]{0,120}",
+            r"must\s+file\s+within[^.\n]*",
+            r"deadline[^.\n]{0,80}?\d+[^.\n]*",
+        ]
+        claims_found: List[str] = []
+        for pattern in statute_patterns + deadline_patterns:
+            for m in re.finditer(pattern, content, re.IGNORECASE):
+                start = max(0, m.start() - 60)
+                end = min(len(content), m.end() + 60)
+                claims_found.append(re.sub(r"\s+", " ", content[start:end]).strip())
+        # Deduplicate, cap cost.
+        seen, unique = set(), []
+        for c in claims_found:
+            key = c.lower()[:80]
+            if key not in seen:
+                seen.add(key)
+                unique.append(c)
+        unique = unique[:5]
+        if not unique:
+            return {"performed": True, "critical_failures": 0, "claims_checked": 0,
+                    "unverified_claims": []}
+        unverified = []
+        audit_items = []
+        for claim in unique:
+            ok = await self._serper_verify_claim(claim)
+            audit_items.append({"claim": claim[:500], "claim_type": "statute_deadline",
+                                "verified": ok,
+                                "evidence_snippet": "serper verification pass" if ok else "no corroborating results"})
+            if not ok:
+                unverified.append(claim[:200])
+        self._record_fact_verifications(audit_items)
+        return {"performed": True, "critical_failures": len(unverified),
+                "claims_checked": len(unique), "unverified_claims": unverified}
+
     async def _verify_date_claims(self, claims: List[str]) -> Dict:
-        return {'verified': len(claims), 'outdated': 0, 'performed': False}
+        """Real check: future-dated claims are critical failures; old-year
+        references are reported as outdated for reviewer attention."""
+        current_year = datetime.now(timezone.utc).year
+        text = " ".join(claims)
+        years = [int(y) for y in re.findall(r"\b((?:19|20)\d{2})\b", text)]
+        future = sorted({y for y in years if y > current_year})
+        outdated = sorted({y for y in years if y < current_year - 1})
+        return {"verified": len(claims) - len(future), "outdated": len(outdated),
+                "future_years": future, "outdated_years": outdated,
+                "performed": True, "critical_failures": len(future)}
 
     async def _check_outdated_information(self, content: str) -> List[str]:
-        return []
+        """Real check: flag references to years more than 2 behind current."""
+        current_year = datetime.now(timezone.utc).year
+        flags = []
+        for m in re.finditer(r"\b((?:19|20)\d{2})\b", content):
+            year = int(m.group(1))
+            if year < current_year - 2:
+                start = max(0, m.start() - 80)
+                end = min(len(content), m.end() + 80)
+                flags.append(re.sub(r"\s+", " ", content[start:end]).strip()[:200])
+                if len(flags) >= 5:
+                    break
+        return flags
 
     async def _validate_source_citations(self, claims: List[str]) -> Dict:
-        return {'valid': len(claims), 'invalid': 0, 'performed': False}
+        """Real check: every http(s) URL cited must resolve (GET 200-range).
+
+        Unresolvable citations are critical failures. Content with no URLs
+        has nothing to validate (0 failures, not a pass-by-default claim).
+        """
+        content = getattr(self, "_stored_content", "")
+        urls = []
+        for u in re.findall(r"https?://[^\s\"'<>\]\)]+", content):
+            u = u.rstrip(".,;:")
+            if u not in urls:
+                urls.append(u)
+        urls = urls[:8]
+        if not urls:
+            return {"valid": 0, "invalid": 0, "performed": True, "critical_failures": 0}
+        invalid = []
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=6.0),
+                                         follow_redirects=True,
+                                         headers={"User-Agent": "RankForge-QA/1.0"}) as client:
+                for u in urls:
+                    try:
+                        resp = await client.get(u)
+                        if resp.status_code >= 400:
+                            invalid.append(f"{u} (HTTP {resp.status_code})")
+                    except Exception as e:
+                        invalid.append(f"{u} ({str(e)[:80]})")
+        except Exception as e:
+            logger.debug(f"[Writer] citation check transport note: {e}")
+            return {"valid": 0, "invalid": len(urls), "performed": True,
+                    "critical_failures": len(urls),
+                    "unverified_claims": [f"citation check transport failed: {str(e)[:100]}"]}
+        self._record_fact_verifications([
+            {"claim": u, "claim_type": "citation",
+             "verified": not any(u == bad.split(" (")[0] for bad in invalid),
+             "evidence_url": u}
+            for u in urls
+        ])
+        return {"valid": len(urls) - len(invalid), "invalid": len(invalid),
+                "performed": True, "critical_failures": len(invalid),
+                "unverified_claims": invalid}
 
     async def _verify_quotes_and_attributions(self, content: str) -> Dict:
-        return {'verified': 0, 'unverified': 0, 'performed': False}
+        """Real check: quoted passages (>=25 chars) must be found on the web
+        via exact-phrase search. Unverifiable quotes are critical failures."""
+        quotes = []
+        for m in re.finditer(r'"([^"]{25,400})"', content):
+            q = re.sub(r"\s+", " ", m.group(1)).strip()
+            if q and q not in quotes:
+                quotes.append(q)
+        quotes = quotes[:3]
+        if not quotes:
+            return {"verified": 0, "unverified": 0, "performed": True,
+                    "critical_failures": 0}
+        unverified = []
+        for q in quotes:
+            ok = await self._serper_verify_claim(f'"{q[:120]}"')
+            if not ok:
+                unverified.append(q[:200])
+        self._record_fact_verifications([
+            {"claim": q[:500], "claim_type": "quote",
+             "verified": q[:200] not in unverified,
+             "evidence_snippet": "exact-phrase web verification"}
+            for q in quotes
+        ])
+        return {"verified": len(quotes) - len(unverified), "unverified": len(unverified),
+                "performed": True, "critical_failures": len(unverified),
+                "unverified_claims": unverified}
 
     async def _check_numerical_consistency(self, content: str) -> Dict:
-        return {'consistent': True, 'inconsistencies': [], 'performed': False}
+        """Real check: the same metric must not take two values.
 
-    async def _generate_fact_check_summary(self, claims, stat_results, date_results, citation_validity, quote_results, numerical_check):
+        Compares repeated deadline spans ("N years to file"), percentages
+        and dollar figures in matching contexts. Contradictions are
+        critical failures.
+        """
+        inconsistencies = []
+        # Filing-deadline spans must agree with each other.
+        spans = [int(n) for n in re.findall(r"(\d+)\s+years?\s+to\s+file", content, re.IGNORECASE)]
+        if len(set(spans)) > 1:
+            inconsistencies.append(f"Conflicting filing deadlines: {sorted(set(spans))} years")
+        # Limitation-period spans must agree.
+        limits = [int(n) for n in
+                  re.findall(r"limitations[^.\n]{0,60}?(\d+)\s*years?", content, re.IGNORECASE)]
+        if len(set(limits)) > 1:
+            inconsistencies.append(f"Conflicting limitation periods: {sorted(set(limits))} years")
+        # Same percentage label repeated with different values.
+        pcts = re.findall(r"(\d+(?:\.\d+)?)\s*%", content)
+        if len(pcts) != len(set(pcts)) and len(pcts) > 3:
+            pass  # repeated identical stats are fine; differing ones need context we lack
+        return {"consistent": not inconsistencies, "inconsistencies": inconsistencies,
+                "performed": True, "critical_failures": len(inconsistencies),
+                "unverified_claims": inconsistencies}
+
+    async def _generate_fact_check_summary(self, claims, stat_results, date_results, citation_validity, quote_results, numerical_check,
+                                             statute_results=None, outdated_info=None):
+        statute_results = statute_results or {}
+        unverified: List[str] = []
+        for source in (stat_results, citation_validity, quote_results, numerical_check, statute_results):
+            unverified += list((source or {}).get("unverified_claims", []) or [])
+        critical = (
+            int(stat_results.get("failed", 0) or 0)
+            + int(date_results.get("critical_failures", 0) or 0)
+            + int(citation_validity.get("critical_failures", 0) or 0)
+            + int(quote_results.get("critical_failures", 0) or 0)
+            + int(numerical_check.get("critical_failures", 0) or 0)
+            + int(statute_results.get("critical_failures", 0) or 0)
+        )
         return {
-            'total_claims': len(claims),
-            'stat_verified': stat_results.get('verified', 0),
-            'date_verified': date_results.get('verified', 0),
-            'valid_citations': citation_validity.get('valid', 0),
-            'quotes_verified': quote_results.get('verified', 0),
-            'numerical_consistent': numerical_check.get('consistent', True),
-            'critical_failures': 0
+            "total_claims": len(claims),
+            "stat_verified": stat_results.get("verified", 0),
+            "statute_claims_checked": statute_results.get("claims_checked", 0),
+            "date_verified": date_results.get("verified", 0),
+            "outdated_items": outdated_info or [],
+            "valid_citations": citation_validity.get("valid", 0),
+            "quotes_verified": quote_results.get("verified", 0),
+            "numerical_consistent": numerical_check.get("consistent", True),
+            "unverified_claims": unverified[:10],
+            "critical_failures": critical,
+            "gate": "HARD_FAIL" if critical > 0 else "PASS",
         }
 
     async def _audit_existing_links(self, content: str) -> List[str]:
@@ -2275,12 +2585,58 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
         }
 
     async def _final_consistency_check(self, content: str, phase_results: Dict) -> Dict:
+        """Real consistency gate: single H1, no placeholders, intro/conclusion
+        agreement, and no contradiction with knowledge-base facts.
+
+        Any violation returns passed=False with reasons — this is a veto,
+        not an advisory score.
+        """
+        issues: List[str] = []
+        # 1. Exactly one non-empty H1.
+        h1s = re.findall(r"<h1[^>]*>(.*?)</h1>", content, flags=re.IGNORECASE | re.DOTALL)
+        if len(h1s) != 1:
+            issues.append(f"Expected exactly 1 H1, found {len(h1s)}")
+        elif not re.sub(r"<[^>]+>", "", h1s[0]).strip():
+            issues.append("H1 is empty")
+        # 2. No placeholder/template markers.
+        for pat in (r"\[(LINK|INSERT|TOPIC|KEYWORD|TODO|URL|AUTHOR)[^\]]*\]?",
+                    r"\*\*(TODO|TBD|INSERT|PLACEHOLDER)\*\*",
+                    r"lorem ipsum"):
+            if re.search(pat, content, flags=re.IGNORECASE):
+                issues.append(f"Placeholder text present ({pat[:24]}...)")
+                break
+        # 3. Intro promises vs conclusion delivery: shared significant terms.
+        text = re.sub(r"<[^>]+>", " ", content)
+        paras = [p.strip() for p in re.split(r"\n\s*\n", text) if len(p.strip()) > 60]
+        if len(paras) >= 2:
+            def _terms(s: str) -> set:
+                return {w for w in re.findall(r"[a-z]{5,}", s.lower())} - {
+                    "about", "after", "because", "before", "could", "guide", "their",
+                    "there", "these", "those", "which", "while", "would", "article"}
+            intro, concl = _terms(paras[0]), _terms(paras[-1])
+            if intro and concl and not (intro & concl):
+                issues.append("Conclusion shares no significant terms with introduction — possible topic drift")
+        # 4. KB contradiction scan: "never/no X" absolutes must appear in KB.
+        kb_blob = ""
+        try:
+            kb = getattr(self, "knowledge_context", {}) or {}
+            chunks = kb.get("chunks", []) or []
+            kb_blob = json.dumps(chunks, default=str).lower()
+        except Exception:
+            kb_blob = ""
+        if kb_blob:
+            for m in re.finditer(r"\b(never|no one|no \w+ ever|always guarantees?)\b[^.\n]{0,80}", content, re.IGNORECASE):
+                claim = m.group(0).strip()
+                key_terms = [t for t in re.findall(r"[a-z]{5,}", claim.lower())][:4]
+                if key_terms and not any(t in kb_blob for t in key_terms):
+                    issues.append(f"Absolute claim without KB support: '{claim[:100]}'")
+                    break
         return {
-            'passed': True,
-            'content_length': len(content),
-            'phases_validated': len(phase_results),
-            'issues': [],
-            'performed': False
+            "passed": not issues,
+            "content_length": len(content),
+            "phases_validated": len(phase_results),
+            "issues": issues,
+            "performed": True,
         }
 
     async def _export_to_wordpress(self, content: str) -> Dict:

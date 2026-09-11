@@ -102,7 +102,18 @@ def inject_term_definitions(html_content: str, industry: str = "legal") -> str:
         "emg": "Electromyography, a diagnostic test that measures nerve and muscle electrical activity",
     }
 
-    all_terms = {**legal_terms, **medical_terms}
+    tech_and_business_terms = {
+        "core web vitals": "Google metrics that measure real-world user experience for loading, interactivity, and visual stability",
+        "canonical url": "an HTML link element that helps search engines prevent duplicate content issues by specifying the master version",
+        "sitemap": "an XML file listing URLs for a website to help search engines crawl and discover pages intelligently",
+        "return on investment": "a performance measure used to evaluate the efficiency or profitability of an investment",
+        "search intent": "the primary goal or underlying reason a user types a query into a search engine",
+        "schema markup": "structured data code added to a website to help search engines understand content and return rich snippets",
+        "conversion rate": "the percentage of visitors to a website that complete a desired goal out of the total number of visitors",
+        "internal linking": "hyperlinks that point from one page on a domain to a different page on the same domain",
+    }
+
+    all_terms = {**legal_terms, **medical_terms, **tech_and_business_terms}
     soup = BeautifulSoup(html_content, 'html.parser')
     defined_terms = set()
 

@@ -34,6 +34,18 @@ except (ImportError, ValueError):
 router = APIRouter()
 
 
+def supabase_user_check(user_id: str):
+    """Return the users row for user_id, or None. Used to close the
+    human-approval gate: no row means no verified human identity."""
+    try:
+        res = get_supabase().table("users").select("id").eq("id", user_id).limit(1).execute()
+        rows = res.data or []
+        return rows[0] if rows else None
+    except Exception as e:
+        logger.warning(f"[WordPress] user lookup note: {e}")
+        return None
+
+
 class OAuthAuthorizeResponse(BaseModel):
     authorization_url: str
 
@@ -171,8 +183,19 @@ async def create_wp_draft(website_id: str, request: Request):
     from database import get_supabase
     
     user_id = request.headers.get("X-User-Id")
-    if not user_id or user_id.strip() == "":
-        user_id = "human-approved"
+    # CLOSED GATE: canonical publishing-identity check (no fallback
+    # identity — not even for drafts). See middleware/human_gate.py.
+    try:
+        from middleware.human_gate import require_verified_publisher
+    except (ImportError, ValueError):
+        from backend.middleware.human_gate import require_verified_publisher
+    user_id = await require_verified_publisher(request)
+    try:
+        user = supabase_user_check(user_id)
+    except Exception:
+        user = None
+    if not user:
+        raise HTTPException(status_code=403, detail="User not found")
     
     try:
         body = await request.json()
@@ -273,9 +296,14 @@ async def save_wordpress_connection(body: WordPressCredentialsIn):
 @router.post("/wordpress/publish")
 async def direct_publish_wp_post(payload: Dict[str, Any], request: Request):
     """Direct human-authorized publishing of content into WordPress."""
-    user_id = request.headers.get("X-User-Id")
-    if not user_id or user_id.strip() == "":
-        raise HTTPException(status_code=401, detail="X-User-Id header required for publishing action")
+    # CLOSED GATE: canonical publishing-identity check. See human_gate.py.
+    try:
+        from middleware.human_gate import require_verified_publisher
+    except (ImportError, ValueError):
+        from backend.middleware.human_gate import require_verified_publisher
+    user_id = await require_verified_publisher(request)
+    if not supabase_user_check(user_id):
+        raise HTTPException(status_code=403, detail="User not found")
 
     website_id = payload.get("website_id", "default")
     title = payload.get("title")

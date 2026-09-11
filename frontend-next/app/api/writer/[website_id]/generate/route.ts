@@ -59,7 +59,7 @@ export async function POST(
     wordpress_url: article.wordpress_url,
     real_wp_draft_created: wpDraftResult.success,
     message: wpDraftResult.success
-      ? `✓ Real WordPress draft created (Post ID #${wpDraftResult.wp_post_id}) in accident.innovatcs.com WP Admin!`
+      ? `WordPress draft created (Post ID #${wpDraftResult.wp_post_id})${wpDraftResult.edit_url ? ` — ${wpDraftResult.edit_url}` : ""}`
       : (wpDraftResult.error || `Article generated — enter WordPress App Password in /connectors to sync to WP Admin`),
   });
 }

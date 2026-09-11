@@ -2,8 +2,10 @@ import os, sys, asyncio
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_DIR)
+sys.path.insert(0, os.path.join(PROJECT_DIR, "backend"))
 
 from dotenv import load_dotenv
+load_dotenv(os.path.join(PROJECT_DIR, '.env'))
 load_dotenv(os.path.join(PROJECT_DIR, 'backend', '.env'))
 from supabase import create_client
 

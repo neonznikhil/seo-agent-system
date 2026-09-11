@@ -387,11 +387,29 @@ async def check_citations_serper(body: TrackQueryRequest):
             ),
         })
 
+    # Run envelope: uncited queries are open issues; newly cited ones count
+    # as fixed against the previous citation check.
+    try:
+        from services.run_service import start_run, complete_run
+        _run = await start_run(wid, "ai_visibility_check")
+        _snap = {"issue_ids": [r["query"] for r in results
+                               if r.get("checked") and not (
+                                   r.get("appears_featured_snippet")
+                                   or r.get("appears_people_also_ask")
+                                   or (r.get("organic_position") and r["organic_position"] <= 3))]}
+        _done = await complete_run(_run["run_id"], _snap, _run["prev_snapshot"], "ai_visibility_check")
+        _run_info = {"run_id": _run["run_id"], "summary": _done["summary"],
+                     "changes": _done["changes"], "next_actions": _done["next_actions"]}
+    except Exception as e:
+        logger.debug(f"[AEO] run envelope note: {e}")
+        _run_info = None
+
     return {
         "success": True,
         "domain_checked": domain or "(no domain configured)",
         "queries_checked": len(results),
         "results": results,
+        "run": _run_info,
     }
 
 

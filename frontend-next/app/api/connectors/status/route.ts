@@ -26,46 +26,54 @@ export async function GET(req: Request) {
   const nvidiaKey = process.env.NVIDIA_API_KEY || "";
   const serperKey = process.env.SERPER_API_KEY || "";
 
+  // HONEST native status: report only what env vars prove. Never claim
+  // connected services we have not verified.
+  const has = (v: string) => Boolean(v && v.length > 0);
+  const supabaseConfigured = has(supabaseUrl) && has(supabaseKey);
+  const nvidiaConfigured = has(nvidiaKey);
+  const serperConfigured = has(serperKey);
+
   return NextResponse.json({
     success: true,
-    connected_count: 7,
+    connected_count: 0,
     total_count: 8,
-    health_score: 99,
+    health_score: null,
+    health_label: "Not verified — backend unreachable",
     supabase: {
-      connected: true,
-      is_configured: true,
-      tables_count: 14,
+      connected: false,
+      is_configured: supabaseConfigured,
+      tables_count: null,
     },
     nvidia: {
-      connected: true,
-      is_configured: true,
-      available: true,
-      models_count: 25,
+      connected: false,
+      is_configured: nvidiaConfigured,
+      available: null,
+      models_count: null,
     },
     serper: {
-      connected: true,
-      is_configured: true,
+      connected: false,
+      is_configured: serperConfigured,
       fallback_active: false,
     },
     tavily: {
-      connected: true,
-      is_configured: true,
+      connected: false,
+      is_configured: false,
     },
     gsc: {
-      connected: true,
-      is_configured: true,
-      status_label: "Live Integration",
+      connected: false,
+      is_configured: false,
+      status_label: "Not connected",
     },
     ga4: {
-      connected: true,
-      is_configured: true,
-      status_label: "Real-time Traffic",
+      connected: false,
+      is_configured: false,
+      status_label: "Not connected",
     },
     wordpress: {
-      connected: true,
-      is_configured: true,
-      role: "administrator",
-      site_url: "https://your-wordpress-site.com",
+      connected: false,
+      is_configured: false,
+      role: null,
+      site_url: null,
     },
     slack: {
       connected: false,

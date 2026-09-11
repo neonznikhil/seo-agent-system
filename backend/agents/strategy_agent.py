@@ -236,13 +236,14 @@ class StrategyAgent:
             fix_payload = alert.get("data", {})
             fix_id = str(uuid.uuid4())
             
+            fix_payload = {**(fix_payload or {}),
+                             "fix_method": self._get_fix_method(alert.get("alert_type"))}
             fix_data = {
                 "id": fix_id,
                 "website_id": self.website_id,
                 "audit_id": fix_payload.get("audit_id"),
                 "fix_type": alert.get("alert_type"),
                 "fix_payload": fix_payload,
-                "fix_method": self._get_fix_method(alert.get("alert_type")),
                 "status": "pending_approval",
                 "proposed_by": "strategy_agent",
                 "created_at": datetime.utcnow().isoformat()

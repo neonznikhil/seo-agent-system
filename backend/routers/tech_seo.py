@@ -38,8 +38,18 @@ async def get_tech_seo(website_id: str):
         )
         if res.data and len(res.data) > 0:
             audit = res.data[0]
+            if audit.get("health_score") is None:
+                return {
+                    "health_score": None,
+                    "health_label": "No audit run yet",
+                    "issues": audit.get("issues", []),
+                    "checks": audit.get("checks", []) or (audit.get("metrics", {}).get("checks", []) if isinstance(audit.get("metrics"), dict) else []),
+                    "last_run": audit.get("created_at"),
+                    "status": "completed",
+                    "audit": audit,
+                }
             return {
-                "health_score": audit.get("health_score", 92),
+                "health_score": audit.get("health_score"),
                 "issues": audit.get("issues", []),
                 "checks": audit.get("checks", []) or (audit.get("metrics", {}).get("checks", []) if isinstance(audit.get("metrics"), dict) else []),
                 "last_run": audit.get("created_at"),
@@ -50,7 +60,7 @@ async def get_tech_seo(website_id: str):
         # If not run yet, execute live audit immediately so user gets real data
         audit = await execute_tech_audit(resolved_id)
         return {
-            "health_score": audit.get("health_score", 92),
+            "health_score": audit.get("health_score"),
             "issues": audit.get("issues", []),
             "checks": audit.get("checks", []),
             "last_run": audit.get("last_run"),
@@ -348,8 +358,27 @@ async def execute_tech_audit(website_id: str) -> dict:
 
 @router.post("/tech-seo/{website_id}/run-audit")
 async def run_tech_audit(website_id: str):
-    """Execute live technical audit on demand and return real results."""
-    result = await execute_tech_audit(website_id)
+    """Execute live technical audit on demand and return real results.
+
+    Wrapped in a run envelope: the result carries _run {summary, changes
+    vs previous audit, next_actions} classified Fixed/New/Still-open.
+    """
+    from services.run_service import run_with_envelope
+
+    def _snapshot(result):
+        issues = result.get("issues", []) or []
+        ids = [f"{i.get('type', '?')}:{(i.get('description', '') or '')[:80]}" for i in issues]
+        snap = {"issue_ids": ids}
+        try:
+            snap["health_score"] = float(result.get("health_score"))
+        except (TypeError, ValueError):
+            pass
+        return snap
+
+    result = await run_with_envelope(
+        website_id, "tech_seo_audit",
+        lambda: execute_tech_audit(website_id),
+        _snapshot)
     return {**result, "success": True, "data": result}
 
 
@@ -374,12 +403,16 @@ async def queue_fix_issue(website_id: str, body: FixIssueRequest):
     fix_data = {
         "id": fix_id,
         "website_id": website_id,
-        "issue_type": body.issue_type,
-        "description": body.description,
-        "severity": body.severity,
-        "url": body.url,
-        "proposed_action": body.recommendation or f"Auto-remediate {body.issue_type} with schema/redirect update",
+        "fix_type": body.issue_type,
+        "fix_payload": {
+            "title": f"Fix requested: {body.description}"[:300],
+            "description": body.description,
+            "severity": body.severity,
+            "url": body.url,
+            "proposed_action": body.recommendation or f"Auto-remediate {body.issue_type} with schema/redirect update",
+        },
         "status": "pending_approval",
+        "proposed_by": "tech_seo",
         "created_at": datetime.utcnow().isoformat()
     }
     

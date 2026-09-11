@@ -11,11 +11,20 @@ router = APIRouter()
 @router.post("/decay/{website_id}/detect")
 @router.post("/api/decay/{website_id}/detect")
 async def detect_decay(website_id: str, manual: bool = False):
-    """Detect content decay from live GSC data."""
+    """Detect content decay from live GSC data, inside a run envelope."""
     from services.decay_detector_service import DecayDetectorService
-    
+    from services.run_service import run_with_envelope
+
     service = DecayDetectorService(website_id)
-    result = await service.detect_decay(website_id, auto_alert=True)
+
+    def _snapshot(result):
+        pages = result.get("decayed_pages", []) or []
+        return {"issue_ids": [p.get("url", "?") for p in pages if isinstance(p, dict)]}
+
+    result = await run_with_envelope(
+        website_id, "decay_detection",
+        lambda: service.detect_decay(website_id, auto_alert=True),
+        _snapshot)
     return {"success": True, "data": result}
 
 
@@ -35,9 +44,21 @@ async def list_decay(website_id: Optional[str] = None, status: str = "detected")
         q = q.eq("status", status)
         
     decay_logs = q.order("detected_at", desc=True).limit(50).execute().data or []
-    
+
+    # Honest scoring only: rows missing a measured decay_percent are
+    # returned with null score/severity instead of an invented 24.5.
     for log in decay_logs:
-        pct = float(log.get("decay_percent") or 24.5)
+        raw_pct = log.get("decay_percent")
+        if raw_pct is None:
+            log["decay_score"] = None
+            log["severity"] = None
+            continue
+        try:
+            pct = float(raw_pct)
+        except (TypeError, ValueError):
+            log["decay_score"] = None
+            log["severity"] = None
+            continue
         log["decay_score"] = int(pct)
         log["severity"] = "critical" if pct > 40 else ("high" if pct > 20 else "medium")
     
@@ -131,8 +152,10 @@ async def approve_publish(decay_id: str, website_id: str, request: Request = Non
     
     wp_post_id = decay.get("wordpress_post_id")
     result = await wp_service.publish_post(wp_post_id, user_id) if wp_post_id else None
-    
-    if result:
+
+    # Verified receipt only: a truthy dict is NOT proof. The service reports
+    # published=True solely after a confirmed re-GET (see wordpress_service).
+    if result and result.get("published") is True:
         supabase.table("content_decay_logs").update({
             "status": "published",
             "published_at": datetime.utcnow()
@@ -143,9 +166,11 @@ async def approve_publish(decay_id: str, website_id: str, request: Request = Non
             "published_at": datetime.utcnow()
         }).eq("id", content_id).execute()
         
-        return {"status": "published", "wordpress_id": result.get("id")}
-    
-    raise HTTPException(500, "Failed to publish")
+        return {"status": "published", "wordpress_id": result.get("post_id") or result.get("id")}
+
+    raise HTTPException(
+        status_code=502,
+        detail=f"WordPress publish not confirmed: {(result or {}).get('reason', 'no receipt')}")
 
 
 @router.get("/decay/{website_id}/stats")

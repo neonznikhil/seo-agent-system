@@ -60,8 +60,41 @@ const AGENT_ROLES: Record<string, string> = {
   AuthorityCalibration: "90-Day Strategy Calibration",
 };
 
+interface WorkflowItem {
+  job_name: string;
+  display_name: string;
+  description: string;
+  category: "technical" | "content" | "intelligence" | "links";
+  status: "never_run" | "running" | "completed" | "failed";
+  last_run: string | null;
+  summary: string;
+  diff: {
+    fixed: number;
+    new: number;
+    still_open: number;
+    regressed: number;
+  };
+}
+
+interface WorkflowsStatusResponse {
+  website_id: string;
+  indexation_rate: number | null;
+  publishing_pace: {
+    status: "NORMAL" | "PAUSED_INDEXATION_GATE";
+    threshold: number;
+    current_rate: number;
+    action: string;
+  };
+  workflows: WorkflowItem[];
+}
+
 export default function HomePage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  // SEO-outcomes overview (indexation, GSC, striking distance, issues,
+  // decay, pipeline, run history). Null = not loaded yet / unavailable.
+  const [overview, setOverview] = useState<any | null>(null);
+  const [workflowsData, setWorkflowsData] = useState<WorkflowsStatusResponse | null>(null);
+  const [runningWorkflow, setRunningWorkflow] = useState<string | null>(null);
   const [domain, setDomain] = useState<string>("");
   const [websiteId, setWebsiteId] = useState<string>("");
   const [websites, setWebsites] = useState<Website[]>([]);
@@ -73,6 +106,8 @@ export default function HomePage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [deleteModalArticle, setDeleteModalArticle] = useState<any | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [activeWorkflowModal, setActiveWorkflowModal] = useState<any | null>(null);
+  const [autoPublishConfirmOpen, setAutoPublishConfirmOpen] = useState<boolean>(false);
 
   // Demo Readiness State (Task 4.1 & 4.2)
   const [readinessData, setReadinessData] = useState<any | null>(null);
@@ -138,7 +173,8 @@ export default function HomePage() {
   const [genError, setGenError] = useState<string | null>(null);
 
   // Autonomous status
-  const [autoPublish, setAutoPublish] = useState<boolean>(true);
+  // Drafts only by default: OFF (grey) until the backend confirms opt-in.
+  const [autoPublish, setAutoPublish] = useState<boolean>(false);
   const [schedulerStatus, setSchedulerStatus] = useState<any>(null);
   const [schedulerLogs, setSchedulerLogs] = useState<any[]>([]);
   const [costToday, setCostToday] = useState<any>(null);
@@ -222,15 +258,72 @@ export default function HomePage() {
       if (data && typeof data === "object" && data.total_articles !== undefined) {
         setMetrics(data);
       } else {
-        setMetrics(getFallbackDashboardMetrics(activeId));
+        // HONEST EMPTY STATE: never invent metrics. Surface the failure.
+        setMetrics(null);
+        setError("API unavailable — check backend connection");
+      }
+
+      // SEO outcomes overview: leads the dashboard. Failure here never
+      // blocks the legacy metrics below; it renders its own empty states.
+      try {
+        const ov = await get(`/api/dashboard/overview?website_id=${activeId}`);
+        if (ov && typeof ov === "object" && !ov.error) {
+          setOverview(ov);
+        } else {
+          setOverview(null);
+        }
+      } catch {
+        setOverview(null);
+      }
+
+      // 9 Independent Workflows status & indexation gate
+      try {
+        const wf = await get(`/api/workflows/${activeId}/status`);
+        if (wf && wf.workflows) {
+          setWorkflowsData(wf);
+        } else {
+          setWorkflowsData(null);
+        }
+      } catch {
+        setWorkflowsData(null);
       }
     } catch {
-      // Graceful fallback prevents red error banner
-      setMetrics(getFallbackDashboardMetrics(activeId));
+      // HONEST EMPTY STATE: never invent metrics. Surface the failure.
+      setMetrics(null);
+      setError("API unavailable — check backend connection");
     } finally {
       setLoading(false);
     }
   }, [websiteId]);
+
+  const handleRunWorkflow = async (jobName: string) => {
+    const activeId = getCurrentWebsiteId() || websiteId;
+    if (!activeId) {
+      showToast("Select a website first — no destination site available.");
+      return;
+    }
+    setRunningWorkflow(jobName);
+    try {
+      showToast(`Running workflow: ${jobName}...`);
+      const res = await post(`/api/workflows/${activeId}/run/${jobName}`, {});
+      const title = res?.workflow?.display_name || jobName;
+      showToast(`✓ Completed: ${title}`);
+      if (res) {
+        setActiveWorkflowModal(res);
+      }
+      try {
+        const updatedWf = await get(`/api/workflows/${activeId}/status`);
+        if (updatedWf && updatedWf.workflows) {
+          setWorkflowsData(updatedWf);
+        }
+      } catch {}
+      fetchDashboardData();
+    } catch (err: any) {
+      showToast(`Workflow run failed: ${err.message || "execution error"}`);
+    } finally {
+      setRunningWorkflow(null);
+    }
+  };
 
   useEffect(() => {
     fetchDashboardData();
@@ -287,11 +380,20 @@ export default function HomePage() {
 
   const handleVerifyAndSaveWp = async () => {
     if (!wpAppPass.trim()) return;
+    // Site URL always comes from the selected website — never a placeholder.
+    const activeSite = websites.find((s) => s.id === (getCurrentWebsiteId() || websiteId));
+    const siteUrl = (activeSite as any)?.url || (activeSite as any)?.domain
+      ? `https://${((activeSite as any).url || (activeSite as any).domain).replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+      : "";
+    if (!siteUrl) {
+      showToast("Select a website first — no destination domain available.");
+      return;
+    }
     setWpTesting(true);
     const targetUser = wpUser.trim() || "";
     try {
       const res = await post("/api/wordpress/connect", {
-        site_url: "https://your-wordpress-site.com",
+        site_url: siteUrl,
         wp_username: targetUser,
         wp_app_password: wpAppPass.trim(),
       });
@@ -301,12 +403,12 @@ export default function HomePage() {
           localStorage.setItem(
             "rankforge_wp_credentials",
             JSON.stringify({
-              site_url: "https://your-wordpress-site.com",
+              site_url: siteUrl,
               username: targetUser,
             })
           );
         } catch {}
-        showToast(`✓ Connected to accident.innovatcs.com as ${targetUser}!`);
+        showToast(`Connected to ${siteUrl} as ${targetUser}.`);
       } else {
         showToast(res.error || `WordPress: ${res.message || "Could not verify credentials"}`);
       }
@@ -319,9 +421,14 @@ export default function HomePage() {
 
   const runAutonomousBlogGeneration = useCallback(async () => {
     if (isGenerating) return;
-    const wid = getCurrentWebsiteId() || websiteId || "f8d16d12-bf91-4d92-9134-8fa29813e31e";
+    // No fallback UUID: without a selected website there is nothing to write for.
+    const wid = getCurrentWebsiteId() || websiteId || "";
+    if (!wid) {
+      showToast("Select a website first — no destination site available.");
+      return;
+    }
     setIsGenerating(true);
-    showToast("⚡ Autonomous Blog Generator active: 3-Agent Crew writing next article...");
+    showToast("Autonomous Blog Generator active: 3-Agent Crew writing next article...");
 
     // Retrieve real WordPress credentials from localStorage if user entered them in /connectors
     let wpCreds: any = {};
@@ -332,8 +439,9 @@ export default function HomePage() {
     if (!wpCreds.username || wpCreds.username === "admin") {
       wpCreds.username = wpUser.trim() || "";
     }
+    // No placeholder site URL: omit unless the user configured one.
     if (!wpCreds.site_url) {
-      wpCreds.site_url = "https://your-wordpress-site.com";
+      delete wpCreds.site_url;
     }
 
     try {
@@ -352,9 +460,7 @@ export default function HomePage() {
       setBlogsGeneratedToday((prev) => prev + 1);
       fetchDashboardData();
     } catch (e: any) {
-      // warn removed
-      showToast("✓ Generated article & queued to WordPress draft approvals.");
-      setBlogsGeneratedToday((prev) => prev + 1);
+      showToast(`Generation failed: ${e.message || "backend unreachable"}. No article was created.`);
       fetchDashboardData();
     } finally {
       setIsGenerating(false);
@@ -437,10 +543,8 @@ export default function HomePage() {
         } catch {}
         setNextBlogSeconds(nextMins * 60);
 
-        // Fire autonomous generation!
-        if (runGenerationRef.current) {
-          runGenerationRef.current();
-        }
+        // Content pipeline runs are gated by the indexation gate (>= 80%)
+        // and coordinated by the backend workflow scheduler.
       }
     }, 1000);
 
@@ -653,55 +757,28 @@ export default function HomePage() {
     setDeleteModalArticle(item);
   };
 
-  const handleToggleAutoPublish = async () => {
+  const confirmToggleAutoPublish = async (newVal: boolean) => {
+    setAutoPublishConfirmOpen(false);
     try {
-      const newVal = !autoPublish;
       await post("/api/autonomous/settings", { auto_publish: newVal, auto_generate: true, auto_refresh: true });
       setAutoPublish(newVal);
-      showToast(newVal ? "Autonomous ON — Next publish 11AM IST" : "Autonomous OFF — Manual approval needed");
+      showToast(newVal ? "Auto-publish ON (explicit opt-in) — approved drafts will publish" : "Auto-publish OFF — drafts only, manual approval needed");
     } catch (e: any) {
       showToast(`Toggle failed: ${e.message}`);
     }
   };
 
-  function getFallbackDashboardMetrics(activeId: string): DashboardMetrics {
-  return {
-    website_id: activeId,
-    total_articles: 12,
-    published_articles: 10,
-    pending_articles: 2,
-    seo_health_score: 98,
-    last_audit_date: new Date().toISOString(),
-    monitored_alerts: 0,
-    memories_count: 12,
-    knowledge_count: 48,
-    backlinks_count: 8,
-    backlink_opportunities: 15,
-    recent_content: [
-      {
-        id: "c-001",
-        title: "Essential Legal Steps to Follow Immediately After an Automobile Crash",
-        keyword: "what to do after a car accident checklist",
-        status: "published",
-        wordpress_url: "https://your-wordpress-site.com/steps-after-car-accident",
-      },
-    ],
-    agents: [
-      { name: "Researcher", state: "ACTIVE", last_run: new Date().toISOString(), summary: "Gathered SERP data", error: null },
-      { name: "Writer", state: "ACTIVE", last_run: new Date().toISOString(), summary: "Drafting articles", error: null },
-      { name: "Editor", state: "ACTIVE", last_run: new Date().toISOString(), summary: "SEO score 98", error: null },
-    ],
-    publishing_schedule: [
-      {
-        id: "s-001",
-        title: "Motorcycle Lane Splitting Accident Liability: Rights & Settlements",
-        date: new Date(Date.now() + 86400000).toISOString(),
-        status: "scheduled",
-        keyword: "motorcycle accident liability",
-      },
-    ],
+  const handleToggleAutoPublish = () => {
+    if (!autoPublish) {
+      setAutoPublishConfirmOpen(true);
+    } else {
+      confirmToggleAutoPublish(false);
+    }
   };
-}
+
+  // NOTE: no fallback metrics function. When the API is unreachable the
+  // dashboard renders explicit empty states ("—" / "No data yet") instead
+  // of invented numbers. See the KPI strip below.
 
   const handleRunJobNow = async (jobId: string) => {
     try {
@@ -753,21 +830,129 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* KPI STRIP */}
+      {/* HONEST EMPTY STATE: no metrics without a real API response. */}
+      {metrics === null && !loading && (
+        <div className="panel" style={{ marginBottom: "16px", borderColor: "var(--amber)", padding: "14px 16px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 700 }}>No dashboard data</div>
+          <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>
+            {error || "API unavailable — check backend connection"}. No numbers are shown until a real check returns data.
+          </div>
+        </div>
+      )}
+
+      {/* ROW 1 — SEO HEALTH (outcomes first; content counts are secondary below) */}
+      <div className="kpi-strip">
+        <div className="kpi-cell">
+          <div className="kpi-label">Indexation Rate</div>
+          <div className="kpi-val">
+            {overview?.indexation?.rate != null ? `${(overview.indexation.rate * 100).toFixed(1)}%` : "—"}
+          </div>
+          <div className="kpi-delta">
+            {overview?.indexation?.rate != null
+              ? `${overview.indexation.indexed ?? "?"} / ${overview.indexation.submitted ?? "?"} pages`
+              : (overview ? "No check yet — run an indexation check" : "No data yet")}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">Impressions (28d)</div>
+          <div className="kpi-val">{overview?.gsc?.impressions ?? "—"}</div>
+          <div className="kpi-delta">
+            {overview?.gsc?.connected ? "Google Search Console" : (overview ? "Connect GSC →" : "No data yet")}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">Clicks (28d)</div>
+          <div className="kpi-val">{overview?.gsc?.clicks ?? "—"}</div>
+          <div className="kpi-delta">
+            {overview?.gsc?.connected ? "Google Search Console" : (overview ? "Connect GSC →" : "No data yet")}
+          </div>
+        </div>
+        <div className="kpi-cell">
+          <div className="kpi-label">Avg Position</div>
+          <div className="kpi-val">{overview?.gsc?.avg_position ?? "—"}</div>
+          <div className="kpi-delta">
+            {overview?.gsc?.connected ? "Google Search Console" : (overview ? "Connect GSC →" : "No data yet")}
+          </div>
+        </div>
+        <Link href="/research" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Striking Distance</div>
+          <div className="kpi-val">
+            {overview?.striking_distance?.count ?? "—"}
+          </div>
+          <div className="kpi-delta">
+            {overview?.striking_distance?.count != null
+              ? `positions ${overview.striking_distance.range?.[0] ?? 11}–${overview.striking_distance.range?.[1] ?? 20} · +${overview.striking_distance.entering ?? 0} entering · −${overview.striking_distance.leaving ?? 0} leaving`
+              : (overview ? "Run rank tracking first" : "No data yet")}
+          </div>
+        </Link>
+      </div>
+
+      {/* ROW 2 — ISSUES */}
+      <div className="kpi-strip">
+        <Link href="/monitoring" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Open Issues</div>
+          <div className="kpi-val">{overview?.open_issues?.count ?? "—"}</div>
+          <div className="kpi-delta">Alerts + pending fixes →</div>
+        </Link>
+        <Link href="/decay" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Decaying Pages</div>
+          <div className="kpi-val">{overview?.decaying_pages?.count ?? "—"}</div>
+          <div className="kpi-delta">Detected refresh candidates →</div>
+        </Link>
+        <Link href="/approvals" style={{ textDecoration: "none" }} className="kpi-cell">
+          <div className="kpi-label">Awaiting Approval</div>
+          <div className="kpi-val">{overview?.pending_approvals?.count ?? "—"}</div>
+          <div className="kpi-delta">Human gate queue →</div>
+        </Link>
+      </div>
+
+      {/* ROW 3 — LAST RUN + HISTORY (history matters more than snapshots) */}
+      <div className="panel" style={{ marginBottom: "16px" }}>
+        <div className="panel-head">
+          <span className="panel-label">Last Run</span>
+        </div>
+        <div className="panel-body" style={{ padding: "12px 16px", fontSize: "11px" }}>
+          {overview?.last_run?.summary ? (
+            <>
+              <div style={{ fontWeight: 700 }}>
+                {overview.last_run.job_name || "Run"} {overview.last_run.status ? `— ${overview.last_run.status}` : ""}
+              </div>
+              <div style={{ color: "var(--muted)", marginTop: "4px" }}>{overview.last_run.summary}</div>
+              {(overview.last_run.next_actions || []).length > 0 && (
+                <div style={{ marginTop: "6px" }}>Next: {(overview.last_run.next_actions || []).join("; ")}</div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: "var(--muted)" }}>No runs yet — run any job (tech audit, rank check, decay detection) to start history.</div>
+          )}
+          {(overview?.recent_runs || []).length > 0 && (
+            <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              {(overview.recent_runs || []).map((r: any, i: number) => (
+                <div key={i} style={{ display: "flex", gap: "8px", flexWrap: "wrap", fontSize: "10.5px" }}>
+                  <span style={{ fontWeight: 700 }}>{r.job_name}</span>
+                  <span style={{ color: "var(--muted)" }}>{r.status}</span>
+                  <span>Fixed {r.fixed_count ?? 0} · New {r.new_count ?? 0} · Open {r.still_open_count ?? 0} · Regressed {r.regressed_count ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* KPI STRIP (operational — content pipeline is one job among several) */}
       <div className="kpi-strip">
         <Link href="/content" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Articles Generated</div>
-          <div className="kpi-val">{metrics?.total_articles ?? 0}</div>
-          <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>{blogsGeneratedToday} generated today (target: {dailyBlogTarget})</div>
-          <div style={{ width: "100%", height: "4px", background: "var(--line)", borderRadius: "2px", overflow: "hidden", marginTop: "4px" }}>
-            <div style={{ width: `${Math.min(100, (blogsGeneratedToday / Math.max(1, dailyBlogTarget)) * 100)}%`, height: "100%", background: "var(--green)" }} />
+          <div className="kpi-val">{metrics?.total_articles ?? "—"}</div>
+          <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "3px" }}>
+            Drafts staged: {metrics?.pending_articles ?? 0} · Published: {metrics?.published_articles ?? 0}
           </div>
-          <div className="kpi-delta">View all in Content →</div>
+          <div className="kpi-delta" style={{ marginTop: "4px" }}>Content Pipeline Job →</div>
         </Link>
         <Link href="/approvals" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Pending Approval</div>
           <div className="kpi-val" style={{ color: "var(--accent)" }}>
-            {metrics?.pending_articles ?? 0}
+            {metrics?.pending_articles ?? "—"}
           </div>
           <div className="kpi-delta" style={{ color: "var(--accent)" }}>Open approvals queue →</div>
         </Link>
@@ -775,23 +960,22 @@ export default function HomePage() {
           <div className="kpi-label">SEO Health Score</div>
           <div className="kpi-val">
             {metrics?.seo_health_score != null ? `${metrics.seo_health_score}/100` : "No audit yet"}
-          </div>
-          <div className="kpi-delta">Latest technical audit →</div>
+          </div>          <div className="kpi-delta">Latest technical audit →</div>
         </Link>
         <Link href="/monitoring" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Monitored Alerts</div>
-          <div className="kpi-val">{metrics?.monitored_alerts ?? 0}</div>
+          <div className="kpi-val">{metrics?.monitored_alerts ?? "—"}</div>
           <div className="kpi-delta">Open monitoring →</div>
         </Link>
         <Link href="/brain" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Brain Memories</div>
-          <div className="kpi-val">{metrics?.memories_count ?? 0}</div>
+          <div className="kpi-val">{metrics?.memories_count ?? "—"}</div>
           <div className="kpi-delta">Learned patterns →</div>
         </Link>
         <Link href="/backlinks" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Backlinks / Prospects</div>
           <div className="kpi-val">
-            {metrics?.backlinks_count ?? 0} / {metrics?.backlink_opportunities ?? 0}
+            {metrics?.backlinks_count ?? "—"} / {metrics?.backlink_opportunities ?? "—"}
           </div>
           <div className="kpi-delta">Authority engine →</div>
         </Link>
@@ -816,13 +1000,12 @@ export default function HomePage() {
         </div>
         <div className="panel-body" style={{ padding: "12px 16px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
-            {(readinessData?.checks || [
-              { name: "Knowledge Base", status: "pass", detail: "Grounding active" },
-              { name: "NVIDIA NIM", status: "pass", detail: "Connected & responding" },
-              { name: "Serper API", status: "pass", detail: "SERP discovery ready" },
-              { name: "WordPress", status: "pass", detail: "Connected (Editor)" },
-              { name: "Content Ready", status: "pass", detail: "Drafts generated" },
-            ]).map((c: any, idx: number) => {
+            {(readinessData?.checks || []).length === 0 && (
+              <div style={{ fontSize: "11px", color: "var(--muted)" }}>
+                No readiness data — click Re-Check to run the real readiness probe.
+              </div>
+            )}
+            {(readinessData?.checks || []).map((c: any, idx: number) => {
               const isPass = c.status === "pass";
               const isWarn = c.status === "warn";
               return (
@@ -880,10 +1063,10 @@ export default function HomePage() {
             }}
           />
           <span style={{ fontWeight: 700, textTransform: "uppercase" }}>
-            Autonomous {autoPublish ? "ON" : "OFF"}
+            Auto-publish {autoPublish ? "ON" : "OFF"}
           </span>
           <span style={{ color: "var(--muted)" }}>
-            {autoPublish ? "Next publish 11AM IST — Quality gate SEO≥85" : "Manual approval needed — Approve in /approvals"}
+            {autoPublish ? "Explicit opt-in active — approved drafts publish automatically" : "Off by default — drafts only, approve in /approvals"}
           </span>
         </div>
         <button onClick={handleToggleAutoPublish} className={`btn ${autoPublish ? "btn-primary" : ""}`} style={{ fontSize: "10px", padding: "6px 14px" }}>
@@ -913,256 +1096,462 @@ export default function HomePage() {
         </div>
       ))}
 
-      {/* BLOG GENERATION SETTINGS — Problem 4.4 */}
-      <div className="panel" style={{ marginBottom: "16px", borderColor: "var(--accent)" }}>
+      {/* PUBLISHING PACE & INDEXATION GATE */}
+      <div
+        className="panel"
+        style={{
+          marginBottom: "16px",
+          borderColor: workflowsData?.publishing_pace?.status === "PAUSED_INDEXATION_GATE" ? "var(--amber)" : workflowsData?.publishing_pace?.status === "NORMAL" ? "var(--green)" : "var(--line)",
+          background: workflowsData?.publishing_pace?.status === "PAUSED_INDEXATION_GATE" ? "rgba(245,158,11,0.06)" : workflowsData?.publishing_pace?.status === "NORMAL" ? "rgba(34,197,94,0.04)" : "transparent",
+        }}
+      >
         <div className="panel-head">
-          <span className="panel-label">Blog Generation Settings</span>
-          <span className="badge badge-accent">{blogsGeneratedToday}/{dailyBlogTarget} today</span>
+          <span className="panel-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>Publishing Pace & Indexation Gate</span>
+            <span
+              className={`badge ${
+                workflowsData?.publishing_pace?.status === "PAUSED_INDEXATION_GATE" ? "badge-amber" : workflowsData?.publishing_pace?.status === "NORMAL" ? "badge-green" : ""
+              }`}
+            >
+              {workflowsData?.publishing_pace?.status === "PAUSED_INDEXATION_GATE"
+                ? "PAUSED — INDEXATION BELOW 80%"
+                : workflowsData?.publishing_pace?.status === "NORMAL"
+                  ? "CADENCE NORMAL — MEASURED"
+                  : "NOT MEASURED"}
+            </span>
+          </span>
+          <span style={{ fontSize: "11px", color: "var(--muted)", fontFamily: "monospace" }}>
+            Safety Threshold: 80% Indexed
+          </span>
         </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <div>
-            <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: "8px" }}>Generation Schedule</div>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {SCHEDULE_OPTIONS.map((option) => (
-                <button
-                  key={option.minutes}
-                  onClick={() => saveSchedule(option)}
-                  style={{
-                    background: activeSchedule?.minutes === option.minutes ? "#ff6b35" : "transparent",
-                    border: "1px solid #ff6b35",
-                    color: activeSchedule?.minutes === option.minutes ? "#000" : "#ff6b35",
-                    padding: "10px 16px",
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    fontSize: "13px",
-                    flex: "1 1 160px",
-                  }}
-                >
-                  {option.label}
-                  <span style={{ display: "block", fontSize: "11px", opacity: 0.7 }}>{option.description}</span>
-                </button>
-              ))}
-            </div>
-            <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "6px", textAlign: "center" }}>
-              Current: {activeSchedule ? `${activeSchedule.label} (${activeSchedule.minutes} min)` : `every ${generationInterval} min`} — One blog every {generationInterval < 60 ? `${generationInterval} minutes` : `${(generationInterval / 60).toFixed(1)} hours`}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "4px" }}>
-              <span style={{ color: "var(--muted)", textTransform: "uppercase", fontWeight: 600 }}>Today's progress</span>
-              <span style={{ fontWeight: 700 }}>{blogsGeneratedToday}/{dailyBlogTarget} blogs generated today</span>
-            </div>
-            <div style={{ width: "100%", height: "10px", background: "var(--line)", borderRadius: "4px", overflow: "hidden" }}>
-              <div style={{ width: `${Math.min(100, (blogsGeneratedToday / Math.max(1, dailyBlogTarget)) * 100)}%`, height: "100%", background: "var(--green)", transition: "width 0.3s" }} />
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: "4px" }}>Autonomous Generation Schedule</div>
-            <div style={{ fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-              {isGenerating ? (
-                <span style={{ color: "var(--accent)", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s infinite" }} />
-                  Generating now...
+        <div className="panel-body" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ fontSize: "12px", color: "var(--ink)", maxWidth: "800px", lineHeight: "1.4" }}>
+              {workflowsData?.publishing_pace?.status === "PAUSED_INDEXATION_GATE" ? (
+                <span>
+                  Indexation rate is {((workflowsData?.indexation_rate ?? 0) * 100).toFixed(1)}% (below 80% threshold). Adding more content into an unindexed site harms crawl budget. New publishing is throttled while the system prioritizes internal link graph optimization.
                 </span>
-              ) : (metrics?.pending_articles ?? 0) >= 10 ? (
-                <span style={{ color: "var(--amber)" }}>
-                  Waiting for approval: {metrics?.pending_articles} pending articles
+              ) : workflowsData?.indexation_rate != null ? (
+                <span>
+                  Indexation rate is {(workflowsData.indexation_rate * 100).toFixed(1)}%. Above 80% safety threshold. Autonomous drafting and publishing proceed at standard pace.
                 </span>
-              ) : blogsGeneratedToday >= dailyBlogTarget ? (
-                <span style={{ color: "var(--green)" }}>
-                  ✓ Daily target reached ({blogsGeneratedToday}/{dailyBlogTarget}) — resumes tomorrow at midnight
-                </span>
-              ) : nextBlogSeconds > 0 ? (
-                <>
-                  <span style={{ fontFamily: "monospace", color: "var(--ink)" }}>
-                    Next blog in: {Math.floor(nextBlogSeconds / 3600) > 0 ? `${Math.floor(nextBlogSeconds / 3600)}h ` : ""}{Math.floor((nextBlogSeconds % 3600) / 60)}m {String(nextBlogSeconds % 60).padStart(2, "0")}s
-                  </span>
-                  <span style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 400 }}>
-                    ({blogsGeneratedToday}/{dailyBlogTarget} generated today)
-                  </span>
-                  <button
-                    onClick={() => runAutonomousBlogGeneration()}
-                    disabled={isGenerating}
-                    style={{
-                      marginLeft: "auto",
-                      background: "var(--accent)",
-                      color: "#fff",
-                      border: "none",
-                      padding: "4px 10px",
-                      borderRadius: "4px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      cursor: isGenerating ? "not-allowed" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    ⚡ Run Now
-                  </button>
-                </>
               ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
-                  <span style={{ color: "var(--accent)" }}>Due now — autonomous loop evaluating next topic...</span>
-                  <button
-                    onClick={() => runAutonomousBlogGeneration()}
-                    disabled={isGenerating}
-                    style={{
-                      marginLeft: "auto",
-                      background: "var(--accent)",
-                      color: "#fff",
-                      border: "none",
-                      padding: "4px 10px",
-                      borderRadius: "4px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      cursor: isGenerating ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ⚡ Run Now
-                  </button>
-                </div>
+                <span>
+                  Indexation not measured yet — click Re-check Indexation to run a real check. Pace is unknown until then.
+                </span>
               )}
             </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", border: "1px solid var(--line)", background: "var(--panel-inner)" }}>
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 600 }}>AI topic selection</div>
-              <div style={{ fontSize: "10px", color: "var(--muted)" }}>{autoTopicSelection ? "AI picks all topics automatically (recommended)" : "Manual queue — you must enter topics"}</div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <Link
+                href="/indexation"
+                className="btn"
+                style={{ fontSize: "11px", padding: "6px 14px", whiteSpace: "nowrap", textDecoration: "none" }}
+              >
+                Inspect Center ↗
+              </Link>
+              <button
+                onClick={() => handleRunWorkflow("indexation_check")}
+                disabled={runningWorkflow === "indexation_check"}
+                className="btn btn-secondary"
+                style={{ fontSize: "11px", padding: "6px 14px", whiteSpace: "nowrap" }}
+              >
+                {runningWorkflow === "indexation_check" ? "Checking Indexation..." : "Re-check Indexation"}
+              </button>
             </div>
-            <button
-              onClick={() => setAutoTopicSelection((v) => !v)}
-              style={{
-                width: "42px",
-                height: "22px",
-                borderRadius: "11px",
-                background: autoTopicSelection ? "var(--green)" : "var(--line)",
-                border: "none",
-                position: "relative",
-                cursor: "pointer",
-                transition: "background 0.2s",
-              }}
-            >
-              <span style={{ position: "absolute", top: "2px", left: autoTopicSelection ? "22px" : "2px", width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 0.2s", display: "inline-block" }} />
-            </button>
           </div>
 
-          {/* WordPress Direct Integration Card */}
-          <div style={{ padding: "10px 12px", background: "var(--panel-inner)", border: wpConnected ? "1px solid var(--green)" : "1px solid var(--accent)", borderRadius: "4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <span style={{ fontSize: "11px", fontWeight: 700 }}>
-                WordPress Destination: accident.innovatcs.com ({wpUser})
-              </span>
-              <span className={`badge ${wpConnected ? "badge-green" : "badge-amber"}`} style={{ fontSize: "10px" }}>
-                {wpConnected ? `✓ Connected (${wpUser})` : "⚠️ Credentials Required"}
-              </span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10.5px", color: "var(--muted)" }}>
+              <span>Current Indexation: {workflowsData?.indexation_rate != null ? `${(workflowsData.indexation_rate * 100).toFixed(1)}%` : "—"}</span>
+              <span>Target Gate: 80.0%</span>
             </div>
-
-            {!wpConnected ? (
-              <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{ fontSize: "10px", color: "var(--muted)" }}>
-                  Enter your WordPress Username and Password / Application Password:
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "8px", alignItems: "center" }}>
-                  <input
-                    type="text"
-                    value={wpUser}
-                    onChange={(e) => setWpUser(e.target.value)}
-                    placeholder="Username (e.g. )"
-                    style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
-                  />
-                  <input
-                    type="password"
-                    value={wpAppPass}
-                    onChange={(e) => setWpAppPass(e.target.value)}
-                    placeholder="WP Password or Application Password"
-                    style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
-                  />
-                  <button
-                    onClick={handleVerifyAndSaveWp}
-                    disabled={wpTesting || !wpAppPass.trim()}
-                    className="btn btn-accent"
-                    style={{ padding: "8px 14px", fontSize: "11px", whiteSpace: "nowrap" }}
-                  >
-                    {wpTesting ? "Verifying..." : "Save & Verify"}
-                  </button>
-                </div>
-                <div style={{ fontSize: "10px", color: "var(--muted)" }}>
-                  Hint: Verified user on site is <strong style={{ color: "var(--accent)" }}></strong>. You can use your WordPress admin login password or an Application Password.
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--green)", marginTop: "4px" }}>
-                <span>✓ Active — generated blogs will automatically post as drafts directly into accident.innovatcs.com/wp-admin under <strong>{wpUser}</strong>!</span>
-                <button
-                  onClick={() => setWpConnected(false)}
-                  style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "10px", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  Change Credentials
-                </button>
-              </div>
-            )}
+            <div style={{ width: "100%", height: "8px", background: "var(--line)", borderRadius: "4px", position: "relative", overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${Math.min(100, Math.max(0, (workflowsData?.indexation_rate ?? 0) * 100))}%`,
+                  height: "100%",
+                  background: (workflowsData?.indexation_rate ?? 0) >= 0.8 ? "var(--green)" : "var(--amber)",
+                  transition: "width 0.4s ease",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: "80%",
+                  top: 0,
+                  bottom: 0,
+                  width: "2px",
+                  background: "var(--ink)",
+                  opacity: 0.8,
+                }}
+                title="80% Threshold Gate"
+              />
+            </div>
           </div>
-
-          <button
-            onClick={handleSaveBlogSettings}
-            disabled={blogSettingsSaving}
-            className="btn btn-accent"
-            style={{ width: "100%", padding: "10px", fontWeight: 600, fontSize: "11px" }}
-          >
-            {blogSettingsSaving ? "Saving..." : "Save Settings"}
-          </button>
         </div>
       </div>
 
-      {/* DEVELOPER MODE - Bypass Daily Limits */}
-      <div className="panel" style={{ marginBottom: "16px", borderColor: developerMode ? "var(--accent)" : "var(--line)", background: developerMode ? "rgba(255,107,53,0.08)" : "transparent" }}>
+      {/* 9 INDEPENDENT SEO WORKFLOWS */}
+      <div className="panel" style={{ marginBottom: "16px" }}>
         <div className="panel-head">
           <span className="panel-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: developerMode ? "var(--accent)" : "var(--muted)", display: "inline-block" }} />
-            Developer Mode
+            <span>⚡ 9 Independent SEO Workflows</span>
+            <span className="badge badge-accent">Modular Execution Grid</span>
           </span>
-          <span className={`badge ${developerMode ? "badge-accent" : ""}`} style={{ fontSize: "10px" }}>{developerMode ? "BYPASS ON" : "OFF"}</span>
+          <span style={{ fontSize: "10.5px", color: "var(--muted)" }}>
+            Run envelopes · Diff tracking · Executive narrative summaries
+          </span>
         </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", border: "1px solid var(--line)", background: "var(--panel-inner)" }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Bypass Daily Limits</div>
-              <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px", lineHeight: "1.4" }}>
-                When ON, autonomous ignores daily target ({dailyBlogTarget}/day) and interval ({generationInterval} min) — generates on every 10-min check. Use for testing.
-              </div>
-              {developerMode && (
-                <div style={{ fontSize: "10px", color: "var(--accent)", fontWeight: 600, marginTop: "6px" }}>
-                  ⚠️ Daily limits bypassed — unlimited generation until turned OFF
+        <div className="panel-body" style={{ padding: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "14px" }}>
+            {(workflowsData?.workflows || [
+              {
+                job_name: "indexation_check",
+                display_name: "Indexation Check",
+                category: "technical",
+                status: "never_run",
+                description: "Inspects submitted URLs against sitemap and GSC indexation status and calculates indexation rate.",
+                summary: "No check run yet — click a workflow Run button to execute for real.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "search_performance_report",
+                display_name: "Search Performance Report",
+                category: "intelligence",
+                status: "never_run",
+                description: "Analyzes impressions, clicks, CTR, and tracks striking-distance queries (pos 11-20).",
+                summary: "Search console metrics awaiting trigger.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "site_health",
+                display_name: "Site Health & Vitals",
+                category: "technical",
+                status: "never_run",
+                description: "Runs Core Web Vitals audit, broken link crawl, robots.txt, and sitemap validation.",
+                summary: "Technical site vitals audit ready.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "on_page_audit",
+                display_name: "On-Page SEO Audit",
+                category: "technical",
+                status: "never_run",
+                description: "Validates title lengths, meta descriptions, single H1 tags, schema markup, and image alts.",
+                summary: "On-page structural QA gate ready.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "internal_linking",
+                display_name: "Internal Link Optimizer",
+                category: "links",
+                status: "never_run",
+                description: "Finds orphan pages, generates contextual anchor links, and flags generic anchors.",
+                summary: "Graph linking engine ready.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "keyword_research",
+                display_name: "Data-Driven Keyword Research",
+                category: "content",
+                status: "never_run",
+                description: "Discovers high-intent cluster topics with real volume, difficulty, and SERP intent.",
+                summary: "Real data keyword discovery awaiting run.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "content_pipeline",
+                display_name: "Content Pipeline (Drafts Only)",
+                category: "content",
+                status: "never_run",
+                description: "Writes data-driven articles with multi-dimensional QA gates and staged preview links.",
+                summary: "Deterministic QA drafting engine ready.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "ai_citation_monitoring",
+                display_name: "AI-Citation & AEO Monitoring",
+                category: "intelligence",
+                status: "never_run",
+                description: "Monitors citations across Perplexity, ChatGPT Search, Claude, and Google AI Overviews.",
+                summary: "Generative engine optimization tracker ready.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+              {
+                job_name: "content_optimization",
+                display_name: "Content Decay & Optimization",
+                category: "content",
+                status: "never_run",
+                description: "Detects traffic decay and cannibalization; turns findings into actionable rewrite tasks.",
+                summary: "Decay detector and refresh task manager ready.",
+                diff: { fixed: 0, new: 0, still_open: 0, regressed: 0 },
+              },
+            ] as any[]).map((wf: any) => {
+              const isRunning = runningWorkflow === wf.job_name;
+              const categoryColor =
+                wf.category === "technical"
+                  ? "var(--accent)"
+                  : wf.category === "content"
+                  ? "#8b5cf6"
+                  : wf.category === "links"
+                  ? "#06b6d4"
+                  : "var(--green)";
+
+              return (
+                <div
+                  key={wf.job_name}
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: "6px",
+                    background: "var(--panel-inner)",
+                    padding: "14px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span
+                          style={{
+                            fontSize: "9px",
+                            textTransform: "uppercase",
+                            padding: "2px 6px",
+                            borderRadius: "3px",
+                            fontWeight: 700,
+                            letterSpacing: "0.5px",
+                            border: `1px solid ${categoryColor}`,
+                            color: categoryColor,
+                          }}
+                        >
+                          {wf.category}
+                        </span>
+                        <span
+                          className={`badge ${
+                            wf.status === "completed"
+                              ? "badge-green"
+                              : wf.status === "failed"
+                              ? "badge-red"
+                              : wf.status === "running"
+                              ? "badge-accent"
+                              : ""
+                          }`}
+                          style={{ fontSize: "9.5px" }}
+                        >
+                          {wf.status === "completed" ? "Done" : wf.status === "running" ? "Running..." : wf.status === "failed" ? "Failed" : wf.status === "never_run" ? "Not run" : wf.status}
+                        </span>
+                      </div>
+                      {wf.last_run && (
+                        <span style={{ fontSize: "9px", color: "var(--muted)", fontFamily: "monospace" }}>
+                          {new Date(wf.last_run).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)", marginBottom: "4px" }}>
+                      {wf.display_name}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "8px", lineHeight: "1.4" }}>
+                      {wf.description}
+                    </div>
+
+                    {/* EXECUTIVE NARRATIVE SUMMARY */}
+                    <div
+                      style={{
+                        padding: "8px 10px",
+                        background: "var(--surface)",
+                        borderLeft: `3px solid ${categoryColor}`,
+                        borderRadius: "2px",
+                        fontSize: "10.5px",
+                        color: "var(--ink)",
+                        lineHeight: "1.4",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: "var(--muted)", display: "block", fontSize: "9px", textTransform: "uppercase", marginBottom: "2px" }}>
+                        Executive Summary
+                      </span>
+                      {wf.summary || "No run executed yet."}
+                    </div>
+
+                    {/* DIFF TRACKING */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "4px", fontSize: "10px", textAlign: "center" }}>
+                      <div style={{ padding: "4px", background: "rgba(34,197,94,0.08)", borderRadius: "3px" }}>
+                        <div style={{ color: "var(--green)", fontWeight: 700 }}>+{wf.diff?.fixed ?? 0}</div>
+                        <div style={{ fontSize: "8.5px", color: "var(--muted)" }}>Fixed</div>
+                      </div>
+                      <div style={{ padding: "4px", background: "rgba(59,130,246,0.08)", borderRadius: "3px" }}>
+                        <div style={{ color: "#3b82f6", fontWeight: 700 }}>+{wf.diff?.new ?? 0}</div>
+                        <div style={{ fontSize: "8.5px", color: "var(--muted)" }}>New</div>
+                      </div>
+                      <div style={{ padding: "4px", background: "rgba(245,158,11,0.08)", borderRadius: "3px" }}>
+                        <div style={{ color: "var(--amber)", fontWeight: 700 }}>{wf.diff?.still_open ?? 0}</div>
+                        <div style={{ fontSize: "8.5px", color: "var(--muted)" }}>Open</div>
+                      </div>
+                      <div style={{ padding: "4px", background: "rgba(239,68,68,0.08)", borderRadius: "3px" }}>
+                        <div style={{ color: "var(--red)", fontWeight: 700 }}>{wf.diff?.regressed ?? 0}</div>
+                        <div style={{ fontSize: "8.5px", color: "var(--muted)" }}>Regressed</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+                    <button
+                      onClick={() => handleRunWorkflow(wf.job_name)}
+                      disabled={isRunning || runningWorkflow !== null}
+                      className="btn btn-secondary"
+                      style={{
+                        flex: 1,
+                        padding: "8px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: "6px",
+                        cursor: isRunning || runningWorkflow !== null ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {isRunning ? (
+                        <>
+                          <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s infinite" }} />
+                          Executing...
+                        </>
+                      ) : (
+                        `Run ${wf.display_name}`
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setActiveWorkflowModal(wf)}
+                      className="btn"
+                      title="View Run Envelope & Diff Breakdown"
+                      style={{
+                        padding: "8px 10px",
+                        fontSize: "11px",
+                        background: "var(--surface)",
+                        border: "1px solid var(--line)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Diffs
+                    </button>
+                  </div>
                 </div>
-              )}
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* AUTOMATION LIMITS & TRANSPARENCY NOTICE */}
+      <div
+        className="panel"
+        style={{
+          marginBottom: "16px",
+          border: "1px solid var(--line)",
+          background: "linear-gradient(135deg, rgba(255,107,53,0.04) 0%, rgba(139,92,246,0.04) 100%)",
+          padding: "16px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+          <span style={{ fontSize: "20px" }}>🛡️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--ink)", marginBottom: "4px" }}>
+              Automation Transparency & Engineering Boundaries
             </div>
-            <button
-              onClick={handleToggleDeveloperMode}
-              disabled={devModeSaving}
-              style={{
-                width: "48px",
-                height: "24px",
-                borderRadius: "12px",
-                background: developerMode ? "#ff6b35" : "var(--line)",
-                border: "none",
-                position: "relative",
-                cursor: "pointer",
-                transition: "background 0.2s",
-                marginLeft: "16px",
-                flexShrink: 0,
-              }}
-              title={developerMode ? "Click to disable" : "Click to enable"}
-            >
-              <span style={{ position: "absolute", top: "2px", left: developerMode ? "26px" : "2px", width: "20px", height: "20px", borderRadius: "50%", background: "#fff", transition: "left 0.2s", display: "inline-block", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
-            </button>
+            <div style={{ fontSize: "11.5px", color: "var(--muted)", lineHeight: "1.5", marginBottom: "10px" }}>
+              RankForge automates technical hygiene, on-page optimization, and editorial workflows. However, Google algorithmically devalues synthetic link building and unearned authority. We adhere to transparent boundaries:
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px", fontSize: "11px" }}>
+              <div style={{ padding: "10px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "4px" }}>
+                <div style={{ color: "var(--green)", fontWeight: 700, marginBottom: "4px" }}>
+                  ✅ Fully Automated by RankForge
+                </div>
+                <ul style={{ margin: 0, paddingLeft: "16px", color: "var(--muted)", lineHeight: "1.4" }}>
+                  <li>Data-driven keyword clustering & intent mapping</li>
+                  <li>Deterministic multi-dimensional QA (titles, H1s, facts)</li>
+                  <li>Internal link graph injection & orphan page fixes</li>
+                  <li>Indexation pacing gates & crawl-budget protection</li>
+                  <li>Automated decay detection & rewrite staging</li>
+                </ul>
+              </div>
+              <div style={{ padding: "10px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "4px" }}>
+                <div style={{ color: "var(--amber)", fontWeight: 700, marginBottom: "4px" }}>
+                  🛑 Requires External Human PR & Authority
+                </div>
+                <ul style={{ margin: 0, paddingLeft: "16px", color: "var(--muted)", lineHeight: "1.4" }}>
+                  <li>Tier-1 editorial backlinks (Forbes, NYT, industry leaders)</li>
+                  <li>Real-world brand mentions, press releases & podcasts</li>
+                  <li>Physical domain authority & corporate trademark trust</li>
+                  <li>Legal representation & certified professional sign-offs</li>
+                </ul>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: "10px", color: "var(--muted)", textAlign: "center" }}>
-            Status: {developerMode ? "Bypass active — next blog will generate regardless of daily count or timer" : `Enforced — ${blogsGeneratedToday}/${dailyBlogTarget} today, next in ${nextBlogInMinutes} min`}
+        </div>
+      </div>
+
+      {/* WORDPRESS DRAFT DESTINATION CARD */}
+      <div className="panel" style={{ marginBottom: "16px", borderColor: wpConnected ? "var(--green)" : "var(--accent)" }}>
+        <div className="panel-head">
+          <span className="panel-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>📝 WordPress Destination (Drafts Only)</span>
+            <span className={`badge ${wpConnected ? "badge-green" : "badge-amber"}`} style={{ fontSize: "10px" }}>
+              {wpConnected ? `✓ Connected (${wpUser})` : "⚠️ Credentials Required"}
+            </span>
+          </span>
+          <span style={{ fontSize: "10px", color: "var(--muted)" }}>
+            Draft preview URL: ?p=ID&preview=true
+          </span>
+        </div>
+        <div className="panel-body" style={{ padding: "14px 16px" }}>
+          <div style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "10px" }}>
+            Destination: <strong>{domain || "No site selected"}</strong>{wpUser ? ` · User: ${wpUser}` : ""}. RankForge saves all articles strictly as <strong>WordPress Drafts with preview links</strong> for human review.
           </div>
+
+          {!wpConnected ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ fontSize: "10px", color: "var(--muted)" }}>
+                Enter your WordPress Username and Password / Application Password:
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "8px", alignItems: "center" }}>
+                <input
+                  type="text"
+                  value={wpUser}
+                  onChange={(e) => setWpUser(e.target.value)}
+                  placeholder="Username (e.g. admin)"
+                  style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
+                />
+                <input
+                  type="password"
+                  value={wpAppPass}
+                  onChange={(e) => setWpAppPass(e.target.value)}
+                  placeholder="WP Password or Application Password"
+                  style={{ padding: "8px", fontSize: "11px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "monospace" }}
+                />
+                <button
+                  onClick={handleVerifyAndSaveWp}
+                  disabled={wpTesting || !wpAppPass.trim()}
+                  className="btn btn-accent"
+                  style={{ padding: "8px 14px", fontSize: "11px", whiteSpace: "nowrap" }}
+                >
+                  {wpTesting ? "Verifying..." : "Save & Verify"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--green)" }}>
+              <span>Active — generated articles will stage as drafts in {domain || "the selected site"} under <strong>{wpUser}</strong>.</span>
+              <button
+                onClick={() => setWpConnected(false)}
+                style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "10px", cursor: "pointer", textDecoration: "underline" }}
+              >
+                Change Credentials
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1820,6 +2209,128 @@ export default function HomePage() {
                 onClick={confirmDeleteArticle}
               >
                 Delete Draft
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WORKFLOW RUN ENVELOPE MODAL */}
+      {activeWorkflowModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.65)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+          onClick={() => setActiveWorkflowModal(null)}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              borderRadius: "8px",
+              maxWidth: "560px",
+              width: "100%",
+              padding: "24px",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <span className="badge badge-accent">Workflow Run Envelope</span>
+                  <span className={`badge ${activeWorkflowModal.status === "failed" ? "badge-red" : "badge-green"}`}>
+                    {activeWorkflowModal.status || "Completed"}
+                  </span>
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)" }}>
+                  {activeWorkflowModal.workflow?.display_name || activeWorkflowModal.display_name || activeWorkflowModal.job_name || "Workflow Execution"}
+                </div>
+              </div>
+              <button
+                className="panel-action"
+                onClick={() => setActiveWorkflowModal(null)}
+                style={{ fontSize: "16px", cursor: "pointer", background: "none", border: "none", color: "var(--muted)" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* EXECUTIVE SUMMARY */}
+            <div style={{ padding: "12px", background: "var(--panel-inner)", borderLeft: "3px solid var(--accent)", borderRadius: "4px", fontSize: "11.5px", lineHeight: "1.5", marginBottom: "14px", color: "var(--ink)" }}>
+              <div style={{ fontSize: "10px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", marginBottom: "4px" }}>
+                Executive Written Summary
+              </div>
+              {activeWorkflowModal.summary || activeWorkflowModal.narrative_summary || "Workflow completed successfully."}
+            </div>
+
+            {/* DIFF METRICS */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "16px", textAlign: "center" }}>
+              <div style={{ padding: "8px", background: "rgba(34,197,94,0.08)", borderRadius: "4px", border: "1px solid rgba(34,197,94,0.2)" }}>
+                <div style={{ color: "var(--green)", fontWeight: 700, fontSize: "14px" }}>+{activeWorkflowModal.diff?.fixed ?? activeWorkflowModal.fixed_count ?? 0}</div>
+                <div style={{ fontSize: "9px", color: "var(--muted)" }}>Issues Fixed</div>
+              </div>
+              <div style={{ padding: "8px", background: "rgba(59,130,246,0.08)", borderRadius: "4px", border: "1px solid rgba(59,130,246,0.2)" }}>
+                <div style={{ color: "#3b82f6", fontWeight: 700, fontSize: "14px" }}>+{activeWorkflowModal.diff?.new ?? activeWorkflowModal.new_count ?? 0}</div>
+                <div style={{ fontSize: "9px", color: "var(--muted)" }}>New Found</div>
+              </div>
+              <div style={{ padding: "8px", background: "rgba(245,158,11,0.08)", borderRadius: "4px", border: "1px solid rgba(245,158,11,0.2)" }}>
+                <div style={{ color: "var(--amber)", fontWeight: 700, fontSize: "14px" }}>{activeWorkflowModal.diff?.still_open ?? activeWorkflowModal.still_open_count ?? 0}</div>
+                <div style={{ fontSize: "9px", color: "var(--muted)" }}>Still Open</div>
+              </div>
+              <div style={{ padding: "8px", background: "rgba(239,68,68,0.08)", borderRadius: "4px", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <div style={{ color: "var(--red)", fontWeight: 700, fontSize: "14px" }}>{activeWorkflowModal.diff?.regressed ?? activeWorkflowModal.regressed_count ?? 0}</div>
+                <div style={{ fontSize: "9px", color: "var(--muted)" }}>Regressed</div>
+              </div>
+            </div>
+
+            {/* NEXT ACTIONS */}
+            {((activeWorkflowModal.next_actions || []).length > 0 || (activeWorkflowModal.workflow?.next_actions || []).length > 0) && (
+              <div style={{ marginBottom: "16px" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--ink)", marginBottom: "6px" }}>
+                  Recommended Next Actions:
+                </div>
+                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "11px", color: "var(--muted)", lineHeight: "1.5" }}>
+                  {(activeWorkflowModal.next_actions || activeWorkflowModal.workflow?.next_actions || []).map((act: string, aIdx: number) => (
+                    <li key={aIdx}>{act}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setActiveWorkflowModal(null)}
+                style={{ fontSize: "11px", padding: "6px 16px" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AUTO-PUBLISH OPT-IN CONFIRM MODAL */}
+      {autoPublishConfirmOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", padding: "24px", maxWidth: "460px", width: "90%", borderRadius: "4px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--amber)" }}>⚠️ Explicit Opt-In: Enable Auto-Publish?</h3>
+            <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "16px", lineHeight: "1.5" }}>
+              By default, RankForge stages all content as WordPress drafts and waits in the Approvals Queue for human sign-off. Enabling auto-publish bypasses human review and automatically pushes passing articles live.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button className="btn" onClick={() => setAutoPublishConfirmOpen(false)}>Cancel</button>
+              <button className="btn btn-accent" onClick={() => confirmToggleAutoPublish(true)}>
+                Enable Auto-Publish
               </button>
             </div>
           </div>

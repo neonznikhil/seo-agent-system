@@ -55,9 +55,10 @@ async def test_refresh_decaying_article_generates_and_stages_approval():
     }
 
     with patch("services.serper_service.serper_service.search", new=AsyncMock(return_value={"organic": [{"title": "Texas Guide", "snippet": "Text"}]})):
-        with patch("database.call_nim_llm", new=AsyncMock(return_value='{"gaps": ["New laws"], "sections_to_add": ["2026 caps"], "outdated_content": ["Old limits"]}')):
-            with patch("agents.crew_blog_writer.run_crew_blog_writer_with_retry", new=AsyncMock(return_value=mock_crew_output)):
-                approval = await refresh_decaying_article(queue_item)
+        with patch("services.content_refresh.call_nim_llm", new=AsyncMock(return_value='{"gaps": ["New laws"], "sections_to_add": ["2026 caps"], "outdated_content": ["Old limits"]}')):
+            with patch("database.call_nim_llm", new=AsyncMock(return_value='{"gaps": ["New laws"], "sections_to_add": ["2026 caps"], "outdated_content": ["Old limits"]}')):
+                with patch("agents.crew_blog_writer.run_crew_blog_writer_with_retry", new=AsyncMock(return_value=mock_crew_output)):
+                    approval = await refresh_decaying_article(queue_item)
                 assert approval is not None
                 assert approval["approval_type"] == "refresh"
                 assert approval["type"] == "refresh_update"

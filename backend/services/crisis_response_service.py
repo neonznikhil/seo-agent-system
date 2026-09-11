@@ -41,12 +41,13 @@ class CrisisResponseService:
         disavow_fix = {
             "website_id": self.website_id,
             "fix_type": "disavow_file_generation",
-            "title": "Crisis Response: Disavow 3 Suspicious Spam Domains",
-            "details": {
+            "fix_payload": {
+                "title": "Crisis Response: Disavow 3 Suspicious Spam Domains",
                 "suspicious_domains": suspicious_domains,
                 "reason": "Sudden inbound link spike from DR < 10 toxic domains."
             },
-            "status": "pending_human_approval",
+            "status": "pending_approval",
+            "proposed_by": "crisis_response",
             "created_at": datetime.utcnow().isoformat()
         }
         try:

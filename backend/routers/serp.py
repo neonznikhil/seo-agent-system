@@ -74,27 +74,20 @@ async def get_serp_monitor(
 
 @router.get("/volatility")
 async def get_serp_volatility():
-    """Retrieve Google SERP Volatility Index from serp_data or sensor."""
+    """Retrieve Google SERP Volatility Index from measured serp_data.
+
+    Never returns an invented score: no measured row means HTTP 503 with
+    the reason, so callers show "No data" instead of a fake 4.2/normal.
+    """
     # First try real serp_data aggregation
     try:
         supabase = get_supabase()
         rows = supabase.table("serp_data").select("volatility_score, created_at").order("created_at", desc=True).limit(1).execute().data or []
         if rows and rows[0].get("volatility_score") is not None:
             return {"success": True, "volatility": {"score": float(rows[0]["volatility_score"]), "status": "measured", "last_updated": rows[0].get("created_at")}}
-    except Exception:
-        pass
-    try:
-        from services.monitoring_service import MonitoringService
-        ms = MonitoringService(website_id="default")
-        vol = await ms.get_serp_volatility_index()
-        return {"success": True, "volatility": vol}
     except Exception as e:
-        logger.warning(f"SERP volatility check warning: {e}")
-        return {
-            "success": True,
-            "volatility": {
-                "score": 4.2,
-                "status": "normal",
-                "last_updated": datetime.utcnow().isoformat()
-            }
-        }
+        logger.warning(f"SERP volatility DB note: {e}")
+    raise HTTPException(
+        status_code=503,
+        detail="SERP volatility not available: no measured volatility row in serp_data. Run a SERP sweep first."
+    )

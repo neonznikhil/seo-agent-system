@@ -480,16 +480,17 @@ class WordPressService:
                             draft = response.json()
                             draft_id = draft.get("id")
                             edit_url = f"{base_url}/wp-admin/post.php?post={draft_id}&action=edit"
-                            link = draft.get("link") or edit_url
-                            logger.info(f"Successfully created WordPress draft {draft_id} at {edit_url}")
+                            preview_url = f"{base_url.rstrip('/')}/?p={draft_id}&preview=true"
+                            link = draft.get("link") or preview_url
+                            logger.info(f"Successfully created WordPress draft {draft_id} (preview: {preview_url}, edit: {edit_url})")
 
                             # Sync to Supabase content_log if matching row
                             try:
                                 supabase = get_supabase()
                                 supabase.table("content_log").update({
                                     "wp_post_id": draft_id,
-                                    "wp_draft_url": link,
-                                    "wordpress_url": link,
+                                    "wp_draft_url": preview_url,
+                                    "wordpress_url": preview_url,
                                     "status": "draft"
                                 }).eq("website_id", website_id).eq("title", title).execute()
                             except Exception as e:
@@ -499,9 +500,10 @@ class WordPressService:
                                 "success": True,
                                 "wp_post_id": draft_id,
                                 "edit_url": edit_url,
-                                "link": link,
-                                "wordpress_url": link,
-                                "message": "Draft created in WordPress ✅"
+                                "preview_url": preview_url,
+                                "link": preview_url,
+                                "wordpress_url": preview_url,
+                                "message": "Draft created in WordPress with preview link ✅"
                             }
                         elif response.status_code == 403:
                             last_error_msg = "403 Forbidden (Hostinger/Wordfence REST API blocked)"
@@ -590,7 +592,15 @@ class WordPressService:
         user, password = self._get_auth_tuple()
         headers = self._get_wp_headers()
 
+        # VERIFIED RECEIPTS ONLY: published=True requires a 200/201 from WP
+        # followed by a re-GET confirming the post exists with status publish.
+        # Anything else returns published=False with the reason — never an
+        # optimistic True.
+        published_ok = False
+        verified_url = None
+        failure_reason = "WordPress credentials not configured"
         if base_url and user and password and wp_post_id:
+            failure_reason = "All publish endpoints failed"
             endpoints = [
                 f"{base_url}/wp-json/wp/v2/posts/{wp_post_id}",
                 f"{base_url}/?rest_route=/wp/v2/posts/{wp_post_id}",
@@ -611,24 +621,61 @@ class WordPressService:
                             )
                         if response.status_code in (200, 201):
                             logger.info(f"Published WordPress post {wp_post_id}")
+                            confirmed = await self._confirm_post_published(
+                                client, base_url, user, password, wp_post_id)
+                            if confirmed["ok"]:
+                                published_ok = True
+                                verified_url = confirmed.get("url")
+                                failure_reason = ""
+                            else:
+                                failure_reason = confirmed.get("reason", "Publish not confirmed")
                             break
+                        failure_reason = f"Publish POST returned HTTP {response.status_code}"
                 except Exception as e:
                     logger.error(f"Failed to publish WordPress post {wp_post_id} on {ep}: {e}")
+                    failure_reason = str(e)[:200]
 
-        # Log critical action
+        # Log critical action with the REAL outcome
         try:
             self.supabase.table("critical_action_logs").insert({
                 "action": "publish_post",
                 "target_id": str(wp_post_id or ""),
                 "approved_by": user_id,
-                "status": "success",
-                "payload": {"website_id": website_id, "wp_post_id": wp_post_id},
+                "status": "success" if published_ok else "failed",
+                "payload": {"website_id": website_id, "wp_post_id": wp_post_id,
+                            "url": verified_url, "reason": failure_reason},
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
         except Exception as e:
             logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
-        return {"published": True, "post_id": wp_post_id}
+        if not published_ok:
+            return {"published": False, "post_id": wp_post_id,
+                    "reason": failure_reason or "Publish failed"}
+        return {"published": True, "post_id": wp_post_id, "url": verified_url}
+
+    async def _confirm_post_published(self, client, base_url: str, user: str,
+                                        password: str, wp_post_id: Any) -> Dict[str, Any]:
+        """Re-GET the post and confirm it exists with status 'publish'."""
+        get_endpoints = [
+            f"{base_url}/wp-json/wp/v2/posts/{wp_post_id}",
+            f"{base_url}/?rest_route=/wp/v2/posts/{wp_post_id}",
+        ]
+        for ep in get_endpoints:
+            try:
+                resp = await client.get(ep, auth=(user, password))
+                if resp.status_code in (200, 201):
+                    try:
+                        body = resp.json()
+                    except Exception:
+                        body = {}
+                    if isinstance(body, dict) and body.get("status") == "publish":
+                        return {"ok": True, "url": body.get("link")}
+                    return {"ok": False,
+                            "reason": f"Post {wp_post_id} status is '{body.get('status') if isinstance(body, dict) else '?'}', not publish"}
+            except Exception as e:
+                logger.debug(f"[WP] confirm GET note {ep}: {e}")
+        return {"ok": False, "reason": f"Could not re-GET post {wp_post_id} to confirm publish"}
 
     async def get_posts(self, per_page: int = 10, page: int = 1, status: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
         """Fetch posts from WordPress."""

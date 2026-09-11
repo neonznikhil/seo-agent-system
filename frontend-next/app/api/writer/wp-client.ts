@@ -10,9 +10,11 @@ export interface WpCredentials {
 const CREDENTIALS_FILE = path.join(process.cwd(), ".wp_credentials.json");
 
 function loadStoredCredentials(): WpCredentials {
+  // No hardcoded site or username: credentials must come from env or from
+  // an explicit user save. Empty values mean "not configured".
   const fallback: WpCredentials = {
-    site_url: process.env.WORDPRESS_SITE_URL || "https://accident.innovatcs.com",
-    username: process.env.WORDPRESS_USERNAME || "nikhil_d",
+    site_url: process.env.WORDPRESS_SITE_URL || "",
+    username: process.env.WORDPRESS_USERNAME || "",
     app_password: process.env.WORDPRESS_APP_PASSWORD || "",
   };
 

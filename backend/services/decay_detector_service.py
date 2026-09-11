@@ -82,6 +82,24 @@ class DecayDetectorService:
                 }
                 
                 supabase.table("content_decay_logs").insert(decay_log).execute()
+
+                # Turn decay and cannibalization findings into rewrite tasks, not just alerts
+                try:
+                    supabase.table("tasks").insert({
+                        "id": str(uuid.uuid4()),
+                        "website_id": website_id,
+                        "task_type": "content_rewrite",
+                        "title": f"Rewrite decaying content: {recent.get('title') or url}",
+                        "description": f"Page dropped {decay_percent}% in clicks ({previous.get('clicks', 0)} -> {recent.get('clicks', 0)}) and rank moved {previous.get('position', 0)} -> {recent.get('position', 0)}. Diagnosis: {diagnosis}",
+                        "priority": "high" if decay_percent > 30 else "medium",
+                        "status": "pending",
+                        "target_url": url,
+                        "primary_keyword": recent.get("primary_keyword", ""),
+                        "created_at": datetime.utcnow().isoformat()
+                    }).execute()
+                    logger.info(f"[DecayDetector] Dispatched content_rewrite task for {url}")
+                except Exception as _te:
+                    logger.debug(f"[DecayDetector] Could not insert rewrite task: {_te}")
                 
                 decayed_pages.append({
                     "url": url,
