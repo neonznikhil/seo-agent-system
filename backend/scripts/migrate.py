@@ -17,17 +17,43 @@ def get_db_url() -> str | None:
 
 
 def run_migrations() -> dict:
-    """Execute SQL migrations in backend/schemas or inform user to run master script."""
+    """Execute SQL migrations in backend/schemas or repo root, in README order."""
     print("----------------------------------------------------------------")
     print("           RANKFORGE DATABASE MIGRATION RUNNER                  ")
     print("----------------------------------------------------------------")
 
     schemas_dir = Path(__file__).resolve().parent.parent / "schemas"
-    if not schemas_dir.exists():
-        logger.warning(f"Schemas directory not found at {schemas_dir}")
+    repo_root = Path(__file__).resolve().parent.parent.parent
+
+    sql_files: list[str] = []
+
+    # 1. Preferred: backend/schemas/*.sql
+    if schemas_dir.exists():
+        sql_files = sorted(glob.glob(str(schemas_dir / "*.sql")))
+
+    # 2. Fallback: repo-root supabase_migration_*.sql in README order
+    if not sql_files:
+        _ordered_names = [
+            "supabase_master_complete.sql",
+            "supabase_migration_missing.sql",
+            "supabase_migration_aeo.sql",
+            "supabase_migration_vectors.sql",
+            "supabase_migration_rls.sql",
+            "supabase_migration_indexation_runs.sql",
+        ]
+        for name in _ordered_names:
+            candidate = repo_root / name
+            if candidate.exists():
+                sql_files.append(str(candidate))
+        # Pick up any remaining root *.sql files not in the ordered list
+        for p in sorted(repo_root.glob("*.sql")):
+            if str(p) not in sql_files:
+                sql_files.append(str(p))
+
+    if not sql_files:
+        logger.warning(f"No SQL migration files found in {schemas_dir} or {repo_root}")
         return {"success": False, "applied": []}
 
-    sql_files = sorted(glob.glob(str(schemas_dir / "*.sql")))
     applied = []
 
     db_url = get_db_url()
@@ -74,8 +100,8 @@ def run_migrations() -> dict:
                     applied.append(file_name)
                     print(f"  [SUCCESS]   {file_name.ljust(35)} (Applied)")
                 except Exception as e:
-                    print(f"  [ERROR]     {file_name.ljust(35)}: {e}")
-                    logger.error(f"Failed to execute {file_name}: {e}")
+                    print(f"  [ERROR]     {file_name.ljust(35)} {e}")
+                    logger.warning(f"Failed to execute {file_name}: {e}")
 
             cur.close()
             conn.close()
@@ -92,13 +118,9 @@ def run_migrations() -> dict:
         supabase = get_supabase()
         print("  [NOTICE] Direct Postgres URL (DATABASE_URL) is not set in backend/.env.")
         print("  PostgREST does not support arbitrary DDL (CREATE/ALTER TABLE).")
-        print("  To apply migrations, run these in your Supabase SQL Editor (repo root, in order):")
-        print("    1. supabase_master_complete.sql")
-        print("    2. supabase_migration_missing.sql")
-        print("    3. supabase_migration_aeo.sql")
-        print("    4. supabase_migration_vectors.sql  (creates match_knowledge / match_brain_memory RPCs)")
-        print("    5. supabase_migration_rls.sql")
-        print("    6. supabase_migration_indexation_runs.sql  (indexation_checks, runs, brand_voice_guides, fact_verifications)")
+        print("  To apply migrations, run these in your Supabase SQL Editor (in order):")
+        for f in sql_files:
+            print(f"    - {Path(f).name}")
         print("  Plus backend/schemas/009_autonomous_settings_missing.sql for auto_refresh + keyword_research.intent.")
 
         # Check existing tables via REST probe

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend } from "../../../_lib/proxy";
 import { generateNewArticle } from "../../articles-store";
 import { updateSchedule, sharedSchedule } from "../../../autonomous/schedule-store";
 import { createRealWordPressDraft, updateSavedWpCredentials } from "../../wp-client";
@@ -8,7 +9,27 @@ export async function POST(
   { params }: { params: Promise<{ website_id: string }> }
 ) {
   const { website_id } = await params;
+  const backendPath = `/api/writer/${encodeURIComponent(website_id)}/generate`;
+
+  try {
+    const backendRes = await proxyToBackend(backendPath, req);
+    if (backendRes) {
+      const text = await backendRes.text();
+      return new NextResponse(text, {
+        status: backendRes.status,
+        headers: {
+          "Content-Type": backendRes.headers.get("content-type") || "application/json",
+        },
+      });
+    }
+  } catch {
+    // Fall through to local stub if proxy fails or backend is local/undefined
+  }
+
   const body = await req.json().catch(() => ({}));
+  if (!body?.topic && !body?.title) {
+    return NextResponse.json({ success: false, error: "topic or title is required" }, { status: 400 });
+  }
 
   // Update WordPress credentials if supplied in the request body
   if (body.wordpress_app_password || body.app_password) {

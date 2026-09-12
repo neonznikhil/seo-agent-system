@@ -1140,6 +1140,20 @@ def build_default_15point_outline(target_keyword: str, kb_chunks: list = None, s
         b3 = "Proactively addressing common misconceptions safeguards your investment and accelerates time-to-value."
         b4 = f"Executing a structured 3-step action plan positions your team to achieve predictable, measurable success with {clean_kw}."
 
+    # Auto-detect personal injury from topic keywords when no bundle is provided
+    _PI_KEYWORDS = {
+        "accident", "injury", "injuries", "compensation", "claim", "claims",
+        "insurance", "lawyer", "attorney", "settlement", "settlements", "crash",
+        "fault", "medical", "evidence", "legal", "personal", "wrongful", "death",
+        "car", "truck", "motorcycle", "vehicle", "vehicles", "negligence",
+        "liability", "damages", "statute", "limitation", "limitations", "deadline",
+        "tolling", "dismiss", "lawsuit", "negotiating"
+    }
+    if not is_personal_injury:
+        topic_words = set(re.findall(r"[a-z]{3,}", clean_kw.lower()))
+        if bool(topic_words & _PI_KEYWORDS):
+            is_personal_injury = True
+
     # Dynamic PAA / FAQs from grounding bundle or fallback
     paa_source = bundle.get("paa_questions") or paa_questions
     if paa_source and len(paa_source) >= 4:
@@ -1153,14 +1167,60 @@ def build_default_15point_outline(target_keyword: str, kb_chunks: list = None, s
             f"What are the best practices for {clean_kw} in 2026?"
         ]
 
+    def _faq_answer(question: str, kw: str, niche: str, pi: bool) -> str:
+        q = question.lower()
+        if pi:
+            if "what is" in q and ("statute" in q or "limitation" in q or "deadline" in q):
+                return (f"Statutory limitation periods set strict legal deadlines for {kw}. "
+                        f"Missing the filing deadline can permanently bar your claim and lead to a dismiss your lawsuit. "
+                        f"An experienced attorney can explain tolling rules and negotiate with insurance adjusters on your behalf.")
+            if "what is" in q:
+                return (f"{kw.title()} refers to the legal process for seeking compensation after an injury. "
+                        f"A qualified attorney reviews medical records, evidence, and liability to build a strong claim. "
+                        f"Understanding your rights helps protect your entitlement to fair negotiating and settlement.")
+            if "key requirements" in q or "requirements" in q:
+                return (f"Key requirements include: timely filing within the statute of limitations, "
+                        f"documented medical evidence of injuries, proof of negligence or liability, "
+                        f"and consultation with a qualified attorney before speaking to insurance adjusters.")
+            if "common mistakes" in q or "mistakes" in q:
+                return (f"Common mistakes include: missing the strict time limits for filing, "
+                        f"accepting a lowball settlement before full medical costs are known, "
+                        f"posting about the case on social media, and failing to consult an attorney early.")
+            if "how long" in q or "timeline" in q or "take" in q:
+                return (f"Most {kw} cases resolve within several months to a few years, depending on complexity. "
+                        f"Statutory deadlines are strict, so consult an attorney immediately. "
+                        f"Early legal representation helps negotiate fair compensation while preserving evidence.")
+            if "best practices" in q or "2026" in q:
+                return (f"Best practices include: hiring a specialized attorney, documenting all medical treatment, "
+                        f"avoiding recorded statements to adjusters, and understanding tolling exceptions. "
+                        f"Current legal standards in 2026 emphasize proactive case management and strict adherence to filing deadlines.")
+            return (f"Success with {kw} depends on careful planning, consultation with a qualified attorney, "
+                    f"and strict adherence to statutory deadlines. Professional legal guidance helps avoid common pitfalls.")
+        # Non-PI: keyword-specific but still grounded
+        if "what is" in q:
+            return (f"{kw.title()} is a core focus area within {niche}. "
+                    f"Organizations that master verified implementation guidelines and avoid ad-hoc approaches "
+                    f"typically see measurably better outcomes within the first evaluation cycle.")
+        if "key requirements" in q or "requirements" in q:
+            return (f"Key requirements for {kw} include documented baseline metrics, verified operational frameworks, "
+                    f"and continuous measurement against industry standards. Teams that skip these steps "
+                    f"often encounter avoidable delays and rework.")
+        if "common mistakes" in q or "mistakes" in q:
+            return (f"The most common mistakes with {kw} are skipping baseline audits, relying on uncalibrated templates, "
+                    f"and ignoring continuous feedback loops. Addressing these early prevents costly rework and protects ROI.")
+        if "how long" in q or "take" in q:
+            return (f"Timelines for {kw} vary by scope, but structured teams typically see measurable improvement "
+                    f"within one to two quarters. Sustained results require ongoing monitoring and disciplined execution.")
+        if "best practices" in q or "2026" in q:
+            return (f"Best practices for {kw} in 2026 include data-driven planning, verified frameworks, "
+                    f"and proactive quality control. Teams that document standards and audit outcomes consistently outperform peers.")
+        return (f"Effective {kw} execution requires clear planning, verified methodologies, "
+                f"and continuous measurement against defined benchmarks.")
+
     faqs = []
     for q in paa_items[:5]:
         q_str = str(q).strip()
-        ans = (
-            f"When managing {clean_kw}, success depends on careful planning, adherence to verified domain standards, "
-            f"and continuous measurement. Organizations and practitioners who follow structured workflows and leverage "
-            f"proven methodologies achieve significantly more reliable outcomes than those relying on ad-hoc approaches."
-        )
+        ans = _faq_answer(q_str, clean_kw, niche, is_personal_injury)
         faqs.append({
             "question": q_str,
             "answer_approach": "Direct, factual, and informative answer in 50-80 words",
