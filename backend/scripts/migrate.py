@@ -1,10 +1,17 @@
 import os
+import sys
 import glob
 import logging
 from pathlib import Path
 from datetime import datetime
 
+# Ensure backend root is on sys.path when executed directly
+_backend_dir = str(Path(__file__).resolve().parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 logger = logging.getLogger("backend.scripts.migrate")
+
 
 
 def get_db_url() -> str | None:
@@ -27,20 +34,28 @@ def run_migrations() -> dict:
 
     sql_files: list[str] = []
 
-    # 1. Preferred: backend/schemas/*.sql
-    if schemas_dir.exists():
-        sql_files = sorted(glob.glob(str(schemas_dir / "*.sql")))
+    _ordered_names = [
+        "supabase_master_complete.sql",
+        "supabase_migration_missing.sql",
+        "supabase_migration_aeo.sql",
+        "supabase_migration_vectors.sql",
+        "supabase_migration_rls.sql",
+        "supabase_migration_indexation_runs.sql",
+    ]
 
-    # 2. Fallback: repo-root supabase_migration_*.sql in README order
+    def _sort_key(path: str) -> int:
+        name = Path(path).name
+        try:
+            return _ordered_names.index(name)
+        except ValueError:
+            return len(_ordered_names) + 1
+
+    # 1. Preferred: backend/schemas/*.sql in README order
+    if schemas_dir.exists():
+        sql_files = sorted(glob.glob(str(schemas_dir / "*.sql")), key=_sort_key)
+
+    # 2. Fallback: repo-root *.sql in README order
     if not sql_files:
-        _ordered_names = [
-            "supabase_master_complete.sql",
-            "supabase_migration_missing.sql",
-            "supabase_migration_aeo.sql",
-            "supabase_migration_vectors.sql",
-            "supabase_migration_rls.sql",
-            "supabase_migration_indexation_runs.sql",
-        ]
         for name in _ordered_names:
             candidate = repo_root / name
             if candidate.exists():

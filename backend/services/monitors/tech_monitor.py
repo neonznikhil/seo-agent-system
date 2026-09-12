@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 from database import get_supabase
 
+logger = logging.getLogger("backend.services.monitors.tech_monitor")
+
 
 class TechMonitor:
     def __init__(self, website_id: str):

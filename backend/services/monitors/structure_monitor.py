@@ -6,8 +6,11 @@ import json
 from datetime import datetime
 from database import get_supabase
 
+logger = logging.getLogger("backend.services.monitors.structure_monitor")
+
 
 class StructureMonitor:
+
     def __init__(self, website_id: str):
         self.website_id = website_id
         self.supabase = get_supabase()
