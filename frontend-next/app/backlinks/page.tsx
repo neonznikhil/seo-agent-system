@@ -206,7 +206,7 @@ export default function BacklinksPage() {
       )}
 
       {/* PAGE HEADER */}
-      <div className="page-heading">Backlinks & Authority</div>
+      <h1 className="page-heading">Backlinks & Authority</h1>
       <div className="page-sub">
         <span className="sub-sq"></span>
         Prospect discovery & outreach tracking · actual links require real-world outreach

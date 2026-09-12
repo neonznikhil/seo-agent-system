@@ -118,7 +118,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Sidebar />
           <div className="main">
             <Topbar />
-            <div className="page-wrap">{children}</div>
+            <main className="page-wrap">{children}</main>
           </div>
         </div>
       </body>
