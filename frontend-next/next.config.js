@@ -22,7 +22,16 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    return [];
+    const backendBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+    if (!backendBase) {
+      return [];
+    }
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendBase}/:path*`,
+      },
+    ];
   },
 };
 
