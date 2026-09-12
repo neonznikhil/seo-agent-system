@@ -36,7 +36,7 @@
 - **MODIFIED** `backend/database.py:77` — `NIM_LLM_MODEL=nvidia/nemotron-3-nano-30b-a3b`, `NIM_EMBED_MODEL=nvidia/nemotron-3-embed-1b`, handles 410 EOL.
 - **MODIFIED** `backend/services/knowledge_service.py:205` — embed model env fallback.
 - **MODIFIED** `backend/agents/tools/*.py` (17 files) + `backend/agents/crew.py` — `try: from crewai.tools import BaseTool except ImportError: class BaseTool...` fallback so backend runs without crewai installed.
-- **MODIFIED** `backend/requirements.txt:32` — added `crewai>=0.80.0`, `crewai-tools>=0.12.0`, `langchain-nvidia-ai-endpoints>=0.3.0` (plus existing `pgvector`, `tavily-python`).
+- **MODIFIED** `backend/requirements.txt:32` — added `crewai>=0.80.0`, `crewai-tools>=0.12.0`, `langchain-nvidia-ai-endpoints>=0.3.0` (plus existing `pgvector`).
 - **NEW** `frontend-next/app/crew/page.tsx` — input Topic, buttons `Generate with CrewAI 3-Agent` + `Autonomous Gap-Based`, tabs Planner JSON / Writer HTML + citations / Editor scores (SEO 85+ Val 0.8+ Ground 0.75), SSE logs 12 phases, WP URL, cost.
 - **MODIFIED** `frontend-next/app/content/page.tsx:170` — banner linking to `/crew`.
 

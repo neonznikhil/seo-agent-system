@@ -35,8 +35,6 @@ services:
         sync: false
       - key: SERPER_API_KEY
         sync: false
-      - key: TAVILY_API_KEY
-        sync: false
       - key: REDIS_URL
         fromService:
           name: rankforge-redis

@@ -66,7 +66,6 @@ docker-compose logs -f
 | `SUPABASE_URL` | Supabase project URL | https://supabase.com/dashboard |
 | `SUPABASE_KEY` / `SUPABASE_SERVICE_KEY` | Supabase Service Role Key | Supabase Settings -> API |
 | `DATABASE_URL` | PostgreSQL direct connection string | Supabase Settings -> Database |
-| `TAVILY_API_KEY` | Real-time web search and competitor analysis | https://tavily.com |
 | `SERPER_API_KEY` | Google SERP & backlink data | https://serper.dev |
 
 ---

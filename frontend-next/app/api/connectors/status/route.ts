@@ -55,10 +55,6 @@ export async function GET(req: Request) {
       is_configured: serperConfigured,
       fallback_active: false,
     },
-    tavily: {
-      connected: false,
-      is_configured: false,
-    },
     gsc: {
       connected: false,
       is_configured: false,

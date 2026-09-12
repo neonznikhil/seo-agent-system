@@ -798,7 +798,7 @@ async def build_grounding_bundle(website_id: str, topic: str) -> Dict[str, Any]:
     paa_questions = []
     try:
         from services.serper_service import serper_service
-        if serper_service.api_key or serper_service.tavily_key:
+        if serper_service.api_key:
             serp_data = await serper_service.search(query=topic, num=5)
             organic = serp_data.get("organic", [])
             for org in organic[:5]:
@@ -3878,24 +3878,6 @@ def _get_tool_classes():
                         }, indent=2)
                 except Exception as e:
                     logger.debug(f"[SERP] serper failed: {e}")
-                try:
-                    tavily_key = os.getenv("TAVILY_API_KEY", "")
-                    if tavily_key:
-                        from tavily import TavilyClient
-                        client = TavilyClient(api_key=tavily_key)
-                        res = await asyncio.to_thread(client.search, search_query, 10, True, "advanced")
-                        organic = []
-                        for idx, r in enumerate(res.get("results", [])[:10], start=1):
-                            organic.append({"title": r.get("title"), "link": r.get("url"), "snippet": r.get("content","")[:300], "position": idx})
-                        return json.dumps({
-                            "query": search_query,
-                            "source": "tavily",
-                            "organic": organic,
-                            "peopleAlsoAsk": [],
-                            "relatedSearches": [],
-                        }, indent=2)
-                except Exception as e:
-                    logger.debug(f"[SERP] tavily failed: {e}")
                 try:
                     serper_key = os.getenv("SERPER_API_KEY", "")
                     if serper_key:

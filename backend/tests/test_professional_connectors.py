@@ -198,24 +198,6 @@ async def test_serper_real():
     assert not any("Lorem ipsum" in item.get("title","") for item in organic)
 
 @pytest.mark.asyncio
-async def test_tavily_real():
-    """Real Tavily: POST api.tavily.com/search query=car accident Houston -> 5+ results"""
-    key = os.getenv("TAVILY_API_KEY")
-    if not key:
-        pytest.skip("TAVILY_API_KEY not configured - skip not mock")
-    headers = {"Content-Type": "application/json"}
-    # Tavily API expects api_key in json or header
-    payload = {"api_key": key, "query": "car accident Houston", "search_depth": "advanced", "include_answer": True, "max_results": 5}
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post("https://api.tavily.com/search", json=payload, headers=headers)
-    assert resp.status_code == 200, f"Tavily should be 200, got {resp.status_code}: {resp.text[:300]}"
-    data = resp.json()
-    results = data.get("results", [])
-    assert len(results) >= 3, f"Expected 5+ results, got {len(results)}"
-    for r in results[:2]:
-        assert "title" in r and "content" in r
-
-@pytest.mark.asyncio
 async def test_connectors_status_real():
     """GET /api/connectors/status returns real health not 96.5 hardcoded"""
     transport = ASGITransport(app=app)

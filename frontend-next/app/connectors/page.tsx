@@ -15,7 +15,6 @@ interface ConnectorStatus {
   supabase?: { connected?: boolean; is_configured?: boolean; tables_count?: number };
   nvidia?: { connected?: boolean; is_configured?: boolean; available?: boolean; models_count?: number };
   serper?: { connected?: boolean; is_configured?: boolean; fallback_active?: boolean };
-  tavily?: { connected?: boolean; is_configured?: boolean };
   gsc?: { connected?: boolean; is_configured?: boolean; status_label?: string };
   ga4?: { connected?: boolean; is_configured?: boolean; status_label?: string };
   wordpress?: { connected?: boolean; is_configured?: boolean; role?: string; site_url?: string };
@@ -53,9 +52,6 @@ export default function ConnectorsPage() {
   const [serperKey, setSerperKey] = useState("");
   const [serperTesting, setSerperTesting] = useState(false);
   const [serperResults, setSerperResults] = useState<any[]>([]);
-
-  const [tavilyKey, setTavilyKey] = useState("");
-  const [tavilyTesting, setTavilyTesting] = useState(false);
 
   // Section C: Analytics
   const [gscJson, setGscJson] = useState("");
@@ -300,21 +296,6 @@ export default function ConnectorsPage() {
     }
   };
 
-  // Test Tavily
-  const handleTestTavily = async () => {
-    setTavilyTesting(true);
-    setErrorMsg(null);
-    try {
-      const res = await post("/api/connectors/test-tavily", { api_key: tavilyKey });
-      showToast(res.message || "✓ Tavily AI search connected.");
-      loadStatus();
-    } catch (e: any) {
-      setErrorMsg(`Tavily Test Error: ${e.message}`);
-    } finally {
-      setTavilyTesting(false);
-    }
-  };
-
   // Test GSC
   const handleTestGsc = async () => {
     setGscTesting(true);
@@ -387,7 +368,6 @@ export default function ConnectorsPage() {
         wordpress_username: wpUser || undefined,
         wordpress_app_password: wpPass || undefined,
         serper_api_key: serperKey || undefined,
-        tavily_api_key: tavilyKey || undefined,
         gsc_property_url: gscUrl || undefined,
         gsc_credentials_json: gscJson || undefined,
         ga4_property_id: ga4PropertyId || undefined,
@@ -695,43 +675,15 @@ export default function ConnectorsPage() {
                       <button type="button" onClick={handleSaveSerper} disabled={serperTesting || !serperKey} className="btn btn-accent" style={{ padding: "6px 12px", fontSize: "11px" }}>
                         Save
                       </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tavily API */}
-              <div className="panel" style={{ borderLeft: status?.tavily?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
-                <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="panel-label">Tavily Search API</span>
-                  <span className={`badge ${status?.tavily?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.tavily?.connected ? "Connected" : "Optional"}
-                  </span>
-                </div>
-                <div className="panel-body">
-                  <input
-                    type="password"
-                    className="field"
-                    value={tavilyKey}
-                    onChange={(e) => setTavilyKey(e.target.value)}
-                    placeholder={status?.tavily?.is_configured ? MASK : "tvly-..."}
-                    style={{ width: "100%", padding: "8px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", marginBottom: "10px" }}
-                  />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <a href="https://tavily.com" target="_blank" rel="noreferrer" style={{ fontSize: "11px", color: "var(--accent)" }}>
-                      tavily.com
-                    </a>
-                    <button type="button" onClick={handleTestTavily} disabled={tavilyTesting} className="btn" style={{ padding: "6px 14px", fontSize: "11px" }}>
-                      {tavilyTesting ? "Testing..." : "Test Tavily"}
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+        </div>
 
-          {/* ======================================================== */}
-          {/* SECTION C: ANALYTICS (GSC & GA4) */}
+        {/* ======================================================== */}
+        {/* SECTION C: ANALYTICS (GSC & GA4) */}
           {/* ======================================================== */}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", color: "var(--accent)", marginBottom: "12px" }}>
@@ -913,12 +865,6 @@ export default function ConnectorsPage() {
                 <span>Serper.dev</span>
                 <strong style={{ color: status?.serper?.connected ? "var(--green)" : "var(--muted)" }}>
                   {status?.serper?.connected ? "✓ Organic SERP" : "Not Set"}
-                </strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Tavily AI</span>
-                <strong style={{ color: status?.tavily?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.tavily?.connected ? "✓ Connected" : "Optional"}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>

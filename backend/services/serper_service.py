@@ -29,17 +29,15 @@ _SERPER_CIRCUIT = {
 class SerperService:
     """Real-time search backbone for the SEO agent group.
 
-    Fallback chain (cost-aware):
-    1. TinyFish Search API (FREE, agent-tailored JSON) — when configured
-    2. Serper.dev API (paid, full SERP features)
-    3. Tavily API (paid secondary)
-    4. Explicit degraded {"source": "unavailable", "organic": []} — never
-       mock results, never direct Google scraping (CAPTCHA/blocked).
+        Fallback order (cost-aware):
+        1. TinyFish Search API (FREE, agent-tailored JSON) — when configured
+        2. Serper.dev API (paid, full SERP features)
+        3. Explicit degraded {"source": "unavailable", "organic": []} — never
+           mock results, never direct Google scraping (CAPTCHA/blocked).
     """
 
     def __init__(self, api_key: Optional[str] = None):
         self._api_key = api_key
-        self._tavily_key = os.getenv("TAVILY_API_KEY", "")
         self.base_url = "https://google.serper.dev"
 
     @property
@@ -49,14 +47,6 @@ class SerperService:
     @api_key.setter
     def api_key(self, value: str):
         self._api_key = value
-
-    @property
-    def tavily_key(self) -> str:
-        return self._tavily_key or os.getenv("TAVILY_API_KEY", "")
-
-    @tavily_key.setter
-    def tavily_key(self, value: str):
-        self._tavily_key = value
 
     def is_configured(self) -> bool:
         return bool(self.api_key and len(self.api_key.strip()) > 5)
@@ -207,17 +197,7 @@ class SerperService:
                 if not auto_fallback:
                     raise
 
-        # Step 2: Fallback to Tavily
-        if auto_fallback and self.tavily_key:
-            try:
-                logger.info(f"[SerperFallback] Trying Tavily for query '{query}'")
-                tavily_res = await self._fallback_tavily_search(query, num=num)
-                if tavily_res and tavily_res.get("organic"):
-                    return tavily_res
-            except Exception as e:
-                logger.warning(f"Tavily fallback also failed: {e}")
-
-        # Step 3: No direct Google scraping. Crawlee SERP scraping hits
+        # Step 2: No direct Google scraping. Crawlee SERP scraping hits
         # CAPTCHAs/blocks and burns local browser RAM for unreliable data,
         # so the chain ends here with an explicit degraded result.
 
@@ -238,10 +218,6 @@ class SerperService:
             "credits_used": 0,
             "error": error_detail[:300],
         }
-
-    # ---------------------------------------------------------
-    # 2. News Search Method with Tenacity Retry
-    # ---------------------------------------------------------
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=8),
@@ -442,43 +418,8 @@ class SerperService:
             }
 
     # ---------------------------------------------------------
-    # 4. Fallback Helpers (Tavily & Crawlee)
+    # 4. Fallback Helpers
     # ---------------------------------------------------------
-    async def _fallback_tavily_search(self, query: str, num: int = 10) -> Optional[Dict[str, Any]]:
-        """Secondary fallback using Tavily search."""
-        if not self.tavily_key:
-            return None
-        url = "https://api.tavily.com/search"
-        payload = {
-            "api_key": self.tavily_key,
-            "query": query,
-            "max_results": min(num, 10),
-            "include_answer": True
-        }
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                organic = [
-                    {
-                        "title": r.get("title"),
-                        "link": r.get("url"),
-                        "snippet": r.get("content"),
-                        "position": idx + 1
-                    }
-                    for idx, r in enumerate(data.get("results", []))
-                ]
-                return {
-                    "source": "tavily_fallback",
-                    "query": query,
-                    "organic": organic,
-                    "peopleAlsoAsk": [],
-                    "answerBox": {"answer": data.get("answer")} if data.get("answer") else {},
-                    "relatedSearches": [],
-                    "credits_used": 1
-                }
-        return None
-
     async def _fallback_tinyfish_search(self, query: str, num: int = 10) -> Optional[Dict[str, Any]]:
         """Zero-cost fallback using the free TinyFish Search API.
 

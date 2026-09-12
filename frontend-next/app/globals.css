@@ -77,11 +77,12 @@ body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Mono',monospace
 .sub-sq{width:5px;height:5px;background:var(--accent);flex-shrink:0;}
 
 /* PANELS */
-.panel{border:1px solid var(--border);background:var(--panel-bg);margin-bottom:16px;transition:background .2s,border-color .2s;}
+.panel{border:1px solid var(--border);background:var(--panel-bg);margin-bottom:16px;transition:background .25s,border-color .25s,box-shadow .25s;}
+.panel:hover{box-shadow:0 2px 12px rgba(0,0,0,.04);}
 .panel-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .panel-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
-.panel-action{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);background:var(--panel-inner);border:1px solid var(--accent);padding:3px 8px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
-.panel-action:hover{background:var(--accent);color:#fff;}
+.panel-action{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);background:var(--panel-inner);border:1px solid var(--accent);padding:3px 8px;cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .2s;}
+.panel-action:hover{background:var(--accent);color:#fff;transform:translateY(-1px);}
 .panel-body{padding:14px;}
 
 /* GRIDS */
@@ -168,18 +169,21 @@ body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Mono',monospace
 .sm-lbl{font-size:8px;text-transform:uppercase;color:var(--muted);}
 
 /* BUTTONS */
-.btn{padding:6px 12px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;font-family:'IBM Plex Mono',monospace;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--ink);transition:background .15s,color .15s;}
-.btn:hover{background:var(--bg2);}
+.btn{padding:6px 12px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;font-family:'IBM Plex Mono',monospace;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--ink);transition:all .2s cubic-bezier(.25,.8,.25,1);position:relative;overflow:hidden;}
+.btn:hover{background:var(--bg2);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.btn:active{transform:translateY(0);box-shadow:none;}
 .btn-primary{background:var(--ink);color:var(--bg);border-color:var(--ink);}
-.btn-primary:hover{opacity:.85;}
+.btn-primary:hover{opacity:.88;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.15);}
 .btn-accent{background:var(--accent);color:#fff;border-color:var(--accent);}
-.btn-accent:hover{opacity:.9;}
+.btn-accent:hover{opacity:.92;transform:translateY(-1px);box-shadow:0 4px 14px rgba(255,77,18,.25);}
 .btn-danger{background:transparent;color:var(--red);border-color:var(--red);}
-.btn-danger:hover{background:var(--red);color:#fff;}
+.btn-danger:hover{background:var(--red);color:#fff;transform:translateY(-1px);}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none !important;box-shadow:none !important;}
 
 /* FIELDS */
-.field{width:100%;padding:8px 12px;font-size:11px;font-family:'IBM Plex Mono',monospace;background:var(--input-bg);border:1px solid var(--border);color:var(--ink);outline:none;transition:border-color .15s,background .2s;}
-.field:focus{border-color:var(--accent);}
+.field{width:100%;padding:8px 12px;font-size:11px;font-family:'IBM Plex Mono',monospace;background:var(--input-bg);border:1px solid var(--border);color:var(--ink);outline:none;transition:border-color .2s,background .2s,box-shadow .2s;border-radius:2px;}
+.field:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,77,18,.08);}
+.field::placeholder{color:var(--muted);opacity:.7;}
 .field-group{margin-bottom:12px;}
 .field-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;}
 .field-hint{font-size:9px;color:var(--muted);margin-top:4px;}
@@ -377,6 +381,22 @@ body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Mono',monospace
 .border-ink{border-color:var(--ink);}
 .border-line{border-color:var(--line);}
 .bg-accent{background-color:var(--accent);}
+
+/* SKELETON LOADING */
+@keyframes skeleton-pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
+.skeleton{background:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);background-size:200% 100%;animation:skeleton-move 1.4s ease-in-out infinite;}
+@keyframes skeleton-move{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+.skeleton-line{height:10px;border-radius:2px;margin-bottom:8px;}
+.skeleton-line.short{width:40%;}
+.skeleton-line.medium{width:70%;}
+.skeleton-line.full{width:100%;}
+
+/* SMOOTH APPEARANCE */
+@keyframes fade-in-up{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.animate-in{animation:fade-in-up .35s cubic-bezier(.25,.8,.25,1) both;}
+.animate-in-delay-1{animation-delay:.05s;}
+.animate-in-delay-2{animation-delay:.1s;}
+.animate-in-delay-3{animation-delay:.15s;}
 
 /* ============================================================
    TL;DR BLOCK - SIGNATURE ORANGE LEFT BORDER & CARD SYSTEM

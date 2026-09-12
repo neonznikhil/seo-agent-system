@@ -81,10 +81,6 @@ class TestSerperRequest(BaseModel):
     api_key: Optional[str] = Field(None, description="Serper API Key")
 
 
-class TestTavilyRequest(BaseModel):
-    api_key: Optional[str] = Field(None, description="Tavily API Key")
-
-
 class TestGscRequest(BaseModel):
     credentials_json: Optional[str] = Field(None, description="Google Service Account JSON")
     property_url: Optional[str] = Field(None, description="Property URL")
@@ -115,7 +111,6 @@ class SaveAllRequest(BaseModel):
     wordpress_username: Optional[str] = None
     wordpress_app_password: Optional[str] = None
     serper_api_key: Optional[str] = None
-    tavily_api_key: Optional[str] = None
     gsc_property_url: Optional[str] = None
     gsc_credentials_json: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -612,43 +607,6 @@ async def save_serper(payload: TestSerperRequest):
     return await test_serper(payload)
 
 
-@router.post("/api/connectors/test-tavily")
-@router.post("/connectors/test-tavily")
-async def test_tavily(payload: Optional[TestTavilyRequest] = None):
-    """Test Tavily AI Search API."""
-    key = (payload.api_key if payload and payload.api_key else os.getenv("TAVILY_API_KEY", "")).strip()
-    if not key:
-        raise HTTPException(status_code=400, detail="Tavily API Key is required")
-
-    url = "https://api.tavily.com/search"
-    body = {"api_key": key, "query": "search engine optimization", "max_results": 5}
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=body)
-
-        if resp.status_code == 200:
-            data = resp.json()
-            results = data.get("results", [])
-            return {
-                "connected": True,
-                "status": "success",
-                "message": f"Successfully connected to Tavily ({len(results)} results returned)",
-                "results_count": len(results),
-                "results": results[:3],
-            }
-        elif resp.status_code in (401, 403):
-            raise HTTPException(status_code=401, detail="Invalid Tavily API key")
-        else:
-            raise HTTPException(status_code=resp.status_code, detail="External API request failed. Please try again.")
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Connection to Tavily timed out")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="WordPress connection test failed. Please check your credentials.")
-
-
 # ---------------------------------------------------------
 # 5. Analytics (GSC & GA4)
 # ---------------------------------------------------------
@@ -772,8 +730,6 @@ async def save_generic_connector(connector_name: str, payload: GenericConnectorS
         env_updates["REDIS_URL"] = payload.url or "redis://localhost:6379/0"
     elif c_name == "serper":
         env_updates["SERPER_API_KEY"] = payload.api_key or payload.key or ""
-    elif c_name == "tavily":
-        env_updates["TAVILY_API_KEY"] = payload.api_key or payload.key or ""
     elif c_name == "gsc":
         env_updates["GSC_SITE_URL"] = payload.url or ""
         if payload.secret:
@@ -816,8 +772,6 @@ async def save_all_connectors(payload: SaveAllRequest):
         env_updates["SUPABASE_SERVICE_KEY"] = payload.supabase_service_key.strip()
     if payload.serper_api_key:
         env_updates["SERPER_API_KEY"] = payload.serper_api_key.strip()
-    if payload.tavily_api_key:
-        env_updates["TAVILY_API_KEY"] = payload.tavily_api_key.strip()
     if payload.wordpress_site_url:
         env_updates["WORDPRESS_SITE_URL"] = payload.wordpress_site_url.strip()
         env_updates["WP_SITE_URL"] = payload.wordpress_site_url.strip()
@@ -927,13 +881,6 @@ async def get_connectors_status(website_id: Optional[str] = None):
         "fallback_active": not bool(serper_key),
     }
 
-    # 4. Tavily Status
-    tavily_key = os.environ.get("TAVILY_API_KEY", "")
-    tavily_status = {
-        "connected": bool(tavily_key),
-        "is_configured": bool(tavily_key),
-    }
-
     # 5. GSC Status
     gsc_key = os.environ.get("GSC_SERVICE_ACCOUNT_JSON") or os.environ.get("GSC_SITE_URL", "")
     gsc_status = {
@@ -1020,7 +967,6 @@ async def get_connectors_status(website_id: Optional[str] = None):
         "supabase": supabase_status,
         "nvidia": nvidia_status,
         "serper": serper_status,
-        "tavily": tavily_status,
         "gsc": gsc_status,
         "ga4": ga4_status,
         "wordpress": wp_status,

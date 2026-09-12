@@ -132,13 +132,10 @@ docker-compose.yml exists version: "3.8" valid syntax ✅ (docker not in sandbox
   - Test `test_wordpress_real_accident_innovatcs` **SKIPPED** in sandbox due to masked password, but logic verified via `publish_post_via_crew` handling `401` role → `error:"role"` ✅.
 - **Fallback 3 endpoints:** `publish_with_fallback()` tries `/wp-json/`, `/?rest_route/`, retry - first success wins, logs `Hostinger bot protection` if `403`.
 
-### Serper / Tavily Real
+### Serper Real
 - **Serper:** `POST https://google.serper.dev/search` `q="car accident lawyer Houston"` `X-API-KEY $SERPER_API_KEY`:
   - If key set: `200 organic 10 results` real titles not `texaslegal` fake, `assert "title" in item and link.startswith("http")` not `Lorem ipsum`.
   - Test **SKIPPED** `SERPER_API_KEY not configured - skip not mock` ✅ (no fake Texas URLs).
-- **Tavily:** `POST https://api.tavily.com/search` `query="car accident Houston"`:
-  - If key set: `200 results 5+ real content`.
-  - Test **SKIPPED** `TAVILY_API_KEY not configured` ✅.
 
 ### GET /api/connectors/status - Real Health Not 96.5
 - `GET /api/connectors/status` (via `ASGITransport`) → `200`:

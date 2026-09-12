@@ -72,7 +72,6 @@ def _install_stubs(monkeypatch, rag_hits=None, serp=None):
     ser_mod = types.ModuleType("services.serper_service")
     ser_mod.serper_service = MagicMock()
     ser_mod.serper_service.api_key = ""
-    ser_mod.serper_service.tavily_key = ""
     monkeypatch.setitem(sys.modules, "services.serper_service", ser_mod)
 
     import backend.agents.crew_blog_writer as writer_mod
