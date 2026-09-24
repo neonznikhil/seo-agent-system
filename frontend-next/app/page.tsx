@@ -4,6 +4,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
+import { NetworkOverviewTable } from "@/components/NetworkOverviewTable";
+import { PrioritizedActionList } from "@/components/PrioritizedActionList";
+import { LeadAttributionCard } from "@/components/LeadAttributionCard";
+import { ChangelogRollbackCard } from "@/components/ChangelogRollbackCard";
+import { CompetitorTrackerCard } from "@/components/CompetitorTrackerCard";
+import { RoiProofCard } from "@/components/RoiProofCard";
 
 interface DashboardMetrics {
   website_id: string;
@@ -108,6 +114,7 @@ export default function HomePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeWorkflowModal, setActiveWorkflowModal] = useState<any | null>(null);
   const [autoPublishConfirmOpen, setAutoPublishConfirmOpen] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<"site" | "network">("site");
 
   // Demo Readiness State (Task 4.1 & 4.2)
   const [readinessData, setReadinessData] = useState<any | null>(null);
@@ -817,20 +824,70 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* PAGE HEADING */}
-      <div className="page-heading">Dashboard</div>
-      <div className="page-sub">
-        <span className="sub-sq"></span>
-        Autonomous SEO · Real-time intelligence ·{" "}
-        <span style={{ fontWeight: 600, color: "var(--ink)" }}>{domain || "Connect a website"}</span>
-        {error && (
-          <span className="badge badge-amber" style={{ marginLeft: "12px" }}>
-            {error}
-          </span>
-        )}
+      {/* PAGE HEADING & VIEW MODE SELECTOR */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+        <div>
+          <div className="page-heading">Dashboard</div>
+          <div className="page-sub">
+            <span className="sub-sq"></span>
+            Autonomous SEO · Real-time intelligence ·{" "}
+            <span style={{ fontWeight: 600, color: "var(--ink)" }}>{domain || "Connect a website"}</span>
+            {error && (
+              <span className="badge badge-amber" style={{ marginLeft: "12px" }}>
+                {error}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: "flex", background: "var(--panel-bg)", border: "1px solid var(--line)", padding: "3px", borderRadius: "4px" }}>
+          <button
+            onClick={() => setViewMode("site")}
+            style={{
+              padding: "6px 14px",
+              fontSize: "12px",
+              fontWeight: 600,
+              background: viewMode === "site" ? "var(--accent)" : "transparent",
+              color: viewMode === "site" ? "#fff" : "var(--muted)",
+              border: "none",
+              borderRadius: "3px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            📊 Single Site Deep-Dive
+          </button>
+          <button
+            onClick={() => setViewMode("network")}
+            style={{
+              padding: "6px 14px",
+              fontSize: "12px",
+              fontWeight: 600,
+              background: viewMode === "network" ? "var(--accent)" : "transparent",
+              color: viewMode === "network" ? "#fff" : "var(--muted)",
+              border: "none",
+              borderRadius: "3px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            🌐 Multi-Site Network ({websites.length || "All"})
+          </button>
+        </div>
       </div>
 
-      {/* HONEST EMPTY STATE: no metrics without a real API response. */}
+      {viewMode === "network" ? (
+        <NetworkOverviewTable
+          activeWebsiteId={websiteId || getCurrentWebsiteId() || "default"}
+          onSelectSite={(newId) => {
+            setCurrentWebsiteId(newId);
+            setWebsiteId(newId);
+            setViewMode("site");
+            fetchDashboardData();
+          }}
+        />
+      ) : (
+        <>
+          {/* HONEST EMPTY STATE: no metrics without a real API response. */}
       {metrics === null && !loading && (
         <div className="panel" style={{ marginBottom: "16px", borderColor: "var(--amber)", padding: "14px 16px" }}>
           <div style={{ fontSize: "12px", fontWeight: 700 }}>No dashboard data</div>
@@ -1191,17 +1248,54 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 9 INDEPENDENT SEO WORKFLOWS */}
-      <div className="panel" style={{ marginBottom: "16px" }}>
-        <div className="panel-head">
-          <span className="panel-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span>⚡ 9 Independent SEO Workflows</span>
-            <span className="badge badge-accent">Modular Execution Grid</span>
+      {/* 1. ONE PRIORITIZED ACTION LIST (RANKED "DO THESE 10 THINGS NOW") */}
+      <PrioritizedActionList
+        websiteId={websiteId || getCurrentWebsiteId() || "default"}
+        onActionExecuted={fetchDashboardData}
+      />
+
+      {/* 2. PROVE THE WORK — 28-DAY POST-FIX ROI IMPACT TRACKER */}
+      <RoiProofCard
+        websiteId={websiteId || getCurrentWebsiteId() || "default"}
+      />
+
+      {/* 3. TIE RANKINGS TO LEADS & REVENUE ATTRIBUTION */}
+      <LeadAttributionCard
+        websiteId={websiteId || getCurrentWebsiteId() || "default"}
+      />
+
+      {/* 4. COMPETITOR TRACKING & SHARE OF VOICE */}
+      <CompetitorTrackerCard
+        websiteId={websiteId || getCurrentWebsiteId() || "default"}
+      />
+
+      {/* 5. GUARDRAILS, AUDIT CHANGELOG & 1-CLICK ROLLBACK */}
+      <ChangelogRollbackCard
+        websiteId={websiteId || getCurrentWebsiteId() || "default"}
+        onRollbackComplete={fetchDashboardData}
+      />
+
+      {/* 9 INDEPENDENT SEO WORKFLOWS (COLLAPSIBLE SECONDARY ENGINES) */}
+      <details className="panel" style={{ marginBottom: "16px" }}>
+        <summary
+          className="panel-head"
+          style={{
+            cursor: "pointer",
+            userSelect: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span className="panel-label">⚡ Advanced Manual Workflows (9 Engines)</span>
+            <span className="badge badge-accent">Secondary Operations</span>
+          </div>
+          <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+            Click to expand/collapse legacy modular triggers ▼
           </span>
-          <span style={{ fontSize: "10.5px", color: "var(--muted)" }}>
-            Run envelopes · Diff tracking · Executive narrative summaries
-          </span>
-        </div>
+        </summary>
         <div className="panel-body" style={{ padding: "16px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "14px" }}>
             {(workflowsData?.workflows || [
@@ -1443,7 +1537,7 @@ export default function HomePage() {
             })}
           </div>
         </div>
-      </div>
+      </details>
 
       {/* AUTOMATION LIMITS & TRANSPARENCY NOTICE */}
       <div
@@ -2032,6 +2126,8 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* DRAFT PREVIEW MODAL — rendered HTML like WordPress */}
       {selectedArticle && (

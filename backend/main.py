@@ -91,6 +91,12 @@ from routers.rank_tracker import router as rank_tracker_router
 from routers.demo import router as demo_router
 from routers.deep_diagnostic import router as deep_diagnostic_router
 from routers.workflows import router as workflows_router
+from routers.network import router as network_router
+from routers.actions import router as actions_router
+from routers.lead_attribution import router as lead_attribution_router
+from routers.guardrails import router as guardrails_router
+from routers.competitors import router as competitors_router
+from routers.roi_proof import router as roi_proof_router
 from scripts.migrate import run_migrations
 from agents.seo_agent_group import seo_agent_group
 
@@ -853,6 +859,13 @@ app.include_router(rank_tracker_router, prefix="/api")         # /api/rankings/*
 app.include_router(demo_router, prefix="/api")                 # /api/demo/*
 app.include_router(deep_diagnostic_router, prefix="/api")         # /api/system/*
 app.include_router(workflows_router, prefix="/api")               # /api/workflows/*
+app.include_router(network_router)                                 # /api/network/*
+app.include_router(actions_router)                                 # /api/actions/*
+app.include_router(lead_attribution_router)                        # /api/leads/*
+app.include_router(guardrails_router)                              # /api/guardrails/*
+app.include_router(competitors_router)                             # /api/competitors/*
+app.include_router(roi_proof_router)                               # /api/roi-proof/*
+
 
 
 @app.get("/api/seo-agent-group/status")
