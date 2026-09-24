@@ -409,147 +409,6 @@ def get_local_autonomous_settings() -> Dict[str, Any]:
 
 
 # ============================================================================
-# COMPETITORS
-# ============================================================================
-
-def save_local_competitor(comp: Dict[str, Any]) -> Dict[str, Any]:
-    competitors = _load_json("competitors.json")
-    comp_id = comp.get("id") or str(uuid.uuid4())
-    comp["id"] = comp_id
-    comp["created_at"] = comp.get("created_at") or datetime.utcnow().isoformat()
-    updated = False
-    for i, c in enumerate(competitors):
-        if c.get("id") == comp_id or (c.get("domain") == comp.get("domain") and c.get("website_id") == comp.get("website_id")):
-            competitors[i] = {**c, **comp}
-            updated = True
-            break
-    if not updated:
-        competitors.append(comp)
-    _save_json("competitors.json", competitors)
-    return comp
-
-
-def list_local_competitors(website_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    competitors = _load_json("competitors.json")
-    if not website_id:
-        return competitors
-    return [c for c in competitors if not c.get("website_id") or c.get("website_id") == website_id]
-
-
-def delete_local_competitor(website_id: str, competitor_id: str) -> bool:
-    competitors = _load_json("competitors.json")
-    initial_len = len(competitors)
-    competitors = [
-        c for c in competitors
-        if not (c.get("id") == competitor_id and (not website_id or c.get("website_id") == website_id))
-    ]
-    if len(competitors) != initial_len:
-        _save_json("competitors.json", competitors)
-        return True
-    return False
-
-
-# ============================================================================
-# GUARDRAILS & ROLLBACK
-# ============================================================================
-
-def save_local_guardrail_change(change: Dict[str, Any]) -> Dict[str, Any]:
-    changes = _load_json("guardrail_changes.json")
-    change_id = change.get("id") or str(uuid.uuid4())
-    change["id"] = change_id
-    if "created_at" not in change:
-        change["created_at"] = datetime.utcnow().isoformat()
-    if "status" not in change:
-        change["status"] = "APPLIED"
-
-    updated = False
-    for i, c in enumerate(changes):
-        if c.get("id") == change_id:
-            changes[i] = {**c, **change}
-            updated = True
-            break
-    if not updated:
-        changes.insert(0, change)
-    _save_json("guardrail_changes.json", changes)
-    return change
-
-
-def list_local_guardrail_changes(website_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    changes = _load_json("guardrail_changes.json")
-    if not website_id or website_id in ("all", "default"):
-        return changes
-    return [c for c in changes if not c.get("website_id") or c.get("website_id") == website_id]
-
-
-def get_local_guardrail_change(change_id: str) -> Optional[Dict[str, Any]]:
-    changes = _load_json("guardrail_changes.json")
-    for c in changes:
-        if c.get("id") == change_id:
-            return c
-    return None
-
-
-def update_local_guardrail_change(change_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    changes = _load_json("guardrail_changes.json")
-    for i, c in enumerate(changes):
-        if c.get("id") == change_id:
-            changes[i] = {**c, **updates, "updated_at": datetime.utcnow().isoformat()}
-            _save_json("guardrail_changes.json", changes)
-            return changes[i]
-    return None
-
-
-# ============================================================================
-# 28-DAY ROI PROOF & FIX TRACKER
-# ============================================================================
-
-def save_local_roi_fix(fix: Dict[str, Any]) -> Dict[str, Any]:
-    fixes = _load_json("roi_tracked_fixes.json")
-    fix_id = fix.get("id") or str(uuid.uuid4())
-    fix["id"] = fix_id
-    if "applied_at" not in fix:
-        fix["applied_at"] = datetime.utcnow().isoformat()
-    if "status" not in fix:
-        fix["status"] = "MEASURING"
-
-    updated = False
-    for i, f in enumerate(fixes):
-        if f.get("id") == fix_id:
-            fixes[i] = {**f, **fix}
-            updated = True
-            break
-    if not updated:
-        fixes.insert(0, fix)
-    _save_json("roi_tracked_fixes.json", fixes)
-    return fix
-
-
-def list_local_roi_fixes(website_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    fixes = _load_json("roi_tracked_fixes.json")
-    if not website_id or website_id in ("all", "default"):
-        return fixes
-    return [f for f in fixes if not f.get("website_id") or f.get("website_id") == website_id]
-
-
-def get_local_roi_fix(fix_id: str) -> Optional[Dict[str, Any]]:
-    fixes = _load_json("roi_tracked_fixes.json")
-    for f in fixes:
-        if f.get("id") == fix_id:
-            return f
-    return None
-
-
-def update_local_roi_fix(fix_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    fixes = _load_json("roi_tracked_fixes.json")
-    for i, f in enumerate(fixes):
-        if f.get("id") == fix_id:
-            fixes[i] = {**f, **updates, "updated_at": datetime.utcnow().isoformat()}
-            _save_json("roi_tracked_fixes.json", fixes)
-            return fixes[i]
-    return None
-
-
-# ============================================================================
 # LEAD ATTRIBUTION SETTINGS
 # ============================================================================
 
@@ -673,19 +532,26 @@ def update_local_guardrail_change(change_id: str, updates: Dict[str, Any]) -> Op
 # COMPETITORS
 # ============================================================================
 
-def save_local_competitor(website_id: str, competitor: Dict[str, Any]) -> Dict[str, Any]:
+def save_local_competitor(website_id_or_comp: Any, competitor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     competitors = _load_json("competitors.json")
-    comp_id = competitor.get("id") or str(uuid.uuid4())
+    if isinstance(website_id_or_comp, dict) and competitor is None:
+        comp_dict = website_id_or_comp
+        site_id = comp_dict.get("website_id") or "default"
+    else:
+        site_id = str(website_id_or_comp)
+        comp_dict = competitor or {}
+
+    comp_id = comp_dict.get("id") or str(uuid.uuid4())
     record = {
-        **competitor,
+        **comp_dict,
         "id": comp_id,
-        "website_id": website_id,
-        "created_at": competitor.get("created_at") or datetime.utcnow().isoformat(),
+        "website_id": site_id,
+        "created_at": comp_dict.get("created_at") or datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
     updated = False
     for i, c in enumerate(competitors):
-        if c.get("website_id") == website_id and (c.get("id") == comp_id or c.get("domain") == competitor.get("domain")):
+        if (c.get("website_id") == site_id or not site_id) and (c.get("id") == comp_id or c.get("domain") == comp_dict.get("domain")):
             competitors[i] = record
             updated = True
             break
@@ -702,10 +568,13 @@ def list_local_competitors(website_id: Optional[str] = None) -> List[Dict[str, A
     return competitors
 
 
-def delete_local_competitor(website_id: str, competitor_id: str) -> bool:
+def delete_local_competitor(website_id_or_id: str, competitor_id: Optional[str] = None) -> bool:
     competitors = _load_json("competitors.json")
     initial_len = len(competitors)
-    filtered = [c for c in competitors if not (c.get("website_id") == website_id and c.get("id") == competitor_id)]
+    if competitor_id is not None:
+        filtered = [c for c in competitors if not (c.get("website_id") == website_id_or_id and c.get("id") == competitor_id)]
+    else:
+        filtered = [c for c in competitors if c.get("id") != website_id_or_id]
     if len(filtered) < initial_len:
         _save_json("competitors.json", filtered)
         return True
@@ -777,6 +646,13 @@ def update_local_roi_tracked_fix(fix_id: str, updates: Dict[str, Any]) -> Option
             _save_json("roi_tracked_fixes.json", fixes)
             return updated_record
     return None
+
+
+# Backward-compatibility aliases for ROI fix tracking
+save_local_roi_fix = save_local_roi_tracked_fix
+list_local_roi_fixes = list_local_roi_tracked_fixes
+get_local_roi_fix = get_local_roi_tracked_fix
+update_local_roi_fix = update_local_roi_tracked_fix
 
 
 # ============================================================================

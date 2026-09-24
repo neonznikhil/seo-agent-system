@@ -68,6 +68,7 @@ async def delete_site_competitor(website_id: str, competitor_id: str):
 
 
 @router.get("/{website_id}/share-of-voice")
+@router.get("/{website_id}/sov")
 async def get_site_share_of_voice(website_id: str):
     """Calculate organic search Share of Voice (SOV) against competitors."""
     try:
@@ -89,6 +90,7 @@ async def get_site_competitor_new_pages(website_id: str):
 
 
 @router.get("/{website_id}/outranking-matrix")
+@router.get("/{website_id}/outranked")
 async def get_site_outranking_matrix(website_id: str):
     """Get head-to-head outranking gap matrix showing where competitors outrank you and traffic loss."""
     try:

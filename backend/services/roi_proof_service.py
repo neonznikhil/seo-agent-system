@@ -162,7 +162,10 @@ def calculate_roi_summary(website_id: str) -> Dict[str, Any]:
     """Calculate aggregated ROI metrics, total clicks won, and dollar value."""
     fixes = list_tracked_fixes(website_id)
     settings = get_local_lead_settings(website_id)
-    monthly_seo_spend = settings.get("monthly_seo_spend", 2500.0)
+    try:
+        monthly_seo_spend = float(settings.get("monthly_seo_spend", 2500.0))
+    except (ValueError, TypeError):
+        monthly_seo_spend = 2500.0
 
     total_tracked = len(fixes)
     proven_count = sum(1 for f in fixes if f.get("status") == "PROVEN_LIFT")
@@ -179,9 +182,12 @@ def calculate_roi_summary(website_id: str) -> Dict[str, Any]:
         "website_id": website_id,
         "total_fixes_tracked": total_tracked,
         "proven_fixes_count": proven_count,
+        "verified_fixes_count": proven_count,
         "total_monthly_clicks_won": total_clicks_won,
+        "total_monthly_clicks_gained": total_clicks_won,
         "average_position_lift": avg_position_gain,
         "monthly_value_generated": round(total_value_generated, 2),
+        "total_pipeline_value_added": round(total_value_generated, 2),
         "monthly_seo_spend": monthly_seo_spend,
         "roi_multiple": f"{roi_multiple}x",
         "conclusion": (

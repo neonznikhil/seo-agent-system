@@ -23,6 +23,7 @@ class ExecuteActionRequest(BaseModel):
 
 
 @router.get("/{website_id}/top-10")
+@router.get("/{website_id}/top10")
 def top_10_actions(website_id: str):
     """Retrieve the ranked Top 10 actions to take now, sorted by estimated traffic impact."""
     return get_top_10_actions(website_id)

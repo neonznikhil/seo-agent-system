@@ -37,6 +37,7 @@ class RollbackRequest(BaseModel):
 
 
 @router.get("/{website_id}/changelog")
+@router.get("/{website_id}/changes")
 async def get_website_changelog(website_id: str):
     """Retrieve full audit trail of changes applied to this site."""
     try:
@@ -57,7 +58,8 @@ async def get_change_diff_view(change_id: str):
 
 
 @router.post("/change/{change_id}/rollback")
-async def execute_rollback(change_id: str, payload: Optional[RollbackRequest] = None):
+@router.post("/{website_id}/rollback/{change_id}")
+async def execute_rollback(change_id: str, website_id: Optional[str] = None, payload: Optional[RollbackRequest] = None):
     """Instantly roll back a live site modification."""
     author = payload.author if payload and payload.author else "Admin Operator"
     result = rollback_change(change_id, author=author)

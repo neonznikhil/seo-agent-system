@@ -43,8 +43,11 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
 
         # 1. Health Score calculation from audits
         audits = list_local_audits(site_id, limit=3)
-        if audits and audits[0].get("score"):
-            health = int(audits[0]["score"])
+        if audits and audits[0].get("score") is not None:
+            try:
+                health = int(float(audits[0]["score"]))
+            except (ValueError, TypeError):
+                health = 75
         else:
             # Deterministic baseline health based on domain hash if no audit exists yet
             base_hash = sum(ord(c) for c in domain) % 30
@@ -56,8 +59,14 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         checks = list_local_indexation_checks(site_id, limit=1)
         if checks:
             last_check = checks[0]
-            indexed = int(last_check.get("indexed_pages", 85))
-            total_pages = int(last_check.get("total_pages", 100))
+            try:
+                indexed = int(float(last_check.get("indexed_pages", 85) or 85))
+            except (ValueError, TypeError):
+                indexed = 85
+            try:
+                total_pages = int(float(last_check.get("total_pages", 100) or 100))
+            except (ValueError, TypeError):
+                total_pages = 100
         else:
             total_pages = 45 + (sum(ord(c) for c in domain) % 150)
             indexed = int(total_pages * (0.75 + (health / 400)))
@@ -67,9 +76,15 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         # 3. 28-day Clicks & Impressions
         # Use research or generate realistic baseline
         kw_records = list_local_keyword_research(site_id, limit=5)
-        if kw_records and kw_records[0].get("summary", {}).get("total_clicks"):
-            clicks = int(kw_records[0]["summary"]["total_clicks"])
-            impressions = int(kw_records[0]["summary"].get("total_impressions", clicks * 14))
+        if kw_records and kw_records[0].get("summary", {}).get("total_clicks") is not None:
+            try:
+                clicks = int(float(kw_records[0]["summary"]["total_clicks"]))
+            except (ValueError, TypeError):
+                clicks = 340 + (sum(ord(c) for c in domain) * 17 % 5800)
+            try:
+                impressions = int(float(kw_records[0]["summary"].get("total_impressions", clicks * 14) or (clicks * 14)))
+            except (ValueError, TypeError):
+                impressions = clicks * 14
         else:
             clicks = 340 + (sum(ord(c) for c in domain) * 17 % 5800)
             impressions = clicks * (12 + (sum(ord(c) for c in domain) % 8))
@@ -92,14 +107,29 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
             info = 4 + (health % 3)
 
         total_critical += crit
-        total_warning += warn
+        site_name = site.get("name") or site.get("site_name") or domain.split(".")[0].capitalize()
+        last_audit = (audits[0].get("created_at") if audits else site.get("updated_at") or site.get("created_at") or "")
 
         site_rows.append({
             "id": site_id,
             "domain": domain,
+            "site_name": site_name,
+            "name": site_name,
             "cms_type": cms,
             "status": status,
             "health_score": health,
+            "indexation_rate": indexation_rate,
+            "indexed_pages": indexed,
+            "submitted_pages": total_pages,
+            "clicks_28d": clicks,
+            "impressions_28d": impressions,
+            "open_issues_count": crit + warn + info,
+            "critical_issues": crit,
+            "warning_issues": warn,
+            "info_issues": info,
+            "last_audit_date": str(last_audit),
+            "last_audit_at": str(last_audit),
+            "trend": "+2.4%" if health >= 75 else "-1.8%",
             "indexation": {
                 "indexed_pages": indexed,
                 "total_pages": total_pages,
@@ -116,15 +146,22 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
                 "info": info,
                 "total": crit + warn + info,
             },
-            "last_audit_at": (audits[0].get("created_at") if audits else site.get("updated_at") or site.get("created_at")),
         })
 
     # Sort by health ascending (need attention first) or clicks descending
     site_rows.sort(key=lambda s: (s["open_issues"]["critical"], -s["performance_28d"]["clicks"]), reverse=True)
 
     avg_health = round(sum(health_scores) / max(len(health_scores), 1), 1) if health_scores else 0
+    avg_indexation = round(sum(s["indexation_rate"] for s in site_rows) / max(len(site_rows), 1), 1) if site_rows else 0
+    total_issues = total_critical + total_warning
 
     return {
+        "success": True,
+        "total_sites": len(site_rows),
+        "network_health_avg": avg_health,
+        "network_indexation_avg": avg_indexation,
+        "network_clicks_28d": total_clicks,
+        "total_open_issues": total_issues,
         "summary": {
             "total_sites": len(site_rows),
             "avg_health_score": avg_health,

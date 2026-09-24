@@ -34,6 +34,7 @@ class TrackFixRequest(BaseModel):
 
 
 @router.get("/{website_id}/proof-list")
+@router.get("/{website_id}/fixes")
 async def get_site_proof_list(website_id: str):
     """Retrieve 28-day post-fix performance list demonstrating traffic and rank lifts."""
     try:

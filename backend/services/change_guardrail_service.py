@@ -52,6 +52,7 @@ def check_ymyl_risk(before: str, after: str) -> Dict[str, Any]:
     )
 
     return {
+        "is_safe": risk_level == "SAFE",
         "risk_level": risk_level,
         "flagged_terms": flagged,
         "compliance_message": warning,
@@ -117,6 +118,7 @@ def get_diff_details(change_id: str) -> Optional[Dict[str, Any]]:
     ymyl_data = check_ymyl_risk(before, after)
 
     return {
+        "id": change_id,
         "change_id": change_id,
         "website_id": change.get("website_id"),
         "title": change.get("title"),
@@ -127,7 +129,9 @@ def get_diff_details(change_id: str) -> Optional[Dict[str, Any]]:
         "before_state": before,
         "after_state": after,
         "diff": diff_data,
+        "visual_diff": diff_data,
         "ymyl_safety": ymyl_data,
+        "ymyl_check": ymyl_data,
     }
 
 
@@ -169,6 +173,7 @@ def rollback_change(change_id: str, author: str = "Admin Operator") -> Dict[str,
         "status": "success",
         "message": f"Change '{change.get('title')}' has been completely rolled back to pre-change state.",
         "change_id": change_id,
+        "rolled_back_change_id": change_id,
         "restored_state": change.get("before_state"),
         "timestamp": datetime.utcnow().isoformat(),
     }

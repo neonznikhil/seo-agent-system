@@ -32,9 +32,20 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
     domain = site.get("domain", "example.com") if site else "example.com"
     settings = get_local_lead_settings(website_id)
 
-    monthly_spend = float(settings.get("monthly_seo_spend", 2500.0))
-    target_cpl = float(settings.get("target_cpl", 75.0))
-    lead_value_unit = float(settings.get("lead_value", 350.0))
+    try:
+        monthly_spend = float(settings.get("monthly_seo_spend", 2500.0) or 2500.0)
+    except (ValueError, TypeError):
+        monthly_spend = 2500.0
+
+    try:
+        target_cpl = float(settings.get("target_cpl", 75.0) or 75.0)
+    except (ValueError, TypeError):
+        target_cpl = 75.0
+
+    try:
+        lead_value_unit = float(settings.get("lead_value", 350.0) or 350.0)
+    except (ValueError, TypeError):
+        lead_value_unit = 350.0
 
     # Base seed niche
     niche = "litigation lawyer" if "law" in domain else "saas software" if "tech" in domain or "saas" in domain else "consulting services"
@@ -68,12 +79,17 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
         # If total leads > 0, keyword CPL = (spend_share / leads)
         keyword_rows.append({
             "query": item["query"],
+            "keyword": item["query"],
             "landing_page": item["landing_page"],
             "position": item["pos"],
+            "clicks": clicks,
             "clicks_28d": clicks,
             "impressions_28d": int(clicks * (9 + item["pos"] * 2)),
+            "conversions": int(leads),
             "attributed_leads": int(leads),
+            "cvr": cvr,
             "conversion_rate_pct": cvr,
+            "pipeline_value": round(leads * lead_value_unit, 2),
             "estimated_value": round(leads * lead_value_unit, 2),
             "opportunity_flag": (
                 "HIGH_VALUE_STRIKING" if (item["pos"] > 5 and cvr >= 8.0)
@@ -95,19 +111,24 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
     for row in keyword_rows:
         lead_share = row["attributed_leads"] / max(total_leads, 1)
         allocated_cost = monthly_spend * lead_share
-        row["cost_per_lead"] = round(allocated_cost / max(row["attributed_leads"], 1), 2)
+        cpl_val = round(allocated_cost / max(row["attributed_leads"], 1), 2)
+        row["cost_per_lead"] = cpl_val
+        row["cpl"] = cpl_val
 
     return {
         "website_id": website_id,
         "domain": domain,
         "settings": settings,
         "summary": {
+            "total_organic_leads": int(total_leads),
             "total_organic_leads_28d": int(total_leads),
+            "total_organic_clicks": total_clicks,
             "total_organic_clicks_28d": total_clicks,
+            "blended_cvr": blended_cvr,
             "blended_cvr_pct": blended_cvr,
             "blended_cpl": blended_cpl,
             "target_cpl": target_cpl,
-            "cpl_variance_pct": round(((blended_cpl - target_cpl) / target_cpl) * 100, 1),
+            "cpl_variance_pct": round(((blended_cpl - target_cpl) / target_cpl) * 100, 1) if target_cpl > 0 else 0.0,
             "total_pipeline_value": total_pipeline_value,
             "monthly_seo_spend": monthly_spend,
             "roi_ratio": round(total_pipeline_value / max(monthly_spend, 1), 2),
@@ -120,8 +141,11 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
 def update_lead_settings(website_id: str, new_settings: Dict[str, Any]) -> Dict[str, Any]:
     """Update website's lead and conversion settings (monthly spend, target CPL, lead value)."""
     saved = save_local_lead_settings(website_id, new_settings)
-    return {
+    result = {
         "status": "success",
         "settings": saved,
         "message": "Lead attribution configuration updated successfully."
     }
+    if isinstance(saved, dict):
+        result.update(saved)
+    return result
