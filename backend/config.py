@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import warnings
+import hashlib
 from dotenv import load_dotenv
 
 if hasattr(sys.stdout, "reconfigure"):
