@@ -91,6 +91,7 @@ from routers.rank_tracker import router as rank_tracker_router
 from routers.demo import router as demo_router
 from routers.deep_diagnostic import router as deep_diagnostic_router
 from routers.workflows import router as workflows_router
+from routers.intelligence import router as intelligence_router
 from scripts.migrate import run_migrations
 from agents.seo_agent_group import seo_agent_group
 
@@ -853,6 +854,7 @@ app.include_router(rank_tracker_router, prefix="/api")         # /api/rankings/*
 app.include_router(demo_router, prefix="/api")                 # /api/demo/*
 app.include_router(deep_diagnostic_router, prefix="/api")         # /api/system/*
 app.include_router(workflows_router, prefix="/api")               # /api/workflows/*
+app.include_router(intelligence_router, prefix="/api")            # /api/intelligence/*
 
 
 @app.get("/api/seo-agent-group/status")

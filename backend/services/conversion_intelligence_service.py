@@ -1,81 +1,157 @@
-import asyncio
+"""Conversion intelligence: correlate organic traffic with GA4 conversions.
+
+Identifies 'Leaky Stars' (lots of sessions, few conversions) and 'Hidden Gems'
+(few sessions, high conversion rate). Every figure is computed from stored GA4
+conversion rows. When no conversion data has been imported the report says so
+and returns empty lists - it never invents example content or revenue.
+"""
+
 import logging
 import time
-from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from database import get_supabase
+from services import intelligence_store as store
 
 logger = logging.getLogger("backend.services.conversion_intelligence_service")
 
+# A page needs enough traffic before its conversion rate means anything.
+MIN_SESSIONS_FOR_RATE = 50
+LEAKY_MAX_RATE = 0.005      # <= 0.5% with real traffic is a CRO candidate
+HIDDEN_GEM_MIN_RATE = 0.04  # >= 4% with low traffic deserves more links
+REPORT_DAYS = 30
+
 
 class ConversionIntelligenceService:
-    """Upgrade 8: Conversion Intelligence Layer.
-    Correlates organic traffic with GA4 goal conversions.
-    Identifies 'Leaky Stars' (needing CRO audit) and 'Hidden Gems' (high conversion, needing backlink priority).
-    """
+    """Upgrade 8: Conversion Intelligence Layer."""
 
     def __init__(self, website_id: Optional[str] = None):
         self.website_id = website_id or "default"
 
     async def run_conversion_analysis(self) -> Dict[str, Any]:
         start_t = time.time()
-        logger.info("[ConversionIntelligence] Correlating organic traffic with GA4 conversion goals...")
-        
-        supabase = get_supabase()
+        logger.info("[ConversionIntelligence] Correlating traffic with GA4 goals for %s",
+                    self.website_id)
 
-        # Conversion breakdown
-        top_converting = [
-            {"title": "Average Settlement Payout for Auto Collision in Houston", "url": "/average-auto-collision-settlement-houston", "sessions": 510, "goal_completions": 16, "conv_rate": "3.1%", "revenue": "$12,400"},
-            {"title": "Complete Guide to Texas Commercial Truck Claims", "url": "/texas-truck-accident-lawyer-settlement-guide", "sessions": 980, "goal_completions": 28, "conv_rate": "2.8%", "revenue": "$24,500"},
-            {"title": "Texas Personal Injury Statute of Limitations Timeline", "url": "/texas-personal-injury-statute-limitations", "sessions": 130, "goal_completions": 3, "conv_rate": "2.3%", "revenue": "$1,800"}
-        ]
+        rows = store.select("conversions", {"website_id": self.website_id})
+        if not rows:
+            return {
+                "success": True,
+                "configured": False,
+                "total_monthly_goal_completions": None,
+                "attributed_revenue": None,
+                "top_converting_articles": [],
+                "leaky_stars_identified": [],
+                "hidden_gems_identified": [],
+                "duration_sec": round(time.time() - start_t, 3),
+                "note": (
+                    "No GA4 conversion data stored for this site. "
+                    "Import conversions to populate this report."
+                ),
+            }
+
+        pages: Dict[str, Dict[str, float]] = {}
+        for row in rows:
+            page = str(row.get("landing_page") or "")
+            if not page:
+                continue
+            bucket = pages.setdefault(page, {"leads": 0.0, "revenue": 0.0})
+            bucket["leads"] += float(row.get("conversion_count") or 0)
+            bucket["revenue"] += float(row.get("conversion_value") or 0)
+
+        # Sessions are not in the conversion rows; they come from GA4 sessions
+        # if available. Without them a conversion rate cannot be stated, so the
+        # page is reported for leads only.
+        sessions_by_page = self._sessions_by_page()
+
+        articles: List[Dict[str, Any]] = []
+        for page, agg in pages.items():
+            sessions = sessions_by_page.get(page)
+            rate = (agg["leads"] / sessions) if sessions else None
+            articles.append({
+                "url": page,
+                "title": page,
+                "sessions": sessions,
+                "goal_completions": int(agg["leads"]),
+                "conv_rate": f"{rate * 100:.2f}%" if rate is not None else None,
+                "revenue": f"${agg['revenue']:,.0f}",
+                "revenue_value": round(agg["revenue"], 2),
+            })
+
+        top_converting = sorted(
+            articles, key=lambda a: a["revenue_value"], reverse=True
+        )[:5]
 
         leaky_stars = [
-            {
-                "title": "Texas Commercial Vehicle Federal Compliance Guide",
-                "url": "/texas-commercial-vehicle-compliance",
-                "sessions": 1200,
-                "goal_completions": 1,
-                "conv_rate": "0.08%",
-                "cro_issue": "Missing sticky consultation CTA and case evaluation form anchor."
-            }
+            a for a in articles
+            if a["sessions"] and a["sessions"] >= MIN_SESSIONS_FOR_RATE
+            and (a["goal_completions"] / a["sessions"]) <= LEAKY_MAX_RATE
         ]
-
         hidden_gems = [
-            {
-                "title": "Houston Wrongful Death Settlement Timeline",
-                "url": "/houston-wrongful-death-settlements",
-                "sessions": 85,
-                "goal_completions": 8,
-                "conv_rate": "9.4%",
-                "recommendation": "Elevate in Topic Ownership Engine and allocate 2 high-DR backlink assets to this URL."
-            }
+            a for a in articles
+            if a["sessions"] and a["sessions"] < MIN_SESSIONS_FOR_RATE
+            and (a["goal_completions"] / a["sessions"]) >= HIDDEN_GEM_MIN_RATE
         ]
 
-        # Auto-queue CRO revision brief for Leaky Stars
-        for ls in leaky_stars:
-            try:
-                supabase.table("brain_auto_pages_queue").insert({
-                    "website_id": self.website_id,
-                    "target_keyword": ls["title"],
-                    "suggested_title": f"CRO Revision: {ls['title']}",
-                    "type": "cro_revision",
-                    "priority_score": 95.0,
-                    "status": "pending",
-                    "metadata": {"cro_audit_findings": ls["cro_issue"], "target_url": ls["url"]},
-                    "created_at": datetime.utcnow().isoformat()
-                }).execute()
-            except Exception:
-                pass
+        queued = self._queue_cro_revisions(leaky_stars)
+        total_leads = sum(a["goal_completions"] for a in articles)
+        total_revenue = sum(a["revenue_value"] for a in articles)
 
-        duration = time.time() - start_t
         return {
             "success": True,
-            "total_monthly_goal_completions": 48,
-            "attributed_revenue": "$38,700",
+            "configured": True,
+            "period_days": REPORT_DAYS,
+            "pages_analysed": len(articles),
+            "total_monthly_goal_completions": total_leads,
+            "attributed_revenue": f"${total_revenue:,.0f}",
+            "attributed_revenue_value": round(total_revenue, 2),
             "top_converting_articles": top_converting,
             "leaky_stars_identified": leaky_stars,
             "hidden_gems_identified": hidden_gems,
-            "duration_sec": duration
+            "cro_revisions_queued": queued,
+            "sessions_note": (
+                "Conversion rate is only reported for pages with GA4 session "
+                "counts. Pages without sessions show leads and revenue only."
+                if not sessions_by_page else ""
+            ),
+            "thresholds": {
+                "min_sessions_for_rate": MIN_SESSIONS_FOR_RATE,
+                "leaky_max_rate": LEAKY_MAX_RATE,
+                "hidden_gem_min_rate": HIDDEN_GEM_MIN_RATE,
+            },
+            "duration_sec": round(time.time() - start_t, 3),
         }
+
+    def _sessions_by_page(self) -> Dict[str, int]:
+        """Best-effort GA4 session counts, if a sessions table is populated."""
+        try:
+            rows = store.select("site_metrics_daily", {"website_id": self.website_id})
+        except Exception:  # noqa: BLE001
+            return {}
+        sessions: Dict[str, int] = {}
+        for row in rows:
+            page = row.get("landing_page")
+            if page and row.get("clicks") is not None:
+                sessions[str(page)] = int(row.get("clicks") or 0)
+        return sessions
+
+    def _queue_cro_revisions(self, leaky_stars: List[Dict[str, Any]]) -> int:
+        """Queue a CRO action for each real leaky page. Returns count queued."""
+        from services import intelligence_service as intel
+
+        queued = 0
+        for page in leaky_stars:
+            try:
+                intel.create_action(
+                    website_id=self.website_id,
+                    title=f"CRO revision: {page['url']}",
+                    category="cro",
+                    target_url=page["url"],
+                    severity="high",
+                    effort_minutes=60,
+                    source="conversion_intelligence",
+                )
+                queued += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[ConversionIntelligence] could not queue CRO for %s: %s",
+                               page.get("url"), exc)
+        return queued
