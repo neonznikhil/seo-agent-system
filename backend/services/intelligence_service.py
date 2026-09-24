@@ -98,7 +98,6 @@ def portfolio_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
     """One table of all sites: health, indexation, clicks, open issues."""
     sites = _load_sites(account_id)
     integrations = integration_status()
-    configured = integrations["site_metrics"]["status"] == OK
 
     rows: List[Dict[str, Any]] = []
     for site in sites:
@@ -128,9 +127,16 @@ def portfolio_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         })
 
     # Sites with no metrics are still listed; the UI shows "no data" for them.
+    # Data availability reflects whether metrics were actually collected, not
+    # whether a connector is configured. Stored metrics can exist from an
+    # import while the live connector is off, and the totals must not then
+    # claim "no data" while the per-site rows show real clicks.
+    any_metrics = any(r["metrics_as_of"] for r in rows)
+    any_clicks = any(r["clicks"] is not None for r in rows)
+
     totals = {
         "sites": len(rows),
-        "clicks": sum(r["clicks"] or 0 for r in rows) if configured else None,
+        "clicks": sum(r["clicks"] or 0 for r in rows) if any_clicks else None,
         "open_issues": sum(r["open_issues"] or 0 for r in rows),
         "critical_issues": sum(r["critical_issues"] or 0 for r in rows),
     }
@@ -139,11 +145,12 @@ def portfolio_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         "totals": totals,
         "storage": store.storage_backend(),
         "integrations": integrations,
-        "data_available": configured,
+        "data_available": any_metrics,
         "note": (
             "Live per-site metrics collected."
-            if configured
-            else "No GSC/Supabase credentials. Sites are listed, metrics unavailable."
+            if any_metrics
+            else "No site metrics collected yet. Sites are listed; health, "
+            "indexation and clicks stay blank until metrics are ingested."
         ),
     }
 

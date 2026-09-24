@@ -134,9 +134,11 @@ def _verify_website_ownership(website_id: str, account_id: str, supabase) -> dic
 @router.get("/api/websites/list")
 async def list_websites(request: Request):
     account_id = get_current_account_id(request)
-    supabase = get_supabase()
     rows = []
+    # get_supabase() raises when the credentials are absent, so it is resolved
+    # inside the guard: a deployment without Supabase still lists local sites.
     try:
+        supabase = get_supabase()
         res = supabase.table("websites").select("*").eq("account_id", account_id).order("created_at", desc=False).execute()
         rows = res.data or []
     except Exception as e:

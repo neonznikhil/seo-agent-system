@@ -6,6 +6,9 @@ import { useState, useEffect } from "react";
 
 const coreNav = [
   { label: "Dashboard", href: "/" },
+  { label: "Portfolio", href: "/portfolio" },
+  { label: "Action List", href: "/actions" },
+  { label: "Proof of Work", href: "/proof" },
   { label: "Websites", href: "/websites" },
   { label: "Knowledge", href: "/knowledge" },
   { label: "Writer", href: "/writer" },
@@ -22,6 +25,8 @@ const seoNav = [
   { label: "Content Decay", href: "/decay" },
   { label: "Cannibalization", href: "/cannibalization" },
   { label: "Backlinks", href: "/backlinks" },
+  { label: "Competitors", href: "/competitors" },
+  { label: "Guardrails", href: "/guardrails" },
 ];
 
 const aiNav = [

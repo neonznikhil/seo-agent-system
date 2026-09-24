@@ -1,25 +1,24 @@
 """Strict CORS middleware for RankForge.
 
-Uses an explicit allow-list from ALLOWED_CORS_ORIGINS env var.
-Security is enforced at the application layer via X-User-Id, Supabase RLS,
-and auth checks.
+Uses an explicit allow-list. Security is enforced at the application layer via
+X-User-Id, Supabase RLS, and auth checks.
 """
 
 import logging
-import os
 from typing import List
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from config import ALLOWED_CORS_ORIGINS
+
 logger = logging.getLogger("backend.middleware.cors")
 
-ALLOWED_ORIGINS: List[str] = [
-    origin.strip().rstrip("/")
-    for origin in os.getenv("ALLOWED_CORS_ORIGINS", "").split(",")
-    if origin.strip() and origin.strip() != "*"
-]
+# Sourced from config so it honours ALLOWED_CORS_ORIGINS, the localhost defaults
+# and FRONTEND_URL. Reading the env var here directly would ignore all three and
+# leave the browser blocked whenever the var is unset.
+ALLOWED_ORIGINS: List[str] = list(ALLOWED_CORS_ORIGINS)
 
 
 class StrictCORSMiddleware(BaseHTTPMiddleware):
