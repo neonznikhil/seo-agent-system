@@ -222,7 +222,7 @@ def integration_status() -> Dict[str, Dict[str, Any]]:
             bool(
                 os.getenv("SERPER_API_KEY")
                 or os.getenv("SERPAPI_KEY")
-                or os.getenv("SERPAPI_KEY")
+                or os.getenv("SERP_API_KEY")
             ),
             "competitor position data",
         ),
