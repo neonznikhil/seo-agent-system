@@ -5,7 +5,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/dashboard/${id}/metrics`, {
       signal: AbortSignal.timeout(3000),

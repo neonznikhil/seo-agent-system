@@ -47,7 +47,7 @@ services:
       - key: FRONTEND_URL
         value: https://rankforge-frontend.onrender.com
       - key: BACKEND_URL
-        value: https://rankforge-backend.onrender.com
+        value: https://rankforge-backend-38mh.onrender.com
       - key: ENVIRONMENT
         value: production
 
@@ -62,9 +62,9 @@ services:
     startCommand: npm start
     envVars:
       - key: BACKEND_URL
-        value: https://rankforge-backend.onrender.com
+        value: https://rankforge-backend-38mh.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        value: https://rankforge-backend.onrender.com/api
+        value: https://rankforge-backend-38mh.onrender.com/api
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY

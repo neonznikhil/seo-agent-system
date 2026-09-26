@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ website_id: string }> }
 ) {
   const { website_id } = await params;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const body = await req.json().catch(() => ({}));
     const res = await fetch(`${backendUrl}/api/wordpress/${website_id}/test`, {

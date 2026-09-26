@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/autonomous/settings`, {
       signal: AbortSignal.timeout(3000),
@@ -26,7 +26,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/autonomous/settings`, {
       method: "POST",

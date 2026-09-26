@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   // Try proxying to backend first
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const backendRes = await fetch(`${backendUrl}/api/health/autonomous`, {
       signal: AbortSignal.timeout(3000),

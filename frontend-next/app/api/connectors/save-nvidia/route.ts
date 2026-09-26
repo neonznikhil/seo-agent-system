@@ -4,7 +4,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const apiKey = (body.api_key || "").trim();
 
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/connectors/save-nvidia`, {
       method: "POST",

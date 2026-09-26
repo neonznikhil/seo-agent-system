@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     }
 
     // Try testing via backend first if configured and alive
-    const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+    const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
     try {
       const backendRes = await fetch(`${backendUrl}/api/connectors/test-nvidia`, {
         method: "POST",

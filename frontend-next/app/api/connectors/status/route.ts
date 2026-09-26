@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   // Try proxying to backend first
-  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend.onrender.com")
+  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend-38mh.onrender.com")
     .replace(/\/+$/, "")
     .replace(/\/api$/, "");
   try {

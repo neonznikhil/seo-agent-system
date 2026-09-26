@@ -6,7 +6,7 @@ export async function GET(req: Request) {
 
   // HONEST: no invented keyword volumes. Suggestions come only from the
   // backend keyword pipeline (GSC/Serper grounded). This route proxies it.
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(
       `${backendUrl}/api/keywords/opportunities?website_id=${encodeURIComponent(website_id)}`,

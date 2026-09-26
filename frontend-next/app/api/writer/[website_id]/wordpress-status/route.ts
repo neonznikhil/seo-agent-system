@@ -5,7 +5,7 @@ export async function GET(
   { params }: { params: Promise<{ website_id: string }> }
 ) {
   const { website_id } = await params;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/writer/${website_id}/wordpress-status`, {
       signal: AbortSignal.timeout(3000),

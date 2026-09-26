@@ -5,7 +5,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend.onrender.com";
+  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const res = await fetch(`${backendUrl}/api/websites/${id}`, {
       signal: AbortSignal.timeout(3000),
@@ -45,7 +45,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend.onrender.com")
+  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend-38mh.onrender.com")
     .replace(/\/+$/, "")
     .replace(/\/api$/, "");
   const body = await req.text().catch(() => undefined);
@@ -79,7 +79,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend.onrender.com")
+  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend-38mh.onrender.com")
     .replace(/\/+$/, "")
     .replace(/\/api$/, "");
   const headers: Record<string, string> = {};
