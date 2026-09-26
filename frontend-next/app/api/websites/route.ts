@@ -4,7 +4,12 @@ import { NextResponse } from "next/server";
 // /api/:path* rewrite, so `POST /api/websites` never reached the backend and
 // Next answered 405 -- which is what "Failed to create website: API 405" was.
 const backendBase = () =>
-  (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000")
+    .replace(/\/+$/, "")
+    // Both conventions are in the wild: a bare origin, or one ending in /api
+    // (lib/api.ts buildUrl accepts either). Strip it so the path we append is
+    // never doubled into /api/api/...
+    .replace(/\/api$/, "");
 
 async function proxy(req: Request, path: string) {
   const headers: Record<string, string> = {};
