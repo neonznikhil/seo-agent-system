@@ -324,7 +324,7 @@ class AutonomousHealthService:
         except Exception as e:
             logger.debug(f"[AutoFix] Approvals sync error: {e}")
 
-        # Fix 3: Auto-populate keyword queue if empty
+        # Fix 3: Report keyword queue state; never invent opportunities
         try:
             kw_count = len(
                 supabase.table("keyword_opportunities")
@@ -335,23 +335,7 @@ class AutonomousHealthService:
                 .data or []
             )
             if kw_count == 0:
-                # Insert seed autonomous discovery opportunities
-                seeds = [
-                    {"keyword": "autonomous seo agent workflows 2026", "opportunity_score": 92.5},
-                    {"keyword": "programmatic backlink acquisition strategies", "opportunity_score": 88.0},
-                    {"keyword": "llms.txt generative engine optimization", "opportunity_score": 85.5},
-                ]
-                for s in seeds:
-                    try:
-                        supabase.table("keyword_opportunities").insert({
-                            "keyword": s["keyword"],
-                            "opportunity_score": s["opportunity_score"],
-                            "status": "new",
-                            "source": "health_service_auto_heal",
-                        }).execute()
-                    except Exception as e:
-                        logger.warning(f"[services_autonomous_health_service] operation failed: {e}")
-                msg = f"Auto-populated keyword queue with {len(seeds)} items."
+                msg = "Keyword queue empty — run keyword research to populate real opportunities."
                 fixes_applied.append(msg)
                 logger.info(f"[AutoFix] {msg}")
         except Exception as e:

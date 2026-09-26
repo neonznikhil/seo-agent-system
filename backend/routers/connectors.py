@@ -905,7 +905,7 @@ async def get_connectors_status(website_id: Optional[str] = None):
         "connected": bool(nvidia_key) and nim_available,
         "is_configured": bool(nvidia_key),
         "available": nim_available,
-        "models_count": 25 if bool(nvidia_key) else 0,
+        "models_count": None,
     }
 
     # 3. Serper Status

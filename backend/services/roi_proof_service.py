@@ -5,7 +5,7 @@ traffic increase, and tangible ROI value.
 
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 try:
     from backend.services.local_store import (
@@ -13,7 +13,6 @@ try:
         list_local_roi_tracked_fixes,
         get_local_roi_tracked_fix,
         update_local_roi_tracked_fix,
-        get_local_website,
         get_local_lead_settings,
     )
 except ImportError:
@@ -22,7 +21,6 @@ except ImportError:
         list_local_roi_tracked_fixes,
         get_local_roi_tracked_fix,
         update_local_roi_tracked_fix,
-        get_local_website,
         get_local_lead_settings,
     )
 
@@ -69,93 +67,8 @@ def track_new_fix(
 
 
 def list_tracked_fixes(website_id: str) -> List[Dict[str, Any]]:
-    """Retrieve all tracked fixes with up-to-date simulated or live measurements."""
-    fixes = list_local_roi_tracked_fixes(website_id)
-    if not fixes:
-        site = get_local_website(website_id)
-        domain = site.get("domain", "site.com") if site else "site.com"
-        now = datetime.utcnow()
-
-        # Seed initial realistic proven fixes so user sees working proof of ROI immediately
-        seed_fixes = [
-            {
-                "website_id": website_id,
-                "target_url": f"https://{domain}/services/enterprise-solutions",
-                "fix_title": "Fixed Missing H1 & Injected SoftwareApplication JSON-LD Schema",
-                "category": "TECHNICAL_SEO",
-                "target_keyword": "enterprise automation suite",
-                "baseline_position": 14.2,
-                "baseline_monthly_clicks": 340,
-                "current_position": 4.1,
-                "current_monthly_clicks": 920,
-                "position_lift": 10.1,
-                "traffic_lift_clicks": 580,
-                "traffic_lift_percentage": 170.6,
-                "monthly_value_generated": 2900.0,
-                "shipped_at": (now - timedelta(days=28)).isoformat(),
-                "days_tracked": 28,
-                "status": "PROVEN_LIFT",
-                "milestones": [
-                    {"day": 7, "measured": True, "position": 11.0, "clicks": 420},
-                    {"day": 14, "measured": True, "position": 7.5, "clicks": 610},
-                    {"day": 21, "measured": True, "position": 5.2, "clicks": 810},
-                    {"day": 28, "measured": True, "position": 4.1, "clicks": 920},
-                ],
-            },
-            {
-                "website_id": website_id,
-                "target_url": f"https://{domain}/pricing",
-                "fix_title": "CTR Optimization: Rewrote Meta Description & Added Pricing FAQ Schema",
-                "category": "CTR_OPTIMIZATION",
-                "target_keyword": "enterprise seo pricing",
-                "baseline_position": 8.0,
-                "baseline_monthly_clicks": 510,
-                "current_position": 3.8,
-                "current_monthly_clicks": 860,
-                "position_lift": 4.2,
-                "traffic_lift_clicks": 350,
-                "traffic_lift_percentage": 68.6,
-                "monthly_value_generated": 1750.0,
-                "shipped_at": (now - timedelta(days=19)).isoformat(),
-                "days_tracked": 19,
-                "status": "PROVEN_LIFT",
-                "milestones": [
-                    {"day": 7, "measured": True, "position": 6.8, "clicks": 620},
-                    {"day": 14, "measured": True, "position": 4.5, "clicks": 770},
-                    {"day": 21, "measured": False, "position": None, "clicks": None},
-                    {"day": 28, "measured": False, "position": None, "clicks": None},
-                ],
-            },
-            {
-                "website_id": website_id,
-                "target_url": f"https://{domain}/blog/decaying-pillar-guide",
-                "fix_title": "Resolved 3-way Keyword Cannibalization & 301-Redirected Thin Duplicates",
-                "category": "CANNIBALIZATION",
-                "target_keyword": "b2b organic lead strategies",
-                "baseline_position": 22.0,
-                "baseline_monthly_clicks": 95,
-                "current_position": 9.4,
-                "current_monthly_clicks": 310,
-                "position_lift": 12.6,
-                "traffic_lift_clicks": 215,
-                "traffic_lift_percentage": 226.3,
-                "monthly_value_generated": 1075.0,
-                "shipped_at": (now - timedelta(days=9)).isoformat(),
-                "days_tracked": 9,
-                "status": "TRACKING",
-                "milestones": [
-                    {"day": 7, "measured": True, "position": 14.1, "clicks": 210},
-                    {"day": 14, "measured": False, "position": None, "clicks": None},
-                    {"day": 21, "measured": False, "position": None, "clicks": None},
-                    {"day": 28, "measured": False, "position": None, "clicks": None},
-                ],
-            },
-        ]
-        fixes = []
-        for sf in seed_fixes:
-            fixes.append(save_local_roi_tracked_fix(sf))
-
-    return fixes
+    """Tracked fixes shipped by user. Empty until user tracks one."""
+    return list_local_roi_tracked_fixes(website_id)
 
 
 def calculate_roi_summary(website_id: str) -> Dict[str, Any]:

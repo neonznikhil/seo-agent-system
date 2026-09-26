@@ -464,18 +464,18 @@ class BrainService:
                 if m_type == "outcome" and r.get("created_at", "") >= cutoff:
                     outcomes_14d += 1
         except Exception:
-            # If table empty or unseeded, provide default baseline
-            total = 12
+            # Honest empty: no memories measured yet
+            total = 0
             breakdown = {
-                "fact": 4,
-                "experience": 3,
-                "failure": 1,
-                "preference": 2,
-                "entity": 1,
+                "fact": 0,
+                "experience": 0,
+                "failure": 0,
+                "preference": 0,
+                "entity": 0,
                 "relationship": 0,
-                "outcome": 1
+                "outcome": 0
             }
-            outcomes_14d = 1
+            outcomes_14d = 0
 
         return {
             "total_memories": total,
