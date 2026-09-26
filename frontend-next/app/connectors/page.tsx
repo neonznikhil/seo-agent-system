@@ -63,7 +63,7 @@ export default function ConnectorsPage() {
   const [ga4Json, setGa4Json] = useState("");
   const [ga4Testing, setGa4Testing] = useState(false);
   const [ga4StreamActive, setGa4StreamActive] = useState(false);
-  const [ga4Visitors, setGa4Visitors] = useState<number>(4);
+  const [ga4Visitors, setGa4Visitors] = useState<number | null>(null);
 
   // Section D: Optional
   const [slackWebhook, setSlackWebhook] = useState("");
@@ -313,11 +313,14 @@ export default function ConnectorsPage() {
   // Sync GSC
   const handleSyncGsc = async () => {
     setGscSyncing(true);
+    setErrorMsg(null);
     try {
       const res = await post("/api/connectors/sync-gsc", { property_url: gscUrl });
-      showToast("✓ Synced search impressions and clicks from GSC.");
+      if (res?.synced) showToast("✓ Synced search impressions and clicks from GSC.");
+      else setErrorMsg(res?.message || "GSC sync failed. Check credentials.");
+      loadStatus();
     } catch (e: any) {
-      showToast("Sync completed with live property configuration.");
+      setErrorMsg(`GSC Sync Error: ${e.message}`);
     } finally {
       setGscSyncing(false);
     }
@@ -341,11 +344,19 @@ export default function ConnectorsPage() {
   const handleTestGa4Stream = async () => {
     try {
       const res = await post("/api/connectors/test-ga4-stream", {});
-      setGa4StreamActive(true);
-      setGa4Visitors(res.active_visitors || 4);
-      showToast(`✓ GA4 Stream Live: ${res.active_visitors || 4} real-time active visitors.`);
+      if (res?.connected) {
+        setGa4StreamActive(true);
+        setGa4Visitors(res.active_visitors ?? null);
+        showToast(`✓ GA4 Stream Live: ${res.active_visitors ?? 0} real-time active visitors.`);
+      } else {
+        setGa4StreamActive(false);
+        setGa4Visitors(null);
+        setErrorMsg(res?.message || "GA4 stream not configured.");
+      }
     } catch (e: any) {
-      showToast("Stream active.");
+      setGa4StreamActive(false);
+      setGa4Visitors(null);
+      setErrorMsg(`GA4 Stream Error: ${e.message}`);
     }
   };
 
@@ -757,7 +768,7 @@ export default function ConnectorsPage() {
                       {ga4Testing ? "Testing..." : "Test GA4"}
                     </button>
                     <button type="button" onClick={handleTestGa4Stream} className="btn btn-accent" style={{ padding: "6px 12px", fontSize: "11px" }}>
-                      Test GA4 Stream ({ga4Visitors} Active)
+                      Test GA4 Stream ({ga4Visitors ?? "—"} Active)
                     </button>
                   </div>
                 </div>

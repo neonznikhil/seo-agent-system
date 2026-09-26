@@ -648,6 +648,13 @@ async def test_gsc(payload: Optional[TestGscRequest] = None):
     try:
         from services.gsc_service import list_verified_sites
         sites = await list_verified_sites()
+        if not sites:
+            return {
+                "connected": False,
+                "status": "not_configured",
+                "message": "GSC reachable but no verified properties. Verify property in Search Console.",
+                "properties": [],
+            }
         return {
             "connected": True,
             "status": "success",
@@ -655,12 +662,12 @@ async def test_gsc(payload: Optional[TestGscRequest] = None):
             "properties": sites,
         }
     except Exception as e:
-        is_conn = bool(cred_json or os.getenv("GSC_SERVICE_ACCOUNT_JSON") or os.getenv("GSC_CREDENTIALS_PATH"))
+        logger.warning(f"GSC test failed: {e}")
         return {
-            "connected": is_conn,
-            "status": "ready" if is_conn else "not_configured",
-            "message": "GSC credentials saved and ready for property sync" if is_conn else "GSC configuration failed. Please check your credentials.",
-            "properties": [payload.property_url] if payload and payload.property_url else [],
+            "connected": False,
+            "status": "not_configured",
+            "message": "GSC not connected. Add service JSON and property URL.",
+            "properties": [],
         }
 
 
@@ -680,22 +687,31 @@ async def sync_gsc(payload: Optional[dict] = None):
 @router.post("/api/connectors/test-ga4")
 @router.post("/connectors/test-ga4")
 async def test_ga4(payload: Optional[TestGa4Request] = None):
-    """Verify GA4 Data API connection."""
-    prop_id = payload.property_id if payload else os.getenv("GA4_PROPERTY_ID", "")
+    """Verify GA4 Data API connection with real sessions only."""
+    prop_id = (payload.property_id if payload and payload.property_id else "") or os.getenv("GA4_PROPERTY_ID", "")
     try:
         from services.ga4_service import ga4_service
         res = await ga4_service.get_recent_sessions(website_id=get_default_website_id(), days=7)
+        if res.get("error"):
+            return {
+                "connected": False,
+                "status": "not_configured",
+                "sessions_last_7_days": None,
+                "message": res.get("message") or "GA4 not configured. Set GA4_PROPERTY_ID and credentials.",
+            }
         return {
             "connected": True,
             "status": "success",
-            "sessions_last_7_days": res.get("sessions", 120),
+            "sessions_last_7_days": res.get("sessions"),
             "message": "Successfully connected to Google Analytics 4",
         }
-    except Exception:
+    except Exception as e:
+        logger.warning(f"GA4 test failed: {e}")
         return {
-            "connected": bool(prop_id or os.getenv("GA4_PROPERTY_ID")),
-            "status": "ready",
-            "message": "GA4 Property configured and ready for data streaming",
+            "connected": False,
+            "status": "not_configured",
+            "sessions_last_7_days": None,
+            "message": "GA4 not connected. Set GA4_PROPERTY_ID and credentials JSON.",
         }
 
 

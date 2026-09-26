@@ -321,7 +321,7 @@ export default function OnboardingPage() {
                   className="w-full bg-[#0a0a0a] border border-[#262626] rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#ff4500] font-mono transition-colors"
                 />
                 <p className="font-mono text-[11px] text-neutral-500 mt-1.5">
-                  Don't have a key? RankForge will automatically use built-in neural SERP fallbacks.
+                  No key yet? SERP features stay disabled until key added. No fake data shown.
                 </p>
               </div>
 
@@ -340,7 +340,7 @@ export default function OnboardingPage() {
                   }}
                   className="font-mono text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
                 >
-                  Use Neural Fallback →
+                  Skip for now →
                 </button>
 
                 <button

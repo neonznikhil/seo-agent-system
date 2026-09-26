@@ -39,7 +39,7 @@ export default function ActionsPage() {
   return (
     <div className="page-container active" style={{ padding: 24 }}>
       <div className="page-heading">Do These 10 Things Now</div>
-      <div className="page-sub"><span className="sub-sq"></span>{data?.domain} · +{data?.total_potential_clicks_per_month || 0} clicks/mo potential</div>
+      <div className="page-sub"><span className="sub-sq"></span>{data?.domain} · +{data?.total_potential_clicks_per_month || 0} clicks/mo potential (estimate)</div>
       {error && <div className="notice" style={{ borderColor: "var(--red)" }}>{error}</div>}
       <div className="panel"><div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {actions.map((a: any) => (
@@ -47,7 +47,7 @@ export default function ActionsPage() {
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <span className="badge badge-accent">#{a.rank}</span>
               <strong style={{ flex: 1 }}>{a.title}</strong>
-              <span style={{ fontSize: 11 }}>+{a.impact_clicks_per_month}/mo · {a.effort}</span>
+              <span style={{ fontSize: 11 }}>+{a.impact_clicks_per_month}/mo est · {a.effort}</span>
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{a.rationale}</div>
             <div style={{ fontSize: 11, marginTop: 6 }}>Target: {a.target_url} · Query: {a.target_query}</div>
