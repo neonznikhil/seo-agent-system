@@ -14,7 +14,7 @@ const backendBase = () =>
 async function proxy(req: Request, path: string) {
   const headers: Record<string, string> = {};
   req.headers.forEach((val, key) => {
-    if (!["host", "connection", "content-length"].includes(key.toLowerCase())) {
+    if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
       headers[key] = val;
     }
   });

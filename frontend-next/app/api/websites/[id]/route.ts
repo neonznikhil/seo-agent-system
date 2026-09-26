@@ -51,7 +51,7 @@ export async function PUT(
   const body = await req.text().catch(() => undefined);
   const headers: Record<string, string> = {};
   req.headers.forEach((val, key) => {
-    if (!["host", "connection", "content-length"].includes(key.toLowerCase())) {
+    if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
       headers[key] = val;
     }
   });
@@ -84,7 +84,7 @@ export async function DELETE(
     .replace(/\/api$/, "");
   const headers: Record<string, string> = {};
   req.headers.forEach((val, key) => {
-    if (!["host", "connection", "content-length"].includes(key.toLowerCase())) {
+    if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
       headers[key] = val;
     }
   });
