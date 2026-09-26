@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { get, post, put, del } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
+import { saveWordPressForSite } from "@/lib/wordpress";
 
 interface Website {
   id: string;
@@ -177,25 +178,8 @@ export default function WebsitesPage() {
     try {
       setWpTesting(id);
       setError(null);
-      // Save to websites table
-      await put(`/api/websites/${id}`, {
-        wordpress_user: user.trim(),
-        cms_user: user.trim(),
-        wordpress_password: pass.trim(),
-        app_password: pass.trim(),
-        wordpress_url: siteUrl,
-        cms_url: siteUrl,
-        url: siteUrl,
-      } as any);
-      // Verify immediately
-      const test = await post(`/api/wordpress/${id}/test`, {
-        url: siteUrl,
-        wordpress_url: siteUrl,
-        username: user.trim(),
-        wordpress_user: user.trim(),
-        password: pass.trim(),
-        wordpress_password: pass.trim(),
-      });
+      // Same canonical flow as /connectors: PUT websites + POST wordpress test
+      const test = await saveWordPressForSite(id, { siteUrl, username: user, appPassword: pass });
       if (test.connected) {
         setNoticeMsg(`✓ WordPress connected as ${test.wp_user || user} — /writer will now show Connected`);
       } else {

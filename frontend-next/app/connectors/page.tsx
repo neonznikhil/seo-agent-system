@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
+import { saveWordPressForSite } from "@/lib/wordpress";
 
 const MASK = "••••••••••••••••••••••••";
 
@@ -184,7 +185,7 @@ export default function ConnectorsPage() {
     }
   };
 
-  // Test WordPress
+  // Test WordPress — same flow as /websites: PUT websites + POST wordpress test
   const handleTestWp = async () => {
     setWpTesting(true);
     setErrorMsg(null);
@@ -195,23 +196,20 @@ export default function ConnectorsPage() {
           JSON.stringify({ site_url: wpUrl, username: wpUser })
         );
       } catch {}
-      const res = await post("/api/wordpress/connect", {
-        site_url: wpUrl,
-        wp_username: wpUser,
-        wp_app_password: wpPass,
-      });
-      if (res.connected) {
-        setWpPosts(res.recent_posts || []);
-        showToast(`✓ WordPress connected as ${res.user?.name || wpUser} (Role: ${res.user?.roles?.join(", ") || "Editor"})`);
+      if (!websiteId) {
+        setErrorMsg("Select website in /websites first, then test.");
+        return;
+      }
+      const res = await saveWordPressForSite(websiteId, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
+      if (res?.connected) {
+        showToast(`✓ WordPress connected as ${res.wp_user || wpUser}`);
         try {
-          await post("/api/wordpress/save", {
-            site_url: wpUrl,
-            wp_username: wpUser,
-            wp_app_password: wpPass,
-            website_id: websiteId || undefined,
-          });
+          const posts = await get(`/api/wordpress/${websiteId}/posts?per_page=3`);
+          setWpPosts(posts?.posts || []);
         } catch {}
         loadStatus();
+      } else {
+        setErrorMsg(`WordPress test: ${res?.message || "check credentials/role"}`);
       }
     } catch (e: any) {
       setErrorMsg(`WordPress Connection Error: ${e.message}`);
@@ -220,10 +218,14 @@ export default function ConnectorsPage() {
     }
   };
 
-  // Save WordPress credentials directly
+  // Save WordPress credentials directly — same flow as /websites
   const handleSaveWp = async () => {
     if (!wpUrl) {
       setErrorMsg("Please enter WordPress site URL first.");
+      return;
+    }
+    if (!websiteId) {
+      setErrorMsg("Select website in /websites first, then save.");
       return;
     }
     setWpSaving(true);
@@ -235,13 +237,8 @@ export default function ConnectorsPage() {
           JSON.stringify({ site_url: wpUrl, username: wpUser })
         );
       } catch {}
-      const res = await post("/api/wordpress/save", {
-        site_url: wpUrl,
-        wp_username: wpUser,
-        wp_app_password: wpPass,
-        website_id: websiteId || undefined,
-      });
-      showToast(res.message || "✓ WordPress credentials saved successfully!");
+      const res = await saveWordPressForSite(websiteId, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
+      showToast(res?.connected ? `✓ WordPress connected as ${res.wp_user || wpUser}` : "✓ WordPress credentials saved. Check role if test failed.");
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`WordPress Save Error: ${e.message}`);
