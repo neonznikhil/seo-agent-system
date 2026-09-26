@@ -116,6 +116,28 @@ export async function authFetch(
   }
 }
 
+function apiError(status: number, errorText: string, statusText: string): Error {
+  const msg =
+    status === 429
+      ? "Too many requests (429) — backend waking or busy. Wait 30 seconds, then retry once."
+      : `API ${status}: ${errorText || statusText}`;
+  const error = new Error(msg);
+  (error as any).status = status;
+  return error;
+}
+
+async function retryOnceAfter429(
+  res: Response,
+  path: string,
+  options: RequestInit,
+  retried: boolean
+): Promise<Response | null> {
+  if (res.status !== 429 || retried) return null;
+  const waitSecs = Math.min(parseInt(res.headers.get("Retry-After") || "5", 10) || 5, 30);
+  await new Promise((r) => setTimeout(r, waitSecs * 1000));
+  return authFetch(path, options);
+}
+
 export async function get(path: string, headers: Record<string, string> = {}) {
   const res = await authFetch(path, { method: "GET", headers });
   if (!res.ok) {
@@ -124,49 +146,45 @@ export async function get(path: string, headers: Record<string, string> = {}) {
       const altRes = await authFetch(altPath, { method: "GET", headers });
       if (altRes.ok) return await altRes.json();
     }
+    if (res.status === 429) {
+      const retry = await retryOnceAfter429(res, path, { method: "GET", headers }, false);
+      if (retry?.ok) return await retry.json();
+    }
     const errorText = await res.text().catch(() => "");
-    const error = new Error(`API ${res.status}: ${errorText || res.statusText}`);
-    (error as any).status = res.status;
-    throw error;
+    throw apiError(res.status, errorText, res.statusText);
   }
   return await res.json();
 }
 
 export async function post(path: string, body: any = {}, headers: Record<string, string> = {}) {
-  const res = await authFetch(path, {
-    method: "POST",
-    headers,
-    body: typeof body === "string" ? body : JSON.stringify(body),
-  });
+  const payload = typeof body === "string" ? body : JSON.stringify(body);
+  const res = await authFetch(path, { method: "POST", headers, body: payload });
   if (!res.ok) {
     if (res.status === 404 && !path.startsWith("/api") && !path.startsWith("api")) {
       const altPath = `/api${path.startsWith("/") ? path : `/${path}`}`;
-      const altRes = await authFetch(altPath, {
-        method: "POST",
-        headers,
-        body: typeof body === "string" ? body : JSON.stringify(body),
-      });
+      const altRes = await authFetch(altPath, { method: "POST", headers, body: payload });
       if (altRes.ok) return await altRes.json();
     }
+    if (res.status === 429) {
+      const retry = await retryOnceAfter429(res, path, { method: "POST", headers, body: payload }, false);
+      if (retry?.ok) return await retry.json();
+    }
     const errorText = await res.text().catch(() => "");
-    const error = new Error(`API ${res.status}: ${errorText || res.statusText}`);
-    (error as any).status = res.status;
-    throw error;
+    throw apiError(res.status, errorText, res.statusText);
   }
   return await res.json();
 }
 
 export async function put(path: string, body: any = {}, headers: Record<string, string> = {}) {
-  const res = await authFetch(path, {
-    method: "PUT",
-    headers,
-    body: typeof body === "string" ? body : JSON.stringify(body),
-  });
+  const payload = typeof body === "string" ? body : JSON.stringify(body);
+  const res = await authFetch(path, { method: "PUT", headers, body: payload });
   if (!res.ok) {
+    if (res.status === 429) {
+      const retry = await retryOnceAfter429(res, path, { method: "PUT", headers, body: payload }, false);
+      if (retry?.ok) return await retry.json();
+    }
     const errorText = await res.text().catch(() => "");
-    const error = new Error(`API ${res.status}: ${errorText || res.statusText}`);
-    (error as any).status = res.status;
-    throw error;
+    throw apiError(res.status, errorText, res.statusText);
   }
   return await res.json();
 }
