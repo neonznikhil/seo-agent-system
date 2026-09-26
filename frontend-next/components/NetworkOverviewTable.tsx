@@ -155,7 +155,7 @@ export function NetworkOverviewTable({ onSelectSite, activeWebsiteId }: NetworkO
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
               <span style={{ fontFamily: "DotGothic16, monospace", fontSize: "28px", color: (data?.network_indexation_avg || 0) >= 80 ? "var(--green)" : "var(--amber)" }}>
-                {data?.network_indexation_avg ? data.network_indexation_avg.toFixed(1) : "--"}%
+                {data?.network_indexation_avg ? Number(data.network_indexation_avg).toFixed(1) : "--"}%
               </span>
               <span style={{ fontSize: "11px", color: "var(--muted)" }}>gate: 80%</span>
             </div>
@@ -366,7 +366,7 @@ export function NetworkOverviewTable({ onSelectSite, activeWebsiteId }: NetworkO
                       <td style={{ padding: "12px 14px" }}>
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", fontSize: "10.5px" }}>
-                            <span>{site.indexation_rate.toFixed(1)}%</span>
+                            <span>{Number(site.indexation_rate ?? 0).toFixed(1)}%</span>
                             <span style={{ color: "var(--muted)" }}>
                               {site.indexed_pages}/{site.submitted_pages}
                             </span>
@@ -392,9 +392,9 @@ export function NetworkOverviewTable({ onSelectSite, activeWebsiteId }: NetworkO
                       </td>
 
                       <td style={{ padding: "12px 14px" }}>
-                        <div style={{ fontWeight: 600 }}>{site.clicks_28d.toLocaleString()}</div>
+                        <div style={{ fontWeight: 600 }}>{Number(site.clicks_28d ?? 0).toLocaleString()}</div>
                         <div style={{ fontSize: "9.5px", color: "var(--muted)" }}>
-                          {site.impressions_28d.toLocaleString()} imp
+                          {Number(site.impressions_28d ?? 0).toLocaleString()} imp
                         </div>
                       </td>
 

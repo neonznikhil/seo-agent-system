@@ -5,7 +5,7 @@ export async function GET(req: Request) {
   const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
     const backendRes = await fetch(`${backendUrl}/api/health/autonomous`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(25000),
     });
     if (backendRes.ok) {
       const data = await backendRes.json();

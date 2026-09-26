@@ -6,7 +6,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const wid = url.searchParams.get("website_id") || "";
     const res = await fetch(`${backendUrl}/api/demo/readiness-check${wid ? `?website_id=${wid}` : ""}`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(25000),
     });
     if (res.ok) {
       const data = await res.json();

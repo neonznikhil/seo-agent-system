@@ -640,13 +640,13 @@ export function CompetitorTrackerCard({ websiteId }: CompetitorTrackerCardProps)
                     <div>
                       <div style={{ fontSize: "11px", color: "var(--muted)" }}>Est. Clicks Lost</div>
                       <div style={{ fontSize: "16px", fontWeight: 700, color: "#f87171" }}>
-                        -{totalClicksLost.toLocaleString()} /mo
+                        -{Number(totalClicksLost ?? 0).toLocaleString()} /mo
                       </div>
                     </div>
                     <div>
                       <div style={{ fontSize: "11px", color: "var(--muted)" }}>Potential MRR Deficit</div>
                       <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--amber)" }}>
-                        -${totalMrrLoss.toLocaleString()} /mo
+                        -${Number(totalMrrLoss ?? 0).toLocaleString()} /mo
                       </div>
                     </div>
                   </div>
@@ -698,7 +698,7 @@ export function CompetitorTrackerCard({ websiteId }: CompetitorTrackerCardProps)
                             </div>
                           </td>
                           <td style={{ padding: "12px", fontFamily: "monospace" }}>
-                            {item.search_volume.toLocaleString()}
+                            {Number(item.search_volume ?? 0).toLocaleString()}
                           </td>
                           <td style={{ padding: "12px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -751,7 +751,7 @@ export function CompetitorTrackerCard({ websiteId }: CompetitorTrackerCardProps)
                               -{item.monthly_clicks_lost} clicks
                             </div>
                             <div style={{ fontSize: "11px", color: "var(--muted)" }}>
-                              ~${item.potential_mrr_loss.toFixed(0)}/mo
+                              ~${Number(item.potential_mrr_loss ?? 0).toFixed(0)}/mo
                             </div>
                           </td>
                           <td style={{ padding: "12px", maxWidth: "340px" }}>

@@ -245,7 +245,7 @@ export function RoiProofCard({ websiteId }: RoiProofCardProps) {
                       fontFamily: "'DotGothic16', monospace",
                     }}
                   >
-                    +{summary.total_monthly_clicks_won.toLocaleString()}
+                    +{Number(summary.total_monthly_clicks_won ?? 0).toLocaleString()}
                   </div>
                   <div style={{ fontSize: "11px", color: "var(--muted)" }}>Incremental organic visits/mo</div>
                 </div>
@@ -295,7 +295,7 @@ export function RoiProofCard({ websiteId }: RoiProofCardProps) {
                       fontFamily: "'DotGothic16', monospace",
                     }}
                   >
-                    ${summary.monthly_value_generated.toLocaleString()}
+                    ${Number(summary.monthly_value_generated ?? 0).toLocaleString()}
                   </div>
                   <div style={{ fontSize: "11px", color: "var(--muted)" }}>Monthly commercial lift</div>
                 </div>
@@ -444,10 +444,10 @@ export function RoiProofCard({ websiteId }: RoiProofCardProps) {
 
                       <td style={{ padding: "12px" }}>
                         <div style={{ fontWeight: 700, color: "var(--green)" }}>
-                          +{fix.traffic_lift_clicks.toLocaleString()} clicks/mo
+                          +{Number(fix.traffic_lift_clicks ?? 0).toLocaleString()} clicks/mo
                         </div>
                         <div style={{ fontSize: "11px", color: "var(--muted)" }}>
-                          +{fix.traffic_lift_percentage}% lift (${fix.monthly_value_generated.toLocaleString()}/mo)
+                          +{fix.traffic_lift_percentage ?? 0}% lift (${Number(fix.monthly_value_generated ?? 0).toLocaleString()}/mo)
                         </div>
                       </td>
 

@@ -233,7 +233,7 @@ export function LeadAttributionCard({ websiteId }: LeadAttributionCardProps) {
                     </td>
 
                     <td style={{ padding: "10px 12px", fontWeight: 600 }}>
-                      {kw.clicks.toLocaleString()}
+                      {Number(kw.clicks ?? 0).toLocaleString()}
                     </td>
 
                     <td style={{ padding: "10px 12px", color: "var(--green)", fontWeight: 700 }}>
@@ -241,15 +241,15 @@ export function LeadAttributionCard({ websiteId }: LeadAttributionCardProps) {
                     </td>
 
                     <td style={{ padding: "10px 12px" }}>
-                      {kw.cvr_percentage.toFixed(1)}%
+                      {Number(kw.cvr_percentage ?? 0).toFixed(1)}%
                     </td>
 
                     <td style={{ padding: "10px 12px", fontWeight: 600 }}>
-                      ${Math.round(kw.cost_per_lead)}
+                      ${Math.round(kw.cost_per_lead ?? 0)}
                     </td>
 
                     <td style={{ padding: "10px 12px", color: "var(--green)", fontWeight: 700 }}>
-                      ${kw.pipeline_value.toLocaleString()}
+                      ${Number(kw.pipeline_value ?? 0).toLocaleString()}
                     </td>
 
                     <td style={{ padding: "10px 12px" }}>

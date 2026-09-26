@@ -14,9 +14,9 @@ export function KeywordBadge({ query, impressions, ctr, active = false }: Keywor
     }`}>
       {active && <span className="w-2 h-2 bg-accent rounded-full" />}
       <span className="text-xs uppercase mono-font">{query}</span>
-      <span className="text-[10px] text-muted mono-font">{impressions.toLocaleString()} IMP</span>
+      <span className="text-[10px] text-muted mono-font">{Number(impressions ?? 0).toLocaleString()} IMP</span>
       <span className="text-[10px] text-muted mono-font"> / </span>
-      <span className="text-[10px] text-muted mono-font">{(ctr * 100).toFixed(1)}% CTR</span>
+      <span className="text-[10px] text-muted mono-font">{(Number(ctr ?? 0) * 100).toFixed(1)}% CTR</span>
     </div>
   );
 }
