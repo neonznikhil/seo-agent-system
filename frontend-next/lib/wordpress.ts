@@ -1,9 +1,16 @@
 import { post, put, buildUrl } from "@/lib/api";
+import { clearCurrentWebsiteId } from "@/lib/website";
 
 /** Name the failing step plus backend target so 404s point at env, not code. */
 function stepError(step: string, path: string, err: any): Error {
   const base = buildUrl(path);
   const detail = err?.message || String(err);
+  if (err?.status === 404 && /website not found/i.test(detail)) {
+    clearCurrentWebsiteId();
+    return new Error(
+      "Website not found on backend (stale selection cleared). Re-add site in /websites, select it, then save WP creds."
+    );
+  }
   return new Error(`${step} failed [${base}]: ${detail}`);
 }
 

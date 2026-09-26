@@ -18,3 +18,10 @@ export function setCurrentWebsiteId(websiteId: string): void {
   localStorage.setItem(ALIAS_KEY, websiteId);
   window.dispatchEvent(new CustomEvent("website-changed", { detail: websiteId }));
 }
+
+export function clearCurrentWebsiteId(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(PRIMARY_KEY);
+  localStorage.removeItem(ALIAS_KEY);
+  window.dispatchEvent(new CustomEvent("website-changed", { detail: "" }));
+}
