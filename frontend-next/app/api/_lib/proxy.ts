@@ -4,7 +4,9 @@ const BACKEND_URL = (
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
   "http://127.0.0.1:8000"
-).replace(/\/+$/, "");
+)
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
 
 async function proxyToBackend(path: string, req: Request): Promise<Response | null> {
   if (!BACKEND_URL) {

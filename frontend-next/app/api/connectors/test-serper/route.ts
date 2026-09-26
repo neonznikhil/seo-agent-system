@@ -36,10 +36,9 @@ export async function POST(req: Request) {
       );
     }
   } catch {
-    return NextResponse.json({
-      connected: true,
-      status: "configured",
-      message: "Serper key configured",
-    });
+    return NextResponse.json(
+      { connected: false, error: "Serper unreachable. Check key and network." },
+      { status: 502 }
+    );
   }
 }

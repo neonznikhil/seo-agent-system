@@ -45,12 +45,33 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await req.json().catch(() => ({}));
-  return NextResponse.json({
-    success: true,
-    id,
-    ...body,
+  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend.onrender.com")
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "");
+  const body = await req.text().catch(() => undefined);
+  const headers: Record<string, string> = {};
+  req.headers.forEach((val, key) => {
+    if (!["host", "connection", "content-length"].includes(key.toLowerCase())) {
+      headers[key] = val;
+    }
   });
+  try {
+    const res = await fetch(`${backendUrl}/api/websites/${id}`, {
+      method: "PUT",
+      headers,
+      body,
+      signal: AbortSignal.timeout(120000),
+    });
+    const text = await res.text().catch(() => "");
+    if (!text) return new NextResponse(null, { status: res.status });
+    try {
+      return NextResponse.json(JSON.parse(text), { status: res.status });
+    } catch {
+      return new NextResponse(text, { status: res.status });
+    }
+  } catch {
+    return NextResponse.json({ detail: "Backend unreachable" }, { status: 502 });
+  }
 }
 
 export async function DELETE(
@@ -58,8 +79,29 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return NextResponse.json({
-    success: true,
-    deleted: id,
+  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend.onrender.com")
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "");
+  const headers: Record<string, string> = {};
+  req.headers.forEach((val, key) => {
+    if (!["host", "connection", "content-length"].includes(key.toLowerCase())) {
+      headers[key] = val;
+    }
   });
+  try {
+    const res = await fetch(`${backendUrl}/api/websites/${id}`, {
+      method: "DELETE",
+      headers,
+      signal: AbortSignal.timeout(30000),
+    });
+    const text = await res.text().catch(() => "");
+    if (!text) return new NextResponse(null, { status: res.status });
+    try {
+      return NextResponse.json(JSON.parse(text), { status: res.status });
+    } catch {
+      return new NextResponse(text, { status: res.status });
+    }
+  } catch {
+    return NextResponse.json({ detail: "Backend unreachable" }, { status: 502 });
+  }
 }

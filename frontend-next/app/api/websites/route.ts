@@ -40,11 +40,19 @@ async function proxy(req: Request, path: string) {
   }
 }
 
-export async function GET() {
-  // Try proxying to backend first
+export async function GET(req: Request) {
+  // Try proxying to backend first, forwarding auth headers
   const backendUrl = backendBase();
   try {
+    const headers: Record<string, string> = {};
+    req.headers.forEach((val, key) => {
+      const k = key.toLowerCase();
+      if (["x-user-id", "x-website-id", "authorization"].includes(k)) {
+        headers[key] = val;
+      }
+    });
     const backendRes = await fetch(`${backendUrl}/api/websites`, {
+      headers,
       signal: AbortSignal.timeout(3000),
     });
     if (backendRes.ok) {
