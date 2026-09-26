@@ -2295,6 +2295,8 @@ async def run_autonomous_blog_generation():
         last_blog = await get_last_blog_time(website_id)
         
         if last_blog:
+            if last_blog.tzinfo is None:
+                last_blog = last_blog.replace(tzinfo=timezone.utc)
             minutes_since_last = (datetime.now(timezone.utc) - last_blog).total_seconds() / 60
             if minutes_since_last < interval_minutes:
                 remaining = int(interval_minutes - minutes_since_last)

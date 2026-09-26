@@ -57,6 +57,23 @@ async def get_tech_seo(website_id: str):
                 "audit": audit,
             }
         
+        # Check local store if Supabase returned nothing
+        try:
+            from services.local_store import list_local_audits
+            local_audits = list_local_audits(resolved_id, limit=1)
+            if local_audits:
+                audit = local_audits[0]
+                return {
+                    "health_score": audit.get("health_score"),
+                    "issues": audit.get("issues", []),
+                    "checks": audit.get("checks", []) or (audit.get("metrics", {}).get("checks", []) if isinstance(audit.get("metrics"), dict) else []),
+                    "last_run": audit.get("created_at") or audit.get("last_run"),
+                    "status": "completed",
+                    "audit": audit,
+                }
+        except Exception as e:
+            logger.warning(f"[routers_tech_seo] local store audit check failed: {e}")
+
         # If not run yet, execute live audit immediately so user gets real data
         audit = await execute_tech_audit(resolved_id)
         return {
@@ -86,6 +103,13 @@ async def execute_tech_audit(website_id: str) -> dict:
         site = supabase.table("websites").select("*").eq("id", website_id).single().execute().data or {}
     except Exception as e:
         logger.warning(f"[routers_tech_seo] operation failed: {e}")
+
+    if not site:
+        try:
+            from services.local_store import get_local_website
+            site = get_local_website(website_id) or {}
+        except Exception:
+            site = {}
 
     domain = site.get("domain", "").strip() or site.get("cms_url", "").strip() or site.get("url", "").strip()
     if not domain:
@@ -343,6 +367,12 @@ async def execute_tech_audit(website_id: str) -> dict:
             }).execute()
         except Exception as e:
             logger.warning(f"Could not persist technical audit: {e}")
+
+    try:
+        from services.local_store import save_local_audit
+        save_local_audit(audit_record)
+    except Exception as e:
+        logger.warning(f"Could not save local audit: {e}")
 
     return {
         "health_score": health_score,

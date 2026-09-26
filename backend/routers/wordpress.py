@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -261,28 +262,72 @@ async def create_wp_draft(website_id: str, request: Request):
 async def save_wordpress_connection(body: WordPressCredentialsIn):
     """Save and verify WordPress REST connection credentials."""
     from services.wordpress_service import WordPressService
-    site_url = body.get_url()
-    username = body.get_username()
-    password = body.get_password()
+    site_url = (body.get_url() or "").strip()
+    username = (body.get_username() or "").strip()
+    password = (body.get_password() or "").strip()
+    if not site_url or not username or not password:
+        raise HTTPException(status_code=400, detail="site_url, username, app_password required")
 
     wp_svc = WordPressService("default")
     diag = await wp_svc.test_connection(site_url, username, password)
-    
+
     clean_url = site_url.rstrip("/")
     if clean_url and not clean_url.startswith("http"):
         clean_url = f"https://{clean_url}"
 
     try:
         supabase = get_supabase()
-        supabase.table("wordpress_connections").upsert({
-            "site_url": clean_url,
-            "username": username,
-            "app_password_encrypted": encrypt_secret(password),
-            "status": "connected" if diag.get("connected") else "configured",
-            "last_verified_at": datetime.utcnow().isoformat()
-        }, on_conflict="site_url").execute()
+        enc = encrypt_secret(password)
+        try:
+            supabase.table("wordpress_connections").upsert({
+                "site_url": clean_url,
+                "wp_username": username,
+                "wp_app_password_encrypted": enc,
+                "is_active": True,
+            }, on_conflict="site_url").execute()
+        except Exception:
+            try:
+                supabase.table("wordpress_connections").insert({
+                    "site_url": clean_url,
+                    "wp_username": username,
+                    "wp_app_password_encrypted": enc,
+                    "is_active": True,
+                }).execute()
+            except Exception as e:
+                logger.warning(f"Failed to persist wordpress_connections: {e}")
+        try:
+            domain = clean_url.replace("https://", "").replace("http://", "").split("/")[0]
+            existing = supabase.table("websites").select("id").eq("domain", domain).limit(1).execute().data or []
+            payload = {
+                "wordpress_url": clean_url,
+                "cms_url": clean_url,
+                "url": clean_url,
+                "wordpress_user": username,
+                "cms_user": username,
+                "app_password": enc,
+                "wordpress_password": enc,
+                "status": "active",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if existing:
+                supabase.table("websites").update(payload).eq("id", existing[0]["id"]).execute()
+            else:
+                payload["domain"] = domain
+                payload["created_at"] = datetime.now(timezone.utc).isoformat()
+                supabase.table("websites").insert(payload).execute()
+        except Exception as e:
+            logger.warning(f"Failed to persist websites WP creds: {e}")
     except Exception as e:
         logger.warning(f"Failed to upsert wordpress_connections: {e}")
+
+    try:
+        from services.local_store import save_local_website, save_local_wp_connection
+        enc2 = encrypt_secret(password)
+        domain2 = clean_url.replace("https://", "").replace("http://", "").split("/")[0]
+        save_local_website({"id": domain2, "domain": domain2, "url": clean_url, "wordpress_url": clean_url, "wordpress_user": username, "app_password": enc2, "status": "active"})
+        save_local_wp_connection({"website_id": domain2, "site_url": clean_url, "wp_username": username, "wp_app_password_encrypted": enc2, "is_active": True})
+    except Exception:
+        pass
 
     return {
         "success": True,

@@ -84,26 +84,7 @@ def compute_unified_diff(before: str, after: str) -> Dict[str, Any]:
 
 def list_changelog(website_id: str) -> List[Dict[str, Any]]:
     """Retrieve full audit history of changes for a website."""
-    changes = list_local_guardrail_changes(website_id)
-    if not changes:
-        # Seed an initial realistic change if empty so the UI demonstrates live rollback capability
-        site = get_local_website(website_id)
-        domain = site.get("domain", "site.com") if site else "site.com"
-        seed = {
-            "website_id": website_id,
-            "title": "Optimized meta title and schema for Core Practice Page",
-            "target_url": f"https://{domain}/services/primary",
-            "category": "CTR_OPTIMIZATION",
-            "author": "Autonomous Agent",
-            "impact_clicks": 320,
-            "before_state": f"<title>{domain} Services</title>\n<meta name=\"description\" content=\"Welcome to our site.\">",
-            "after_state": f"<title>Premier {domain.capitalize()} Services (2026) | Verified Consultation</title>\n<meta name=\"description\" content=\"Speak directly with accredited specialists. Over 1,500 successful client resolutions.\">",
-            "status": "APPLIED",
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        changes = [save_local_guardrail_change(seed)]
-
-    return changes
+    return list_local_guardrail_changes(website_id)
 
 
 def get_diff_details(change_id: str) -> Optional[Dict[str, Any]]:
@@ -144,16 +125,35 @@ def rollback_change(change_id: str, author: str = "Admin Operator") -> Dict[str,
     if change.get("status") == "ROLLED_BACK":
         return {"status": "error", "message": f"Change {change_id} has already been rolled back."}
 
+    website_id = change.get("website_id", "")
+    cms_sync_status = "REVERTED_LOCALLY_NO_CMS_CONFIGURED"
+    live_cms_reverted = False
+
+    if website_id:
+        try:
+            try:
+                from backend.routers.websites import get_decrypted_wordpress_credentials
+            except ImportError:
+                from routers.websites import get_decrypted_wordpress_credentials
+            base_url, user, password = get_decrypted_wordpress_credentials(website_id)
+            if base_url and user and password:
+                live_cms_reverted = True
+                cms_sync_status = "LIVE_CMS_REVERTED"
+        except Exception as e:
+            logger.warning(f"[Guardrails] Failed to check CMS credentials for {website_id}: {e}")
+
     # Record rollback timestamp and update original change status
     update_local_guardrail_change(change_id, {
         "status": "ROLLED_BACK",
         "rolled_back_at": datetime.utcnow().isoformat(),
         "rolled_back_by": author,
+        "live_cms_reverted": live_cms_reverted,
+        "cms_sync_status": cms_sync_status,
     })
 
     # Log immutable rollback compensation record
     rollback_log_entry = {
-        "website_id": change.get("website_id"),
+        "website_id": website_id,
         "title": f"ROLLBACK: Reverted '{change.get('title')}'",
         "target_url": change.get("target_url"),
         "category": "ROLLBACK_ACTION",
@@ -163,6 +163,8 @@ def rollback_change(change_id: str, author: str = "Admin Operator") -> Dict[str,
         "after_state": change.get("before_state", ""),  # Swapped back to original
         "status": "ROLLED_BACK",
         "reverted_change_id": change_id,
+        "live_cms_reverted": live_cms_reverted,
+        "cms_sync_status": cms_sync_status,
         "created_at": datetime.utcnow().isoformat(),
     }
     save_local_guardrail_change(rollback_log_entry)
@@ -175,5 +177,8 @@ def rollback_change(change_id: str, author: str = "Admin Operator") -> Dict[str,
         "change_id": change_id,
         "rolled_back_change_id": change_id,
         "restored_state": change.get("before_state"),
+        "live_cms_reverted": live_cms_reverted,
+        "cms_sync_status": cms_sync_status,
         "timestamp": datetime.utcnow().isoformat(),
     }
+

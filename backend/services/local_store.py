@@ -347,7 +347,8 @@ def get_local_wp_connection(website_id: Optional[str] = None) -> Optional[Dict[s
         for c in conns:
             if c.get("website_id") == website_id or c.get("id") == website_id:
                 return c
-    # Return latest active or latest connection
+        return None
+    # Return latest active or latest connection only when no specific website_id requested
     for c in reversed(conns):
         if c.get("is_active", True):
             return c

@@ -588,22 +588,41 @@ async def test_serper(payload: Optional[TestSerperRequest] = None):
                 "results_count": len(organic),
                 "organic": organic[:3],
             }
+        elif resp.status_code == 400 and ("credits" in resp.text.lower() or "not enough" in resp.text.lower()):
+            os.environ["SERPER_API_KEY"] = key
+            try:
+                write_env_file(custom_keys={"SERPER_API_KEY": key})
+            except Exception:
+                pass
+            return {
+                "connected": False,
+                "status": "warning",
+                "message": "Serper API key saved. Note: Serper reported 'Not enough credits'. Please refill credits on serper.dev.",
+                "results_count": 0,
+            }
         elif resp.status_code in (401, 403):
             raise HTTPException(status_code=401, detail="Invalid Serper API key")
         else:
-            raise HTTPException(status_code=resp.status_code, detail="External API request failed. Please try again.")
+            raise HTTPException(status_code=resp.status_code, detail=f"External Serper API request failed ({resp.status_code}): {resp.text[:120]}")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Connection to Serper timed out")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="WordPress connection test failed. Please check your credentials.")
+        raise HTTPException(status_code=500, detail=f"Serper connection error: {str(e)}")
 
 
 @router.post("/api/connectors/save-serper")
 @router.post("/connectors/save-serper")
 async def save_serper(payload: TestSerperRequest):
     """Test and persist Serper API key to environment and settings."""
+    key = (payload.api_key or "").strip()
+    if key:
+        os.environ["SERPER_API_KEY"] = key
+        try:
+            write_env_file(custom_keys={"SERPER_API_KEY": key})
+        except Exception:
+            pass
     return await test_serper(payload)
 
 

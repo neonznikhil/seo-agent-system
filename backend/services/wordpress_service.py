@@ -51,7 +51,7 @@ class WordPressService:
             logger.warning(f"[services_wordpress_service] operation failed: {e}")
         if not site or not site.get("wordpress_url"):
             local = get_local_website(self.website_id) or {}
-            if not local:
+            if not local and self.website_id in ("all", "default"):
                 all_loc = list_local_websites()
                 for s in all_loc:
                     if s.get("wordpress_url") or s.get("url"):
@@ -68,7 +68,7 @@ class WordPressService:
         if not site.get("wordpress_url") or not (site.get("app_password") or site.get("wordpress_password")):
             try:
                 rows = self.supabase.table("wordpress_connections").select("site_url, wp_username, wp_app_password_encrypted, encrypted_password, is_active").eq("website_id", self.website_id).order("created_at", desc=True).limit(1).execute().data or []
-                if not rows:
+                if not rows and self.website_id in ("all", "default"):
                     rows = self.supabase.table("wordpress_connections").select("site_url, wp_username, wp_app_password_encrypted, encrypted_password, is_active").order("created_at", desc=True).limit(1).execute().data or []
                 if rows:
                     row = rows[0]
@@ -106,28 +106,35 @@ class WordPressService:
             except Exception as e:
                 logger.warning(f"[services_wordpress_service] operation failed: {e}")
 
-        # Environment variable fallback
-        if not site.get("wordpress_url"):
-            env_url = os.getenv("WORDPRESS_SITE_URL") or os.getenv("WORDPRESS_URL") or ""
-            if env_url:
+        # Environment variable fallback (only for default/all or if website domain matches env URL)
+        env_url = os.getenv("WORDPRESS_SITE_URL") or os.getenv("WORDPRESS_URL") or ""
+        domain = site.get("domain", "") or site.get("url", "")
+        clean_domain = domain.lower().replace("https://", "").replace("http://", "").split("/")[0].strip()
+        clean_env_url = env_url.lower().replace("https://", "").replace("http://", "").split("/")[0].strip()
+        is_matching_domain = bool(clean_domain and clean_env_url and (clean_domain in clean_env_url or clean_env_url in clean_domain))
+
+        if self.website_id in ("all", "default") or is_matching_domain:
+            if not site.get("wordpress_url") and env_url:
                 site["wordpress_url"] = env_url
                 site["cms_url"] = env_url
                 site["url"] = env_url
-        if not site.get("wordpress_user"):
-            env_user = os.getenv("WORDPRESS_USERNAME") or os.getenv("WORDPRESS_USER") or ""
-            if env_user:
-                site["wordpress_user"] = env_user
-                site["cms_user"] = env_user
-        if not site.get("app_password") and not site.get("wordpress_password"):
-            env_pwd = os.getenv("WORDPRESS_APP_PASSWORD") or os.getenv("WORDPRESS_PASSWORD") or ""
-            if env_pwd:
-                site["app_password"] = env_pwd
-                site["wordpress_password"] = env_pwd
+            if not site.get("wordpress_user"):
+                env_user = os.getenv("WORDPRESS_USERNAME") or os.getenv("WORDPRESS_USER") or ""
+                if env_user:
+                    site["wordpress_user"] = env_user
+                    site["cms_user"] = env_user
+            if not site.get("app_password") and not site.get("wordpress_password"):
+                env_pwd = os.getenv("WORDPRESS_APP_PASSWORD") or os.getenv("WORDPRESS_PASSWORD") or ""
+                if env_pwd:
+                    site["app_password"] = env_pwd
+                    site["wordpress_password"] = env_pwd
 
         return site
 
     def get_base_url(self) -> str:
-        url = self.site.get("wordpress_url") or self.site.get("cms_url") or self.site.get("url") or os.getenv("WORDPRESS_SITE_URL") or os.getenv("WORDPRESS_URL") or ""
+        url = self.site.get("wordpress_url") or self.site.get("cms_url") or self.site.get("url") or ""
+        if not url and self.website_id in ("all", "default"):
+            url = os.getenv("WORDPRESS_SITE_URL") or os.getenv("WORDPRESS_URL") or ""
         if url and not url.startswith("http"):
             url = f"https://{url}"
         return url.rstrip("/")
@@ -137,10 +144,11 @@ class WordPressService:
             self.site.get("wordpress_user")
             or self.site.get("cms_user")
             or self.site.get("wp_username")
-            or os.getenv("WORDPRESS_USERNAME")
-            or os.getenv("WORDPRESS_USER")
             or ""
         )
+        if not user and self.website_id in ("all", "default"):
+            user = os.getenv("WORDPRESS_USERNAME") or os.getenv("WORDPRESS_USER") or ""
+
         stored = (
             self.site.get("wordpress_password_encrypted")
             or self.site.get("wp_app_password_encrypted")
@@ -163,15 +171,22 @@ class WordPressService:
             elif "•" not in stored_str:
                 resolved_pwd = stored_str
 
-        # Fallback to env variable if DB password is missing, bullet-masked, or undecryptable
+        # Fallback to env variable if DB password is missing, bullet-masked, or undecryptable (only for default/all or matching domain)
         if not resolved_pwd or "•" in resolved_pwd or resolved_pwd.startswith("gAAAA"):
-            env_fallback = (
-                os.getenv("WORDPRESS_APP_PASSWORD")
-                or os.getenv("WORDPRESS_PASSWORD")
-                or ""
-            ).strip()
-            if env_fallback and "•" not in env_fallback:
-                resolved_pwd = env_fallback
+            env_url = os.getenv("WORDPRESS_SITE_URL") or os.getenv("WORDPRESS_URL") or ""
+            domain = self.site.get("domain", "") or self.site.get("url", "")
+            clean_domain = domain.lower().replace("https://", "").replace("http://", "").split("/")[0].strip()
+            clean_env_url = env_url.lower().replace("https://", "").replace("http://", "").split("/")[0].strip()
+            is_matching_domain = bool(clean_domain and clean_env_url and (clean_domain in clean_env_url or clean_env_url in clean_domain))
+
+            if self.website_id in ("all", "default") or is_matching_domain:
+                env_fallback = (
+                    os.getenv("WORDPRESS_APP_PASSWORD")
+                    or os.getenv("WORDPRESS_PASSWORD")
+                    or ""
+                ).strip()
+                if env_fallback and "•" not in env_fallback:
+                    resolved_pwd = env_fallback
 
         return (user, resolved_pwd)
 

@@ -37,32 +37,10 @@ async function handleProxy(req: Request, slug: string[]) {
       return new NextResponse(null, { status: res.status });
     }
 
-    // If backend returns 404 Not Found, provide a safe fallback so the UI never crashes
     const text = await res.text().catch(() => "");
-    if (res.status === 404) {
-      return NextResponse.json({
-        success: true,
-        status: "ok",
-        fallback: true,
-        path,
-        message: "Endpoint acknowledged",
-        data: {},
-        items: [],
-      });
-    }
-
-    return new NextResponse(text, { status: res.status });
+    return new NextResponse(text || res.statusText, { status: res.status });
   } catch (err: any) {
-    // Network / timeout error fallback
-    return NextResponse.json({
-      success: true,
-      status: "ok",
-      fallback: true,
-      path,
-      message: "Fallback response",
-      data: {},
-      items: [],
-    });
+    return NextResponse.json({ detail: "Backend unreachable" }, { status: 502 });
   }
 }
 

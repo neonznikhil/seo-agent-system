@@ -100,7 +100,7 @@ export default function LinksPage() {
     if (!websiteId) return;
     setRunningJob(true);
     try {
-      const res = await post(`/api/workflows/${websiteId}/run`, { job_name: "internal_linking" });
+      const res = await post(`/api/workflows/${websiteId}/run/internal_linking`, {});
       if (res?.success) {
         showToast("✓ Internal link graph updated and PageRank recomputed!");
         await loadLinksData();

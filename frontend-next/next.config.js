@@ -26,10 +26,11 @@ const nextConfig = {
     if (!backendBase) {
       return [];
     }
+    const backendWithApi = backendBase.endsWith("/api") ? backendBase : `${backendBase}/api`;
     return [
       {
         source: "/api/:path*",
-        destination: `${backendBase}/:path*`,
+        destination: `${backendWithApi}/:path*`,
       },
     ];
   },

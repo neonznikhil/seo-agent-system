@@ -41,74 +41,102 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         cms = site.get("cms_type") or site.get("platform") or "WordPress"
         status = site.get("status", "ACTIVE")
 
-        # 1. Health Score calculation from audits
+        # 1. Health Score calculation from authentic audits
         audits = list_local_audits(site_id, limit=3)
-        if audits and audits[0].get("score") is not None:
-            try:
-                health = int(float(audits[0]["score"]))
-            except (ValueError, TypeError):
-                health = 75
-        else:
-            # Deterministic baseline health based on domain hash if no audit exists yet
-            base_hash = sum(ord(c) for c in domain) % 30
-            health = 68 + base_hash  # 68 to 97 range
+        has_audit = False
+        health = 0
+        trend = "N/A"
+        last_audit = ""
 
-        health_scores.append(health)
+        if audits:
+            primary_audit = audits[0]
+            score_val = primary_audit.get("health_score") if primary_audit.get("health_score") is not None else primary_audit.get("score")
+            if score_val is not None:
+                try:
+                    health = int(float(score_val))
+                    has_audit = True
+                    health_scores.append(health)
+                except (ValueError, TypeError):
+                    health = 0
+            
+            last_audit = primary_audit.get("created_at") or primary_audit.get("last_run") or ""
+            
+            # Trend calculation between current and previous audit if available
+            if len(audits) > 1 and has_audit:
+                prev_score = audits[1].get("health_score") if audits[1].get("health_score") is not None else audits[1].get("score")
+                if prev_score is not None:
+                    try:
+                        diff = health - int(float(prev_score))
+                        trend = f"{diff:+d} pts" if diff != 0 else "+0 pts"
+                    except (ValueError, TypeError):
+                        trend = "Baseline"
+                else:
+                    trend = "Baseline"
+            elif has_audit:
+                trend = "Baseline"
 
-        # 2. Indexation stats
+        if not has_audit:
+            status = "PENDING_AUDIT"
+            last_audit = site.get("updated_at") or site.get("created_at") or ""
+
+        # 2. Indexation stats from real checks or crawl telemetry
         checks = list_local_indexation_checks(site_id, limit=1)
         if checks:
             last_check = checks[0]
             try:
-                indexed = int(float(last_check.get("indexed_pages", 85) or 85))
+                indexed = int(float(last_check.get("indexed_pages", 0) or 0))
             except (ValueError, TypeError):
-                indexed = 85
+                indexed = 0
             try:
-                total_pages = int(float(last_check.get("total_pages", 100) or 100))
+                total_pages = int(float(last_check.get("total_pages", 0) or 0))
             except (ValueError, TypeError):
-                total_pages = 100
+                total_pages = 0
+        elif has_audit and audits and audits[0].get("crawled_urls"):
+            crawled = audits[0].get("crawled_urls", [])
+            total_pages = len(crawled)
+            indexed = len([u for u in crawled if u.get("status") == 200 or u.get("status_code") == 200])
         else:
-            total_pages = 45 + (sum(ord(c) for c in domain) % 150)
-            indexed = int(total_pages * (0.75 + (health / 400)))
+            indexed = 0
+            total_pages = 0
 
-        indexation_rate = round((indexed / max(total_pages, 1)) * 100, 1)
+        indexation_rate = round((indexed / max(total_pages, 1)) * 100, 1) if total_pages > 0 else 0.0
 
-        # 3. 28-day Clicks & Impressions
-        # Use research or generate realistic baseline
+        # 3. 28-day Clicks & Impressions from keyword research / GSC records
         kw_records = list_local_keyword_research(site_id, limit=5)
-        if kw_records and kw_records[0].get("summary", {}).get("total_clicks") is not None:
+        if kw_records and isinstance(kw_records[0].get("summary"), dict):
+            summary = kw_records[0].get("summary", {})
             try:
-                clicks = int(float(kw_records[0]["summary"]["total_clicks"]))
+                clicks = int(float(summary.get("total_clicks", 0) or 0))
             except (ValueError, TypeError):
-                clicks = 340 + (sum(ord(c) for c in domain) * 17 % 5800)
+                clicks = 0
             try:
-                impressions = int(float(kw_records[0]["summary"].get("total_impressions", clicks * 14) or (clicks * 14)))
+                impressions = int(float(summary.get("total_impressions", 0) or 0))
             except (ValueError, TypeError):
-                impressions = clicks * 14
+                impressions = 0
         else:
-            clicks = 340 + (sum(ord(c) for c in domain) * 17 % 5800)
-            impressions = clicks * (12 + (sum(ord(c) for c in domain) % 8))
+            clicks = 0
+            impressions = 0
 
         total_clicks += clicks
         total_impressions += impressions
 
-        # 4. Open Issues Breakdown
-        if health < 75:
-            crit = 3 + (health % 4)
-            warn = 8 + (health % 6)
-            info = 12 + (health % 5)
-        elif health < 88:
-            crit = 1 + (health % 2)
-            warn = 4 + (health % 5)
-            info = 7 + (health % 4)
-        else:
-            crit = 0
-            warn = 2 + (health % 3)
-            info = 4 + (health % 3)
+        # 4. Open Issues Breakdown from actual audit issues
+        crit = 0
+        warn = 0
+        info = 0
+        if has_audit and audits:
+            for iss in audits[0].get("issues", []) or []:
+                sev = str(iss.get("severity", "")).lower()
+                if sev in ("critical", "high", "error"):
+                    crit += 1
+                elif sev in ("warning", "warn", "medium"):
+                    warn += 1
+                else:
+                    info += 1
 
         total_critical += crit
+        total_warning += warn
         site_name = site.get("name") or site.get("site_name") or domain.split(".")[0].capitalize()
-        last_audit = (audits[0].get("created_at") if audits else site.get("updated_at") or site.get("created_at") or "")
 
         site_rows.append({
             "id": site_id,
@@ -129,7 +157,7 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
             "info_issues": info,
             "last_audit_date": str(last_audit),
             "last_audit_at": str(last_audit),
-            "trend": "+2.4%" if health >= 75 else "-1.8%",
+            "trend": trend,
             "indexation": {
                 "indexed_pages": indexed,
                 "total_pages": total_pages,
@@ -138,7 +166,7 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
             "performance_28d": {
                 "clicks": clicks,
                 "impressions": impressions,
-                "ctr": round((clicks / max(impressions, 1)) * 100, 2),
+                "ctr": round((clicks / max(impressions, 1)) * 100, 2) if impressions > 0 else 0.0,
             },
             "open_issues": {
                 "critical": crit,
@@ -151,8 +179,12 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
     # Sort by health ascending (need attention first) or clicks descending
     site_rows.sort(key=lambda s: (s["open_issues"]["critical"], -s["performance_28d"]["clicks"]), reverse=True)
 
-    avg_health = round(sum(health_scores) / max(len(health_scores), 1), 1) if health_scores else 0
-    avg_indexation = round(sum(s["indexation_rate"] for s in site_rows) / max(len(site_rows), 1), 1) if site_rows else 0
+    audited_sites = [s for s in site_rows if s["health_score"] > 0]
+    avg_health = round(sum(s["health_score"] for s in audited_sites) / max(len(audited_sites), 1), 1) if audited_sites else 0.0
+
+    indexed_sites = [s for s in site_rows if s["submitted_pages"] > 0]
+    avg_indexation = round(sum(s["indexation_rate"] for s in indexed_sites) / max(len(indexed_sites), 1), 1) if indexed_sites else 0.0
+
     total_issues = total_critical + total_warning
 
     return {
