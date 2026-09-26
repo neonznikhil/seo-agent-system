@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -465,7 +466,7 @@ def plan_blogs_for_website(website_id: str) -> str:
         get_supabase().table("agent_thoughts").insert({
             "website_id": website_id,
             "thought": f"CrewAI kickoff completed (SEO/AEO/GEO): {str(result)[:1000]}",
-            "created_at": __import__("datetime").datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
     except Exception as e:
         logger.error("Failed to log crew thought: %s", e)
@@ -473,7 +474,7 @@ def plan_blogs_for_website(website_id: str) -> str:
     audit_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "CREWAI_AUDIT.md")
     with open(audit_path, "w", encoding="utf-8") as f:
         f.write(
-            f"# CrewAI Audit Log (SEO/AEO/GEO Enhanced)\n\nTimestamp: {__import__('datetime').datetime.now(timezone.utc).isoformat()}\nWebsite: {website_id}\n\n## Result\n\n{result}\n"
+            f"# CrewAI Audit Log (SEO/AEO/GEO Enhanced)\n\nTimestamp: {datetime.now(timezone.utc).isoformat()}\nWebsite: {website_id}\n\n## Result\n\n{result}\n"
         )
 
     return str(result)
