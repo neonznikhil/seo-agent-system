@@ -169,8 +169,9 @@ export default function WriterPage() {
       let data: any = null;
       try {
         data = await get(`/api/writer/${wid}/suggestions`);
-      } catch {
-        data = await get(`/api/writer/suggestions?website_id=${wid}`);
+      } catch (e: any) {
+        setAutonomousHint(e.message || "Suggestions unavailable.");
+        data = null;
       }
       let list: TopicSuggestion[] = Array.isArray(data?.suggestions) ? data.suggestions : [];
       // HONEST: no invented keyword volumes. Empty means the backend returned

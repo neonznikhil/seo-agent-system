@@ -21,7 +21,7 @@ export default function TestE2EPage() {
     try {
       const websites = await get("/api/websites");
       const websiteId = (Array.isArray(websites) && websites[0]?.id) || "default-website-id";
-      const data = await post(`/api/brain/${websiteId}/run-now`, { job_type: "daily_search", keyword });
+      const data = await post(`/api/brain/${websiteId}/patterns/run`, { website_id: websiteId, job_type: "daily_search", keyword });
       setOutput(data);
       addLog("Pipeline completed");
     } catch (e: any) {

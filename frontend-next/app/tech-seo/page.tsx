@@ -66,7 +66,7 @@ export default function TechSEOPage() {
       const audit = data?.data || data;
       if (!audit || audit.health_score === null || audit.status === "not_run") {
         setRunning(true);
-        const freshAudit = await post(`/api/tech-seo/${wid}/audit`, {});
+        const freshAudit = await post(`/api/tech-seo/${wid}/run-audit`, {});
         const fresh = freshAudit?.data || freshAudit;
         setAuditData(fresh);
         setCurrentAuditTime(fresh?.last_run || fresh?.created_at || fresh?.completed_at || new Date().toISOString());
@@ -109,7 +109,7 @@ export default function TechSEOPage() {
               setLoading(true);
               setRunning(true);
               try {
-                const freshAudit = await post(`/api/tech-seo/${nid}/audit`, {});
+                const freshAudit = await post(`/api/tech-seo/${nid}/run-audit`, {});
                 const fresh = freshAudit?.data || freshAudit;
                 setAuditData(fresh);
                 setCurrentAuditTime(fresh?.last_run || fresh?.created_at || fresh?.completed_at || new Date().toISOString());
@@ -137,7 +137,7 @@ export default function TechSEOPage() {
       } else {
         setRunning(true);
         try {
-          const freshAudit = await post(`/api/tech-seo/${wid}/audit`, {});
+          const freshAudit = await post(`/api/tech-seo/${wid}/run-audit`, {});
           const fresh = freshAudit?.data || freshAudit;
           setAuditData(fresh);
           setCurrentAuditTime(fresh?.last_run || fresh?.created_at || fresh?.completed_at || new Date().toISOString());
@@ -195,7 +195,7 @@ export default function TechSEOPage() {
     setRunning(true);
     setError(null);
     try {
-      const data = await post(`/api/tech-seo/${wid}/audit`, {});
+      const data = await post(`/api/tech-seo/${wid}/run-audit`, {});
       const fresh = data?.data || data;
       setAuditData(fresh);
       setCurrentAuditTime(fresh?.last_run || fresh?.created_at || fresh?.completed_at || new Date().toISOString());

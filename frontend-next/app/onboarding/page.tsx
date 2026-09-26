@@ -69,7 +69,7 @@ export default function OnboardingPage() {
       }
       setCurrentStep(2);
     } catch (err: any) {
-      // Allow proceeding if user wants to connect later or mock
+      // Allow proceeding; user can connect WP later in /websites
       setWpError(err.message || "Could not verify WordPress credentials. You can skip or retry.");
     } finally {
       setVerifyingWp(false);
@@ -84,7 +84,7 @@ export default function OnboardingPage() {
 
     try {
       if (serperKey.trim() && createdWebsiteId) {
-        await post(`/api/connectors/serper/setup`, {
+        await post(`/api/connectors/save-serper`, {
           website_id: createdWebsiteId,
           api_key: serperKey.trim(),
         });
@@ -92,7 +92,7 @@ export default function OnboardingPage() {
       setCurrentStep(3);
       runEngineTasks();
     } catch (err: any) {
-      setSerperError(err.message || "Failed to verify Serper.dev key. Continuing in simulation mode.");
+      setSerperError(err.message || "Failed to verify Serper.dev key. You can skip and add it later in /connectors.");
       setCurrentStep(3);
       runEngineTasks();
     } finally {
@@ -116,13 +116,13 @@ export default function OnboardingPage() {
         if (i === 0) {
           await post(`/api/knowledge/crawl`, { website_id: wid, max_pages: 5 }).catch(() => {});
         } else if (i === 1) {
-          await post(`/api/rag/index`, { website_id: wid }).catch(() => {});
+          await post(`/api/knowledge/reindex`, { website_id: wid }).catch(() => {});
         } else if (i === 2) {
-          await post(`/api/keywords/discover`, { website_id: wid }).catch(() => {});
+          await post(`/api/keywords/research`, { website_id: wid }).catch(() => {});
         } else if (i === 3) {
           await post(`/api/backlinks/scout`, { website_id: wid }).catch(() => {});
         } else if (i === 4) {
-          await post(`/api/tech-seo/audit`, { website_id: wid }).catch(() => {});
+          await post(`/api/tech-seo/${wid}/run-audit`, { website_id: wid }).catch(() => {});
         } else if (i === 5) {
           await post(`/api/health/autonomous/run`, {}).catch(() => {});
         }

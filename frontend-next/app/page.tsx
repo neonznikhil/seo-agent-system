@@ -256,11 +256,7 @@ export default function HomePage() {
       try {
         data = await get(`/api/dashboard/${activeId}/metrics`);
       } catch {
-        try {
-          data = await get(`/api/dashboard/metrics?website_id=${activeId}`);
-        } catch {
-          data = null;
-        }
+        data = null;
       }
       if (data && typeof data === "object" && data.total_articles !== undefined) {
         setMetrics(data);

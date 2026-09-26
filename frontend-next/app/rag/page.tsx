@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { get, post } from "@/lib/api";
+import { get } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 export default function RAGIntelligencePage() {
@@ -24,11 +24,7 @@ export default function RAGIntelligencePage() {
     try {
       setIsSearching(true);
       showToast("Searching pgvector knowledge base via NVIDIA embeddings...");
-      const res = await post("/api/knowledge/search", {
-        website_id: wid,
-        query: query.trim(),
-        limit: 6,
-      });
+      const res = await get(`/api/knowledge/search?website_id=${wid}&query=${encodeURIComponent(query.trim())}&limit=6`);
 
       const list = Array.isArray(res) ? res : res?.results || [];
       setResults(list);

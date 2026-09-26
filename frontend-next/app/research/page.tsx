@@ -148,7 +148,7 @@ export default function ResearchPage() {
       try {
         data = await get(`/api/research?website_id=${websiteId}&query=${encodeURIComponent(query.trim())}`);
       } catch {
-        data = await get(`/api/serp-analysis/${websiteId}?query=${encodeURIComponent(query.trim())}`);
+        data = await post(`/api/research`, { website_id: websiteId, query: query.trim() });
       }
 
       const results = data?.results || data?.serp_results || data?.top_results || (Array.isArray(data) ? data : []);
