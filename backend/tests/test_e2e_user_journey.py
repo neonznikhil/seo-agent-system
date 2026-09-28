@@ -40,7 +40,7 @@ async def test_full_10_step_user_journey():
         # ---------------------------------------------------------
         # STEP 4: Hybrid Knowledge Search
         # ---------------------------------------------------------
-        res_search = await client.get("/api/knowledge/search/hybrid?q=Houston+injury+statute&top_k=3")
+        res_search = await client.get("/api/knowledge/search/hybrid?q=Houston+injury+statute&website_id=03b7febf-0c44-4830-a42a-cfcd84ae6464&top_k=3")
         assert res_search.status_code == 200
         search_data = res_search.json()
         assert len(search_data.get("results", [])) >= 1

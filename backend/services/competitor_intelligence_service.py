@@ -62,46 +62,77 @@ def remove_competitor(website_id: str, competitor_id: str) -> bool:
 
 
 def calculate_share_of_voice(website_id: str) -> Dict[str, Any]:
-    """Share of Voice from measured positions only. Null until research runs."""
+    """Own visibility from measured rank_tracking positions.
+
+    Competitor shares stay null until head-to-head SERP comparison runs.
+    """
     competitors = get_competitors(website_id)
     site = get_local_website(website_id)
     site_domain = _normalize_domain(site.get("domain", "Our Site")) if site else "Our Site"
 
-    keywords = list_local_keywords(website_id)
-    if not competitors or not keywords:
+    positions: List[float] = []
+    try:
+        from backend.database import get_supabase
+    except (ImportError, ValueError):
+        from database import get_supabase
+    try:
+        supabase = get_supabase()
+        rows = supabase.table("rank_tracking").select("current_position").eq("website_id", website_id).execute().data or []
+        for r in rows:
+            try:
+                if r.get("current_position") is not None:
+                    positions.append(float(r["current_position"]))
+            except (ValueError, TypeError):
+                continue
+    except Exception as e:
+        logger.debug(f"[sov] rank lookup note: {e}")
+
+    if not positions:
+        keywords = list_local_keywords(website_id)
         return {
             "website_id": website_id,
             "target_domain": site_domain,
             "our_sov_percentage": None,
             "our_sov_trend": None,
             "total_keywords_analyzed": len(keywords),
+            "tracked_with_positions": 0,
             "market_leader": None,
             "competitors": [],
-            "message": "Add competitor domains and run keyword research to measure Share of Voice.",
+            "message": "No measured positions yet. Run rank tracking (POST /api/rankings/check) to populate.",
         }
 
-    total_keywords = len(keywords)
-    competitor_shares = []
-    for comp in competitors:
-        competitor_shares.append({
-            "domain": comp.get("domain"),
-            "label": comp.get("label", comp.get("domain")),
-            "sov_percentage": None,
-            "top_3_rankings": None,
-            "top_10_rankings": None,
-            "authority": comp.get("domain_authority"),
-            "trend": None,
-        })
+    top3 = sum(1 for p in positions if p <= 3)
+    top10 = sum(1 for p in positions if p <= 10)
+    striking = sum(1 for p in positions if 11 <= p <= 20)
+    avg_pos = round(sum(positions) / len(positions), 1)
 
     return {
         "website_id": website_id,
         "target_domain": site_domain,
         "our_sov_percentage": None,
         "our_sov_trend": None,
-        "total_keywords_analyzed": total_keywords,
+        "total_keywords_analyzed": len(positions),
+        "tracked_with_positions": len(positions),
+        "own_visibility": {
+            "top_3_count": top3,
+            "top_10_count": top10,
+            "striking_distance_11_20": striking,
+            "average_position": avg_pos,
+        },
         "market_leader": None,
-        "competitors": competitor_shares,
-        "message": "Competitor positions not yet measured. Run SERP research to compute Share of Voice.",
+        "competitors": [
+            {
+                "domain": comp.get("domain"),
+                "label": comp.get("label", comp.get("domain")),
+                "sov_percentage": None,
+                "top_3_rankings": None,
+                "top_10_rankings": None,
+                "authority": comp.get("domain_authority"),
+                "trend": None,
+            }
+            for comp in competitors
+        ],
+        "message": "Own visibility measured from rank tracking. Competitor shares need head-to-head SERP comparison.",
     }
 
 
@@ -111,5 +142,40 @@ def get_competitor_new_pages(website_id: str) -> List[Dict[str, Any]]:
 
 
 def get_outranking_gap_matrix(website_id: str) -> List[Dict[str, Any]]:
-    """Queries where competitors outrank us. Empty until SERP research measures both sides."""
-    return []
+    """Striking-distance keywords from measured rank_tracking.
+
+    Competitor side stays null until head-to-head SERP comparison runs —
+    our positions and URLs are real, rival claims are not invented.
+    """
+    site = get_local_website(website_id)
+    site_domain = _normalize_domain(site.get("domain", "")) if site else ""
+    try:
+        from backend.database import get_supabase
+    except (ImportError, ValueError):
+        from database import get_supabase
+    try:
+        supabase = get_supabase()
+        rows = supabase.table("rank_tracking").select("target_keyword, current_position, wp_url").eq("website_id", website_id).gte("current_position", 11).lte("current_position", 20).order("current_position").limit(20).execute().data or []
+    except Exception as e:
+        logger.debug(f"[gaps] rank lookup note: {e}")
+        rows = []
+    gaps = []
+    for r in rows:
+        kw = r.get("target_keyword") or ""
+        if not kw:
+            continue
+        gaps.append({
+            "keyword": kw,
+            "query": kw,
+            "search_volume": None,
+            "our_position": r.get("current_position"),
+            "competitor_position": None,
+            "competitor_domain": None,
+            "competitor_url": None,
+            "our_url": r.get("wp_url"),
+            "monthly_clicks_lost": None,
+            "potential_mrr_loss": None,
+            "primary_gap_reason": "Ranking page 2 — needs CTR/title push to page 1. Rival comparison not yet measured.",
+            "recommended_action": "Optimize title hook and internal links for this query.",
+        })
+    return gaps

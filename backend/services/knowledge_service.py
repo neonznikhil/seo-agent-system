@@ -61,14 +61,34 @@ async def fetch_clean_page_markdown(page_url: str) -> Dict[str, Any]:
 
 def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
     """Calculate cosine similarity between two float vectors."""
-    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+    if not vec_a or not vec_b:
         return 0.0
+    if len(vec_a) != len(vec_b):
+        min_len = min(len(vec_a), len(vec_b))
+        if min_len == 0:
+            return 0.0
+        vec_a = vec_a[:min_len]
+        vec_b = vec_b[:min_len]
     dot = sum(a * b for a, b in zip(vec_a, vec_b))
     norm_a = math.sqrt(sum(a * a for a in vec_a))
     norm_b = math.sqrt(sum(b * b for b in vec_b))
     if norm_a == 0 or norm_b == 0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+def _adapt_embedding_1024(emb: List[float]) -> List[float]:
+    """Adapt vector to match Postgres knowledge_base.embedding vector(1024) dimension."""
+    if not emb:
+        return [0.0] * 1024
+    if len(emb) == 1024:
+        return emb
+    if len(emb) > 1024:
+        v = emb[:1024]
+    else:
+        v = emb + [0.0] * (1024 - len(emb))
+    norm = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / norm for x in v]
 
 
 def _deterministic_embedding(text: str, dim: int = VECTOR_DIM) -> List[float]:
@@ -126,8 +146,9 @@ class KnowledgeService:
 
     def __init__(self, website_id: Optional[str] = None, account_id: Optional[str] = None):
         from .website_service import get_default_website_id
-        self.website_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else (get_default_website_id() or "")
-        self.account_id = account_id or ""
+        raw_wid = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else (get_default_website_id() or "")
+        self.website_id = raw_wid if raw_wid and raw_wid not in ("default", "all", "", "null", "undefined") else None
+        self.account_id = account_id if account_id and account_id not in ("default", "all", "", "null", "undefined") else None
         self.supabase = get_supabase()
 
     # ---------------------------------------------------------
@@ -620,18 +641,27 @@ class KnowledgeService:
         if not vector_results:
             try:
                 table_res = supabase.table("knowledge_base").select("*").limit(50).execute().data or []
-                for row in table_res:
-                    doc_text = row.get("content") or row.get("fact") or ""
-                    emb = row.get("embedding")
-                    if not emb or not isinstance(emb, list):
-                        emb = _deterministic_embedding(doc_text)
-                    sim = _cosine_similarity(query_emb, emb)
-                    if sim >= 0.45 or any(w.lower() in doc_text.lower() for w in keyword.split() if len(w) > 3):
-                        row_copy = dict(row)
-                        row_copy["similarity"] = max(sim, 0.60)
-                        vector_results.append(row_copy)
             except Exception as e:
                 logger.warning(f"[services_knowledge_service] operation failed: {e}")
+                table_res = []
+
+            if not table_res:
+                try:
+                    table_res = list_local_knowledge(self.website_id)
+                except Exception as lk_err:
+                    logger.debug(f"[Knowledge] local store fallback note: {lk_err}")
+                    table_res = []
+
+            for row in table_res:
+                doc_text = row.get("content") or row.get("fact") or ""
+                emb = row.get("embedding")
+                if not emb or not isinstance(emb, list):
+                    emb = _deterministic_embedding(doc_text)
+                sim = _cosine_similarity(query_emb, emb)
+                if sim >= 0.45 or any(w.lower() in doc_text.lower() for w in keyword.split() if len(w) > 3):
+                    row_copy = dict(row)
+                    row_copy["similarity"] = max(sim, 0.60)
+                    vector_results.append(row_copy)
 
         # 2. Keyword full-text match over retrieved rows
         k_tokens = [w.strip().lower() for w in keyword.split() if len(w.strip()) > 3]
@@ -805,20 +835,30 @@ class KnowledgeService:
                     'analytics_learning': 'feature'
                 }
                 sanitized_fact_type = type_map.get(str(doc_type).lower(), doc_type if doc_type in valid_fact_types else 'company_info')
+                adapted_embedding = _adapt_embedding_1024(ch_embedding)
                 base_row = {
                     "id": new_id,
-                    "website_id": self.website_id,
-                    "account_id": self.account_id,
+                    "website_id": self.website_id if self.website_id else None,
+                    "account_id": self.account_id if self.account_id else None,
                     "fact": ch_text,
                     "fact_type": sanitized_fact_type,
                     "source_url": url or doc_title,
-                    "embedding": ch_embedding,
+                    "embedding": adapted_embedding,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 try:
                     supabase.table("knowledge_base").insert(base_row).execute()
                 except Exception as ins_err:
-                    logger.debug(f"[Knowledge] Supabase chunk insert note: {ins_err}")
+                    err_msg = str(ins_err)
+                    if "dimensions" in err_msg or "1024" in err_msg:
+                        try:
+                            adapted_row = dict(base_row)
+                            adapted_row["embedding"] = _adapt_embedding_1024(ch_embedding)
+                            supabase.table("knowledge_base").insert(adapted_row).execute()
+                        except Exception as adapt_err:
+                            logger.warning(f"[Knowledge] Dimension-adapted Supabase insert failed: {adapt_err}")
+                    else:
+                        logger.debug(f"[Knowledge] Supabase chunk insert note: {ins_err}")
 
                 save_local_knowledge(base_row)
                 inserted_count += 1

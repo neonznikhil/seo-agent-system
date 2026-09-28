@@ -172,7 +172,7 @@ async def validate_nim_connection(force: bool = False) -> dict:
         "temperature": 0,
     }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(url, json=payload, headers=headers)
     except httpx.RequestError as e:
         _nim_state.update({

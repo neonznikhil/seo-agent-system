@@ -16,42 +16,68 @@ class AnalyticsService:
 
     @staticmethod
     async def sync_gsc_data(website_id: Optional[str] = None) -> Dict[str, Any]:
-        """Fetch queries, clicks, impressions, CTR, and position from Google Search Console API.
+        """Pull live keyword rows from GSC API and persist into analytics_data.
 
-        Real DB only — no mock seed data. If GSC credentials exist, pull live data;
-        otherwise return empty sync (UI shows 'No data yet — connect GSC').
+        Real rows only. Without GSC credentials returns not_configured with 0.
         """
-        gsc_creds = os.getenv("GSC_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         supabase = get_supabase()
-        records_saved = 0
+        creds_path = (
+            os.getenv("GSC_CREDENTIALS_PATH")
+            or os.getenv("GSC_CREDENTIALS")
+            or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        )
+        if not creds_path:
+            return {
+                "success": False,
+                "source": "not_configured",
+                "records_synced": 0,
+                "message": "GSC credentials not configured — add service JSON in /connectors",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
 
-        if gsc_creds:
+        website_url = None
+        try:
+            site = supabase.table("websites").select("url, cms_url, wordpress_url, domain").eq("id", website_id).single().execute().data or {}
+            website_url = site.get("url") or site.get("cms_url") or site.get("wordpress_url") or site.get("domain")
+        except Exception as e:
+            logger.warning(f"GSC sync website lookup failed: {e}")
+
+        try:
+            from services.gsc_service import GSCService
+        except (ImportError, ValueError):
+            from backend.services.gsc_service import GSCService
+        try:
+            svc = GSCService(website_url=website_url, credentials_path=creds_path)
+            perf = await svc.get_keyword_performance()
+            keywords = perf.get("keywords", []) if isinstance(perf, dict) else []
+        except Exception as e:
+            logger.warning(f"GSC API error: {e}")
+            return {"success": False, "source": "gsc", "records_synced": 0, "error": str(e)[:200], "timestamp": datetime.utcnow().isoformat()}
+
+        records_saved = 0
+        today = datetime.utcnow().date().isoformat()
+        for kw in keywords:
             try:
-                logger.info("Syncing search performance from Google Search Console API...")
-                # Real GSC API logic would query SearchConsole API here via google-api-python-client
-                # For now, verify connection by querying existing analytics_data and counting
-                try:
-                    existing = supabase.table("analytics_data").select("id", count="exact").eq("website_id", website_id).execute()
-                    records_saved = getattr(existing, "count", len(existing.data or [])) if existing else 0
-                except Exception:
-                    records_saved = 0
+                supabase.table("analytics_data").insert({
+                    "website_id": website_id,
+                    "keyword": kw.get("keyword"),
+                    "clicks": int(kw.get("clicks", 0) or 0),
+                    "impressions": int(kw.get("impressions", 0) or 0),
+                    "position": float(kw.get("position", 0) or 0),
+                    "source": "gsc",
+                    "date": today,
+                }).execute()
+                records_saved += 1
             except Exception as e:
-                logger.warning(f"GSC API error: {e}")
-                return {"success": False, "source": "gsc", "records_synced": 0, "error": str(e), "timestamp": datetime.utcnow().isoformat()}
-        else:
-            logger.info("GSC credentials not configured — skipping sync, returning real DB count")
-            try:
-                existing = supabase.table("analytics_data").select("id", count="exact").eq("website_id", website_id).execute()
-                records_saved = 0  # No new records when GSC disconnected; return 0 not fake inserts
-            except Exception:
-                records_saved = 0
+                logger.debug(f"GSC row persist note: {e}")
+                continue
 
         return {
             "success": True,
-            "source": "gsc" if gsc_creds else "not_configured",
+            "source": "gsc",
             "records_synced": records_saved,
-            "message": "No opportunities yet — connect GSC" if records_saved == 0 else f"Synced {records_saved} records",
-            "timestamp": datetime.utcnow().isoformat()
+            "message": f"Synced {records_saved} keyword rows from GSC" if records_saved else "GSC returned 0 rows for this property/date range",
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
     @staticmethod

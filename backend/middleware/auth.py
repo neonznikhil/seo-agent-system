@@ -12,7 +12,12 @@ import os
 from typing import Optional, Dict, Any
 
 from fastapi import Request, HTTPException
-from jose import jwt, JWTError
+try:
+    import jwt
+    from jwt.exceptions import PyJWTError as JWTError, ExpiredSignatureError
+except ImportError:
+    from jose import jwt, JWTError  # type: ignore
+    from jose.exceptions import ExpiredSignatureError  # type: ignore
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -159,9 +164,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 verified_account_id = payload.get("account_id") or payload.get("sub")
                 if not verified_account_id:
                     return JSONResponse(status_code=401, content={"detail": "Invalid token payload: missing account_id"})
-            except jwt.ExpiredSignatureError:
+            except ExpiredSignatureError:
                 return JSONResponse(status_code=401, content={"detail": "Authentication token expired. Please log in again."})
-            except JWTError as e:
+            except (JWTError, Exception) as e:
                 return JSONResponse(status_code=401, content={"detail": f"Malformed or invalid authentication token: {str(e)}"})
 
         # 2. Inspect X-User-Id header

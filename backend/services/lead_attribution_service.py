@@ -41,29 +41,65 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
     except (ValueError, TypeError):
         target_cpl = 75.0
 
-    # Real keyword rows only — from stored keyword research. No samples invented.
-    research_rows = list_local_keyword_research(website_id, limit=50)
-    measured = []
-    for r in research_rows:
-        items = []
-        if isinstance(r, dict):
-            for key in ("keywords", "items", "results", "queries"):
-                val = r.get(key)
-                if isinstance(val, list):
-                    items = val
-                    break
-        for kw in items:
+    # Real keyword rows only — analytics_data (GSC sync) plus gsc_keywords.
+    # Conversions stay 0/None until GA4 supplies them. No samples invented.
+    agg: Dict[str, Dict[str, Any]] = {}
+
+    def _fold(rows: Any) -> None:
+        for kw in rows or []:
             if not isinstance(kw, dict):
                 continue
             query = kw.get("keyword") or kw.get("query")
             if not query:
                 continue
-            measured.append({
-                "query": query,
-                "landing_page": kw.get("landing_page") or kw.get("url") or "/",
-                "pos": kw.get("position", kw.get("current_position")),
-                "clicks": kw.get("clicks", kw.get("clicks_28d", 0)) or 0,
-            })
+            try:
+                clicks = int(float(kw.get("clicks", 0) or 0))
+            except (ValueError, TypeError):
+                clicks = 0
+            try:
+                impressions = int(float(kw.get("impressions", 0) or 0))
+            except (ValueError, TypeError):
+                impressions = 0
+            try:
+                pos = float(kw.get("position")) if kw.get("position") is not None else None
+            except (ValueError, TypeError):
+                pos = None
+            page = kw.get("landing_page") or kw.get("page") or kw.get("url") or "/"
+            slot = agg.setdefault(query, {"clicks": 0, "impressions": 0, "positions": [], "page": page})
+            slot["clicks"] += clicks
+            slot["impressions"] += impressions
+            if pos is not None:
+                slot["positions"].append(pos)
+
+    try:
+        from backend.database import get_supabase
+    except (ImportError, ValueError):
+        from database import get_supabase
+    try:
+        supabase = get_supabase()
+        try:
+            rows = supabase.table("analytics_data").select("keyword, clicks, impressions, position").eq("website_id", website_id).limit(500).execute().data or []
+            _fold(rows)
+        except Exception as e:
+            logger.debug(f"[leads] analytics_data note: {e}")
+        try:
+            grows = supabase.table("gsc_keywords").select("keyword, clicks, impressions, position").eq("website_id", website_id).limit(500).execute().data or []
+            _fold(grows)
+        except Exception as e:
+            logger.debug(f"[leads] gsc_keywords note: {e}")
+    except Exception as e:
+        logger.debug(f"[leads] supabase note: {e}")
+
+    measured = [
+        {
+            "query": q,
+            "landing_page": v["page"],
+            "pos": min(v["positions"]) if v["positions"] else None,
+            "clicks": v["clicks"],
+            "impressions": v["impressions"],
+        }
+        for q, v in agg.items()
+    ]
 
     keyword_rows = []
     total_clicks = 0
@@ -73,6 +109,10 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
             clicks = int(float(item["clicks"] or 0))
         except (ValueError, TypeError):
             clicks = 0
+        try:
+            impressions = int(float(item.get("impressions", 0) or 0))
+        except (ValueError, TypeError):
+            impressions = 0
         try:
             pos = float(item["pos"]) if item["pos"] is not None else None
         except (ValueError, TypeError):
@@ -85,7 +125,7 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
             "position": pos,
             "clicks": clicks,
             "clicks_28d": clicks,
-            "impressions_28d": None,
+            "impressions_28d": impressions,
             "conversions": 0,
             "attributed_leads": 0,
             "cvr": None,
@@ -94,7 +134,7 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
             "estimated_value": 0.0,
             "cost_per_lead": None,
             "cpl": None,
-            "opportunity_flag": "UNMEASURED",
+            "opportunity_flag": "NEEDS_GA4",
         })
 
     keyword_rows.sort(key=lambda k: k["clicks"], reverse=True)

@@ -12,7 +12,12 @@ from typing import Optional, Dict, Any
 
 import bcrypt
 import httpx
-from jose import jwt, JWTError
+try:
+    import jwt
+    from jwt.exceptions import PyJWTError as JWTError, ExpiredSignatureError
+except ImportError:
+    from jose import jwt, JWTError  # type: ignore
+    from jose.exceptions import ExpiredSignatureError  # type: ignore
 from fastapi import APIRouter, HTTPException, Header, Request, status, Depends
 from pydantic import BaseModel, Field
 
