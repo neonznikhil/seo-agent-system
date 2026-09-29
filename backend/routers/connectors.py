@@ -275,19 +275,23 @@ class SetupSupabaseRequest(BaseModel):
 
 
 class WordPressConnectRequest(BaseModel):
-    site_url: str = Field(..., description="WordPress website URL")
+    site_url: Optional[str] = Field(None, description="WordPress website URL")
+    url: Optional[str] = Field(None, description="Alias for site_url")
     wp_username: Optional[str] = Field(None, description="WordPress username / application user")
     username: Optional[str] = Field(None, description="Alias for wp_username")
     wp_app_password: Optional[str] = Field(None, description="WordPress Application Password")
     app_password: Optional[str] = Field(None, description="Alias for wp_app_password")
+    application_password: Optional[str] = Field(None, description="Alias for wp_app_password")
 
 
 class WordPressSaveRequest(BaseModel):
-    site_url: str = Field(..., description="WordPress website URL")
+    site_url: Optional[str] = Field(None, description="WordPress website URL")
+    url: Optional[str] = Field(None, description="Alias for site_url")
     wp_username: Optional[str] = Field(None, description="WordPress username")
     username: Optional[str] = Field(None, description="Alias for wp_username")
     wp_app_password: Optional[str] = Field(None, description="WordPress Application Password")
     app_password: Optional[str] = Field(None, description="Alias for wp_app_password")
+    application_password: Optional[str] = Field(None, description="Alias for wp_app_password")
     website_id: Optional[str] = Field(None, description="Website ID to attach credentials to")
 
 
@@ -606,7 +610,10 @@ async def setup_supabase_endpoint(payload: SetupSupabaseRequest):
 @router.post("/wordpress/connect")
 async def wordpress_connect(payload: WordPressConnectRequest):
     """Backend proxy to test WordPress credentials without CORS issues, verifying user role & capability."""
-    site_url = payload.site_url.strip().rstrip("/")
+    site_url = (payload.site_url or payload.url or "").strip().rstrip("/")
+    if not site_url.startswith("http"):
+        raise HTTPException(status_code=400, detail="Site URL must start with http:// or https://")
+
     username = resolve_wp_username(payload.wp_username, payload.username)
     if not username:
         raise HTTPException(
@@ -614,7 +621,7 @@ async def wordpress_connect(payload: WordPressConnectRequest):
             detail="A real WordPress username is required. Leave it blank or as a placeholder "
                    "value and the connection cannot be verified — enter your actual WP user name.",
         )
-    password = (payload.wp_app_password or payload.app_password or "").strip()
+    password = (payload.wp_app_password or payload.app_password or payload.application_password or "").strip()
 
     if not password or "•" in password:
         try:
@@ -742,7 +749,10 @@ async def _verify_wordpress_credentials(site_url: str, username: str, password: 
 @router.post("/wordpress/save")
 async def wordpress_save(payload: WordPressSaveRequest):
     """Save WordPress credentials Fernet-encrypted into Supabase + environment."""
-    site_url = payload.site_url.strip().rstrip("/")
+    site_url = (payload.site_url or payload.url or "").strip().rstrip("/")
+    if not site_url.startswith("http"):
+        raise HTTPException(status_code=400, detail="Site URL must start with http:// or https://")
+
     username = resolve_wp_username(payload.wp_username, payload.username)
     if not username:
         raise HTTPException(
@@ -750,7 +760,7 @@ async def wordpress_save(payload: WordPressSaveRequest):
             detail="A real WordPress username is required. Placeholder values are not "
                    "accepted — enter your actual WP user name.",
         )
-    password = (payload.wp_app_password or payload.app_password or "").strip().replace(" ", "")
+    password = (payload.wp_app_password or payload.app_password or payload.application_password or "").strip().replace(" ", "")
     if not password:
         raise HTTPException(status_code=400, detail="WordPress application password is required")
 
@@ -1430,10 +1440,14 @@ async def get_connectors_status(website_id: Optional[str] = None):
         or os.environ.get("SUPABASE_SERVICE_KEY")
         or os.environ.get("SUPABASE_KEY", "")
     )
+    # Flag placeholder/never-valid values explicitly (no fabricated success).
+    _placeholder_url = supabase_url in ("", "https://example.supabase.co") or "example.supabase.co" in supabase_url
+    _placeholder_key = supabase_key.strip().lower() in ("", "dummy", "your-supabase-service-role-key", "mock-key")
+
     supabase_connected = False
     supabase_error: Optional[str] = None
     table_count = 0
-    if supabase_url:
+    if supabase_url and not _placeholder_url and not _placeholder_key:
         try:
             # supabase-py is synchronous; awaiting it off-loop keeps this polled
             # endpoint from freezing every other request while the health probe
@@ -1448,15 +1462,11 @@ async def get_connectors_status(website_id: Optional[str] = None):
             supabase_error = str(e)[:200]
             logger.warning(f"[Connectors] Supabase health check failed: {supabase_error}")
 
-    # Flag placeholder/never-valid values explicitly (no fabricated success).
-    _placeholder_url = supabase_url in ("", "https://example.supabase.co") or "example.supabase.co" in supabase_url
-    _placeholder_key = supabase_key.strip().lower() in ("", "dummy", "your-supabase-service-role-key", "mock-key")
-
     supabase_status = {
-        "connected": supabase_connected,
-        "is_configured": bool(supabase_url and supabase_key and not _placeholder_url and not _placeholder_key),
-        "tables_count": table_count,
-        "placeholder": _placeholder_url or _placeholder_key,
+        "connected": bool(supabase_connected and not _placeholder_url and not _placeholder_key),
+        "is_configured": bool(supabase_connected and not _placeholder_url and not _placeholder_key),
+        "tables_count": table_count if (supabase_connected and not _placeholder_url and not _placeholder_key) else 0,
+        "placeholder": bool(_placeholder_url or _placeholder_key),
     }
     if supabase_error:
         supabase_status["error"] = supabase_error

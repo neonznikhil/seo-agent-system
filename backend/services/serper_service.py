@@ -5,7 +5,17 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, retry_if_exception_type, before_sleep_log
+
+def _should_retry_serper_error(exc: BaseException) -> bool:
+    """Retry on transient network issues or 429/5xx, never on 400/401/403/404."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code in (400, 401, 403, 404):
+            return False
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return False
 
 logger = logging.getLogger("backend.services.serper_service")
 
@@ -63,13 +73,14 @@ class SerperService:
         _SERPER_CIRCUIT["failures"] = 0
         _SERPER_CIRCUIT["circuit_open_until"] = 0.0
 
-    def _record_circuit_failure(self):
-        _SERPER_CIRCUIT["failures"] = _SERPER_CIRCUIT.get("failures", 0) + 1
-        if _SERPER_CIRCUIT["failures"] >= 3:
-            _SERPER_CIRCUIT["circuit_open_until"] = time.time() + _CIRCUIT_COOLDOWN_SECONDS
+    def _record_circuit_failure(self, critical: bool = False):
+        _SERPER_CIRCUIT["failures"] = _SERPER_CIRCUIT.get("failures", 0) + (3 if critical else 1)
+        if critical or _SERPER_CIRCUIT["failures"] >= 3:
+            pause_time = 300.0 if critical else _CIRCUIT_COOLDOWN_SECONDS
+            _SERPER_CIRCUIT["circuit_open_until"] = time.time() + pause_time
             logger.warning(
                 f"[SerperService] Circuit breaker tripped! Pausing Serper requests "
-                f"for {int(_CIRCUIT_COOLDOWN_SECONDS)} seconds."
+                f"for {int(pause_time)} seconds."
             )
 
     def reset_circuit(self):
@@ -110,7 +121,7 @@ class SerperService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+        retry=retry_if_exception(_should_retry_serper_error),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True
     )
@@ -203,7 +214,8 @@ class SerperService:
                     "raw": data
                 }
             except Exception as e:
-                self._record_circuit_failure()
+                is_fatal = isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (400, 401, 403)
+                self._record_circuit_failure(critical=is_fatal)
                 error_msg = f"Serper search failed for '{query}': {str(e)}"
                 logger.warning(error_msg)
                 _CONNECTOR_STATE["failed_calls"] += 1
@@ -236,7 +248,7 @@ class SerperService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+        retry=retry_if_exception(_should_retry_serper_error),
         reraise=True
     )
     async def _call_serper_news_api(
@@ -296,6 +308,8 @@ class SerperService:
                     "raw": data
                 }
             except Exception as e:
+                is_fatal = isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (400, 401, 403)
+                self._record_circuit_failure(critical=is_fatal)
                 error_msg = f"Serper news failed for '{query}': {str(e)}"
                 logger.warning(error_msg)
                 _CONNECTOR_STATE["failed_calls"] += 1

@@ -1,6 +1,7 @@
 """Approvals API - human gate for WordPress create/update with multi-tenant account isolation.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -165,36 +166,61 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None, account_
             q = q.eq("website_id", website_id)
         if account_id:
             q = q.eq("account_id", account_id)
-        rows = q.order("created_at", desc=True).limit(200).execute().data or []
+        rows = q.order("created_at", desc=True).limit(50).execute().data or []
     except Exception as e:
         logger.warning(f"[ApprovalsSync] content_log query failed: {e}")
         return {"created": 0, "scanned": 0, "error": "Approval sync failed. Please try again."}
 
-    for row in rows:
+    if not rows:
+        return {"created": 0, "scanned": 0}
+
+    valid_rows = []
+    titles = []
+    for r in rows:
+        title = r.get("title") or "Untitled draft"
+        content = r.get("content") or ""
+        if not content or len(content) < 100 or "draft:" in title.lower():
+            continue
+        valid_rows.append(r)
+        titles.append(title)
+
+    if not valid_rows:
+        return {"created": 0, "scanned": len(rows)}
+
+    # Batch check existing blog_approvals by title (1 query instead of N)
+    existing_map = {}
+    try:
+        for i in range(0, len(titles), 50):
+            chunk = titles[i : i + 50]
+            ex = (
+                supabase.table("blog_approvals")
+                .select("id, title, status")
+                .in_("title", chunk)
+                .execute()
+                .data or []
+            )
+            for er in ex:
+                t = er.get("title")
+                if t:
+                    existing_map[t] = er
+    except Exception as e:
+        logger.warning(f"[ApprovalsSync] batch existing check failed: {e}")
+
+    for row in valid_rows:
         scanned += 1
         cl_id = row.get("id")
         wid = row.get("website_id") or website_id
         acc_id = row.get("account_id") or account_id
         title = row.get("title") or "Untitled draft"
         content = row.get("content") or ""
-        if not content or len(content) < 100 or "draft:" in title.lower():
-            continue
 
-        try:
-            existing = (
-                supabase.table("blog_approvals")
-                .select("id, status")
-                .eq("title", title)
-                .limit(1)
-                .execute()
-                .data or []
-            )
-            if existing:
-                if existing[0].get("status") == "pending" and row.get("status") == "published":
-                    supabase.table("blog_approvals").update({"status": "published"}).eq("id", existing[0]["id"]).execute()
-                continue
-        except Exception as e:
-            logger.warning(f"[ApprovalsSync] existing check failed: {e}")
+        existing = existing_map.get(title)
+        if existing:
+            if existing.get("status") == "pending" and row.get("status") == "published":
+                try:
+                    supabase.table("blog_approvals").update({"status": "published"}).eq("id", existing["id"]).execute()
+                except Exception:
+                    pass
             continue
 
         expert_score = row.get("seo_score") or 85
@@ -213,6 +239,7 @@ async def reconcile_pending_approvals(website_id: Optional[str] = None, account_
         try:
             supabase.table("blog_approvals").insert(insert_payload).execute()
             created += 1
+            existing_map[title] = {"id": None, "status": "pending"}
         except Exception as e:
             logger.warning(f"[ApprovalsSync] insert failed for {cl_id}: {e}")
 
@@ -240,7 +267,13 @@ async def list_approvals(
     supabase = get_supabase()
     set_account_context(supabase, account_id)
 
-    await reconcile_pending_approvals(website_id=website_id, account_id=account_id)
+    try:
+        await asyncio.wait_for(
+            reconcile_pending_approvals(website_id=website_id, account_id=account_id),
+            timeout=3.0,
+        )
+    except Exception as e:
+        logger.warning(f"[Approvals] reconcile skipped or timed out: {e}")
 
     try:
         q = (

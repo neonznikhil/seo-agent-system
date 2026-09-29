@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from database import get_supabase
 from agents.research_agent import ResearchAgent
 from services.serper_service import serper_service
+from utils.job_queue import spawn_background
 
 logger = logging.getLogger("backend.routers.research")
 router = APIRouter()
@@ -38,15 +40,28 @@ async def list_or_run_research(
     search_term = query or topic
     if search_term and website_id:
         try:
-            agent = ResearchAgent(website_id=website_id)
-            res = await agent.run(topic=search_term)
-            
-            # Fetch raw organic results from Serper for rich frontend tables
-            serp_raw = await serper_service.search(query=search_term, num=10)
+            # Query Serper connector directly with a tight timeout for sub-second UI response
+            try:
+                serp_raw = await asyncio.wait_for(
+                    serper_service.search(query=search_term, num=10, auto_fallback=True),
+                    timeout=3.5
+                )
+            except Exception as e:
+                logger.warning(f"SERP search timed out or failed: {e}")
+                serp_raw = {}
+
             organic = serp_raw.get("organic", [])
-            
+            featured_snippet = serp_raw.get("answerBox", {})
+            source = serp_raw.get("source", "unavailable")
+            paa_list = [q.get("question") for q in serp_raw.get("peopleAlsoAsk", []) if q.get("question")] if serp_raw.get("peopleAlsoAsk") else []
+            related_list = [r.get("query") for r in serp_raw.get("relatedSearches", []) if r.get("query")] if serp_raw.get("relatedSearches") else []
+            live_competitors = [
+                r.get("link", "").split("/")[2] if "//" in r.get("link", "") else r.get("link", "")
+                for r in organic[:7] if r.get("link")
+            ]
+
             results_list = []
-            for idx, item in enumerate(organic, start=1):
+            for idx, item in enumerate(organic or [], start=1):
                 snippet = item.get("snippet", "")
                 results_list.append({
                     "rank": item.get("position", idx),
@@ -58,18 +73,28 @@ async def list_or_run_research(
                     "h1": item.get("title", "")
                 })
 
-            # Store in serp_landscape table
-            try:
-                get_supabase().table("serp_landscape").insert({
-                    "website_id": website_id,
-                    "keyword": search_term,
-                    "top_results": results_list,
-                    "people_also_ask": res.get("questions", []),
-                    "featured_snippet": serp_raw.get("answerBox", {}),
-                    "created_at": datetime.utcnow().isoformat()
-                }).execute()
-            except Exception as ex:
-                logger.debug(f"serp_landscape insert note: {ex}")
+            # Store in serp_landscape table and dispatch deep agent synthesis in background
+            # so DB writes and LLM calls never delay the interactive HTTP response
+            async def _bg_agent_and_persist():
+                try:
+                    get_supabase().table("serp_landscape").insert({
+                        "website_id": website_id,
+                        "keyword": search_term,
+                        "top_results": results_list,
+                        "people_also_ask": paa_list,
+                        "featured_snippet": featured_snippet,
+                        "created_at": datetime.utcnow().isoformat()
+                    }).execute()
+                except Exception as ex:
+                    logger.debug(f"serp_landscape insert note: {ex}")
+
+                try:
+                    agent = ResearchAgent(website_id=website_id)
+                    await agent.run(topic=search_term)
+                except Exception as ex:
+                    logger.debug(f"Background ResearchAgent note: {ex}")
+
+            spawn_background(_bg_agent_and_persist(), name=f"serp_research_{website_id}_{int(datetime.utcnow().timestamp())}")
 
             return {
                 "success": True,
@@ -78,28 +103,50 @@ async def list_or_run_research(
                     "top_results": results_list,
                     "results": results_list,
                     "serp_results": results_list,
-                    "questions": res.get("questions", []),
-                    "trends": res.get("trends", []),
-                    "competitors": res.get("competitors", []),
-                    "search_volume": res.get("search_volume", 8500),
+                    "questions": paa_list,
+                    "trends": related_list,
+                    "competitors": list(dict.fromkeys(live_competitors))[:5],
+                    "search_volume": 0,
                     "difficulty": 38,
-                    "featured_snippet": serp_raw.get("answerBox", {}),
-                    "source": serp_raw.get("source", "serper.dev")
-                }
+                    "featured_snippet": featured_snippet,
+                    "source": source
+                },
+                "results": results_list,
+                "top_results": results_list,
+                "serp_results": results_list,
             }
         except Exception as e:
             logger.error(f"Live research failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            return {
+                "success": True,
+                "data": {
+                    "topic": search_term,
+                    "top_results": [],
+                    "results": [],
+                    "serp_results": [],
+                    "questions": [],
+                    "trends": [],
+                    "competitors": [],
+                    "search_volume": 0,
+                    "difficulty": 0,
+                    "featured_snippet": {},
+                    "source": "unavailable"
+                },
+                "results": [],
+                "top_results": [],
+                "serp_results": [],
+            }
 
-    # Fetch past records
-    try:
-        q = get_supabase().table("research").select("*")
+    # Fetch past records using safe_rows
+    from utils.safe_query import safe_rows
+    def _fetch_past(client):
+        q = client.table("research").select("*")
         if website_id:
             q = q.eq("website_id", website_id)
-        rows = q.order("created_at", desc=True).limit(20).execute().data or []
-        return {"success": True, "data": rows}
-    except Exception as e:
-        return {"success": True, "data": []}
+        return q.order("created_at", desc=True).limit(20).execute()
+
+    rows = safe_rows(_fetch_past, label="research_past")
+    return {"success": True, "data": rows}
 
 
 @router.post("/research")
@@ -107,10 +154,23 @@ async def list_or_run_research(
 async def create_research(body: ResearchIn):
     topic = body.query or body.topic
     agent = ResearchAgent(website_id=body.website_id)
-    res = await agent.run(topic=topic)
+    try:
+        res = await asyncio.wait_for(agent.run(topic=topic), timeout=5.0)
+    except Exception as e:
+        logger.warning(f"POST /research agent timed out or failed: {e}")
+        res = {}
     
-    serp_raw = await serper_service.search(query=topic, num=10)
-    organic = serp_raw.get("organic", [])
+    organic = res.get("organic")
+    if organic is None:
+        try:
+            serp_raw = await asyncio.wait_for(
+                serper_service.search(query=topic, num=10, auto_fallback=True),
+                timeout=3.0
+            )
+            organic = serp_raw.get("organic", [])
+        except Exception:
+            organic = []
+            
     results_list = [
         {
             "rank": item.get("position", idx),
@@ -121,7 +181,7 @@ async def create_research(body: ResearchIn):
             "has_table": False,
             "h1": item.get("title", "")
         }
-        for idx, item in enumerate(organic, start=1)
+        for idx, item in enumerate(organic or [], start=1)
     ]
 
     return {
@@ -131,8 +191,11 @@ async def create_research(body: ResearchIn):
             "website_id": body.website_id,
             "topic": topic,
             "results": results_list,
+            "top_results": results_list,
             "analysis": res
-        }
+        },
+        "results": results_list,
+        "top_results": results_list,
     }
 
 

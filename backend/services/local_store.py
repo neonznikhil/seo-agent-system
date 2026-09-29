@@ -180,16 +180,21 @@ def flush_local_store() -> None:
 def _save_json(filename: str, data: List[Dict[str, Any]]) -> None:
     path = os.path.join(DATA_DIR, filename)
     with _file_lock(filename):
+        tmp_path = f"{path}.tmp.{os.getpid()}"
         try:
             # Write to a sibling temp file and rename: os.replace is atomic on
             # POSIX, so a reader never sees a half-written or truncated file even
             # if the process is killed mid-write.
-            tmp_path = f"{path}.tmp.{os.getpid()}"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, default=str)
             os.replace(tmp_path, path)
         except Exception as e:
             logger.error(f"Failed to write {filename}: {e}")
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
 
 
 # ============================================================================

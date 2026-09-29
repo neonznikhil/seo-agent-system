@@ -30,9 +30,22 @@ class ResearchAgent:
         # ---------------------------------------------------------
         # Step 1: RECALL FIRST
         # ---------------------------------------------------------
-        past_clusters = await brain.recall_facts(self.website_id, f"keyword cluster {topic}", top_k=3)
-        past_experiences = await brain.recall_experiences(self.website_id, f"SERP pattern {topic}", top_k=3)
-        preferences = await brain.recall_preferences(self.website_id, "SEO research content format", top_k=2)
+        recall_tasks = [
+            brain.recall_facts(self.website_id, f"keyword cluster {topic}", top_k=3),
+            brain.recall_experiences(self.website_id, f"SERP pattern {topic}", top_k=3),
+            brain.recall_preferences(self.website_id, "SEO research content format", top_k=2),
+        ]
+        try:
+            recall_res = await asyncio.wait_for(
+                asyncio.gather(*recall_tasks, return_exceptions=True),
+                timeout=2.5
+            )
+            past_clusters = recall_res[0] if not isinstance(recall_res[0], Exception) else []
+            past_experiences = recall_res[1] if not isinstance(recall_res[1], Exception) else []
+            preferences = recall_res[2] if not isinstance(recall_res[2], Exception) else []
+        except Exception as e:
+            logger.debug(f"[ResearchAgent] Recall timed out or failed: {e}")
+            past_clusters, past_experiences, preferences = [], [], []
 
         recalled_context_lines = []
         if past_clusters:
@@ -48,9 +61,12 @@ class ResearchAgent:
         # ---------------------------------------------------------
         serp_data = {"organic": [], "peopleAlsoAsk": [], "relatedSearches": []}
         try:
-            serp_data = await serper_service.search(query=topic, num=10, auto_fallback=True)
+            serp_data = await asyncio.wait_for(
+                serper_service.search(query=topic, num=10, auto_fallback=True),
+                timeout=4.0
+            )
         except Exception as e:
-            logger.warning(f"[ResearchAgent] Serper search call failed: {e}")
+            logger.warning(f"[ResearchAgent] Serper search call failed or timed out: {e}")
 
         # Extract live signals
         live_competitors = [
@@ -77,10 +93,13 @@ class ResearchAgent:
         )
 
         try:
-            raw = await call_nim_llm(prompt, system="You are an SEO research analyst. Return only valid JSON.", website_id=self.website_id)
+            raw = await asyncio.wait_for(
+                call_nim_llm(prompt, system="You are an SEO research analyst. Return only valid JSON.", website_id=self.website_id),
+                timeout=6.0
+            )
             data = self._parse_json(raw)
         except Exception as e:
-            logger.warning(f"NIM research generation error: {e}")
+            logger.warning(f"NIM research generation error or timeout: {e}")
             data = {}
 
         # Merge live signals; when a signal is unavailable it stays empty —
@@ -113,38 +132,18 @@ class ResearchAgent:
         })
         data["serp_features"] = data.get("serp_features") or observed_features
         data["source_connector"] = serp_data.get("source", "unavailable")
+        data["organic"] = serp_data.get("organic", [])
+        data["answerBox"] = serp_data.get("answerBox", {})
+        data["peopleAlsoAsk"] = serp_data.get("peopleAlsoAsk", [])
+        data["relatedSearches"] = serp_data.get("relatedSearches", [])
 
         # ---------------------------------------------------------
-        # Step 3: WRITE BACK AFTER
+        # Step 3: WRITE BACK AFTER (Dispatched in background)
         # ---------------------------------------------------------
-        try:
-            get_supabase().table("research").insert({
-                "website_id": self.website_id,
-                "topic": topic,
-                "status": "completed",
-                "result": data,
-                "created_at": datetime.utcnow().isoformat()
-            }).execute()
-        except Exception as e:
-            logger.warning(f"[agents_research_agent] operation failed: {e}")
-
-        # Persist fact and experience memories
-        await brain.remember(
-            website_id=self.website_id,
-            memory_type="fact",
-            title=f"SERP Landscape: {topic}",
-            content=f"Identified top competitors ({', '.join(data['competitors'][:3])}) and estimated volume {data['search_volume']} via {data['source_connector']}.",
-            source_type="research_agent",
-            confidence=0.92
-        )
-
-        await brain.remember(
-            website_id=self.website_id,
-            memory_type="experience",
-            title=f"Research Run: {topic}",
-            content=f"Mined 5 trends and {len(data['questions'])} PAA questions for '{topic}'. Stored in research pipeline.",
-            source_type="research_agent",
-            confidence=0.90
+        from utils.job_queue import spawn_background
+        spawn_background(
+            _persist_research_memories(brain, self.website_id, topic, data),
+            name=f"research_memory_{self.website_id}_{int(datetime.utcnow().timestamp())}"
         )
 
         return data
@@ -169,3 +168,36 @@ class ResearchAgent:
 
 def create_research_agent(website_id: str) -> ResearchAgent:
     return ResearchAgent(website_id)
+
+async def _persist_research_memories(brain: Any, website_id: str, topic: str, data: Dict[str, Any]):
+    try:
+        from database import get_supabase
+        try:
+            get_supabase().table("research").insert({
+                "website_id": website_id,
+                "topic": topic,
+                "status": "completed",
+                "result": data,
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+        except Exception as e:
+            logger.debug(f"[ResearchAgent] Optional research table insert note: {e}")
+
+        await brain.remember(
+            website_id=website_id,
+            memory_type="fact",
+            title=f"SERP Landscape: {topic}",
+            content=f"Identified top competitors ({', '.join(data.get('competitors', [])[:3])}) and estimated volume {data.get('search_volume', 0)} via {data.get('source_connector', 'unavailable')}.",
+            source_type="research_agent",
+            confidence=0.92
+        )
+        await brain.remember(
+            website_id=website_id,
+            memory_type="experience",
+            title=f"Research Run: {topic}",
+            content=f"Mined 5 trends and {len(data.get('questions', []))} PAA questions for '{topic}'. Stored in research pipeline.",
+            source_type="research_agent",
+            confidence=0.90
+        )
+    except Exception as e:
+        logger.debug(f"[ResearchAgent] Background memory persistence note: {e}")

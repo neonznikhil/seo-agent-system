@@ -62,9 +62,9 @@ async def test_nvidia_connector():
 @pytest.mark.asyncio
 async def test_supabase_connector():
     """Test POST /api/connectors/test-supabase with real Supabase credentials."""
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
-    if not supabase_url or not supabase_key or supabase_key.strip().lower() in ("dummy", "mock-key"):
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_KEY", "")
+    if not supabase_url or not supabase_key or supabase_key.strip().lower() in ("", "dummy", "your-supabase-service-role-key", "mock-key") or "example.supabase.co" in supabase_url or "dummy" in supabase_url:
         pytest.skip("Real Supabase credentials not configured")
 
     transport = ASGITransport(app=app)
@@ -83,7 +83,7 @@ async def test_supabase_tables_exist():
     """Verify that core active tables exist in the live database schema."""
     supabase_url = os.getenv("SUPABASE_URL", "")
     supabase_key = os.getenv("SUPABASE_KEY", "")
-    if not supabase_url or supabase_key.strip().lower() in ("dummy", "mock-key"):
+    if not supabase_url or not supabase_key or supabase_key.strip().lower() in ("", "dummy", "your-supabase-service-role-key", "mock-key") or "example.supabase.co" in supabase_url or "dummy" in supabase_url:
         pytest.skip("Real Supabase credentials not configured")
     supabase = get_supabase()
     tables = [

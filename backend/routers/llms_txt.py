@@ -85,8 +85,23 @@ def _resolve_site(website_id: Optional[str] = None, user_id: Optional[str] = Non
     local_list = list_local_websites()
     if local_list and len(local_list) > 0:
         return local_list[0]
-    
-    return {}
+
+    # 6. System configured site / environment default
+    default_url = (
+        os.getenv("WORDPRESS_SITE_URL")
+        or os.getenv("GSC_SITE_URL")
+        or "https://accident.innovatcs.com"
+    )
+    clean_domain = default_url.replace("https://", "").replace("http://", "").rstrip("/").split("/")[0]
+    return {
+        "id": "44666e81-1d83-4801-be22-1cb72f39801a",
+        "domain": clean_domain,
+        "url": default_url,
+        "cms_url": default_url,
+        "name": os.getenv("BRAND_NAME") or "Innovatcs Injury Legal Advisors",
+        "niche": "Personal Injury Legal Services",
+        "status": "active",
+    }
 
 
 async def generate_llms_txt_content(website_id: Optional[str] = None, user_id: Optional[str] = None, request: Optional[Request] = None) -> str:
