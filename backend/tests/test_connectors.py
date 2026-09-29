@@ -7,7 +7,7 @@ from database import get_supabase
 
 @pytest.mark.asyncio
 async def test_connectors_status():
-    """Test GET /api/connectors/status returns health of real connectors."""
+    """Test GET /api/connectors/status returns honest health of real connectors."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.get("/api/connectors/status")
@@ -16,7 +16,30 @@ async def test_connectors_status():
         assert "nvidia" in data
         assert "supabase" in data
         assert "wordpress" in data
-        assert data["supabase"]["connected"] is True
+        # Honesty invariant: a placeholder/never-valid config must never be
+        # reported as connected, and must never be reported as configured.
+        sb = data["supabase"]
+        if sb.get("placeholder"):
+            assert sb["connected"] is False
+            assert sb["is_configured"] is False
+        if not sb["connected"]:
+            assert sb["is_configured"] is False
+
+
+@pytest.mark.asyncio
+async def test_placeholder_supabase_is_not_reported_connected(monkeypatch):
+    """Regression: 'dummy' key + example.supabase.co used to report connected=true."""
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", "dummy")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/connectors/status")
+        assert res.status_code == 200
+        sb = res.json()["supabase"]
+        assert sb["placeholder"] is True
+        assert sb["connected"] is False
+        assert sb["is_configured"] is False
+
 
 
 @pytest.mark.asyncio
@@ -40,8 +63,8 @@ async def test_supabase_connector():
     """Test POST /api/connectors/test-supabase with real Supabase credentials."""
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
-    if not supabase_url or not supabase_key:
-        pytest.skip("Supabase credentials not configured")
+    if not supabase_url or not supabase_key or supabase_key.strip().lower() in ("dummy", "mock-key"):
+        pytest.skip("Real Supabase credentials not configured")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -57,6 +80,10 @@ async def test_supabase_connector():
 @pytest.mark.asyncio
 async def test_supabase_tables_exist():
     """Verify that core active tables exist in the live database schema."""
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_KEY", "")
+    if not supabase_url or supabase_key.strip().lower() in ("dummy", "mock-key"):
+        pytest.skip("Real Supabase credentials not configured")
     supabase = get_supabase()
     tables = [
         "websites",

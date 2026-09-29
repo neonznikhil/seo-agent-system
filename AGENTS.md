@@ -97,3 +97,17 @@ single Supabase call failed** — a DNS blip discarded a fully-planned article. 
 - `backend/middleware/sanitize_response.py` sanitizes **only** keys in
   `HTML_FIELD_NAMES`; do not sanitize every HTML-looking string (it corrupts diffs
   and code payloads).
+
+## Supabase status honesty
+`GET /api/connectors/status` must never infer success from the mere *presence* of a
+key. A failed live query is `connected: false`; placeholder values
+(`example.supabase.co`, `dummy`, `mock-key`, `your-supabase-service-role-key`) set
+`placeholder: true` and `is_configured: false`. The old `except: connected = bool(SUPABASE_KEY)`
+reported a healthy Supabase while every real write silently failed.
+- The Supabase **URL alone is not a credential** — the project needs the `anon` or
+  `service_role` key. Configure via `POST /api/connectors/setup-supabase`
+  (`connect_and_setup`: URL + anon_key + service_key + db_password → writes `.env`,
+  creates tables, pgvector + match RPCs).
+- A shell-exported `SUPABASE_URL` overrides `.env` (python-dotenv does not override
+  existing env). If status shows the wrong URL, check `env | grep SUPABASE` before
+  restarting the backend.

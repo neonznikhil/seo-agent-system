@@ -1035,21 +1035,38 @@ async def get_connectors_status(website_id: Optional[str] = None):
 
     # 1. Supabase Status
     supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_SERVICE_KEY")
+        or os.environ.get("SUPABASE_KEY", "")
+    )
     supabase_connected = False
+    supabase_error: Optional[str] = None
     table_count = 0
     if supabase_url:
         try:
             get_supabase().table("websites").select("id").limit(1).execute()
             supabase_connected = True
             table_count = 14
-        except Exception:
-            supabase_connected = bool(os.environ.get("SUPABASE_KEY"))
+        except Exception as e:
+            # A key merely being *present* is not a connection. "dummy" and
+            # "example.supabase.co" used to report connected=true, so the UI
+            # showed a healthy Supabase while every real write silently failed.
+            supabase_error = str(e)[:200]
+            logger.warning(f"[Connectors] Supabase health check failed: {supabase_error}")
+
+    # Flag placeholder/never-valid values explicitly (no fabricated success).
+    _placeholder_url = supabase_url in ("", "https://example.supabase.co") or "example.supabase.co" in supabase_url
+    _placeholder_key = supabase_key.strip().lower() in ("", "dummy", "your-supabase-service-role-key", "mock-key")
 
     supabase_status = {
         "connected": supabase_connected,
-        "is_configured": bool(supabase_url),
+        "is_configured": bool(supabase_url and supabase_key and not _placeholder_url and not _placeholder_key),
         "tables_count": table_count,
+        "placeholder": _placeholder_url or _placeholder_key,
     }
+    if supabase_error:
+        supabase_status["error"] = supabase_error
 
     # 2. NVIDIA Status
     nvidia_key = os.environ.get("NVIDIA_API_KEY", "")
