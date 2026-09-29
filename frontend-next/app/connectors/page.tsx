@@ -59,6 +59,7 @@ export default function ConnectorsPage() {
   const [serperResults, setSerperResults] = useState<any[]>([]);
 
   // Section C: Analytics
+  const [googleConnecting, setGoogleConnecting] = useState(false);
   const [gscJson, setGscJson] = useState("");
   const [gscUrl, setGscUrl] = useState("");
   const [gscTesting, setGscTesting] = useState(false);
@@ -121,7 +122,43 @@ export default function ConnectorsPage() {
     if (cached.slack_webhook_url) setSlackWebhook(cached.slack_webhook_url);
     if (cached.openai_api_key) setOpenaiKey(cached.openai_api_key);
     if (cached.perplexity_api_key) setPerplexityKey(cached.perplexity_api_key);
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.integration === "google") {
+        setGoogleConnecting(false);
+        if (event.data.success) {
+          showToast(`✓ Google Account connected! ${event.data.detail || "GSC & GA4 authorized."}`);
+          loadStatus();
+        } else {
+          setErrorMsg(`Google OAuth error: ${event.data.detail || "Authorization failed."}`);
+        }
+      }
+    };
+    window.addEventListener("message", handleMessage);
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
   }, [loadStatus]);
+
+  // 1-Click Google OAuth (Search Console & GA4)
+  const handleConnectGoogle = () => {
+    setGoogleConnecting(true);
+    setErrorMsg(null);
+    const width = 600;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    const popup = window.open(
+      "/api/connectors/google/oauth/start",
+      "google_oauth",
+      `width=${width},height=${height},top=${top},left=${left},status=no,toolbar=no,menubar=no`
+    );
+    if (!popup) {
+      setErrorMsg("Popup blocked! Please allow popups for this site to connect your Google account.");
+      setGoogleConnecting(false);
+    }
+  };
 
   // Test NVIDIA
   const handleTestNvidia = async () => {
@@ -788,6 +825,75 @@ export default function ConnectorsPage() {
               Section C: Real Analytics (Search Console & GA4)
             </div>
 
+            {/* 1-Click Google Account Connect (GSC & GA4) */}
+            <div className="panel" style={{
+              marginBottom: "16px",
+              borderLeft: (status?.gsc?.connected && status?.ga4?.connected)
+                ? "4px solid var(--green)"
+                : (status?.gsc?.connected || status?.ga4?.connected)
+                ? "4px solid var(--accent)"
+                : "4px solid var(--amber)",
+              background: "linear-gradient(135deg, rgba(66, 133, 244, 0.04) 0%, rgba(52, 168, 83, 0.04) 100%)"
+            }}>
+              <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "18px" }}>🌐</span>
+                  <div>
+                    <span className="panel-label" style={{ fontSize: "13px", fontWeight: 700 }}>
+                      1-Click Google Integration (Search Console & GA4)
+                    </span>
+                    <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>
+                      Authorizes both Google Search Console and Google Analytics 4 in a single OAuth consent step.
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <span className={`badge ${status?.gsc?.connected ? "badge-green" : "badge-amber"}`}>
+                    GSC: {status?.gsc?.connected ? "Connected" : "Disconnected"}
+                  </span>
+                  <span className={`badge ${status?.ga4?.connected ? "badge-green" : "badge-amber"}`}>
+                    GA4: {status?.ga4?.connected ? "Connected" : "Disconnected"}
+                  </span>
+                </div>
+              </div>
+              <div className="panel-body" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+                <div style={{ fontSize: "12px", color: "var(--ink)", maxWidth: "600px" }}>
+                  {(status?.gsc?.connected && status?.ga4?.connected) ? (
+                    <span style={{ color: "var(--green)" }}>
+                      ✓ Your Google Account is actively connected. Real search clicks, impressions, and analytics stream into all 6 sections.
+                    </span>
+                  ) : (
+                    <span>
+                      Connect with Google using your authorized Google Account. No manual JSON parsing or credential editing needed.
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConnectGoogle}
+                  disabled={googleConnecting}
+                  className="btn btn-accent"
+                  style={{
+                    padding: "10px 20px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                  </svg>
+                  {googleConnecting ? "Connecting to Google..." : (status?.gsc?.connected || status?.ga4?.connected) ? "Reconnect Google Account" : "1-Click Connect Google Account"}
+                </button>
+              </div>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
               {/* GSC Card */}
               <div className="panel" style={{ borderLeft: status?.gsc?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
@@ -966,8 +1072,16 @@ export default function ConnectorsPage() {
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>GSC & GA4</span>
-                <strong style={{ color: "var(--green)" }}>✓ Ready</strong>
+                <span>Search Console</span>
+                <strong style={{ color: status?.gsc?.connected ? "var(--green)" : "var(--muted)" }}>
+                  {status?.gsc?.connected ? "✓ Connected" : "Not Set"}
+                </strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Google Analytics 4</span>
+                <strong style={{ color: status?.ga4?.connected ? "var(--green)" : "var(--muted)" }}>
+                  {status?.ga4?.connected ? "✓ Connected" : "Not Set"}
+                </strong>
               </div>
             </div>
 

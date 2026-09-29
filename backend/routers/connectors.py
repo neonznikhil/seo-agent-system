@@ -1093,19 +1093,37 @@ async def get_connectors_status(website_id: Optional[str] = None):
     }
 
     # 5. GSC Status
-    gsc_key = os.environ.get("GSC_SERVICE_ACCOUNT_JSON") or os.environ.get("GSC_SITE_URL", "")
+    gsc_connected = False
+    try:
+        from services.gsc_service import GSCService
+        gsc_connected = GSCService().is_connected()
+    except Exception as e:
+        logger.debug(f"GSC is_connected check: {e}")
+        gsc_connected = False
+
+    gsc_site_url = os.environ.get("GSC_SITE_URL") or os.environ.get("GSC_PROPERTY", "")
     gsc_status = {
-        "connected": bool(gsc_key),
-        "is_configured": bool(gsc_key),
-        "status_label": "Connected" if bool(gsc_key) else "Awaiting Sync",
+        "connected": gsc_connected,
+        "is_configured": gsc_connected or bool(gsc_site_url),
+        "status_label": "Connected" if gsc_connected else ("Configured" if gsc_site_url else "Awaiting Sync"),
+        "site_url": gsc_site_url,
     }
 
     # 6. GA4 Status
-    ga4_key = os.environ.get("GA4_PROPERTY_ID") or os.environ.get("GA4_CREDENTIALS_JSON", "")
+    ga4_connected = False
+    try:
+        from services.ga4_service import ga4_service
+        ga4_connected = ga4_service.is_connected()
+    except Exception as e:
+        logger.debug(f"GA4 is_connected check: {e}")
+        ga4_connected = False
+
+    ga4_prop_id = os.environ.get("GA4_PROPERTY_ID", "")
     ga4_status = {
-        "connected": bool(ga4_key),
-        "is_configured": bool(ga4_key),
-        "status_label": "Connected" if bool(ga4_key) else "Ready",
+        "connected": ga4_connected,
+        "is_configured": ga4_connected or bool(ga4_prop_id),
+        "status_label": "Connected" if ga4_connected else ("Configured" if ga4_prop_id else "Ready"),
+        "property_id": ga4_prop_id,
     }
 
     # 7. WordPress Status

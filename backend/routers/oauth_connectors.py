@@ -148,165 +148,235 @@ async def _exchange_oauth_code(code: str, client_id: str, client_secret: str, re
 
 
 # -----------------------------------------------------------------------------
-# 1. GOOGLE SEARCH CONSOLE OAUTH 2.0 (real exchange)
+# UNIFIED GOOGLE OAUTH 2.0 (GSC + GA4 combined)
+# Authorized redirect URI in Google Cloud Console:
+# http://localhost:8000/api/connectors/google/callback
 # -----------------------------------------------------------------------------
-@router.get("/connectors/gsc/oauth/start")
-async def gsc_oauth_start(website_id: str = "default"):
+GOOGLE_COMBINED_SCOPES = (
+    "https://www.googleapis.com/auth/webmasters.readonly "
+    "https://www.googleapis.com/auth/webmasters "
+    "https://www.googleapis.com/auth/analytics.readonly"
+)
+GOOGLE_OAUTH_REDIRECT_URI = "http://localhost:8000/api/connectors/google/callback"
+
+
+def _save_google_oauth_tokens(tokens: dict):
+    """Save Google OAuth tokens to backend/google_oauth_tokens.json and root."""
+    paths = [
+        os.path.join(os.path.dirname(__file__), "..", "google_oauth_tokens.json"),
+        os.path.join(os.getcwd(), "backend", "google_oauth_tokens.json"),
+        os.path.join(os.getcwd(), "google_oauth_tokens.json"),
+    ]
+    for p in paths:
+        try:
+            abs_p = os.path.abspath(p)
+            os.makedirs(os.path.dirname(abs_p), exist_ok=True)
+            with open(abs_p, "w", encoding="utf-8") as f:
+                json.dump(tokens, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Could not write tokens to {p}: {e}")
+
+
+@router.get("/connectors/google/oauth/start")
+@router.get("/api/connectors/google/oauth/start")
+async def google_oauth_start(website_id: str = "default"):
+    """Initiates unified Google OAuth flow for both Search Console and GA4."""
     client_id = GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
     if not client_id:
-        return _popup_html(False, "gsc", "GOOGLE_CLIENT_ID not configured on the server.")
+        return _popup_html(False, "google", "GOOGLE_CLIENT_ID not configured on the server.")
 
     state = secrets.token_urlsafe(32)
-    set_oauth_state(state, {"website_id": website_id, "provider": "gsc"})
+    set_oauth_state(state, {"website_id": website_id, "provider": "google"})
 
-    scopes = "https://www.googleapis.com/auth/webmasters.readonly"
-    redirect_uri = f"{BACKEND_URL}/api/connectors/gsc/oauth/callback"
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI") or GOOGLE_OAUTH_REDIRECT_URI
     auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}"
-        f"&response_type=code&scope={scopes}&access_type=offline&prompt=consent"
+        f"&response_type=code&scope={GOOGLE_COMBINED_SCOPES}&access_type=offline&prompt=consent"
         f"&state={state}&redirect_uri={redirect_uri}"
     )
     return RedirectResponse(url=auth_url)
 
 
-@router.get("/api/connectors/gsc/oauth/callback")
-@router.get("/connectors/gsc/oauth/callback")
-async def gsc_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+@router.get("/api/connectors/google/callback")
+@router.get("/connectors/google/callback")
+async def google_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    """Unified OAuth callback for Google Search Console and GA4."""
     if error or not state:
-        return _popup_html(False, "gsc", error or "Authorization cancelled.")
+        return _popup_html(False, "google", error or "Authorization cancelled.")
     state_data = get_and_validate_oauth_state(state)
     if not state_data:
-        return _popup_html(False, "gsc", "OAuth state expired or invalid.")
+        return _popup_html(False, "google", "OAuth state expired or invalid.")
     website_id = state_data.get("website_id", "default")
 
     client_id = GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = GOOGLE_CLIENT_SECRET or os.getenv("GOOGLE_CLIENT_SECRET", "")
     if not client_id or not client_secret:
-        return _popup_html(False, "gsc", "Server missing GOOGLE_CLIENT_ID/SECRET configuration.")
+        return _popup_html(False, "google", "Server missing GOOGLE_CLIENT_ID/SECRET configuration.")
 
-    redirect_uri = f"{BACKEND_URL}/api/connectors/gsc/oauth/callback"
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI") or GOOGLE_OAUTH_REDIRECT_URI
     tokens = await _exchange_oauth_code(code, client_id, client_secret, redirect_uri)
     if not tokens:
-        return _popup_html(False, "gsc", "Token exchange failed - invalid code or credentials.")
+        return _popup_html(False, "google", "Token exchange failed - invalid code or client credentials.")
 
     access_token = tokens.get("access_token", "")
+    refresh_token = tokens.get("refresh_token", "")
+    expires_in = int(tokens.get("expires_in", 3600))
+
+    # Persist token file
+    _save_google_oauth_tokens(tokens)
+
+    # Prepare environment updates
+    env_updates = {
+        "GOOGLE_ACCESS_TOKEN": access_token,
+    }
+    if refresh_token:
+        env_updates["GOOGLE_REFRESH_TOKEN"] = refresh_token
+
+    # 1. Discover Google Search Console Properties
+    gsc_properties = []
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
             sites_resp = await client.get(
                 "https://www.googleapis.com/webmasters/v3/sites",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
-            sites_data = sites_resp.json() if sites_resp.status_code == 200 else {}
-            properties = [
-                s.get("siteUrl") for s in (sites_data.get("siteEntry") or [])
-                if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
-            ]
+            if sites_resp.status_code == 200:
+                sites_data = sites_resp.json()
+                gsc_properties = [
+                    s.get("siteUrl") for s in (sites_data.get("siteEntry") or [])
+                    if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
+                ]
     except Exception as e:
-        logger.error(f"[GSC OAuth] sites fetch failed: {e}")
-        return _popup_html(False, "gsc", f"Failed to fetch verified properties: {str(e)[:120]}")
+        logger.warning(f"[Google OAuth] GSC sites fetch failed: {e}")
 
-    supabase = get_supabase()
+    # Match or pick best GSC property
+    selected_gsc_prop = None
+    target_site = os.getenv("GSC_SITE_URL") or "accident.innovatcs.com"
+    for p in gsc_properties:
+        if target_site.lower() in p.lower():
+            selected_gsc_prop = p
+            break
+    if not selected_gsc_prop and gsc_properties:
+        selected_gsc_prop = gsc_properties[0]
+
+    if selected_gsc_prop:
+        env_updates["GSC_PROPERTY"] = selected_gsc_prop
+        env_updates["GSC_SITE_URL"] = selected_gsc_prop
+        env_updates["NEXT_PUBLIC_GSC_CONFIGURED"] = "true"
+
+    # 2. Discover Google Analytics 4 Properties
+    ga4_properties = []
     try:
-        update_payload = {
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            accounts_resp = await client.get(
+                "https://analyticsadmin.googleapis.com/v1beta/accountSummaries",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if accounts_resp.status_code == 200:
+                for account in accounts_resp.json().get("accountSummaries", []):
+                    for prop in account.get("propertySummaries", []):
+                        raw_id = prop.get("property", "")
+                        clean_id = raw_id.replace("properties/", "").strip()
+                        ga4_properties.append({
+                            "id": clean_id,
+                            "raw_id": raw_id,
+                            "name": prop.get("displayName", ""),
+                        })
+    except Exception as e:
+        logger.warning(f"[Google OAuth] GA4 properties fetch failed: {e}")
+
+    selected_ga4_prop = None
+    if ga4_properties:
+        selected_ga4_prop = ga4_properties[0]["id"]
+        env_updates["GA4_PROPERTY_ID"] = selected_ga4_prop
+        env_updates["NEXT_PUBLIC_GA4_CONFIGURED"] = "true"
+
+    # Update .env files and os.environ via auto_supabase
+    try:
+        from auto_supabase import update_env_keys
+        update_env_keys(env_updates)
+    except Exception as e:
+        logger.warning(f"[Google OAuth] update_env_keys note: {e}")
+        for k, v in env_updates.items():
+            os.environ[k] = str(v)
+
+    # Persist credentials into Supabase websites table
+    try:
+        supabase = get_supabase()
+        expires_at_iso = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+        now_iso = datetime.utcnow().isoformat()
+
+        website_update = {
             "gsc_credentials": {
                 "access_token_encrypted": encrypt_secret(access_token),
-                "refresh_token_encrypted": encrypt_secret(tokens.get("refresh_token", "")),
-                "expires_at": (datetime.utcnow() + timedelta(seconds=int(tokens.get("expires_in", 3600)))).isoformat(),
-                "available_properties": properties,
-                "connected_at": datetime.utcnow().isoformat(),
-            }
+                "refresh_token_encrypted": encrypt_secret(refresh_token) if refresh_token else "",
+                "expires_at": expires_at_iso,
+                "available_properties": gsc_properties,
+                "connected_at": now_iso,
+            },
+            "ga4_credentials": {
+                "access_token_encrypted": encrypt_secret(access_token),
+                "refresh_token_encrypted": encrypt_secret(refresh_token) if refresh_token else "",
+                "expires_at": expires_at_iso,
+                "properties": ga4_properties,
+                "connected_at": now_iso,
+            },
         }
-        if properties:
-            update_payload["gsc_property"] = properties[0]
-        supabase.table("websites").update(update_payload).eq("id", website_id).execute()
-    except Exception as e:
-        logger.warning(f"[GSC OAuth] persist note: {e}")
+        if selected_gsc_prop:
+            website_update["gsc_property"] = selected_gsc_prop
+        if selected_ga4_prop:
+            website_update["ga4_property_id"] = selected_ga4_prop
 
-    return _popup_html(True, "gsc", f"{len(properties)} verified properties found.",
-                       extra_payload=json.dumps({"properties": properties}))
+        if website_id and website_id != "default":
+            supabase.table("websites").update(website_update).eq("id", website_id).execute()
+        else:
+            sites = supabase.table("websites").select("id").limit(1).execute().data
+            if sites and sites[0].get("id"):
+                supabase.table("websites").update(website_update).eq("id", sites[0]["id"]).execute()
+    except Exception as e:
+        logger.warning(f"[Google OAuth] Supabase database persist note: {e}")
+
+    summary_detail = (
+        f"Connected successfully! GSC: {len(gsc_properties)} verified properties, "
+        f"GA4: {len(ga4_properties)} properties."
+    )
+    extra_data = {
+        "gsc_properties": gsc_properties,
+        "selected_gsc_property": selected_gsc_prop,
+        "ga4_properties": ga4_properties,
+        "selected_ga4_property": selected_ga4_prop,
+    }
+    return _popup_html(True, "google", summary_detail, extra_payload=json.dumps(extra_data))
 
 
 # -----------------------------------------------------------------------------
-# 2. GOOGLE ANALYTICS 4 OAUTH 2.0 (real exchange)
+# 1. GOOGLE SEARCH CONSOLE OAUTH 2.0 (Delegates to unified Google OAuth)
+# -----------------------------------------------------------------------------
+@router.get("/connectors/gsc/oauth/start")
+@router.get("/api/connectors/gsc/oauth/start")
+async def gsc_oauth_start(website_id: str = "default"):
+    return await google_oauth_start(website_id=website_id)
+
+
+@router.get("/api/connectors/gsc/oauth/callback")
+@router.get("/connectors/gsc/oauth/callback")
+async def gsc_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    return await google_oauth_callback(code=code, state=state, error=error)
+
+
+# -----------------------------------------------------------------------------
+# 2. GOOGLE ANALYTICS 4 OAUTH 2.0 (Delegates to unified Google OAuth)
 # -----------------------------------------------------------------------------
 @router.get("/connectors/ga4/oauth/start")
+@router.get("/api/connectors/ga4/oauth/start")
 async def ga4_oauth_start(website_id: str = "default"):
-    client_id = GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
-    if not client_id:
-        return _popup_html(False, "ga4", "GOOGLE_CLIENT_ID not configured on the server.")
-
-    state = secrets.token_urlsafe(32)
-    set_oauth_state(state, {"website_id": website_id, "provider": "ga4"})
-
-    scopes = "https://www.googleapis.com/auth/analytics.readonly"
-    redirect_uri = f"{BACKEND_URL}/api/connectors/ga4/oauth/callback"
-    auth_url = (
-        f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}"
-        f"&response_type=code&scope={scopes}&access_type=offline&prompt=consent"
-        f"&state={state}&redirect_uri={redirect_uri}"
-    )
-    return RedirectResponse(url=auth_url)
+    return await google_oauth_start(website_id=website_id)
 
 
 @router.get("/api/connectors/ga4/oauth/callback")
 @router.get("/connectors/ga4/oauth/callback")
 async def ga4_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-    if error or not state:
-        return _popup_html(False, "ga4", error or "Authorization cancelled.")
-    state_data = get_and_validate_oauth_state(state)
-    if not state_data:
-        return _popup_html(False, "ga4", "OAuth state expired or invalid.")
-    website_id = state_data.get("website_id", "default")
-
-    client_id = GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
-    client_secret = GOOGLE_CLIENT_SECRET or os.getenv("GOOGLE_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        return _popup_html(False, "ga4", "Server missing GOOGLE_CLIENT_ID/SECRET configuration.")
-
-    redirect_uri = f"{BACKEND_URL}/api/connectors/ga4/oauth/callback"
-    tokens = await _exchange_oauth_code(code, client_id, client_secret, redirect_uri)
-    if not tokens:
-        return _popup_html(False, "ga4", "Token exchange failed - invalid code or credentials.")
-
-    access_token = tokens.get("access_token", "")
-
-    try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            # Fetch the account summary for real GA4 property IDs
-            accounts_resp = await client.get(
-                "https://analyticsadmin.googleapis.com/v1beta/accountSummaries",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            ga4_properties = []
-            if accounts_resp.status_code == 200:
-                for account in accounts_resp.json().get("accountSummaries", []):
-                    for prop in account.get("propertySummaries", []):
-                        ga4_properties.append({
-                            "id": prop.get("property"),
-                            "name": prop.get("displayName"),
-                        })
-    except Exception as e:
-        logger.error(f"[GA4 OAuth] exchange failed: {e}")
-        return _popup_html(False, "ga4", f"Token exchange failed: {str(e)[:120]}")
-
-    supabase = get_supabase()
-    try:
-        update_payload = {
-            "ga4_credentials": {
-                "access_token_encrypted": encrypt_secret(access_token),
-                "refresh_token_encrypted": encrypt_secret(tokens.get("refresh_token", "")),
-                "connected_at": datetime.utcnow().isoformat(),
-                "properties": ga4_properties,
-            }
-        }
-        if ga4_properties:
-            update_payload["ga4_property_id"] = ga4_properties[0]["id"]
-        supabase.table("websites").update(update_payload).eq("id", website_id).execute()
-    except Exception as e:
-        logger.warning(f"[GA4 OAuth] persist note: {e}")
-
-    return _popup_html(True, "ga4", f"{len(ga4_properties)} properties found.",
-                       extra_payload=json.dumps({"properties": ga4_properties}))
+    return await google_oauth_callback(code=code, state=state, error=error)
 
 
 # -----------------------------------------------------------------------------

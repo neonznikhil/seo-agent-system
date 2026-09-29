@@ -262,8 +262,17 @@ export default function ResearchPage() {
           </div>
           <div className="panel-body" style={{ padding: "0" }}>
             {keywords.length === 0 ? (
-              <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
-                No keywords discovered yet. Connect GSC in /connectors or run keyword research — rows below show measured values only, never filler.
+              <div style={{ padding: "36px 20px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>
+                <p style={{ marginBottom: "12px" }}>
+                  No keywords discovered yet. Connect Google Search Console or run keyword research — rows show measured live data only, never filler.
+                </p>
+                <Link
+                  href="/connectors"
+                  className="btn btn-accent"
+                  style={{ textDecoration: "none", fontSize: "11px", padding: "6px 14px", display: "inline-block" }}
+                >
+                  Connect Google Search Console →
+                </Link>
               </div>
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12px" }}>

@@ -93,3 +93,40 @@ async def get_traffic_breakdown(website_id: Optional[str] = Query(None)):
         return {"success": True, "data": res.data or []}
     except Exception:
         return {"success": True, "data": []}
+
+
+try:
+    from services.analytics_service import AnalyticsService
+except (ImportError, ValueError):
+    from backend.services.analytics_service import AnalyticsService
+
+
+@router.get("/summary")
+async def get_analytics_summary(website_id: Optional[str] = Query(None)):
+    """Aggregate high level metrics for the dashboard Analytics tab — real DB only."""
+    return await AnalyticsService.get_analytics_summary(website_id)
+
+
+@router.get("/content-gaps")
+async def get_content_gaps(website_id: Optional[str] = Query(None)):
+    """Identify high-impression, low-CTR queries ranking in positions 5-15."""
+    gaps = await AnalyticsService.get_content_gaps(website_id)
+    return {"success": True, "data": gaps, "total": len(gaps)}
+
+
+@router.get("/decaying-content")
+async def get_decaying_content(website_id: Optional[str] = Query(None)):
+    """Find blog posts where views dropped > 30%."""
+    decaying = await AnalyticsService.get_decaying_content(website_id)
+    return {"success": True, "data": decaying, "total": len(decaying)}
+
+
+class SyncGscRequest(BaseModel):
+    website_id: Optional[str] = None
+
+
+@router.post("/sync-gsc")
+async def sync_gsc_data(website_id: Optional[str] = Query(None), body: Optional[SyncGscRequest] = None):
+    """Pull live keyword rows from GSC API and persist into analytics_data."""
+    target_id = website_id or (body.website_id if body else None)
+    return await AnalyticsService.sync_gsc_data(target_id)

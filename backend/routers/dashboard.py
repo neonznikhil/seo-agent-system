@@ -331,15 +331,18 @@ async def _overview_indexation(wid: str) -> dict:
 
 
 async def _overview_gsc(wid: str) -> dict:
-    from routers.gsc import get_performance
+    try:
+        from routers.gsc import get_performance
+    except (ImportError, ValueError):
+        from backend.routers.gsc import get_performance
     perf = await get_performance(wid, None, None)
-    if not perf.get("connected") or not perf.get("keywords"):
+    if not perf.get("connected"):
         return {"impressions": None, "clicks": None, "avg_position": None,
-                "connected": bool(perf.get("connected")),
+                "connected": False,
                 "fix": perf.get("message") or "Connect GSC in /connectors"}
-    return {"impressions": perf.get("total_impressions"),
-            "clicks": perf.get("total_clicks"),
-            "avg_position": perf.get("average_position"),
+    return {"impressions": perf.get("total_impressions", 0),
+            "clicks": perf.get("total_clicks", 0),
+            "avg_position": perf.get("average_position", 0.0),
             "connected": True,
             "keywords": len(perf.get("keywords", [])),
             "start_date": perf.get("start_date"), "end_date": perf.get("end_date")}

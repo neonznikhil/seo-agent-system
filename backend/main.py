@@ -928,6 +928,19 @@ app.include_router(wordpress_oauth_router, prefix="/api")      # /api/wordpress/
 app.include_router(wordpress_connect_router, prefix="/api")    # /api/wordpress-connect/*
 app.include_router(oauth_connectors_router, prefix="/api")     # /api/oauth/*
 
+# Direct root-level fallbacks for Google OAuth (supports callbacks with or without /api prefix)
+@app.get("/connectors/google/callback")
+@app.get("/google/callback")
+async def root_google_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    from routers.oauth_connectors import google_oauth_callback
+    return await google_oauth_callback(code=code, state=state, error=error)
+
+@app.get("/connectors/google/oauth/start")
+@app.get("/google/oauth/start")
+async def root_google_oauth_start(website_id: str = "default"):
+    from routers.oauth_connectors import google_oauth_start
+    return await google_oauth_start(website_id=website_id)
+
 # Integration Connectors (Serper, Slack, Cost Tracking)
 app.include_router(connectors_router, prefix="/api")           # /api/connectors/*
 app.include_router(connectors_serper_router, prefix="/api")    # /api/connectors/serper/*

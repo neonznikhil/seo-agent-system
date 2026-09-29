@@ -11,34 +11,113 @@ class GSCService:
     """Google Search Console API service for real traffic data."""
     
     def __init__(self, website_url: str = None, credentials_path: str = None):
-        self.website_url = website_url
+        self.website_url = (
+            website_url
+            or os.getenv("GSC_SITE_URL")
+            or os.getenv("GSC_PROPERTY")
+            or "https://accident.innovatcs.com"
+        )
         self.credentials_path = credentials_path or os.getenv("GSC_CREDENTIALS_PATH")
         self.service = None
+
+    def _load_oauth_credentials(self):
+        """Load OAuth2 credentials from token file or environment variables."""
+        token_paths = [
+            os.path.join(os.path.dirname(__file__), "..", "google_oauth_tokens.json"),
+            os.path.join(os.getcwd(), "backend", "google_oauth_tokens.json"),
+            os.path.join(os.getcwd(), "google_oauth_tokens.json"),
+        ]
+        tokens = {}
+        for p in token_paths:
+            if os.path.isfile(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        tokens = json.load(f)
+                    if tokens.get("access_token") or tokens.get("refresh_token"):
+                        break
+                except Exception:
+                    pass
+
+        access_token = tokens.get("access_token") or os.getenv("GOOGLE_ACCESS_TOKEN")
+        refresh_token = tokens.get("refresh_token") or os.getenv("GOOGLE_REFRESH_TOKEN")
+        client_id = os.getenv("GOOGLE_CLIENT_ID")
+        client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+        if access_token or refresh_token:
+            try:
+                from google.oauth2.credentials import Credentials
+                creds = Credentials(
+                    token=access_token,
+                    refresh_token=refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    scopes=[
+                        'https://www.googleapis.com/auth/webmasters.readonly',
+                        'https://www.googleapis.com/auth/webmasters'
+                    ]
+                )
+                return creds
+            except Exception as e:
+                logger.warning(f"Failed to create Google OAuth Credentials: {e}")
+        return None
     
     def _get_service(self):
-        """Get authenticated GSC API service."""
+        """Get authenticated GSC API service via OAuth, Service Account file, or JSON string."""
         if self.service:
             return self.service
-        
-        if not self.credentials_path:
-            raise ValueError("GSC credentials not configured - set GSC_CREDENTIALS_PATH")
-        
-        try:
-            from google.oauth2 import service_account
-            from googleapiclient.discovery import build
-            creds = service_account.Credentials.from_service_account_file(
-                self.credentials_path,
-                scopes=['https://www.googleapis.com/auth/webmasters']
-            )
-            self.service = build('webmasters', 'v3', credentials=creds)
-            return self.service
-        except Exception as e:
-            logger.error(f"GSC client init error: {e}")
-            raise ValueError(f"GSC client init failed: {e}")
+
+        from googleapiclient.discovery import build
+
+        # 1. Try OAuth 2.0 Credentials
+        oauth_creds = self._load_oauth_credentials()
+        if oauth_creds:
+            try:
+                self.service = build('webmasters', 'v3', credentials=oauth_creds, cache_discovery=False)
+                return self.service
+            except Exception as e:
+                logger.warning(f"GSC OAuth client init failed: {e}")
+
+        # 2. Try Service Account File
+        if self.credentials_path and os.path.isfile(self.credentials_path):
+            try:
+                from google.oauth2 import service_account
+                creds = service_account.Credentials.from_service_account_file(
+                    self.credentials_path,
+                    scopes=['https://www.googleapis.com/auth/webmasters']
+                )
+                self.service = build('webmasters', 'v3', credentials=creds, cache_discovery=False)
+                return self.service
+            except Exception as e:
+                logger.warning(f"GSC service account file init failed: {e}")
+
+        # 3. Try Service Account JSON string in GSC_CREDENTIALS or GOOGLE_APPLICATION_CREDENTIALS
+        raw_creds = os.getenv("GSC_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if raw_creds and raw_creds.strip().startswith("{"):
+            try:
+                from google.oauth2 import service_account
+                info = json.loads(raw_creds)
+                creds = service_account.Credentials.from_service_account_info(
+                    info,
+                    scopes=['https://www.googleapis.com/auth/webmasters']
+                )
+                self.service = build('webmasters', 'v3', credentials=creds, cache_discovery=False)
+                return self.service
+            except Exception as e:
+                logger.warning(f"GSC service account json init failed: {e}")
+
+        raise ValueError("GSC credentials not configured - connect via OAuth or set GSC_CREDENTIALS_PATH")
     
     def is_connected(self) -> bool:
-        """Check if GSC is configured."""
-        return bool(self.credentials_path)
+        """Check if GSC is configured via OAuth, service account file, or JSON string."""
+        if self._load_oauth_credentials() is not None:
+            return True
+        if self.credentials_path and os.path.isfile(self.credentials_path):
+            return True
+        raw_creds = os.getenv("GSC_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if raw_creds and (raw_creds.strip().startswith("{") or os.path.isfile(raw_creds)):
+            return True
+        return False
     
     async def get_keyword_performance(self, 
                                        start_date: str = None,
@@ -121,13 +200,7 @@ class GSCService:
                 'startDate': (datetime.utcnow() - timedelta(days=28)).strftime('%Y-%m-%d'),
                 'endDate': datetime.utcnow().strftime('%Y-%m-%d'),
                 'dimensions': ['page'],
-                'rowLimit': limit,
-                'dimensionFilterGroups': [{
-                    'filters': [{
-                        'dimension': 'page',
-                        'expression': 'pageLevel'
-                    }]
-                }]
+                'rowLimit': limit
             }
             
             result = service.searchanalytics().query(
@@ -262,3 +335,12 @@ async def list_verified_sites(website_url: str = None) -> List[str]:
         if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
     ]
     return [v for v in verified if v]
+
+
+async def sync_gsc_data(website_id: Optional[str] = None) -> Dict[str, Any]:
+    """Sync GSC search analytics data into database."""
+    try:
+        from services.analytics_service import AnalyticsService
+    except (ImportError, ValueError):
+        from backend.services.analytics_service import AnalyticsService
+    return await AnalyticsService.sync_gsc_data(website_id=website_id)

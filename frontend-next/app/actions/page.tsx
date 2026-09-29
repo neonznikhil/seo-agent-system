@@ -51,7 +51,15 @@ export default function ActionsPage() {
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{a.rationale}</div>
             <div style={{ fontSize: 11, marginTop: 6 }}>Target: {a.target_url} · Query: {a.target_query}</div>
-            {a.preview_diff && <details style={{ fontSize: 11, marginTop: 6 }}><summary>Preview diff</summary><pre style={{ whiteSpace: "pre-wrap" }}>BEFORE: {a.preview_diff.before}{"\n"}AFTER: {a.preview_diff.after}</pre></details>}
+            {a.preview_diff && (
+              <details style={{ fontSize: 11, marginTop: 6 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600 }}>👁️ Preview diff</summary>
+                <pre style={{ whiteSpace: "pre-wrap", background: "var(--panel-inner)", padding: 8, marginTop: 4, borderRadius: 3 }}>
+                  BEFORE: {typeof a.preview_diff.before === "object" ? JSON.stringify(a.preview_diff.before, null, 2) : String(a.preview_diff.before ?? "")}{"\n\n"}
+                  AFTER: {typeof a.preview_diff.after === "object" ? JSON.stringify(a.preview_diff.after, null, 2) : String(a.preview_diff.after ?? "")}
+                </pre>
+              </details>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button className="btn btn-accent" disabled={busy === a.id} onClick={() => exec(a.id)}>{busy === a.id ? "Applying…" : "Apply with guardrail"}</button>
               <button className="btn" onClick={() => dismiss(a.id)}>Dismiss</button>

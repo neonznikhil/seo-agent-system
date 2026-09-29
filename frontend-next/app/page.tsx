@@ -893,7 +893,7 @@ export default function HomePage() {
 
       {/* ROW 1 — SEO HEALTH (outcomes first; content counts are secondary below) */}
       <div className="kpi-strip">
-        <div className="kpi-cell">
+        <Link href="/indexation" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Indexation Rate</div>
           <div className="kpi-val">
             {overview?.indexation?.rate != null ? `${(overview.indexation.rate * 100).toFixed(1)}%` : "—"}
@@ -903,28 +903,28 @@ export default function HomePage() {
               ? `${overview.indexation.indexed ?? "?"} / ${overview.indexation.submitted ?? "?"} pages`
               : (overview ? "No check yet — run an indexation check" : "No data yet")}
           </div>
-        </div>
-        <div className="kpi-cell">
+        </Link>
+        <Link href={overview?.gsc?.connected ? "/research" : "/connectors"} style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Impressions (28d)</div>
           <div className="kpi-val">{overview?.gsc?.impressions ?? "—"}</div>
           <div className="kpi-delta">
             {overview?.gsc?.connected ? "Google Search Console" : (overview ? "Connect GSC →" : "No data yet")}
           </div>
-        </div>
-        <div className="kpi-cell">
+        </Link>
+        <Link href={overview?.gsc?.connected ? "/research" : "/connectors"} style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Clicks (28d)</div>
           <div className="kpi-val">{overview?.gsc?.clicks ?? "—"}</div>
           <div className="kpi-delta">
             {overview?.gsc?.connected ? "Google Search Console" : (overview ? "Connect GSC →" : "No data yet")}
           </div>
-        </div>
-        <div className="kpi-cell">
+        </Link>
+        <Link href={overview?.gsc?.connected ? "/research" : "/connectors"} style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Avg Position</div>
           <div className="kpi-val">{overview?.gsc?.avg_position ?? "—"}</div>
           <div className="kpi-delta">
             {overview?.gsc?.connected ? "Google Search Console" : (overview ? "Connect GSC →" : "No data yet")}
           </div>
-        </div>
+        </Link>
         <Link href="/research" style={{ textDecoration: "none" }} className="kpi-cell">
           <div className="kpi-label">Striking Distance</div>
           <div className="kpi-val">

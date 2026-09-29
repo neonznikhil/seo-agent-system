@@ -17,11 +17,11 @@ interface ActionItem {
   action_type: string;
   target_url: string;
   preview_diff?: {
-    before: string;
-    after: string;
-    summary: string;
-    ymyl_compliant: boolean;
-    risk_level: string;
+    before?: string;
+    after?: string;
+    summary?: string;
+    ymyl_compliant?: boolean;
+    risk_level?: string;
   };
   created_at?: string;
 }
@@ -440,90 +440,103 @@ export function PrioritizedActionList({ websiteId, onActionExecuted }: Prioritiz
             </div>
 
             <div style={{ padding: "18px" }}>
-              {/* YMYL & SAFETY BADGE */}
-              <div
-                style={{
-                  padding: "10px 14px",
-                  background: previewAction.preview_diff.ymyl_compliant ? "rgba(34, 197, 94, 0.1)" : "rgba(245, 158, 11, 0.1)",
-                  border: `1px solid ${previewAction.preview_diff.ymyl_compliant ? "var(--green)" : "var(--amber)"}`,
-                  borderRadius: "3px",
-                  marginBottom: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: "11.5px", color: previewAction.preview_diff.ymyl_compliant ? "var(--green)" : "var(--amber)" }}>
-                    🛡️ YMYL Safety & Accuracy Check: {previewAction.preview_diff.ymyl_compliant ? "PASSED" : "CAUTION"}
-                  </div>
-                  <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>
-                    Risk Level: {previewAction.preview_diff.risk_level.toUpperCase()} · Auto-rollback enabled upon execution
-                  </div>
-                </div>
-                <span
-                  style={{
-                    padding: "2px 8px",
-                    background: previewAction.preview_diff.ymyl_compliant ? "var(--green)" : "var(--amber)",
-                    color: "#fff",
-                    fontSize: "9.5px",
-                    fontWeight: 700,
-                    borderRadius: "2px",
-                  }}
-                >
-                  {previewAction.preview_diff.risk_level}
-                </span>
-              </div>
+              {(() => {
+                const diff = previewAction.preview_diff || {};
+                const isYmylCompliant = diff.ymyl_compliant !== false;
+                const riskLevel = (diff.risk_level || "low").toUpperCase();
+                const summaryText = diff.summary || `Automated code modification preview for ${previewAction.title}`;
+                const beforeCode = diff.before || "<!-- Current live state: No previous code recorded -->";
+                const afterCode = diff.after || "<!-- Proposed state: No modifications specified -->";
 
-              {/* SUMMARY */}
-              <div style={{ marginBottom: "16px", fontSize: "11.5px", color: "var(--ink)" }}>
-                <strong>Impact Summary:</strong> {previewAction.preview_diff.summary}
-              </div>
+                return (
+                  <>
+                    {/* YMYL & SAFETY BADGE */}
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        background: isYmylCompliant ? "rgba(34, 197, 94, 0.1)" : "rgba(245, 158, 11, 0.1)",
+                        border: `1px solid ${isYmylCompliant ? "var(--green)" : "var(--amber)"}`,
+                        borderRadius: "3px",
+                        marginBottom: "16px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: "11.5px", color: isYmylCompliant ? "var(--green)" : "var(--amber)" }}>
+                          🛡️ YMYL Safety & Accuracy Check: {isYmylCompliant ? "PASSED" : "CAUTION"}
+                        </div>
+                        <div style={{ fontSize: "10px", color: "var(--muted)", marginTop: "2px" }}>
+                          Risk Level: {riskLevel} · Auto-rollback enabled upon execution
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          padding: "2px 8px",
+                          background: isYmylCompliant ? "var(--green)" : "var(--amber)",
+                          color: "#fff",
+                          fontSize: "9.5px",
+                          fontWeight: 700,
+                          borderRadius: "2px",
+                        }}
+                      >
+                        {riskLevel}
+                      </span>
+                    </div>
 
-              {/* BEFORE VS AFTER DIFF */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
-                <div>
-                  <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--red)", marginBottom: "4px" }}>
-                    - BEFORE (CURRENT LIVE)
-                  </div>
-                  <pre
-                    style={{
-                      background: "rgba(239, 68, 68, 0.05)",
-                      border: "1px solid rgba(239, 68, 68, 0.2)",
-                      padding: "10px",
-                      fontSize: "11px",
-                      fontFamily: "'IBM Plex Mono', monospace",
-                      overflowX: "auto",
-                      whiteSpace: "pre-wrap",
-                      color: "var(--ink)",
-                      minHeight: "120px",
-                    }}
-                  >
-                    {previewAction.preview_diff.before}
-                  </pre>
-                </div>
+                    {/* SUMMARY */}
+                    <div style={{ marginBottom: "16px", fontSize: "11.5px", color: "var(--ink)" }}>
+                      <strong>Impact Summary:</strong> {summaryText}
+                    </div>
 
-                <div>
-                  <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--green)", marginBottom: "4px" }}>
-                    + AFTER (PROPOSED MODIFICATION)
-                  </div>
-                  <pre
-                    style={{
-                      background: "rgba(34, 197, 94, 0.05)",
-                      border: "1px solid rgba(34, 197, 94, 0.2)",
-                      padding: "10px",
-                      fontSize: "11px",
-                      fontFamily: "'IBM Plex Mono', monospace",
-                      overflowX: "auto",
-                      whiteSpace: "pre-wrap",
-                      color: "var(--ink)",
-                      minHeight: "120px",
-                    }}
-                  >
-                    {previewAction.preview_diff.after}
-                  </pre>
-                </div>
-              </div>
+                    {/* BEFORE VS AFTER DIFF */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                      <div>
+                        <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--red)", marginBottom: "4px" }}>
+                          - BEFORE (CURRENT LIVE)
+                        </div>
+                        <pre
+                          style={{
+                            background: "rgba(239, 68, 68, 0.05)",
+                            border: "1px solid rgba(239, 68, 68, 0.2)",
+                            padding: "10px",
+                            fontSize: "11px",
+                            fontFamily: "'IBM Plex Mono', monospace",
+                            overflowX: "auto",
+                            whiteSpace: "pre-wrap",
+                            color: "var(--ink)",
+                            minHeight: "120px",
+                          }}
+                        >
+                          {beforeCode}
+                        </pre>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--green)", marginBottom: "4px" }}>
+                          + AFTER (PROPOSED MODIFICATION)
+                        </div>
+                        <pre
+                          style={{
+                            background: "rgba(34, 197, 94, 0.05)",
+                            border: "1px solid rgba(34, 197, 94, 0.2)",
+                            padding: "10px",
+                            fontSize: "11px",
+                            fontFamily: "'IBM Plex Mono', monospace",
+                            overflowX: "auto",
+                            whiteSpace: "pre-wrap",
+                            color: "var(--ink)",
+                            minHeight: "120px",
+                          }}
+                        >
+                          {afterCode}
+                        </pre>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* MODAL FOOTER */}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>

@@ -62,3 +62,10 @@ build/
 
 # Python packaging helpers
 backend/get-pip.py
+
+# Credentials and Secrets
+*client_secret*.json
+*oauth_tokens*.json
+google_client_secret.json
+google_oauth_tokens.json
+service_account*.json

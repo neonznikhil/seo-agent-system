@@ -48,6 +48,9 @@ def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Di
             "preview_diff": {
                 "before": "Status: Not crawled. Baseline site architecture, metadata, and indexability unknown.",
                 "after": "Action: Run automated crawler to establish baseline health score and pinpoint critical SEO fixes.",
+                "summary": "Execute initial technical crawl to discover baseline errors",
+                "risk_level": "LOW",
+                "ymyl_compliant": True,
             },
             "rank": 1,
         },
@@ -65,6 +68,9 @@ def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Di
             "preview_diff": {
                 "before": "Google Search Console: Disconnected. Keyword performance and organic impression data unavailable.",
                 "after": "Google Search Console: Connected. Automatic synchronization of daily queries, clicks, and CTR.",
+                "summary": "Authenticate Google Search Console API integration",
+                "risk_level": "LOW",
+                "ymyl_compliant": True,
             },
             "rank": 2,
         },
@@ -82,6 +88,9 @@ def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Di
             "preview_diff": {
                 "before": "CMS REST API: Inactive. Requires manual copy-pasting of code fixes into WordPress admin.",
                 "after": "CMS REST API: Authenticated. Enables automated 1-click deployment with guardrail verification.",
+                "summary": "Validate WordPress CMS REST API application password",
+                "risk_level": "LOW",
+                "ymyl_compliant": True,
             },
             "rank": 3,
         },
@@ -340,6 +349,11 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
     candidates.sort(key=lambda a: a["impact_clicks_per_month"], reverse=True)
     for idx, act in enumerate(candidates, 1):
         act["rank"] = idx
+        if "preview_diff" in act:
+            act["preview_diff"].setdefault("risk_level", "LOW")
+            act["preview_diff"].setdefault("ymyl_compliant", True)
+            if "summary" not in act["preview_diff"]:
+                act["preview_diff"]["summary"] = act.get("title", "Action Diff Preview")
 
     return candidates
 

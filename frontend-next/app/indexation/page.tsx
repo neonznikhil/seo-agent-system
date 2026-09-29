@@ -217,7 +217,13 @@ export default function IndexationPage() {
             {latest?.method || (latest ? "sitemap_crawl" : "Unconnected")}
           </div>
           <div className="kpi-delta">
-            {latest?.gsc_connected ? "GSC Verified API" : "Sitemap XML Parser"}
+            {latest?.gsc_connected ? (
+              <span style={{ color: "var(--green)" }}>● GSC Verified API</span>
+            ) : (
+              <Link href="/connectors" style={{ color: "var(--cyan)", textDecoration: "none" }}>
+                Sitemap XML Parser (Connect GSC →)
+              </Link>
+            )}
           </div>
         </div>
 

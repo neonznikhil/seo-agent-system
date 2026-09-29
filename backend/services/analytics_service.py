@@ -20,22 +20,8 @@ class AnalyticsService:
 
         Real rows only. Without GSC credentials returns not_configured with 0.
         """
-        supabase = get_supabase()
-        creds_path = (
-            os.getenv("GSC_CREDENTIALS_PATH")
-            or os.getenv("GSC_CREDENTIALS")
-            or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        )
-        if not creds_path:
-            return {
-                "success": False,
-                "source": "not_configured",
-                "records_synced": 0,
-                "message": "GSC credentials not configured — add service JSON in /connectors",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-
         website_url = None
+        supabase = get_supabase()
         try:
             site = supabase.table("websites").select("url, cms_url, wordpress_url, domain").eq("id", website_id).single().execute().data or {}
             website_url = site.get("url") or site.get("cms_url") or site.get("wordpress_url") or site.get("domain")
@@ -46,8 +32,18 @@ class AnalyticsService:
             from services.gsc_service import GSCService
         except (ImportError, ValueError):
             from backend.services.gsc_service import GSCService
+
+        svc = GSCService(website_url=website_url)
+        if not svc.is_connected():
+            return {
+                "success": False,
+                "source": "not_configured",
+                "records_synced": 0,
+                "message": "GSC credentials not configured — connect via Google OAuth or add service JSON in /connectors",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
         try:
-            svc = GSCService(website_url=website_url, credentials_path=creds_path)
             perf = await svc.get_keyword_performance()
             keywords = perf.get("keywords", []) if isinstance(perf, dict) else []
         except Exception as e:
@@ -237,10 +233,52 @@ class AnalyticsService:
         except Exception as e:
             logger.debug(f"analytics_summary aggregation note: {e}")
 
+        website_url = None
+        if website_id:
+            try:
+                site = supabase.table("websites").select("url, cms_url, wordpress_url, domain").eq("id", website_id).single().execute().data or {}
+                website_url = site.get("url") or site.get("cms_url") or site.get("wordpress_url") or site.get("domain")
+            except Exception:
+                pass
+
+        gsc_conn = False
+        try:
+            try:
+                from services.gsc_service import GSCService
+            except (ImportError, ValueError):
+                from backend.services.gsc_service import GSCService
+            gsc_svc = GSCService(website_url=website_url)
+            gsc_conn = gsc_svc.is_connected()
+            if gsc_conn and not rows:
+                try:
+                    start_7d = (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d')
+                    end_today = datetime.utcnow().strftime('%Y-%m-%d')
+                    perf = await gsc_svc.get_keyword_performance(start_date=start_7d, end_date=end_today, row_limit=500)
+                    if perf and perf.get("total_impressions"):
+                        total_impressions_7d = perf.get("total_impressions", 0)
+                        total_clicks_7d = perf.get("total_clicks", 0)
+                        if total_impressions_7d > 0:
+                            avg_ctr = f"{round((total_clicks_7d / total_impressions_7d) * 100, 2)}%"
+                        avg_position = round(perf.get("avg_position", 0.0), 1)
+                except Exception as ex:
+                    logger.debug(f"Live GSC fallback query in summary: {ex}")
+        except Exception:
+            pass
+
+        ga4_conn = False
+        try:
+            try:
+                from services.ga4_service import ga4_service
+            except (ImportError, ValueError):
+                from backend.services.ga4_service import ga4_service
+            ga4_conn = ga4_service.is_connected()
+        except Exception:
+            pass
+
         return {
-            "gsc_connected": bool(os.getenv("GSC_CREDENTIALS")),
-            "ga4_connected": bool(os.getenv("GA4_PROPERTY_ID")),
-            "data_source": "Google Search Console Live" if os.getenv("GSC_CREDENTIALS") else "analytics_data",
+            "gsc_connected": gsc_conn,
+            "ga4_connected": ga4_conn,
+            "data_source": "Google Search Console Live" if gsc_conn else "analytics_data",
             "total_impressions_7d": total_impressions_7d,
             "total_clicks_7d": total_clicks_7d,
             "average_ctr": avg_ctr,
