@@ -752,6 +752,108 @@ async def trigger_auto_crawl(website_id: str, url: str):
         logger.warning(f"[Scheduler] trigger_auto_crawl error on {website_id}: {e}")
 
 
+def ensure_default_blog_schedule(website_id: str, interval_minutes: int = 288,
+                                 label: str = "default", daily_target: int = 5) -> None:
+    """Guarantee a connected website has an auto-blog schedule.
+
+    Without this, a newly connected website had no per-website job until the
+    user manually configured one, so "after connect, blog writer should work"
+    was false. Persists to local_data/blog_settings.json (restored on restart by
+    restore_all_schedules) and registers the APScheduler interval job.
+    """
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        pf = _Path(__file__).resolve().parent.parent / "local_data" / "blog_settings.json"
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        data: Dict[str, Any] = {}
+        if pf.exists():
+            try:
+                data = _json.loads(pf.read_text(encoding="utf-8")) or {}
+            except Exception:
+                data = {}
+        entry = data.get(website_id) or {}
+        if not entry.get("generation_interval_minutes"):
+            entry.update({
+                "generation_interval_minutes": int(interval_minutes),
+                "schedule_label": label,
+                "daily_blog_target": int(daily_target),
+                "auto_generate_enabled": True,
+            })
+            data[website_id] = entry
+            pf.write_text(_json.dumps(data, indent=2), encoding="utf-8")
+        eff_interval = int(entry.get("generation_interval_minutes") or interval_minutes)
+        eff_label = entry.get("schedule_label") or label
+        scheduler.add_job(
+            func=run_autonomous_blog_generation,
+            trigger="interval",
+            minutes=max(1, eff_interval),
+            id=f"auto_blog_{website_id}",
+            name=f"Auto Blog — {eff_label} — {website_id[:8]}",
+            replace_existing=True,
+            misfire_grace_time=120,
+        )
+        logger.info(f"[SCHEDULER] Default blog schedule ensured for {website_id[:8]} every {eff_interval} min")
+    except Exception as e:
+        logger.warning(f"[Scheduler] ensure_default_blog_schedule failed for {website_id}: {e}")
+
+
+_ACTIVE_ONBOARDING: set = set()
+
+
+async def dispatch_onboarding(website_id: str, url: str, account_id: Optional[str] = None,
+                              has_wordpress: bool = False) -> None:
+    """Run the durable first-time setup pipeline after a site is connected.
+
+    The pipeline (knowledge crawl -> research -> first article -> tech audit ->
+    backlink scout) previously had zero callers, so connecting a website only
+    ever crawled it. The job is recorded in the durable queue before running, so
+    a crash mid-flight is re-dispatched on the next startup.
+    """
+    from utils.job_queue import (
+        register_job, mark_running, mark_done, mark_failed, spawn_background, list_jobs,
+    )
+    job_id = f"first_setup:{website_id}"
+
+    # A job is skipped only when it is running in THIS process or already done.
+    # A "running" status left by a previous (crashed) process is deliberately
+    # re-dispatched — that is the whole point of durable recovery.
+    if website_id in _ACTIVE_ONBOARDING:
+        if has_wordpress:
+            ensure_default_blog_schedule(website_id)
+        return
+    prior = next((j for j in list_jobs() if j.get("job_id") == job_id), None)
+    if prior and prior.get("status") == "done":
+        if has_wordpress:
+            ensure_default_blog_schedule(website_id)
+        return
+
+    register_job(
+        "first_time_setup",
+        {"website_id": website_id, "url": url, "account_id": account_id,
+         "has_wordpress": has_wordpress},
+        job_id=job_id, account_id=account_id, website_id=website_id,
+    )
+    _ACTIVE_ONBOARDING.add(website_id)
+
+    async def _run() -> None:
+        mark_running(job_id)
+        try:
+            from agents.setup_pipeline import run_first_time_setup_pipeline
+            await run_first_time_setup_pipeline(website_id, url)
+            mark_done(job_id)
+        except Exception as exc:
+            mark_failed(job_id, str(exc))
+            raise
+        finally:
+            _ACTIVE_ONBOARDING.discard(website_id)
+
+    spawn_background(_run(), name=f"onboarding:{website_id}")
+
+    if has_wordpress:
+        ensure_default_blog_schedule(website_id)
+
+
 async def count_blogs_in_status(website_id: str, status: str) -> int:
     """Count blogs currently in given status."""
     from database import get_supabase
@@ -2353,10 +2455,14 @@ async def run_autonomous_blog_generation():
                     job="indexation_gate"
                 )
                 try:
-                    from services.internal_link_service import run_internal_link_optimization
-                    asyncio.create_task(run_internal_link_optimization(website_id))
+                    from services.internal_link_service import run_autonomous_internal_link_optimization
+                    from utils.job_queue import spawn_background
+                    spawn_background(
+                        run_autonomous_internal_link_optimization(website_id),
+                        name=f"internal_link_opt:{website_id}",
+                    )
                 except Exception as _e:
-                    logger.debug(f"[SCHEDULER] internal linking dispatch note: {_e}")
+                    logger.warning(f"[SCHEDULER] internal linking dispatch failed: {_e}")
                 continue
         except Exception as e:
             logger.debug(f"[SCHEDULER] indexation gate note for {website_id}: {e}")
@@ -3468,6 +3574,7 @@ async def run_job_now(job_name: str) -> Dict[str, Any]:
         "auto_blog_writer_crew": job_auto_blog_writer_crew,
         "auto_blog_10min": run_autonomous_blog_generation,
         "autonomous_blog_generation": run_autonomous_blog_generation,
+        "autonomous_cycle": run_all_jobs_cycle,
         "backlink_prospecting": job_backlink_prospecting,
         "tech_seo_audit": job_tech_seo_audit,
         "seo_report_aeo_tracking": job_tech_seo_audit,
@@ -3480,7 +3587,8 @@ async def run_job_now(job_name: str) -> Dict[str, Any]:
         raise ValueError(f"Unknown job '{job_name}'. Available: {list(job_map.keys())}")
         
     func = job_map[clean_name]
-    asyncio.create_task(func())
+    from utils.job_queue import spawn_background
+    spawn_background(func(), name=f"manual:{clean_name}")
     return {
         "success": True,
         "job": clean_name,

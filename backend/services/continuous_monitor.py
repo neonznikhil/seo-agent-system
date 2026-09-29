@@ -277,7 +277,8 @@ async def competitor_monitor_loop():
                                 # Fire StrategyAgent for competitor_content_gap
                                 try:
                                     sa = StrategyAgent(website_id)
-                                    asyncio.create_task(sa.handle_alert({
+                                    from utils.job_queue import spawn_background as _spawn
+                                    _spawn(sa.handle_alert({
                                         "website_id": website_id,
                                         "alert_type": "competitor_content_gap",
                                         "title": f"Competitor {comp.get('competitor_domain') or comp.get('domain') or 'unknown-competitor'} published new content",
@@ -598,14 +599,28 @@ async def _staggered_start(coro, initial_delay: int):
     await coro()
 
 
+_MONITORS_STARTED = False
+
+
 def start_all_monitors():
-    """Start all monitoring loops as staggered background tasks."""
-    asyncio.create_task(_staggered_start(rank_monitor_loop, 20))
-    asyncio.create_task(_staggered_start(serp_monitor_loop, 40))
-    asyncio.create_task(_staggered_start(competitor_monitor_loop, 60))
-    asyncio.create_task(_staggered_start(tech_monitor_loop, 80))
-    asyncio.create_task(_staggered_start(geo_monitor_loop, 100))
-    asyncio.create_task(_staggered_start(structure_monitor_loop, 120))
+    """Start all monitoring loops as staggered background tasks.
+
+    Idempotent: setup_scheduler() and the app lifespan both call this, and
+    without the guard that registered 12 loops (double the intended 6), doubling
+    API spend and alerts.
+    """
+    global _MONITORS_STARTED
+    if _MONITORS_STARTED:
+        logger.info("[Monitoring] Monitor loops already started — skipping duplicate registration")
+        return
+    _MONITORS_STARTED = True
+    from utils.job_queue import spawn_background
+    spawn_background(_staggered_start(rank_monitor_loop, 20), name="monitor:rank")
+    spawn_background(_staggered_start(serp_monitor_loop, 40), name="monitor:serp")
+    spawn_background(_staggered_start(competitor_monitor_loop, 60), name="monitor:competitor")
+    spawn_background(_staggered_start(tech_monitor_loop, 80), name="monitor:tech")
+    spawn_background(_staggered_start(geo_monitor_loop, 100), name="monitor:geo")
+    spawn_background(_staggered_start(structure_monitor_loop, 120), name="monitor:structure")
     logger.info("[Monitoring] All 6 monitor loops registered with staggered start")
 
 

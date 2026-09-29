@@ -54,3 +54,21 @@ unreachable backend never loses the user's typed credentials. Legacy key
 - Frontend: `cd frontend-next && npx tsc --noEmit && npm run build`.
 - Connector tests that hit NVIDIA/Supabase/Serper live endpoints fail without real
   credentials; that is expected in the sandbox.
+
+## Background jobs
+- **Every** detached task must go through `backend/utils/job_queue.py`:
+  `spawn_background(coro, name=...)` keeps a strong reference and logs the real
+  exception. Never use bare `asyncio.create_task` (it can be GC'd and swallows errors).
+- Durable jobs use `register_job(kind, payload, job_id=...)` + `mark_running/done/failed`.
+  The queue lives at `data/background_jobs.json` (git-ignored) and is re-dispatched on
+  startup from `backend/main.py` lifespan (`_recover_interrupted_jobs`).
+- Single scheduler authority: `backend/agents/scheduler.py` `AsyncIOScheduler`.
+  `start_all_monitors()` is idempotent — do not remove the guard (it was previously
+  double-registering 12 monitor loops instead of 6).
+- Connecting a website (`POST /api/websites`) fires `dispatch_onboarding`
+  (`agents.scheduler`) → the first-time setup pipeline (KB crawl → research → first
+  article → tech audit → backlinks), plus a default auto-blog schedule for WordPress
+  sites. Idempotent per website id.
+- Logging is configured once in `backend/main.py` via `logging.basicConfig`
+  (`LOG_LEVEL` env, default INFO). Without it, background-job `logger.info` output is
+  invisible because the root logger defaults to WARNING.

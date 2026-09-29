@@ -103,6 +103,14 @@ from agents.seo_agent_group import seo_agent_group
 
 validate_env()
 
+# Without an explicit root handler our logger.info() calls (job start, monitor
+# start, crash recovery) never appear: the root logger defaults to WARNING. A
+# single basicConfig call makes background-job activity observable in the logs.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 logger = logging.getLogger("backend.main")
 
 
@@ -220,6 +228,37 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"[SCHEDULER] restore_all_schedules failed: {e}")
 
         asyncio.create_task(restore_all_schedules())
+
+        # Crash recovery: durable jobs left pending/running by a previous
+        # process are re-dispatched so onboarding/first-article work is not lost.
+        async def _recover_interrupted_jobs():
+            try:
+                await asyncio.sleep(5)
+                from utils.job_queue import list_jobs, mark_failed
+                from agents.scheduler import dispatch_onboarding
+                interrupted = [
+                    j for j in list_jobs()
+                    if j.get("status") in ("pending", "running")
+                ]
+                if not interrupted:
+                    return
+                logger.info(f"[Startup] Recovering {len(interrupted)} interrupted background job(s)")
+                for job in interrupted:
+                    kind = job.get("kind")
+                    payload = job.get("payload") or {}
+                    if kind == "first_time_setup" and payload.get("website_id"):
+                        await dispatch_onboarding(
+                            payload["website_id"],
+                            payload.get("url") or "",
+                            payload.get("account_id"),
+                            bool(payload.get("has_wordpress")),
+                        )
+                    else:
+                        mark_failed(job.get("job_id", ""), "unknown job kind after restart")
+            except Exception as e:
+                logger.warning(f"[Startup] Job recovery failed: {e}")
+
+        asyncio.create_task(_recover_interrupted_jobs())
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
 

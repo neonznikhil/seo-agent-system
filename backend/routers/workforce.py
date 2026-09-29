@@ -574,8 +574,11 @@ async def run_workforce_agent(agent_id: str, payload: AgentDirectRunRequest):
 
         from agents.writer_agent import generate_content
         topic = payload.topic or instruction.replace("write", "").replace("Write", "").strip() or "Primary service guide"
-        import asyncio
-        asyncio.create_task(generate_content(wid, topic, payload.primary_keyword or topic.lower()))
+        from utils.job_queue import spawn_background
+        spawn_background(
+            generate_content(wid, topic, payload.primary_keyword or topic.lower()),
+            name=f"writer:{wid}:{topic[:40]}",
+        )
         return {
             "success": True,
             "agent": match["name"],

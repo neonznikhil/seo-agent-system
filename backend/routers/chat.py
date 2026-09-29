@@ -42,7 +42,11 @@ async def handle_chat(body: ChatMessageIn):
             website_id = sites[0]["id"] if sites else "03b7febf-0c44-4830-a42a-cfcd84ae6464"
 
         from agents.writer_agent import generate_content
-        asyncio.create_task(generate_content(website_id, topic, topic.lower()))
+        from utils.job_queue import spawn_background
+        spawn_background(
+            generate_content(website_id, topic, topic.lower()),
+            name=f"writer:{website_id}:{topic[:40]}",
+        )
 
         return {
             "reply": f"🚀 Autonomous Writing Pipeline started for:\n**\"{topic}\"**\n\n- Executing all 10 phases in background (SERP intel, Outline, Multi-section drafting, Multi-expert quality review).\n- Live updates streaming to the **Content** tab!",

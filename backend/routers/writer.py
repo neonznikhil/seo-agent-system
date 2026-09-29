@@ -336,8 +336,8 @@ async def generate_content_endpoint(
         gate = await indexation_gate_check(website_id)
         if gate.get("gate") == "blocked":
             try:
-                from services.internal_link_service import run_internal_link_optimization
-                background_tasks.add_task(run_internal_link_optimization, website_id)
+                from services.internal_link_service import run_autonomous_internal_link_optimization
+                background_tasks.add_task(run_autonomous_internal_link_optimization, website_id)
             except Exception:
                 pass
             rate_pct = f"{gate.get('rate', 0) * 100:.1f}%" if gate.get('rate') is not None else "unknown"

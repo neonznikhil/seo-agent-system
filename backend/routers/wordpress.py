@@ -479,6 +479,20 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
         except Exception as e:
             logger.warning(f"Note persisting credentials in test: {e}")
 
+    # On a verified connection, make the background jobs actually run for this
+    # site: durable onboarding (KB -> research -> first article -> audit ->
+    # backlinks) and a default auto-blog schedule. Idempotent by website id.
+    if is_connected and wid and wid not in ("default", "all", ""):
+        try:
+            from agents.scheduler import dispatch_onboarding
+            from utils.job_queue import spawn_background
+            spawn_background(
+                dispatch_onboarding(wid, url, None, True),
+                name=f"onboarding:{wid}",
+            )
+        except Exception as e:
+            logger.warning(f"[WordPress] onboarding dispatch note: {e}")
+
     return {
         "success": is_connected,
         "connected": is_connected,

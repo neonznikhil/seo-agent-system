@@ -346,6 +346,19 @@ async def create_or_update_website(website: WebsiteIn, request: Request, backgro
         res_obj = sanitize_website_row(local_saved)
 
     if created_website_id:
+        # Durable onboarding pipeline: knowledge crawl -> SERP research -> first
+        # article -> tech audit -> backlink scout. Recorded in the durable job
+        # queue so an interrupted run is recovered on the next startup. This
+        # pipeline previously had no callers, so connecting a site only crawled.
+        from agents.scheduler import dispatch_onboarding
+        has_wordpress = bool(payload.get("cms_user") or payload.get("wordpress_user"))
+        background_tasks.add_task(
+            dispatch_onboarding,
+            created_website_id,
+            payload.get("url") or payload.get("cms_url") or resolved_domain,
+            account_id,
+            has_wordpress,
+        )
         background_tasks.add_task(trigger_auto_crawl, created_website_id, account_id)
 
     return res_obj
