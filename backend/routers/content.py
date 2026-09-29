@@ -31,16 +31,27 @@ class ContentUpdate(BaseModel):
 @router.get("/content")
 async def list_content(request: Request, website_id: Optional[str] = None, status: Optional[str] = None):
     account_id = get_current_account_id(request)
-    supabase = get_supabase()
-    set_account_context(supabase, account_id)
+    try:
+        supabase = get_supabase()
+        set_account_context(supabase, account_id)
 
-    query = supabase.table("content_log").select("*").eq("account_id", account_id)
-    if website_id:
-        query = query.eq("website_id", website_id)
-    if status:
-        query = query.eq("status", status)
-    res = query.order("created_at", desc=True).execute()
-    return res.data or []
+        query = supabase.table("content_log").select("*").eq("account_id", account_id)
+        if website_id:
+            query = query.eq("website_id", website_id)
+        if status:
+            query = query.eq("status", status)
+        res = query.order("created_at", desc=True).execute()
+        return res.data or []
+    except Exception as exc:
+        # Degrade to the durable local content store rather than 500ing when the
+        # database is unreachable.
+        logger.warning("content_log read failed, using local store: %s", exc)
+        from services.local_store import list_local_content
+
+        rows = list_local_content(website_id)
+        if status:
+            rows = [r for r in rows if r.get("status") == status]
+        return rows
 
 
 @router.post("/content")
@@ -65,13 +76,26 @@ async def create_content(body: ContentIn, request: Request):
 @router.get("/content/{content_id}")
 async def get_content(content_id: str, request: Request, website_id: Optional[str] = None):
     account_id = get_current_account_id(request)
-    supabase = get_supabase()
-    set_account_context(supabase, account_id)
+    try:
+        supabase = get_supabase()
+        set_account_context(supabase, account_id)
+        res = supabase.table("content_log").select("*").eq("id", content_id).eq("account_id", account_id).single().execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Content not found")
+        return res.data
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Degrade to the durable local store instead of 500ing when the DB is
+        # unreachable (this path is also reached by the /api/content/portfolio
+        # catch-all proxy, so an unguarded read broke that page too).
+        logger.warning("content_log get failed, using local store: %s", exc)
+        from services.local_store import get_local_content
 
-    res = supabase.table("content_log").select("*").eq("id", content_id).eq("account_id", account_id).single().execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="Content not found")
-    return res.data
+        row = get_local_content(content_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Content not found")
+        return row
 
 
 @router.put("/content/{content_id}")
@@ -144,4 +168,5 @@ async def purge_all_drafts(request: Request):
         return {"success": True, "message": "All drafts purged."}
     except Exception as e:
         logger.error(f"Error purging drafts: {e}")
-        raise HTTPException(status_code=500, detail="Failed to purge drafts")
+        from utils.errors import raise_db_or_500
+        raise_db_or_500(e, "Failed to purge drafts")

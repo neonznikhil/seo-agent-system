@@ -32,6 +32,18 @@ except (ImportError, ValueError):
     except (ImportError, ValueError):
         from backend.services.wordpress_service import WordPressService
 
+try:
+    from services.connector_credentials import resolve_wp_username
+except (ImportError, ValueError):
+    try:
+        from backend.services.connector_credentials import resolve_wp_username
+    except (ImportError, ValueError):
+        def resolve_wp_username(*candidates):
+            for c in candidates:
+                if c and c.strip().lower() not in ("", "nikhil_d"):
+                    return c.strip()
+            return ""
+
 router = APIRouter()
 
 
@@ -263,10 +275,17 @@ async def save_wordpress_connection(body: WordPressCredentialsIn):
     """Save and verify WordPress REST connection credentials."""
     from services.wordpress_service import WordPressService
     site_url = (body.get_url() or "").strip()
-    username = (body.get_username() or "").strip()
+    # Refuse a placeholder identity instead of persisting a credential that can
+    # never authenticate as the real WordPress account.
+    username = resolve_wp_username(body.get_username())
     password = (body.get_password() or "").strip()
     if not site_url or not username or not password:
-        raise HTTPException(status_code=400, detail="site_url, username, app_password required")
+        raise HTTPException(
+            status_code=400,
+            detail="site_url, and a real WordPress username + app password are required. "
+                   "Enter the actual WordPress login (Users -> Profile), not a "
+                   "placeholder like 'admin' or a blank value.",
+        )
 
     wp_svc = WordPressService("default")
     diag = await wp_svc.test_connection(site_url, username, password)
@@ -391,11 +410,16 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
     from datetime import datetime
 
     url = (body.url or body.wordpress_url or "").strip()
-    username = (body.username or body.wordpress_user or "").strip()
+    username = resolve_wp_username(body.username or body.wordpress_user)
     password = (body.password or body.wordpress_password or "").strip()
 
     if not url or not username or not password:
-        raise HTTPException(400, "URL, username, and application password are required")
+        raise HTTPException(
+            400,
+            "URL, and a real WordPress username + application password are required. "
+            "Enter the actual WordPress login (Users -> Profile), not a placeholder "
+            "like 'admin' or a blank value.",
+        )
 
     ws = WordPressService(website_id)
     diag = await ws.test_connection(url, username, password)
@@ -633,13 +657,18 @@ async def oauth_authorize(
     Get WordPress OAuth authorization URL.
     Requires an OAuth server plugin on the WordPress site (e.g., OAuth Server for WordPress).
     """
-    from database import get_supabase
+    from utils.safe_query import safe_value
+    from services.local_store import get_local_website
 
-    website = get_supabase().table("websites").select("cms_url, domain").eq("id", website_id).single().execute().data
+    res = safe_value(
+        lambda sb: sb.table("websites").select("cms_url, domain").eq("id", website_id).single().execute(),
+        label="wordpress.oauth_authorize.website",
+    )
+    website = getattr(res, "data", None) or get_local_website(website_id)
     if not website:
         raise HTTPException(404, "Website not found")
 
-    cms_url = website.get("cms_url", "").rstrip("/")
+    cms_url = (website.get("cms_url") or website.get("wordpress_url") or "").rstrip("/")
     if not cms_url:
         raise HTTPException(400, "WordPress CMS URL not configured")
 
@@ -672,13 +701,18 @@ async def oauth_callback(
     if error:
         raise HTTPException(400, f"OAuth error: {error}")
 
-    from database import get_supabase
+    from utils.safe_query import safe_value
+    from services.local_store import get_local_website
 
-    website = get_supabase().table("websites").select("cms_url, domain").eq("id", website_id).single().execute().data
+    res = safe_value(
+        lambda sb: sb.table("websites").select("cms_url, domain").eq("id", website_id).single().execute(),
+        label="wordpress.oauth_authorize.website",
+    )
+    website = getattr(res, "data", None) or get_local_website(website_id)
     if not website:
         raise HTTPException(404, "Website not found")
 
-    cms_url = website.get("cms_url", "").rstrip("/")
+    cms_url = (website.get("cms_url") or website.get("wordpress_url") or "").rstrip("/")
     if not cms_url:
         raise HTTPException(400, "WordPress CMS URL not configured")
 

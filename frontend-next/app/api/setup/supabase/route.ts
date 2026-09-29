@@ -1,28 +1,24 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
+
+const TIMEOUT_MS = 120000;
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
   try {
-    const res = await fetch(`${backendUrl}/api/setup/supabase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(6000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
+    const res = await proxyToBackend("/api/setup/supabase", req, TIMEOUT_MS);
+    const text = await res.text().catch(() => "");
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { detail: text };
     }
-  } catch {
-    // Fall through
+    return NextResponse.json(data ?? { success: false }, { status: res.status });
+  } catch (err: any) {
+    // HONEST: never claim 14 tables were created when the backend never ran.
+    return NextResponse.json(
+      { success: false, connected: false, tables_created: null, error: "Backend unreachable — Supabase setup did NOT run", detail: err?.message || String(err), backend: BACKEND_URL },
+      { status: 502 }
+    );
   }
-
-  return NextResponse.json({
-    success: true,
-    connected: true,
-    tables_created: 14,
-    pgvector_enabled: true,
-    message: "Supabase project initialized with 14 tables and pgvector extension.",
-  });
 }

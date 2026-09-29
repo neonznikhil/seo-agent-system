@@ -1,40 +1,61 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
+
+// Persist the Serper key on the backend (durable), then relay the live test
+// result. The old handler invented a "verified and saved" response when the
+// backend was down, so the key silently never persisted.
+const TIMEOUT_MS = 20000;
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const apiKey = (body.api_key || "").trim();
+  const raw = await req.text().catch(() => "");
+  let body: any = {};
+  try {
+    body = raw ? JSON.parse(raw) : {};
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  if (!apiKey) {
+  if (!(body.api_key || "").trim()) {
     return NextResponse.json(
-      { success: false, error: "API key cannot be empty" },
+      { success: false, connected: false, error: "API key cannot be empty" },
       { status: 400 }
     );
   }
 
-  // Try backend first
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
+  let res: Response;
   try {
-    const res = await fetch(`${backendUrl}/api/connectors/save-serper`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: apiKey }),
-      signal: AbortSignal.timeout(4000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
+    res = await proxyToBackend("/api/connectors/save-serper", req, TIMEOUT_MS, raw);
+  } catch (err: any) {
+    const isTimeout =
+      err?.name === "TimeoutError" || String(err?.message || "").toLowerCase().includes("timed out");
+    return NextResponse.json(
+      {
+        success: false,
+        connected: false,
+        persisted: false,
+        error: isTimeout
+          ? "Backend timed out while saving the Serper key."
+          : "Backend unreachable — Serper key not saved.",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: isTimeout ? 504 : 502 }
+    );
   }
 
-  return NextResponse.json({
-    success: true,
-    connected: true,
-    message: "Serper API key verified and saved to environment!",
-    results_count: 10,
-    organic: [
-      { title: "Google Search Integration Verified", link: "https://google.serper.dev", snippet: "Live connection established" }
-    ],
-  });
+  const text = await res.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { detail: text };
+  }
+
+  if (!res.ok) {
+    return NextResponse.json(
+      { success: false, connected: false, persisted: false, ...(data || {}) },
+      { status: res.status }
+    );
+  }
+  return NextResponse.json(data);
 }

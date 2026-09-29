@@ -22,7 +22,10 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    const backendBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+    // Accept either env name. Route handlers prefer BACKEND_URL while the public
+    // client uses NEXT_PUBLIC_API_URL; using only the latter silently disabled
+    // the rewrite whenever a deployment set just BACKEND_URL.
+    const backendBase = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
     if (!backendBase) {
       return [];
     }

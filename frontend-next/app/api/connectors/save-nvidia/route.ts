@@ -1,28 +1,73 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
+
+// The key must reach the backend's durable store; a fabricated success here
+// would leave the user with an "Saved" toast but no usable NVIDIA key.
+const TIMEOUT_MS = 15000;
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const apiKey = (body.api_key || "").trim();
-
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
+  const raw = await req.text().catch(() => "");
+  let body: any = {};
   try {
-    const res = await fetch(`${backendUrl}/api/connectors/save-nvidia`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: apiKey }),
-      signal: AbortSignal.timeout(4000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
+    body = raw ? JSON.parse(raw) : {};
   } catch {
-    // Fall through
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  return NextResponse.json({
-    success: true,
-    connected: true,
-    message: "NVIDIA API Key successfully saved and configured",
-  });
+  const apiKey = (body.api_key || "").trim();
+  if (!apiKey) {
+    return NextResponse.json(
+      { success: false, persisted: false, error: "API key cannot be empty" },
+      { status: 400 }
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await proxyToBackend("/api/connectors/save-nvidia", req, TIMEOUT_MS, raw);
+  } catch (err: any) {
+    const isTimeout =
+      err?.name === "TimeoutError" || String(err?.message || "").toLowerCase().includes("timed out");
+    return NextResponse.json(
+      {
+        success: false,
+        persisted: false,
+        error: isTimeout ? "Backend timed out while saving the NVIDIA key." : "Backend unreachable — key not saved.",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: isTimeout ? 504 : 502 }
+    );
+  }
+
+  const text = await res.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { detail: text };
+  }
+
+  if (!res.ok) {
+    return NextResponse.json(
+      { success: false, persisted: false, ...(data || {}), backend: BACKEND_URL },
+      { status: res.status }
+    );
+  }
+
+  // Only report success if the backend actually confirmed the write. A 200 with
+  // an empty/unrecognized body must not be presented to the user as "saved".
+  if (!data || (data.success === undefined && data.persisted === undefined)) {
+    return NextResponse.json(
+      {
+        success: false,
+        persisted: false,
+        error: "Backend returned no confirmation — the credential was not reported as saved.",
+        backend: BACKEND_URL,
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json(data);
 }

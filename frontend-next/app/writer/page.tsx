@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
+import { loadConnectorCredentials } from "@/lib/credentials";
 
 interface Website {
   id: string;
@@ -343,12 +344,13 @@ export default function WriterPage() {
       // Generate client-side blog_id for SSE tracking
       const blogId = crypto.randomUUID();
 
-      // Retrieve stored WordPress credentials
-      let wpCreds: any = {};
-      try {
-        const stored = localStorage.getItem("rankforge_wp_credentials");
-        if (stored) wpCreds = JSON.parse(stored);
-      } catch {}
+      // Retrieve stored WordPress credentials (unified browser cache).
+      const cachedCreds = loadConnectorCredentials();
+      const wpCreds: any = {
+        site_url: cachedCreds.wordpress_site_url,
+        username: cachedCreds.wordpress_username,
+        app_password: cachedCreds.wordpress_app_password,
+      };
 
       const payload = {
         topic: kw,
@@ -358,6 +360,7 @@ export default function WriterPage() {
         blog_id: blogId,
         wordpress_site_url: wpCreds.site_url,
         wordpress_username: wpCreds.username,
+        wordpress_app_password: wpCreds.app_password,
       };
 
       // Start SSE connection for real-time progress
@@ -470,6 +473,7 @@ export default function WriterPage() {
           const dres: any = await post(`/api/writer/${selectedWebsiteId}/content/${blogId}/approve-draft`, {
             wordpress_site_url: wpCreds.site_url,
             wordpress_username: wpCreds.username,
+            wordpress_app_password: wpCreds.app_password,
           });
           if (dres?.real_wp_draft_created || dres?.wp_post_id) {
             setWpDraftMsg(`✓ Real WordPress Draft created #${dres.wp_post_id} in WP Admin!`);
@@ -527,13 +531,18 @@ export default function WriterPage() {
     try {
       let wpCreds: any = {};
       try {
-        const stored = localStorage.getItem("rankforge_wp_credentials");
-        if (stored) wpCreds = JSON.parse(stored);
+        const cached = loadConnectorCredentials();
+        wpCreds = {
+          site_url: cached.wordpress_site_url,
+          username: cached.wordpress_username,
+          app_password: cached.wordpress_app_password,
+        };
       } catch {}
 
       const res = await post(`/api/writer/${selectedWebsiteId}/content/${targetId}/approve-draft`, {
         wordpress_site_url: wpCreds.site_url,
         wordpress_username: wpCreds.username,
+        wordpress_app_password: wpCreds.app_password,
       });
       setWpDraftMsg(res.message || `WordPress draft created #${res.wp_post_id || ""} — ${res.edit_url || ""}`);
       loadArticlesForWebsite(selectedWebsiteId);

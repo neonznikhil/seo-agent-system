@@ -20,6 +20,36 @@ export interface WpCreds {
   appPassword: string;
 }
 
+// Mirrors the backend sentinel list: a username that is blank or an obvious
+// placeholder ("admin", "your-username", ...) is never a real WordPress login.
+// Rejecting it here gives the user an actionable message instead of a generic
+// "connection failed" after a round-trip.
+const PLACEHOLDER_WP_USERNAMES = new Set([
+  "",
+  "admin",
+  "nikhil_d",
+  "your-username",
+  "yourusername",
+  "your_user",
+  "username",
+  "wp-username",
+  "wpuser",
+  "test",
+  "demo",
+  "example",
+  "user@example.com",
+  "you@example.com",
+]);
+
+function assertRealWpUsername(username: string) {
+  if (PLACEHOLDER_WP_USERNAMES.has(username.toLowerCase())) {
+    throw new Error(
+      `"${username}" looks like a placeholder, not a real WordPress username. ` +
+        `Use the actual WordPress login (Users → Profile) that owns the Application Password.`
+    );
+  }
+}
+
 /** Single canonical WordPress connect flow used by /websites and /connectors. */
 export async function saveWordPressForSite(websiteId: string, creds: WpCreds) {
   const siteUrl = creds.siteUrl.trim();
@@ -27,6 +57,7 @@ export async function saveWordPressForSite(websiteId: string, creds: WpCreds) {
   const appPassword = creds.appPassword.trim();
   if (!websiteId) throw new Error("Select website first");
   if (!siteUrl || !username || !appPassword) throw new Error("Site URL, username, app password required");
+  assertRealWpUsername(username);
 
   try {
     await put(`/api/websites/${websiteId}`, {

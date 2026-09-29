@@ -43,34 +43,69 @@ def generate_authorize_url(state: str, success_url: str) -> str:
     return f"{base}?app_name=Rankforge&success_url={encoded_success}&state={state}"
 
 
+def _local_states_path() -> str:
+    return "wp_oauth_states.json"
+
+
 def store_state(state: str, user_id: str, site_url: str) -> None:
-    supabase = _get_supabase()
-    supabase.table("wp_oauth_states").upsert({
+    payload = {
         "state": state,
         "user_id": user_id,
         "site_url": site_url,
         "created_at": datetime.now(timezone.utc).isoformat(),
-    }).execute()
+    }
+    try:
+        supabase = _get_supabase()
+        supabase.table("wp_oauth_states").upsert(payload).execute()
+    except Exception as e:
+        logger.warning(f"Could not store OAuth state in Supabase, using local store: {e}")
+
+    # Durable local copy so the OAuth connect flow works even when Supabase is
+    # unreachable. Previously this was Supabase-only, so /authorize-url raised
+    # a 500 and connecting WordPress was impossible without the database.
+    try:
+        from .services.local_store import _load_json, _save_json
+
+        states = [s for s in _load_json(_local_states_path()) if s.get("state") != state]
+        states.append(payload)
+        _save_json(_local_states_path(), states)
+    except Exception as e:
+        logger.debug(f"Local OAuth state store note: {e}")
 
 
 def validate_and_consume_state(state: str, user_id: str) -> Optional[str]:
-    supabase = _get_supabase()
-    result = (
-        supabase.table("wp_oauth_states")
-        .select("*")
-        .eq("state", state)
-        .eq("user_id", user_id)
-        .execute()
-        .data
-    )
+    site_url: Optional[str] = None
+    try:
+        supabase = _get_supabase()
+        result = (
+            supabase.table("wp_oauth_states")
+            .select("*")
+            .eq("state", state)
+            .eq("user_id", user_id)
+            .execute()
+            .data
+        )
+        if result:
+            site_url = result[0].get("site_url")
+            supabase.table("wp_oauth_states").delete().eq("state", state).execute()
+    except Exception as e:
+        logger.warning(f"Could not validate OAuth state in Supabase, using local store: {e}")
 
-    if not result:
-        return None
+    # Local fallback (and cleanup of the consumed state).
+    try:
+        from .services.local_store import _load_json, _save_json
 
-    row = result[0]
-    site_url = row.get("site_url")
-
-    supabase.table("wp_oauth_states").delete().eq("state", state).execute()
+        states = _load_json(_local_states_path())
+        match = next(
+            (s for s in states if s.get("state") == state and s.get("user_id") == user_id),
+            None,
+        )
+        if match:
+            site_url = site_url or match.get("site_url")
+            remaining = [s for s in states if s.get("state") != state]
+            _save_json(_local_states_path(), remaining)
+    except Exception as e:
+        logger.debug(f"Local OAuth state validation note: {e}")
 
     return site_url
 
@@ -215,17 +250,35 @@ async def save_connection(user_id: str, site_url: str, username: str, app_passwo
 
 
 def get_connection(user_id: str) -> Optional[dict]:
-    supabase = _get_supabase()
-    result = (
-        supabase.table("wordpress_connections")
-        .select("*")
-        .eq("user_id", user_id)
-        .execute()
-        .data
-    )
-    if not result:
-        return None
-    return result[0]
+    try:
+        supabase = _get_supabase()
+        result = (
+            supabase.table("wordpress_connections")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+            .data
+        )
+        if result:
+            return result[0]
+    except Exception as e:
+        logger.warning(
+            f"Supabase wordpress_connections read failed, using local store: {e}"
+        )
+
+    # Durable local fallback. Without it, a Supabase outage turned the status
+    # read into a 500 and the UI reported WordPress as disconnected even though
+    # save_connection had already persisted the connection locally.
+    try:
+        from .services.local_store import _load_json
+
+        conns = _load_json("wordpress_connections.json")
+        for c in reversed(conns):
+            if c.get("user_id") == user_id:
+                return c
+    except Exception as e:
+        logger.debug(f"Local wordpress_connections read note: {e}")
+    return None
 
 
 def get_decrypted_connection(user_id: str) -> Optional[dict]:

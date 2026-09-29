@@ -209,35 +209,37 @@ async def find_backlink_prospects(
 
         if not page_data:
             try:
-                from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler
+                # httpx + BeautifulSoup: no optional crawler dependency, so
+                # prospect discovery still works when crawlee is not installed.
+                import httpx
+                from bs4 import BeautifulSoup
 
-                crawler = BSCrawler(max_requests_per_crawl=1, headless=True)
-
-                @crawler.router.default_handler
-                async def handler(context):
-                    if _is_url_blocked(context.request.url):
-                        return
-                    soup = context.soup
-                    page_data["title"] = (
-                        soup.title.string.strip()
-                        if soup.title and soup.title.string
-                        else prospect.get("title", "")
+                async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+                    resp = await client.get(
+                        p_url, headers={"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"}
                     )
-                    page_data["text"] = soup.get_text(separator=" ", strip=True)[:5000]
-                    page_data["links"] = []
-                    for a in soup.find_all("a", href=True):
-                        href = a["href"]
-                        if href.startswith("/"):
-                            href = urljoin(p_url, href)
-                        if href.startswith("http"):
-                            page_data["links"].append(
-                                {"href": href, "anchor": a.get_text(strip=True)}
-                            )
-                    page_data["emails"] = re.findall(
-                        r"[\w\.-]+@[\w\.-]+\.\w+", page_data.get("text", "")
-                    )
-
-                await crawler.run([p_url])
+                if resp.status_code != 200:
+                    continue
+                soup = BeautifulSoup(resp.text, "html.parser")
+                page_data["title"] = (
+                    soup.title.string.strip()
+                    if soup.title and soup.title.string
+                    else prospect.get("title", "")
+                )
+                page_data["text"] = soup.get_text(separator=" ", strip=True)[:5000]
+                page_data["links"] = []
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if href.startswith("/"):
+                        href = urljoin(p_url, href)
+                    if href.startswith("http"):
+                        page_data["links"].append(
+                            {"href": href, "anchor": a.get_text(strip=True)}
+                        )
+                page_data["emails"] = re.findall(
+                    r"[\w\.-]+@[\w\.-]+\.\w+", page_data.get("text", "")
+                )
+                page_data["source"] = "httpx_fallback"
             except Exception as exc:
                 logger.warning("Prospect crawl failed %s: %s", p_url, exc)
                 continue
@@ -347,28 +349,22 @@ async def find_backlink_prospects(
                     contact_email = agent_hit
             if not contact_email:
                 try:
-                    from crawlee.crawlers import BeautifulSoupCrawler as BSCrawler2
+                    import httpx
+                    from bs4 import BeautifulSoup
 
-                    cc = BSCrawler2(max_requests_per_crawl=1, headless=True)
-                    contact_captured: Dict[str, Any] = {}
-
-                    @cc.router.default_handler
-                    async def handler2(context):
-                        if _is_url_blocked(context.request.url):
-                            return
-                        s = context.soup
-                        contact_captured["text"] = s.get_text(separator=" ", strip=True)[
-                            :3000
-                        ]
-
-                    await cc.run([contact_url])
-                    emails2 = re.findall(
-                        r"[\w\.-]+@[\w\.-]+\.\w+", contact_captured.get("text", "")
-                    )
-                    for em in emails2:
-                        if "noreply" not in em.lower() and "no-reply" not in em.lower():
-                            contact_email = em
-                            break
+                    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+                        resp = await client.get(
+                            contact_url,
+                            headers={"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"},
+                        )
+                    if resp.status_code == 200:
+                        text = BeautifulSoup(resp.text, "html.parser").get_text(
+                            separator=" ", strip=True
+                        )[:3000]
+                        for em in re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", text):
+                            if "noreply" not in em.lower() and "no-reply" not in em.lower():
+                                contact_email = em
+                                break
                 except Exception:
                     pass
 
@@ -541,29 +537,27 @@ async def monitor_backlinks(website_id: str) -> Dict[str, Any]:
         anchor_found = False
         captured_anchor = item.get("anchor_text", "")
         try:
-            crawler = BSCrawler(max_requests_per_crawl=1)
+            # Fetch the source page directly: BSCrawler was never imported here,
+            # so this raised NameError and every backlink was silently marked
+            # unverified. httpx + BeautifulSoup needs no optional crawler deps.
+            import httpx
+            from bs4 import BeautifulSoup
 
-            @crawler.router.default_handler
-            async def handler(context):
-                nonlocal status_code, anchor_found, captured_anchor
-                if _is_url_blocked(context.request.url):
-                    return
-                soup = context.soup
-                for a in soup.find_all("a", href=True):
-                    href = a["href"]
-                    if href.startswith("/"):
-                        href = urljoin(source_url, href)
-                    if cms_url and cms_url in href:
-                        anchor_found = True
-                        captured_anchor = a.get_text(strip=True)
-                        break
-                import httpx
-
-                async with httpx.AsyncClient(timeout=5, follow_redirects=True) as client:
-                    r = await client.head(source_url)
-                    status_code = r.status_code
-
-            await crawler.run([source_url])
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+                r = await client.get(
+                    source_url, headers={"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"}
+                )
+                status_code = r.status_code
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, "html.parser")
+                    for a in soup.find_all("a", href=True):
+                        href = a["href"]
+                        if href.startswith("/"):
+                            href = urljoin(source_url, href)
+                        if cms_url and cms_url in href:
+                            anchor_found = True
+                            captured_anchor = a.get_text(strip=True)
+                            break
         except Exception as exc:
             logger.warning("Monitor crawl failed %s: %s", source_url, exc)
             status_code = item.get("status_code")

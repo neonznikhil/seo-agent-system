@@ -125,9 +125,10 @@ async def slack_oauth_start(website_id: Optional[str] = None):
     client_id = SLACK_CLIENT_ID or os.getenv("SLACK_CLIENT_ID", "")
     if not client_id:
         raise HTTPException(
-            status_code=500,
-            detail="SLACK_CLIENT_ID is not configured. Set SLACK_CLIENT_ID and "
-                   "SLACK_CLIENT_SECRET in the backend environment first.",
+            status_code=503,
+            detail="Slack OAuth is not configured. Set SLACK_CLIENT_ID and "
+                   "SLACK_CLIENT_SECRET in the backend environment, or paste an "
+                   "incoming webhook URL instead.",
         )
 
     state_token = secrets.token_urlsafe(32)

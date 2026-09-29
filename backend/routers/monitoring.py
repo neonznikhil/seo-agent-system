@@ -32,7 +32,12 @@ async def get_alerts(website_id: str, filter: str = "unread"):
     elif filter == "high":
         query = query.in_("severity", ["critical", "high"])
     
-    rows = query.order("created_at", desc=True).limit(100).execute().data or []
+    from utils.safe_query import safe_rows
+
+    rows = safe_rows(
+        lambda sb: query.order("created_at", desc=True).limit(100).execute(),
+        label="monitoring.alerts",
+    )
     
     # If no alerts exist for this site, seed initial operational alert
     if not rows and filter in ("all", "unread"):
@@ -181,7 +186,13 @@ async def get_logs(website_id: str, hours: int = 24):
     
     since = datetime.utcnow() - timedelta(hours=hours)
     
-    return get_supabase().table("monitoring_logs").select("*").eq("website_id", website_id).gte("created_at", since.isoformat()).order("created_at", desc=True).limit(100).execute().data or []
+    from utils.safe_query import safe_rows
+
+    return safe_rows(
+        lambda sb: sb.table("monitoring_logs").select("*").eq("website_id", website_id)
+        .gte("created_at", since.isoformat()).order("created_at", desc=True).limit(100).execute(),
+        label="monitoring.logs",
+    )
 
 
 @router.get("/monitoring/{website_id}/stats")
@@ -210,7 +221,13 @@ async def get_stats(website_id: str):
     since = datetime.utcnow() - timedelta(hours=24)
     sb = get_supabase()
     
-    alerts = sb.table("realtime_alerts").select("severity, created_at").eq("website_id", target_id).gte("created_at", since.isoformat()).execute().data or []
+    from utils.safe_query import safe_rows
+
+    alerts = safe_rows(
+        lambda _sb: sb.table("realtime_alerts").select("severity, created_at")
+        .eq("website_id", target_id).gte("created_at", since.isoformat()).execute(),
+        label="monitoring.stats.alerts",
+    )
     
     critical = len([a for a in alerts if a.get("severity") == "critical"])
     high = len([a for a in alerts if a.get("severity") in ("critical", "high")])
@@ -279,7 +296,13 @@ async def run_predictions_now(website_id: str):
 async def get_pending_fixes(website_id: str):
     from database import get_supabase
     
-    return get_supabase().table("pending_fixes").select("*").eq("website_id", website_id).eq("status", "pending_approval").order("created_at", desc=True).execute().data or []
+    from utils.safe_query import safe_rows
+
+    return safe_rows(
+        lambda sb: sb.table("pending_fixes").select("*").eq("website_id", website_id)
+        .eq("status", "pending_approval").order("created_at", desc=True).execute(),
+        label="monitoring.pending_fixes",
+    )
 
 
 @router.post("/monitoring/{website_id}/pending-fixes/{fix_id}/approve")
@@ -336,7 +359,13 @@ async def approve_fix(website_id: str, fix_id: str, request: Request):
 async def get_topic_clusters(website_id: str, pending_only: bool = True):
     from database import get_supabase
     
+    from utils.safe_query import safe_rows
+
     query = get_supabase().table("topic_clusters").select("*").eq("website_id", website_id)
     if pending_only:
-        query = query.isnull("actualized_post_id")
-    return query.order("created_at", desc=True).limit(50).execute().data or []
+        # Supabase python client uses `is_`, not `isnull`.
+        query = query.is_("actualized_post_id", "null")
+    return safe_rows(
+        lambda sb: query.order("created_at", desc=True).limit(50).execute(),
+        label="monitoring.topic_clusters",
+    )

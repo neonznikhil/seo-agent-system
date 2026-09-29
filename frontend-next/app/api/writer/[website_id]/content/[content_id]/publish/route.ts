@@ -1,36 +1,38 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, BACKEND_URL } from "../../../../../_lib/proxy";
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ website_id: string; content_id: string }> }
-) {
+const TIMEOUT_MS = 60000;
+
+export async function POST(req: Request, { params }: { params: Promise<{ website_id: string; content_id: string }> }) {
   const { website_id, content_id } = await params;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
 
   try {
-    const res = await fetch(`${backendUrl}/api/writer/${website_id}/content/${content_id}/publish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
+    const res = await proxyToBackend(
+      `/api/writer/${encodeURIComponent(website_id)}/content/${encodeURIComponent(content_id)}/publish`,
+      req,
+      TIMEOUT_MS
+    );
+    const text = await res.text().catch(() => "");
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { detail: text };
     }
-  } catch {
-    // Fall through
+    return NextResponse.json(data ?? { success: false }, { status: res.status });
+  } catch (err: any) {
+    // HONEST: backend unreachable means the publish did NOT happen.
+    return NextResponse.json(
+      {
+        success: false,
+        status: "failed",
+        wp_post_id: null,
+        post_url: null,
+        error: "Backend unavailable — article was NOT published. Retry when the backend is reachable.",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: 502 }
+    );
   }
-
-  // HONEST: backend unreachable means the publish did NOT happen.
-  // Never claim a live publish with an invented post ID.
-  return NextResponse.json(
-    {
-      success: false,
-      status: "failed",
-      wp_post_id: null,
-      post_url: null,
-      error: "Backend unavailable — article was NOT published. Retry when the backend is reachable.",
-    },
-    { status: 502 }
-  );
 }

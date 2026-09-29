@@ -395,7 +395,7 @@ async def draft_outreach_email(opportunity_id: str):
     anchor = opp.get("anchor_text") or "Resource Guide"
     category = opp.get("category") or opp.get("opportunity_type") or "Resource Link"
 
-    from services.nim_client import nim_client
+    from services.nim_client import call_llm_central
     prompt = f"""You are a senior digital PR and SEO outreach specialist. Write a concise, polite, and persuasive outreach email pitching our comprehensive resource for inclusion on their page.
 
 Target Page: {source_url}
@@ -410,13 +410,11 @@ Requirements:
 - Professional, cordial sign-off with sender placeholder [Your Name / Editorial Team].
 """
     try:
-        email_text = await nim_client.chat_completion(
-            messages=[
-                {"role": "system", "content": "You write world-class, high-converting digital PR and editorial link outreach emails."},
-                {"role": "user", "content": prompt}
-            ],
-            model="meta/llama-3.1-nemotron-70b-instruct",
-            temperature=0.4
+        email_text = await call_llm_central(
+            prompt,
+            system="You write world-class, high-converting digital PR and editorial link outreach emails.",
+            max_tokens=600,
+            temperature=0.4,
         )
     except Exception as e:
         logger.warning(f"NIM draft failed, using clean fallback: {e}")

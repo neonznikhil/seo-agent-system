@@ -1076,6 +1076,8 @@ class WordPressService:
                     }
         except Exception as e:
             logger.warning(f"Error fetching WP site info: {e}")
+        return fallback_info
+
     async def connect(self) -> dict:
         """Test and verify active WordPress connection."""
         base_url = self.get_base_url()
@@ -1169,6 +1171,75 @@ class WordPressService:
             "user": user,
             "message": test_result.get("message", "Could not connect to WordPress"),
         }
+
+
+    def _get_oauth_token(self) -> Optional[dict]:
+        """Read the stored WordPress OAuth token for this website, if any."""
+        try:
+            rows = (
+                get_supabase()
+                .table("wordpress_oauth_tokens")
+                .select("*")
+                .eq("website_id", self.website_id)
+                .eq("provider", "wordpress")
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning(f"[WP OAuth] token read failed: {e}")
+            return None
+
+    def _refresh_oauth_token(self, token_data: dict) -> Optional[dict]:
+        """Refresh an OAuth token using the stored refresh_token.
+
+        Returns the refreshed token row on success, None otherwise.
+        """
+        import requests
+
+        refresh_token = (token_data or {}).get("refresh_token")
+        if not refresh_token:
+            return None
+        token_url = os.getenv("WORDPRESS_OAUTH_TOKEN_URL") or "https://public-api.wordpress.com/oauth2/token"
+        client_id = os.getenv("WORDPRESS_OAUTH_CLIENT_ID", "")
+        client_secret = os.getenv("WORDPRESS_OAUTH_CLIENT_SECRET", "")
+        try:
+            resp = requests.post(
+                token_url,
+                data={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"[WP OAuth] refresh failed: {resp.status_code}")
+                return None
+            data = resp.json()
+        except Exception as e:
+            logger.warning(f"[WP OAuth] refresh error: {e}")
+            return None
+
+        expires_in = data.get("expires_in", 3600)
+        row = {
+            "website_id": self.website_id,
+            "access_token": data.get("access_token"),
+            "refresh_token": data.get("refresh_token") or refresh_token,
+            "token_type": data.get("token_type", "Bearer"),
+            "expires_at": datetime.fromtimestamp(datetime.utcnow().timestamp() + expires_in).isoformat(),
+            "scope": data.get("scope"),
+            "provider": "wordpress",
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        try:
+            get_supabase().table("wordpress_oauth_tokens").upsert(row, on_conflict="website_id,provider").execute()
+        except Exception as e:
+            logger.warning(f"[WP OAuth] token persist failed: {e}")
+        return row
 
 
 def get_wordpress_service(website_id: str) -> WordPressService:

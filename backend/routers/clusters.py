@@ -129,9 +129,17 @@ async def generate_article_from_cluster(body: GenerateClusterArticleRequest, bac
 @router.get("/clusters/{cluster_id}")
 @router.get("/api/clusters/{cluster_id}")
 async def get_cluster(cluster_id: str):
-    res = get_supabase().table("topic_clusters").select("*").eq("id", cluster_id).maybe_single().execute()
-    if not (res and res.data):
-        res = get_supabase().table("clusters").select("*").eq("id", cluster_id).maybe_single().execute()
-    if not (res and res.data):
+    from utils.safe_query import safe_value
+
+    res = safe_value(
+        lambda sb: sb.table("topic_clusters").select("*").eq("id", cluster_id).maybe_single().execute(),
+        label="clusters.topic_clusters",
+    )
+    if not (res and getattr(res, "data", None)):
+        res = safe_value(
+            lambda sb: sb.table("clusters").select("*").eq("id", cluster_id).maybe_single().execute(),
+            label="clusters.clusters",
+        )
+    if not (res and getattr(res, "data", None)):
         raise HTTPException(status_code=404, detail="Cluster not found")
     return {"success": True, "data": res.data}

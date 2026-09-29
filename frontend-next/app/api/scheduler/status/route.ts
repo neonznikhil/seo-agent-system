@@ -1,29 +1,42 @@
 import { NextResponse } from "next/server";
+import { buildBackendUrl, BACKEND_URL, forwardHeaders } from "../../_lib/proxy";
 
-export async function GET() {
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
+// Previously this route hardcoded a public production backend and, on any
+// failure, returned fabricated scheduler data with `running: true`. That made
+// the dashboard show a healthy scheduler while the real one was unreachable.
+const TIMEOUT_MS = 15000;
+
+export async function GET(req: Request) {
   try {
-    const res = await fetch(`${backendUrl}/api/scheduler/status`, {
-      signal: AbortSignal.timeout(3000),
+    const res = await fetch(buildBackendUrl("/api/scheduler/status"), {
+      headers: forwardHeaders(req),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    const text = await res.text().catch(() => "");
     if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
+      try {
+        return NextResponse.json(JSON.parse(text));
+      } catch {
+        return new NextResponse(text, { status: 502 });
+      }
     }
-  } catch {
-    // Fall through
+    return NextResponse.json(
+      { success: false, running: false, status: "unknown", error: "Scheduler status unavailable", detail: text.slice(0, 300), backend: BACKEND_URL },
+      { status: 502 }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      {
+        success: false,
+        running: false,
+        status: "unknown",
+        jobs_count: null,
+        jobs: [],
+        error: "Backend unreachable — scheduler state unknown",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: 502 }
+    );
   }
-
-  return NextResponse.json({
-    success: true,
-    running: true,
-    timezone: "Asia/Kolkata",
-    jobs_count: 8,
-    jobs: [
-      { id: "rank_monitor", name: "SERP Rank Tracker", next_run: new Date(Date.now() + 3600000).toISOString() },
-      { id: "tech_audit", name: "Technical SEO Auditor", next_run: new Date(Date.now() + 7200000).toISOString() },
-      { id: "decay_detect", name: "Content Decay Detector", next_run: new Date(Date.now() + 10800000).toISOString() },
-      { id: "auto_writer", name: "Autonomous Article Generator", next_run: new Date(Date.now() + 14400000).toISOString() },
-    ],
-  });
 }

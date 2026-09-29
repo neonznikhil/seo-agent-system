@@ -1,101 +1,49 @@
 import { NextResponse } from "next/server";
-import { updateSavedWpCredentials } from "../../writer/wp-client";
+import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
+
+// Delegates the WordPress connection test to the backend, which performs real
+// REST + role verification and persists the credentials Fernet-encrypted.
+//
+// The previous handler talked to WordPress directly from this route, wrote the
+// plaintext app password to a server-side file, and returned
+// `connected: true` even when both REST and XML-RPC verification failed. That is
+// the exact "says connected, but nothing works" bug.
+const TIMEOUT_MS = 30000;
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const siteUrl = (body.site_url || "").trim().replace(/\/+$/, "");
-  let username = (body.wp_username || body.username || "").trim();
-  const appPassword = (body.wp_app_password || body.app_password || "").trim();
-
-  if (!siteUrl) {
+  let res: Response;
+  try {
+    res = await proxyToBackend("/api/wordpress/connect", req, TIMEOUT_MS);
+  } catch (err: any) {
+    const isTimeout =
+      err?.name === "TimeoutError" || String(err?.message || "").toLowerCase().includes("timed out");
     return NextResponse.json(
-      { success: false, error: "WordPress site URL is required" },
-      { status: 400 }
+      {
+        success: false,
+        connected: false,
+        error: isTimeout
+          ? "WordPress verification timed out. Check the site URL/network and try again."
+          : "Backend unreachable — WordPress was not verified.",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: isTimeout ? 504 : 502 }
     );
   }
 
-  // 1. Try WordPress REST API
-  if (appPassword) {
-    const auth = Buffer.from(`${username}:${appPassword}`).toString("base64");
-    try {
-      const res = await fetch(`${siteUrl}/wp-json/wp/v2/users/me`, {
-        headers: {
-          Authorization: `Basic ${auth}`,
-          HTTP_AUTHORIZATION: `Basic ${auth}`,
-          "X-HTTP-Authorization": `Basic ${auth}`,
-          "User-Agent": "Mozilla/5.0 RankForge/1.0",
-        },
-        signal: AbortSignal.timeout(7000),
-      });
-
-      if (res.ok) {
-        const user = await res.json();
-        updateSavedWpCredentials({ site_url: siteUrl, username, app_password: appPassword });
-        return NextResponse.json({
-          success: true,
-          connected: true,
-          user_name: user.name || username,
-          roles: user.roles || ["administrator"],
-          site_url: siteUrl,
-          message: "✓ Successfully connected via WordPress REST API!",
-        });
-      }
-    } catch {}
-
-    // 2. Try WordPress XML-RPC (Immune to Hostinger/LiteSpeed header stripping)
-    try {
-      const xml = `<?xml version="1.0"?>
-<methodCall>
-  <methodName>wp.getUsersBlogs</methodName>
-  <params>
-    <param><value><string>${username}</string></value></param>
-    <param><value><string>${appPassword}</string></value></param>
-  </params>
-</methodCall>`;
-
-      const xres = await fetch(`${siteUrl}/xmlrpc.php`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/xml",
-          "User-Agent": "Mozilla/5.0 RankForge/1.0",
-        },
-        body: xml,
-        signal: AbortSignal.timeout(7000),
-      });
-
-      const bodyText = await xres.text();
-      if (bodyText.includes("<methodResponse>") && !bodyText.includes("<fault>")) {
-        updateSavedWpCredentials({ site_url: siteUrl, username, app_password: appPassword });
-        return NextResponse.json({
-          success: true,
-          connected: true,
-          user_name: username,
-          roles: ["administrator"],
-          site_url: siteUrl,
-          message: "✓ Successfully connected to WordPress (via XML-RPC)!",
-        });
-      }
-
-      const faultMatch = bodyText.match(/<name>faultString<\/name>\s*<value>\s*<string>([^<]+)<\/string>/);
-      if (faultMatch && faultMatch[1]) {
-        return NextResponse.json({
-          success: false,
-          connected: false,
-          error: `WordPress returned: ${faultMatch[1].trim()}`,
-        });
-      }
-    } catch {}
-
-    // Save credentials anyway
-    updateSavedWpCredentials({ site_url: siteUrl, username, app_password: appPassword });
+  const text = await res.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { detail: text };
   }
 
-  return NextResponse.json({
-    success: true,
-    connected: true,
-    user_name: username,
-    roles: ["administrator"],
-    site_url: siteUrl,
-    message: "WordPress credentials saved",
-  });
+  if (!res.ok) {
+    return NextResponse.json(
+      { success: false, connected: false, ...(data || {}) },
+      { status: res.status }
+    );
+  }
+  return NextResponse.json(data);
 }

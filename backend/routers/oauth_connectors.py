@@ -424,32 +424,27 @@ async def verify_serper_key(payload: VerifyApiKeyRequest):
 
 
 @router.post("/connectors/nvidia/verify")
-async def verify_nvidia_key(payload: VerifyApiKeyRequest):
-    """Real NVIDIA NIM verification: models list call with the provided key."""
+async def verify_nvidia_key_endpoint(payload: VerifyApiKeyRequest):
+    """Real NVIDIA NIM verification through the shared helper.
+
+    The models list is public and returns 200 for any key; only the
+    authenticated chat endpoint can prove a key is valid.
+    """
+    from routers.connectors import verify_nvidia_key as _verify_nvidia_key
+
     api_key = payload.api_key.strip()
     if len(api_key) < 8:
         raise HTTPException(status_code=400, detail="Invalid NVIDIA API Key.")
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                "https://integrate.api.nvidia.com/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            if resp.status_code == 200:
-                models = [m.get("id") for m in resp.json().get("data", [])][:10]
-                return {
-                    "success": True,
-                    "models_available": len(models),
-                    "sample_models": models[:5],
-                    "message": "NVIDIA NIM key verified via live models call.",
-                }
-            elif resp.status_code == 401:
-                return {"success": False, "error": "NVIDIA rejected this key (HTTP 401)."}
-            else:
-                return {"success": False, "error": f"NVIDIA returned HTTP {resp.status_code}"}
-    except Exception as e:
-        return {"success": False, "error": f"NVIDIA unreachable: {str(e)[:120]}"}
+    connected, message, models_count = await _verify_nvidia_key(api_key)
+    if not connected:
+        return {"success": False, "error": message}
+
+    return {
+        "success": True,
+        "models_available": models_count,
+        "message": "NVIDIA NIM key verified via authenticated NIM call.",
+    }
 
 
 @router.post("/connectors/resend/verify")

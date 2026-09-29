@@ -123,19 +123,20 @@ async def list_settings(website_id: Optional[str] = None):
 
 @router.get("/settings/website/{website_id}")
 async def get_website_settings(website_id: str):
-    website = (
-        get_supabase()
-        .table("websites")
+    from utils.safe_query import safe_value, safe_rows
+    from services.local_store import get_local_website
+
+    website = safe_value(
+        lambda sb: sb.table("websites")
         .select("id, domain, cms_url, cms_user, gsc_property, app_password, wordpress_password")
-        .eq("id", website_id)
-        .single()
-        .execute()
-        .data or {}
+        .eq("id", website_id).single().execute(),
+        label="settings.website",
     )
-    try:
-        settings = get_supabase().table("settings").select("*").eq("website_id", website_id).execute().data or []
-    except Exception:
-        settings = []
+    website = getattr(website, "data", None) or get_local_website(website_id) or {}
+    settings = safe_rows(
+        lambda sb: sb.table("settings").select("*").eq("website_id", website_id).execute(),
+        label="settings.website_settings",
+    )
     settings_map: dict = {}
     configured_map: dict = {}
     for s in settings:
@@ -170,11 +171,16 @@ async def create_setting(body: SettingIn):
 
 @router.get("/settings/{key}")
 async def get_setting(key: str, website_id: Optional[str] = None):
-    query = get_supabase().table("settings").select("*").eq("key", key)
-    if website_id:
-        query = query.eq("website_id", website_id)
-    res = query.single().execute()
-    if not res.data:
+    from utils.safe_query import safe_value
+
+    def _q(sb):
+        query = sb.table("settings").select("*").eq("key", key)
+        if website_id:
+            query = query.eq("website_id", website_id)
+        return query.single().execute()
+
+    res = safe_value(_q, label="settings.get_setting")
+    if not (res and getattr(res, "data", None)):
         raise HTTPException(status_code=404, detail="Not found")
     data = dict(res.data)
     if key in CREDENTIAL_SETTING_KEYS:

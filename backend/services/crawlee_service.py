@@ -5,9 +5,37 @@ import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 logger = logging.getLogger("backend.services.crawlee_service")
+
+# crawlee/playwright are optional. When they are absent the service used to raise
+# ImportError from _ensure_initialized, which broke every crawler-backed feature
+# (decay detection, competitor monitoring, SERP analysis, the writer agent). We
+# now fall back to an httpx/BeautifulSoup fetch and a Serper-backed SERP.
+try:
+    from crawlee.crawlers import BeautifulSoupCrawler, PlaywrightCrawler
+
+    CRAWLEE_AVAILABLE = True
+except ImportError:
+    BeautifulSoupCrawler = None  # type: ignore[assignment]
+    PlaywrightCrawler = None  # type: ignore[assignment]
+    CRAWLEE_AVAILABLE = False
+    logger.info("crawlee not installed — using httpx fallback crawler")
+
+try:
+    import playwright  # noqa: F401
+
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:  # pragma: no cover - bs4 is a hard dependency
+    BeautifulSoup = None  # type: ignore[assignment]
+
+_USER_AGENT = "Mozilla/5.0 (compatible; RankForgeBot/1.0; +https://rankforge.ai/bot)"
 
 BLOCKED_SCHEMES = {"file", "ftp", "gopher", "telnet", "ldap", "rlogin", "rsh", "ssh"}
 INTERNAL_NETWORKS = [
@@ -48,14 +76,9 @@ class CrawleeService:
         self._initialized = False
     
     async def _ensure_initialized(self):
-        if self._initialized:
-            return
-        try:
-            from crawlee.crawlers import BeautifulSoupCrawler, PlaywrightCrawler
-            self._initialized = True
-        except ImportError as e:
-            logger.error(f"Crawlee not installed: {e}")
-            raise
+        # crawlee is optional; when it is missing we degrade to the httpx
+        # fallback rather than raising, so callers keep working.
+        self._initialized = True
 
     async def _cleanup_storage(self, crawler) -> None:
         try:
@@ -74,16 +97,147 @@ class CrawleeService:
                 continue
             sanitized.append(url)
         return sanitized
-    
+
+    @staticmethod
+    def _parse_page(html: str, url: str, source: str = "httpx_fallback") -> Dict[str, Any]:
+        """Extract the same page shape the crawlee handler produces."""
+        soup = BeautifulSoup(html, "html.parser")
+        title = soup.title.string.strip() if soup.title and soup.title.string else None
+        links = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if (href.startswith("/") or href.startswith("http")) and not _is_url_blocked(href):
+                links.append(href)
+        schemas = []
+        for s in soup.find_all("script", type="application/ld+json"):
+            try:
+                schema_data = json.loads(s.string) if s.string else None
+                if schema_data:
+                    schemas.append(schema_data)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        meta_desc_tag = soup.find("meta", attrs={"name": "description"})
+        canonical_tag = soup.find("link", rel="canonical")
+        text_content = soup.get_text(separator=" ", strip=True)
+        return {
+            "url": url,
+            "title": title,
+            "h1s": [h.get_text(strip=True) for h in soup.find_all("h1")],
+            "h2s": [h.get_text(strip=True) for h in soup.find_all("h2")],
+            "h3s": [h.get_text(strip=True) for h in soup.find_all("h3")],
+            "word_count": len(text_content.split()),
+            "links": links[:100],
+            "schemas": schemas,
+            "meta_description": meta_desc_tag["content"] if meta_desc_tag else None,
+            "canonical": canonical_tag["href"] if canonical_tag else None,
+            "crawled_at": datetime.utcnow().isoformat(),
+            "source": source,
+        }
+
+    async def _fetch_page(self, client, url: str) -> Optional[Dict[str, Any]]:
+        try:
+            resp = await client.get(url, headers={"User-Agent": _USER_AGENT})
+            if resp.status_code != 200:
+                return None
+            return self._parse_page(resp.text, url)
+        except Exception as exc:
+            logger.debug("Fallback fetch skipped %s: %s", url, exc)
+            return None
+
+    async def _crawl_site_structure_fallback(self, start_urls: List[str], max_requests: int) -> List[Dict]:
+        """httpx/BeautifulSoup crawler used when crawlee is unavailable."""
+        import httpx
+
+        results: List[Dict] = []
+        seen: set = set()
+        queue = list(start_urls)
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            while queue and len(results) < max_requests:
+                url = queue.pop(0)
+                if url in seen or _is_url_blocked(url):
+                    continue
+                seen.add(url)
+                page = await self._fetch_page(client, url)
+                if page is None:
+                    continue
+                results.append(page)
+                for link in page["links"]:
+                    if link.startswith("/"):
+                        link = urljoin(url, link)
+                    if link not in seen and len(seen) + len(queue) < max_requests * 4:
+                        queue.append(link)
+        return results
+
+    async def _crawl_pages_for_serp_fallback(self, pages: List[Dict]) -> None:
+        """Populate SERP page detail (h1/h2/word_count/schema) without playwright."""
+        import httpx
+
+        targets = [p["url"] for p in pages if p.get("url") and not _is_url_blocked(p["url"])][:5]
+        if not targets:
+            return
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            for page in pages:
+                if page.get("url") not in targets:
+                    continue
+                fetched = await self._fetch_page(client, page["url"])
+                if not fetched:
+                    continue
+                page["h1"] = fetched["h1s"]
+                page["h2s"] = fetched["h2s"][:10]
+                page["word_count"] = fetched["word_count"]
+                page["has_table"] = bool(fetched.get("schemas")) or False
+                page["has_faq"] = any(
+                    isinstance(s, dict) and s.get("@type") == "FAQPage" for s in fetched.get("schemas", [])
+                )
+                page["schemas"] = [
+                    s.get("@type", "Unknown")
+                    for s in fetched.get("schemas", [])
+                    if isinstance(s, dict)
+                ]
+
+    async def _serp_fallback(self, keyword: str, count: int) -> Optional[List[Dict]]:
+        """Build the SERP result set from Serper when playwright is unavailable.
+
+        Returns None when no live search provider is configured, so the caller
+        can report an honest degraded result instead of inventing competitors.
+        """
+        try:
+            from services.serper_service import serper_service
+
+            if not serper_service.is_configured():
+                return None
+            res = await serper_service.search(keyword, num=count)
+            organic = res.get("organic", []) if isinstance(res, dict) else []
+            if not organic:
+                return None
+            return [
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("link", ""),
+                    "h1": None,
+                    "h2s": [],
+                    "word_count": 0,
+                    "has_table": False,
+                    "has_faq": False,
+                    "schemas": [],
+                }
+                for item in organic[:count]
+                if item.get("link") and not _is_url_blocked(item["link"])
+            ]
+        except Exception as exc:
+            logger.warning("Serper SERP fallback failed: %s", exc)
+            return None
+
     async def crawl_site_structure(self, start_urls: List[str], max_requests: int = 50) -> List[Dict]:
         """Crawl site structure and extract real data from pages."""
         await self._ensure_initialized()
 
-        from crawlee.crawlers import BeautifulSoupCrawler
-
         start_urls = self._sanitize_start_urls(start_urls)
         if not start_urls:
             return []
+
+        if not CRAWLEE_AVAILABLE:
+            return await self._crawl_site_structure_fallback(start_urls, max_requests)
 
         results = []
         crawler = BeautifulSoupCrawler(max_requests_per_crawl=max_requests)
@@ -162,6 +316,9 @@ class CrawleeService:
         """Extract real SERP data for keyword analysis."""
         await self._ensure_initialized()
 
+        if not CRAWLEE_AVAILABLE or not PLAYWRIGHT_AVAILABLE:
+            return await self._extract_serp_landscape_fallback(keyword, count)
+
         import urllib.parse
         from crawlee.crawlers import PlaywrightCrawler
 
@@ -232,6 +389,9 @@ class CrawleeService:
 
         except Exception as e:
             logger.error(f"SERP landscape extraction failed: {e}")
+            fallback = await self._extract_serp_landscape_fallback(keyword, count)
+            if fallback.get("top_pages"):
+                return fallback
             return {
                 'keyword': keyword,
                 'error': str(e),
@@ -240,11 +400,51 @@ class CrawleeService:
                 'source': 'crawlee_serp'
             }
 
+        if not serp_data['top_pages']:
+            # Google returned nothing (blocked/CAPTCHA) — try the live Serper
+            # provider rather than reporting an empty landscape.
+            fallback = await self._extract_serp_landscape_fallback(keyword, count)
+            if fallback.get("top_pages"):
+                return fallback
+
         return serp_data
     
+    async def _extract_serp_landscape_fallback(self, keyword: str, count: int) -> Dict:
+        """SERP landscape without crawlee/playwright.
+
+        Uses Serper (a real live provider) when configured, otherwise returns an
+        explicit degraded result — never fabricated competitor data.
+        """
+        base = {
+            "keyword": keyword,
+            "top_pages": [],
+            "winning_patterns": {
+                "avg_word_count": 0,
+                "common_h2s": [],
+                "has_table": False,
+                "has_faq": False,
+                "schema_types": [],
+            },
+            "source": "serper_fallback",
+        }
+        top_pages = await self._serp_fallback(keyword, count)
+        if not top_pages:
+            base["source"] = "unavailable"
+            base["error"] = "No live SERP provider configured (crawlee/playwright and Serper both unavailable)."
+            return base
+
+        await self._crawl_pages_for_serp_fallback(top_pages)
+        base["top_pages"] = top_pages
+        base["winning_patterns"] = self._calculate_winning_patterns(top_pages)
+        return base
+
     async def _deep_crawl_serp_pages(self, pages: List[Dict]) -> None:
         """Deep crawl SERP result pages for detailed analysis."""
         await self._ensure_initialized()
+
+        if not CRAWLEE_AVAILABLE:
+            await self._crawl_pages_for_serp_fallback(pages)
+            return
 
         from crawlee.crawlers import BeautifulSoupCrawler
 

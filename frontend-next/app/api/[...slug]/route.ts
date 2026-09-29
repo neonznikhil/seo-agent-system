@@ -1,47 +1,70 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, proxyStream, BACKEND_URL } from "../_lib/proxy";
 
+// Catch-all proxy for backend routes that have no dedicated Next handler
+// (e.g. /api/connectors/test-gsc, /api/wordpress/{id}/posts). Identity headers
+// are forwarded and long-running generation/crawl calls get an extended window.
 async function handleProxy(req: Request, slug: string[]) {
   const path = "/" + slug.join("/");
   const url = new URL(req.url);
   const search = url.search;
-  const rawBase = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  const backendUrl = rawBase.replace(/\/+$/, "").replace(/\/api$/, "");
-  const targetUrl = `${backendUrl}/api${path}${search}`;
+
+  // SSE / streaming endpoints must be piped, not buffered: reading the whole
+  // body first would hold the browser connection open with no events. Decide
+  // from the request AND, as a fallback, from the backend's response
+  // content-type (some streams do not advertise via Accept or a /stream path).
+  const requestWantsStream =
+    req.headers.get("accept")?.includes("text/event-stream") ||
+    path.endsWith("/stream") ||
+    path.includes("/stream/");
+  const isLongRunning = [
+    "/generate",
+    "/crawl",
+    "/crew",
+    "/cluster",
+    "/blog",
+    "/research",
+    "/sync",
+    "/live",
+  ].some((segment) => path.includes(segment));
+  const timeoutMs = requestWantsStream ? 600000 : isLongRunning ? 300000 : 60000;
+
+  if (requestWantsStream) {
+    return proxyStream(`${path}${search}`, req, timeoutMs);
+  }
 
   try {
-    const headers: Record<string, string> = {};
-    req.headers.forEach((val, key) => {
-      if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
-        headers[key] = val;
-      }
-    });
-
-    let body: any = undefined;
-    if (["POST", "PUT", "PATCH"].includes(req.method)) {
-      body = await req.text().catch(() => undefined);
+    const res = await proxyToBackend(`${path}${search}`, req, timeoutMs);
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("text/event-stream")) {
+      return new Response(res.body, {
+        status: res.status,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
     }
-
-    const isLongRunning = path.includes("/generate") || path.includes("/crawl") || path.includes("/crew") || path.includes("/cluster") || path.includes("/blog");
-    const timeoutMs = isLongRunning ? 300000 : 30000;
-
-    const res = await fetch(targetUrl, {
-      method: req.method,
-      headers,
-      body,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-
-    // If backend returns ok or valid application data, return it
-    if (res.ok) {
-      const data = await res.json().catch(() => null);
-      if (data !== null) return NextResponse.json(data);
-      return new NextResponse(null, { status: res.status });
-    }
-
     const text = await res.text().catch(() => "");
-    return new NextResponse(text || res.statusText, { status: res.status });
+    if (!text) return new NextResponse(null, { status: res.status });
+    try {
+      return NextResponse.json(JSON.parse(text), { status: res.status });
+    } catch {
+      return new NextResponse(text, { status: res.status });
+    }
   } catch (err: any) {
-    return NextResponse.json({ detail: "Backend unreachable" }, { status: 502 });
+    const isTimeout =
+      err?.name === "TimeoutError" || String(err?.message || "").toLowerCase().includes("timed out");
+    return NextResponse.json(
+      {
+        error: "Backend unreachable",
+        detail: isTimeout ? "Backend request timed out" : err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: isTimeout ? 504 : 502 }
+    );
   }
 }
 

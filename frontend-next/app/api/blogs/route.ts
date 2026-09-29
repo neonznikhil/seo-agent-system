@@ -1,19 +1,9 @@
-import { NextResponse } from "next/server";
-import { articlesStore } from "../writer/articles-store";
+import { proxyJson } from "../_lib/proxy";
 
-export async function GET() {
-  return NextResponse.json(
-    articlesStore.map((a) => ({
-      id: a.id,
-      title: a.title,
-      target_keyword: a.keyword,
-      status: a.status,
-      word_count: a.word_count,
-      seo_score: a.seo_score,
-      created_at: a.created_at,
-      wp_post_id: a.wp_post_id,
-      edit_url: a.edit_url,
-      wordpress_url: a.wordpress_url,
-    }))
-  );
+// This handler used to serve an in-memory `articlesStore`, so it shadowed the
+// backend's real /api/blogs and hid the fact that Supabase was unreachable.
+// Proxy through so the UI reflects the real (or honestly-failing) result.
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  return proxyJson(`/api/blogs${url.search}`, req, 30000);
 }

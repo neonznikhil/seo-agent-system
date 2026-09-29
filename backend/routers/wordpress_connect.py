@@ -73,7 +73,10 @@ def _get_user_id(request: Request) -> str:
 async def get_authorize_url(request: Request, redirect_uri: Optional[str] = None):
     user_id = _get_user_id(request)
     state = str(uuid.uuid4())
-    await store_state(state, user_id, WORDPRESS_URL)
+    # store_state is synchronous (Supabase + durable local store); awaiting it
+    # raised "object NoneType can't be used in 'await' expression", which made
+    # /authorize-url a 500 and blocked the OAuth connect flow entirely.
+    store_state(state, user_id, WORDPRESS_URL)
     success_url = redirect_uri or f"{FRONTEND_URL}/auth/wordpress/callback"
     authorize_url = generate_authorize_url(state, success_url)
     return AuthorizeUrlResponse(authorize_url=authorize_url)

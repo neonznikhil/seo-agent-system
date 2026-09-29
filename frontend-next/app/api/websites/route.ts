@@ -1,85 +1,29 @@
-import { NextResponse } from "next/server";
+import { proxyJson } from "../_lib/proxy";
 
 // This file previously exported GET only. A Next.js route handler shadows the
 // /api/:path* rewrite, so `POST /api/websites` never reached the backend and
-// Next answered 405 -- which is what "Failed to create website: API 405" was.
-const backendBase = () =>
-  (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000")
-    .replace(/\/+$/, "")
-    // Both conventions are in the wild: a bare origin, or one ending in /api
-    // (lib/api.ts buildUrl accepts either). Strip it so the path we append is
-    // never doubled into /api/api/...
-    .replace(/\/api$/, "");
-
-async function proxy(req: Request, path: string) {
-  const headers: Record<string, string> = {};
-  req.headers.forEach((val, key) => {
-    if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
-      headers[key] = val;
-    }
-  });
-
-  let body: string | undefined;
-  if (["POST", "PUT", "PATCH"].includes(req.method)) {
-    body = await req.text().catch(() => undefined);
-  }
-
-  const res = await fetch(`${backendBase()}${path}`, {
-    method: req.method,
-    headers,
-    body,
-    signal: AbortSignal.timeout(120000),
-  });
-
-  const text = await res.text().catch(() => "");
-  if (!text) return new NextResponse(null, { status: res.status });
-  try {
-    return NextResponse.json(JSON.parse(text), { status: res.status });
-  } catch {
-    return new NextResponse(text, { status: res.status });
-  }
-}
+// Next answered 405 — that was the "Failed to create website: API 405" bug.
+// All methods are proxied with identity headers preserved, and the backend's
+// real status code is passed through (never masked as success).
 
 export async function GET(req: Request) {
-  // Try proxying to backend first, forwarding auth headers
-  const backendUrl = backendBase();
-  try {
-    const headers: Record<string, string> = {};
-    req.headers.forEach((val, key) => {
-      const k = key.toLowerCase();
-      if (["x-user-id", "x-website-id", "authorization"].includes(k)) {
-        headers[key] = val;
-      }
-    });
-    const backendRes = await fetch(`${backendUrl}/api/websites`, {
-      headers,
-      signal: AbortSignal.timeout(3000),
-    });
-    if (backendRes.ok) {
-      const data = await backendRes.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through to native fallback
-  }
-
-  // HONEST: backend unreachable means NO sites. Never invent a demo site —
-  // every downstream call would attribute content to someone else's domain.
-  return NextResponse.json([]);
+  // Listing is a normal read; use the shared 30s proxy timeout rather than the
+  // old 3s window that silently returned an empty list on slow backends.
+  return proxyJson("/api/websites", req, 30000);
 }
 
 export async function POST(req: Request) {
-  return proxy(req, "/api/websites");
+  return proxyJson("/api/websites", req, 120000);
 }
 
 export async function PUT(req: Request) {
-  return proxy(req, "/api/websites");
+  return proxyJson("/api/websites", req, 120000);
 }
 
 export async function PATCH(req: Request) {
-  return proxy(req, "/api/websites");
+  return proxyJson("/api/websites", req, 120000);
 }
 
 export async function DELETE(req: Request) {
-  return proxy(req, "/api/websites");
+  return proxyJson("/api/websites", req, 30000);
 }

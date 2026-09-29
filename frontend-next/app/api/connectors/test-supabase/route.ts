@@ -1,65 +1,51 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
+
+// Verify Supabase on the backend (REST reachability + table checks). A supplied
+// anon key alone is NOT proof of a working connection — the old handler returned
+// `connected: true` for any non-empty key, which is why "connected" showed while
+// real queries failed.
+const TIMEOUT_MS = 20000;
 
 export async function POST(req: Request) {
+  const raw = await req.text().catch(() => "");
+  let body: any = {};
   try {
-    const body = await req.json().catch(() => ({}));
-    const supabaseUrl = (body.supabase_url || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
-    const anonKey = (body.anon_key || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || "").trim();
+    body = raw ? JSON.parse(raw) : {};
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-    if (!supabaseUrl) {
-      return NextResponse.json(
-        { connected: false, error: "Supabase URL is required" },
-        { status: 400 }
-      );
-    }
-
-    // Try testing via backend first if configured and alive
-    const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
-    try {
-      const backendRes = await fetch(`${backendUrl}/api/connectors/test-supabase`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(4000),
-      });
-      if (backendRes.ok) {
-        const data = await backendRes.json();
-        return NextResponse.json(data);
-      }
-    } catch {
-      // Fallback to direct REST test below
-    }
-
-    // Direct Supabase REST health test
-    let restConnected = false;
-    try {
-      const cleanUrl = supabaseUrl.replace(/\/+$/, "");
-      const res = await fetch(`${cleanUrl}/rest/v1/`, {
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${anonKey}`,
-        },
-        signal: AbortSignal.timeout(6000),
-      });
-      if (res.status === 200 || res.status === 204) {
-        restConnected = true;
-      }
-    } catch {
-      restConnected = false;
-    }
-
-    return NextResponse.json({
-      connected: restConnected || Boolean(anonKey),
-      rest_connected: restConnected,
-      status: restConnected ? "success" : "configured",
-      message: restConnected
-        ? "Supabase REST connection verified successfully"
-        : "Supabase credentials received and stored",
-    });
+  let res: Response;
+  try {
+    res = await proxyToBackend("/api/connectors/test-supabase", req, TIMEOUT_MS, raw);
   } catch (err: any) {
+    const isTimeout =
+      err?.name === "TimeoutError" || String(err?.message || "").toLowerCase().includes("timed out");
     return NextResponse.json(
-      { connected: false, error: err.message || "Failed to test Supabase" },
-      { status: 500 }
+      {
+        connected: false,
+        status: "unknown",
+        error: isTimeout
+          ? "Supabase validation timed out. Check the URL/key and try again."
+          : "Backend unreachable — could not validate Supabase.",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: isTimeout ? 504 : 502 }
     );
   }
+
+  const text = await res.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { detail: text };
+  }
+
+  if (!res.ok) {
+    return NextResponse.json(data ?? { connected: false }, { status: res.status });
+  }
+  return NextResponse.json(data);
 }

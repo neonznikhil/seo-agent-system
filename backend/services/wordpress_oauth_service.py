@@ -389,17 +389,18 @@ async def disconnect_oauth(website_id: str, user_id: str) -> None:
 
 
 async def get_oauth_status(website_id: str, user_id: str) -> Dict[str, Any]:
-    supabase = get_supabase()
-    result = (
-        supabase.table("wordpress_oauth_tokens")
+    from utils.safe_query import safe_rows
+
+    result = safe_rows(
+        lambda sb: sb.table("wordpress_oauth_tokens")
         .select("*")
         .eq("website_id", website_id)
         .eq("user_id", user_id)
         .eq("is_connected", True)
         .order("connected_at", desc=True)
         .limit(1)
-        .execute()
-        .data
+        .execute(),
+        label="wordpress_oauth.status",
     )
 
     if not result:

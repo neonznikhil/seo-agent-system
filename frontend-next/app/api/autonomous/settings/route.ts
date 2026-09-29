@@ -1,49 +1,41 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
 
-export async function GET() {
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
+const TIMEOUT_MS = 20000;
+
+async function handle(req: Request) {
   try {
-    const res = await fetch(`${backendUrl}/api/autonomous/settings`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
+    const res = await proxyToBackend("/api/autonomous/settings", req, TIMEOUT_MS);
+    const text = await res.text().catch(() => "");
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { detail: text };
     }
-  } catch {
-    // Fall through
+    return NextResponse.json(data ?? { success: false }, { status: res.status });
+  } catch (err: any) {
+    // HONEST FALLBACK: backend unreachable means publishing state is UNKNOWN.
+    return NextResponse.json(
+      {
+        auto_publish: false,
+        auto_generate: false,
+        auto_refresh: false,
+        connected: false,
+        success: false,
+        error: "Backend unreachable — settings state unknown",
+        detail: err?.message || String(err),
+        backend: BACKEND_URL,
+      },
+      { status: 502 }
+    );
   }
+}
 
-  // HONEST FALLBACK: backend unreachable means publishing state is UNKNOWN.
-  // Never default auto_publish to true — drafts-only is the safe default.
-  return NextResponse.json({
-    auto_publish: false,
-    auto_generate: false,
-    auto_refresh: false,
-    connected: false,
-  });
+export async function GET(req: Request) {
+  return handle(req);
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
-  try {
-    const res = await fetch(`${backendUrl}/api/autonomous/settings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
-  }
-
-  return NextResponse.json({
-    success: true,
-    ...body,
-  });
+  return handle(req);
 }

@@ -24,19 +24,73 @@ def _chunks(lst: List[Any], n: int):
         yield lst[i : i + n]
 
 
+def _extract_internal_links(soup: BeautifulSoup, base_url: str, parsed_domain: str) -> List[Dict[str, str]]:
+    links: List[Dict[str, str]] = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("/"):
+            href = urljoin(base_url, href)
+        if href.startswith("http") and urlparse(href).netloc.lower() == parsed_domain:
+            links.append({"to": href, "anchor": a.get_text(strip=True)})
+    return links
+
+
+async def _crawl_pages_fallback(sitemap_urls: List[str], parsed_domain: str) -> List[Dict[str, Any]]:
+    """Dependency-free crawler used when crawlee is unavailable."""
+    import httpx
+
+    pages: List[Dict[str, Any]] = []
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        for url in sitemap_urls:
+            if _is_url_blocked(url):
+                continue
+            try:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    continue
+                soup = BeautifulSoup(resp.text, "html.parser")
+                title = soup.title.string.strip() if soup.title and soup.title.string else ""
+                text = soup.get_text(separator=" ", strip=True)
+                pages.append(
+                    {
+                        "url": url,
+                        "title": title,
+                        "word_count": len(text.split()),
+                        "links": _extract_internal_links(soup, url, parsed_domain),
+                    }
+                )
+            except Exception as exc:
+                logger.debug("Fallback crawl skipped %s: %s", url, exc)
+    return pages
+
+
 async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
-    supabase = get_supabase()
-    website = (
-        supabase.table("websites")
-        .select("domain,cms_url")
-        .eq("id", website_id)
-        .single()
-        .execute()
-        .data
-        or {}
-    )
+    website: Dict[str, Any] = {}
+    try:
+        supabase = get_supabase()
+        website = (
+            supabase.table("websites")
+            .select("domain,cms_url")
+            .eq("id", website_id)
+            .single()
+            .execute()
+            .data
+            or {}
+        )
+    except Exception as exc:
+        # Fall back to the durable local website record so an unreachable
+        # database does not turn the crawl into a 500.
+        logger.warning("websites read failed, using local store: %s", exc)
+        try:
+            from services.local_store import get_local_website
+
+            local = get_local_website(website_id) or {}
+            website = {"domain": local.get("domain"), "cms_url": local.get("cms_url") or local.get("url")}
+        except Exception as local_exc:
+            logger.debug("Local website note: %s", local_exc)
+
     cms_url = website.get("cms_url") or f"https://{website.get('domain', '')}"
-    if not cms_url:
+    if not cms_url or cms_url == "https://":
         return {"nodes": [], "edges": [], "orphans": []}
 
     parsed_domain = urlparse(cms_url).netloc.lower()
@@ -60,40 +114,38 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
     if not sitemap_urls:
         return {"nodes": [], "edges": [], "orphans": []}
 
-    from crawlee.crawlers import BeautifulSoupCrawler
-
-    crawler = BeautifulSoupCrawler(max_requests_per_crawl=min(len(sitemap_urls), 100))
     pages: List[Dict[str, Any]] = []
-
-    @crawler.router.default_handler
-    async def handler(context):
-        if _is_url_blocked(context.request.url):
-            return
-        soup = context.soup
-        url = context.request.url
-        title = soup.title.string.strip() if soup.title and soup.title.string else ""
-        text = soup.get_text(separator=" ", strip=True)
-        word_count = len(text.split())
-        internal_links = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.startswith("/"):
-                href = urljoin(url, href)
-            if href.startswith("http") and urlparse(href).netloc.lower() == parsed_domain:
-                internal_links.append({"to": href, "anchor": a.get_text(strip=True)})
-        pages.append(
-            {
-                "url": url,
-                "title": title,
-                "word_count": word_count,
-                "links": internal_links,
-            }
-        )
-
     try:
+        from crawlee.crawlers import BeautifulSoupCrawler
+
+        crawler = BeautifulSoupCrawler(max_requests_per_crawl=min(len(sitemap_urls), 100))
+
+        @crawler.router.default_handler
+        async def handler(context):
+            if _is_url_blocked(context.request.url):
+                return
+            soup = context.soup
+            url = context.request.url
+            title = soup.title.string.strip() if soup.title and soup.title.string else ""
+            text = soup.get_text(separator=" ", strip=True)
+            pages.append(
+                {
+                    "url": url,
+                    "title": title,
+                    "word_count": len(text.split()),
+                    "links": _extract_internal_links(soup, url, parsed_domain),
+                }
+            )
+
         await crawler.run(sitemap_urls)
+    except ImportError:
+        # crawlee is optional; without it the graph endpoint used to 500. Fall
+        # back to a dependency-free crawler that returns the same page shape.
+        logger.warning("crawlee not installed — using fallback crawler")
+        pages = await _crawl_pages_fallback(sitemap_urls, parsed_domain)
     except Exception as exc:
         logger.error("Crawl failed: %s", exc)
+        pages = await _crawl_pages_fallback(sitemap_urls, parsed_domain)
 
     urls = list({p["url"] for p in pages})
     url_to_title = {p["url"]: p.get("title", "") for p in pages}
@@ -128,27 +180,32 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
     pagerank = nx.pagerank(G, alpha=0.85) if G.nodes else {}
     orphans = [u for u in urls if G.in_degree(u) == 0 and url_to_sessions.get(u, 0) > 50]
 
-    supabase.table("internal_link_graph").delete().eq("website_id", website_id).execute()
+    try:
+        supabase.table("internal_link_graph").delete().eq("website_id", website_id).execute()
 
-    graph_rows = []
-    for e in G.edges(data=True):
-        from_u, to_u, data = e
-        graph_rows.append(
-            {
-                "website_id": website_id,
-                "from_url": from_u,
-                "to_url": to_u,
-                "anchor_text": data.get("anchor"),
-                "pagerank_from": float(pagerank.get(from_u, 0.0)),
-                "pagerank_to": float(pagerank.get(to_u, 0.0)),
-                "sessions_from": int(url_to_sessions.get(from_u, 0)),
-                "is_orphan_target": to_u in orphans,
-                "crawled_at": datetime.utcnow().isoformat(),
-            }
-        )
+        graph_rows = []
+        for e in G.edges(data=True):
+            from_u, to_u, data = e
+            graph_rows.append(
+                {
+                    "website_id": website_id,
+                    "from_url": from_u,
+                    "to_url": to_u,
+                    "anchor_text": data.get("anchor"),
+                    "pagerank_from": float(pagerank.get(from_u, 0.0)),
+                    "pagerank_to": float(pagerank.get(to_u, 0.0)),
+                    "sessions_from": int(url_to_sessions.get(from_u, 0)),
+                    "is_orphan_target": to_u in orphans,
+                    "crawled_at": datetime.utcnow().isoformat(),
+                }
+            )
 
-    for chunk in _chunks(graph_rows, 500):
-        supabase.table("internal_link_graph").insert(chunk).execute()
+        for chunk in _chunks(graph_rows, 500):
+            supabase.table("internal_link_graph").insert(chunk).execute()
+    except Exception as exc:
+        # Persisting the graph is best-effort; the freshly built graph is still
+        # returned below so the UI is not blocked by a database outage.
+        logger.warning("internal_link_graph persistence failed: %s", exc)
 
     try:
         await report_problem(

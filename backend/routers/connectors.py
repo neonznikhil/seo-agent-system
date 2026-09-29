@@ -29,17 +29,66 @@ from auto_supabase import (
     build_db_url,
 )
 from services.website_service import get_default_website_id
+from services.connector_credentials import resolve_wp_username, is_placeholder_wp_username
 
 logger = logging.getLogger("backend.routers.connectors")
 router = APIRouter(tags=["connectors"])
 
 
+async def verify_nvidia_key(api_key: str, model: Optional[str] = None) -> tuple[bool, str, int]:
+    """Return (connected, message, models_count) for an NVIDIA NIM key.
+
+    GET /v1/models is a *public* catalog endpoint: it answers 200 even for an
+    invalid or missing key, so using it as the connectivity check reported every
+    key as "Connected". Only the authenticated chat-completions endpoint proves
+    a key works (401 = no key, 403 = rejected key, 200 = valid).
+    """
+    key = (api_key or "").strip()
+    if not key:
+        return False, "NVIDIA API key is required", 0
+
+    model_id = model or os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1,
+                },
+            )
+            if resp.status_code in (401, 403):
+                return False, "Invalid NVIDIA API key or unauthorized access", 0
+            if resp.status_code != 200:
+                return False, f"NVIDIA API request failed (HTTP {resp.status_code})", 0
+
+            models_count = 0
+            try:
+                models_resp = await client.get(
+                    "https://integrate.api.nvidia.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+                )
+                if models_resp.status_code == 200:
+                    models_count = len(models_resp.json().get("data", []) or [])
+            except Exception:
+                pass
+            return True, "NVIDIA NIM key verified", models_count
+    except httpx.TimeoutException:
+        return False, "Connection to NVIDIA NIM timed out", 0
+    except Exception as e:
+        logger.error(f"Error verifying NVIDIA API key: {e}")
+        return False, "Failed to reach NVIDIA. Please try again.", 0
+
+
 # ---------------------------------------------------------
 # Pydantic Request / Response Models
 # ---------------------------------------------------------
-
 class TestNvidiaRequest(BaseModel):
-    api_key: str = Field(..., description="NVIDIA NIM API Key starting with nvapi-")
+    # Optional so "Test" can verify the key already persisted in the backend env
+    # instead of 422-ing when the form field is empty.
+    api_key: Optional[str] = Field(None, description="NVIDIA NIM API Key starting with nvapi-")
 
 
 class SaveNvidiaRequest(BaseModel):
@@ -128,47 +177,37 @@ class SaveAllRequest(BaseModel):
 @router.post("/api/connectors/test-nvidia")
 @router.post("/connectors/test-nvidia")
 async def test_nvidia(payload: TestNvidiaRequest):
-    """Test NVIDIA NIM API key by querying the real models list."""
+    """Test NVIDIA NIM API key via the authenticated chat endpoint."""
     api_key = (payload.api_key or os.getenv("NVIDIA_API_KEY", "")).strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="NVIDIA API key is required")
 
-    url = "https://integrate.api.nvidia.com/v1/models"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
+    connected, message, models_count = await verify_nvidia_key(api_key)
+    if not connected:
+        status = 401 if "Invalid" in message or "unauthorized" in message.lower() else 502
+        raise HTTPException(status_code=status, detail=message)
 
+    models_list: List[str] = []
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
-            resp = await client.get(url, headers=headers)
-
-        if resp.status_code == 200:
-            data = resp.json()
-            models_list = [
-                m.get("id") for m in data.get("data", []) if isinstance(m, dict) and "id" in m
-            ]
-            return {
-                "connected": True,
-                "status": "success",
-                "message": f"Successfully connected to NVIDIA NIM ({len(models_list)} models available)",
-                "models_count": len(models_list),
-                "models": models_list[:25],
-            }
-        elif resp.status_code in (401, 403):
-            raise HTTPException(status_code=401, detail="Invalid NVIDIA API key or unauthorized access")
-        else:
-            raise HTTPException(
-                status_code=resp.status_code,
-                detail="NVIDIA API request failed. Please check your API key and try again.",
+            resp = await client.get(
+                "https://integrate.api.nvidia.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
             )
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Connection to NVIDIA NIM timed out after 12s")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error testing NVIDIA API: {e}")
-        raise HTTPException(status_code=500, detail="Failed to connect to NVIDIA. Please check your API key and try again.")
+        if resp.status_code == 200:
+            models_list = [
+                m.get("id") for m in resp.json().get("data", []) if isinstance(m, dict) and "id" in m
+            ]
+    except Exception:
+        pass
+
+    return {
+        "connected": True,
+        "status": "success",
+        "message": f"Successfully connected to NVIDIA NIM ({models_count} models available)",
+        "models_count": models_count,
+        "models": models_list[:25],
+    }
 
 
 @router.get("/api/connectors/nvidia/test")
@@ -200,7 +239,7 @@ async def test_nvidia_live():
 @router.post("/api/connectors/save-nvidia")
 @router.post("/connectors/save-nvidia")
 async def save_nvidia(payload: SaveNvidiaRequest):
-    """Persist NVIDIA NIM API key to backend environment."""
+    """Persist NVIDIA NIM API key and report live verification honestly."""
     api_key = payload.api_key.strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="API key cannot be empty")
@@ -212,10 +251,27 @@ async def save_nvidia(payload: SaveNvidiaRequest):
         reset_nim_availability()
     except Exception:
         pass
+    persisted = bool(res and (res.get("backend_env") or res.get("keys_set")))
+
+    # A write to .env only proves the string was stored, not that the key works.
+    # Probe the authenticated NIM endpoint so the UI never shows "Connected"
+    # for an invalid key.
+    connected, verify_message, _ = await verify_nvidia_key(api_key)
+
+    if persisted and connected:
+        message = "NVIDIA API Key saved and verified."
+    elif persisted:
+        message = (
+            f"NVIDIA API Key saved, but live verification failed. {verify_message}".strip()
+        )
+    else:
+        message = "NVIDIA API Key received but could not be written to the durable store"
+
     return {
-        "success": True,
-        "connected": True,
-        "message": "NVIDIA API Key successfully saved and configured",
+        "success": persisted,
+        "connected": connected,
+        "persisted": persisted,
+        "message": message,
         "env_updated": res,
     }
 
@@ -297,12 +353,21 @@ async def test_supabase(payload: TestSupabaseRequest):
         except Exception as e:
             logger.warning(f"Direct DB URL connection check failed: {e}")
 
+    # A non-empty anon key is NOT proof of a working connection. Only report
+    # connected when a real REST/DB probe succeeded, otherwise the UI shows a
+    # green "Connected" badge for a bogus URL and every later query fails.
+    connected = rest_connected or db_connected
     return {
-        "connected": rest_connected or db_connected or bool(anon_key),
+        "connected": connected,
         "rest_connected": rest_connected,
         "db_connected": db_connected,
-        "status": "success" if (rest_connected or db_connected) else "configured",
-        "message": f"Supabase connection verified (REST: {'OK' if rest_connected else 'Configured'}, Direct DB: {'OK' if db_connected else 'N/A'})",
+        "status": "success" if connected else "failed",
+        "message": (
+            f"Supabase connection verified (REST: {'OK' if rest_connected else 'Failed'}, "
+            f"Direct DB: {'OK' if db_connected else 'N/A'})"
+            if connected
+            else "Could not reach Supabase. Verify the project URL and anon key."
+        ),
     }
 
 
@@ -348,7 +413,12 @@ async def setup_supabase_endpoint(payload: SetupSupabaseRequest):
 async def wordpress_connect(payload: WordPressConnectRequest):
     """Backend proxy to test WordPress credentials without CORS issues, verifying user role & capability."""
     site_url = payload.site_url.strip().rstrip("/")
-    username = (payload.wp_username or payload.username or "nikhil_d").strip()
+    username = resolve_wp_username(payload.wp_username, payload.username)
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail="A real WordPress username is required (do not leave it blank or as 'nikhil_d').",
+        )
     password = (payload.wp_app_password or payload.app_password or "").strip()
 
     if not password or "•" in password:
@@ -459,8 +529,16 @@ async def wordpress_connect(payload: WordPressConnectRequest):
 async def wordpress_save(payload: WordPressSaveRequest):
     """Save WordPress credentials Fernet-encrypted into Supabase + environment."""
     site_url = payload.site_url.strip().rstrip("/")
-    username = (payload.wp_username or payload.username or "nikhil_d").strip()
+    username = resolve_wp_username(payload.wp_username, payload.username)
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail="A real WordPress username is required. The blank/placeholder value "
+                   "'nikhil_d' is no longer accepted — enter your actual WP user name.",
+        )
     password = (payload.wp_app_password or payload.app_password or "").strip().replace(" ", "")
+    if not password:
+        raise HTTPException(status_code=400, detail="WordPress application password is required")
 
     write_env_file(custom_keys={
         "WORDPRESS_SITE_URL": site_url,
@@ -615,15 +693,37 @@ async def test_serper(payload: Optional[TestSerperRequest] = None):
 @router.post("/api/connectors/save-serper")
 @router.post("/connectors/save-serper")
 async def save_serper(payload: TestSerperRequest):
-    """Test and persist Serper API key to environment and settings."""
+    """Persist the Serper API key durably, then verify it with a live query.
+
+    The key is written to the durable .env store independently of the live test,
+    so a network hiccup on the verification call never loses the user's key.
+    """
     key = (payload.api_key or "").strip()
-    if key:
+    if not key:
+        raise HTTPException(status_code=400, detail="Serper API Key is required")
+
+    persisted = False
+    try:
         os.environ["SERPER_API_KEY"] = key
-        try:
-            write_env_file(custom_keys={"SERPER_API_KEY": key})
-        except Exception:
-            pass
-    return await test_serper(payload)
+        res = write_env_file(custom_keys={"SERPER_API_KEY": key})
+        persisted = bool(res and (res.get("backend_env") or res.get("keys_set")))
+    except Exception as e:
+        logger.error(f"Failed to persist Serper key: {e}")
+
+    try:
+        result = await test_serper(TestSerperRequest(api_key=key))
+    except HTTPException as e:
+        return {
+            "success": persisted,
+            "connected": False,
+            "persisted": persisted,
+            "message": f"Serper key saved, but live verification failed: {e.detail}",
+            "results_count": 0,
+            "organic": [],
+        }
+    result["persisted"] = persisted
+    result["saved"] = persisted
+    return result
 
 
 # ---------------------------------------------------------
@@ -794,7 +894,14 @@ async def save_generic_connector(connector_name: str, payload: GenericConnectorS
 @router.post("/api/connectors/save-all")
 @router.post("/connectors/save-all")
 async def save_all_connectors(payload: SaveAllRequest):
-    """Save all integrations at once and write to .env."""
+    """Save all integrations at once.
+
+    Persistence is considered real only when the credentials are written to the
+    database-backed stores (Supabase row + durable local store) or, failing that,
+    to the .env file on disk. Ephemeral os.environ writes alone are not durable,
+    so the response reports exactly which sink succeeded instead of a blanket
+    "saved" that can hide a lost write.
+    """
     env_updates = {}
     if payload.nvidia_api_key:
         env_updates["NVIDIA_API_KEY"] = payload.nvidia_api_key.strip()
@@ -827,19 +934,49 @@ async def save_all_connectors(payload: SaveAllRequest):
     if payload.perplexity_api_key:
         env_updates["PERPLEXITY_API_KEY"] = payload.perplexity_api_key.strip()
 
+    persisted_keys: List[str] = []
+    env_file_written = False
     if env_updates:
-        write_env_file(custom_keys=env_updates)
-
-    # Save WP credentials if password provided
-    if payload.wordpress_site_url and payload.wordpress_username and payload.wordpress_app_password:
         try:
-            await wordpress_save(WordPressSaveRequest(
-                site_url=payload.wordpress_site_url,
-                wp_username=payload.wordpress_username,
-                wp_app_password=payload.wordpress_app_password,
-            ))
+            write_env_file(custom_keys=env_updates)
+            env_file_written = True
+            persisted_keys = list(env_updates.keys())
         except Exception as e:
-            logger.warning(f"Could not save WP credentials: {e}")
+            logger.error(f"Failed to persist connector credentials to .env: {e}")
+
+    # Non-secret settings already land in a durable local store.
+    try:
+        from services import local_store
+        local_store.set_local_connector_settings({
+            "gsc_property_url": payload.gsc_property_url,
+            "ga4_property_id": payload.ga4_property_id,
+            "slack_webhook_url": payload.slack_webhook_url,
+            "auto_publish": payload.auto_publish,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        logger.debug(f"Local connector settings note: {e}")
+
+    # Save WP credentials if password provided. A failure here (e.g. missing
+    # username) must be surfaced, not swallowed into a fake success.
+    wp_saved = False
+    wp_error: Optional[str] = None
+    if payload.wordpress_site_url and payload.wordpress_app_password:
+        if not resolve_wp_username(payload.wordpress_username):
+            wp_error = "WordPress username missing or placeholder — credentials not stored."
+        else:
+            try:
+                result = await wordpress_save(WordPressSaveRequest(
+                    site_url=payload.wordpress_site_url,
+                    wp_username=payload.wordpress_username,
+                    wp_app_password=payload.wordpress_app_password,
+                ))
+                wp_saved = bool(result.get("success"))
+            except HTTPException as e:
+                wp_error = str(e.detail)
+            except Exception as e:
+                wp_error = str(e)
+                logger.warning(f"Could not save WP credentials: {e}")
 
     # Update autonomous settings if toggled
     if payload.auto_publish is not None:
@@ -857,10 +994,32 @@ async def save_all_connectors(payload: SaveAllRequest):
         except Exception as e:
             logger.warning(f"Could not update autonomous settings: {e}")
 
+    if not env_updates and not wp_saved:
+        return {
+            "success": True,
+            "message": "No new credentials were provided — nothing to save.",
+            "updated_keys": [],
+            "persisted": False,
+            "env_file_written": False,
+            "wordpress_saved": False,
+        }
+
+    success = env_file_written or wp_saved
+    if wp_error:
+        message = f"Settings saved, but WordPress credentials were NOT stored: {wp_error}"
+    elif success:
+        message = "All credentials saved to the durable store."
+    else:
+        message = "Credentials could not be persisted (write failed). Check backend logs."
+
     return {
-        "success": True,
-        "message": "All credentials successfully saved and environment updated.",
-        "updated_keys": list(env_updates.keys()),
+        "success": success,
+        "message": message,
+        "updated_keys": persisted_keys,
+        "persisted": success,
+        "env_file_written": env_file_written,
+        "wordpress_saved": wp_saved,
+        "wordpress_error": wp_error,
     }
 
 

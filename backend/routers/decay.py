@@ -37,13 +37,25 @@ async def list_decay(website_id: Optional[str] = None, status: str = "detected")
     from database import get_supabase
     
     supabase = get_supabase()
-    q = supabase.table("content_decay_logs").select("*")
-    if website_id:
-        q = q.eq("website_id", website_id)
-    if status and status != "all":
-        q = q.eq("status", status)
-        
-    decay_logs = q.order("detected_at", desc=True).limit(50).execute().data or []
+    try:
+        q = supabase.table("content_decay_logs").select("*")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        if status and status != "all":
+            q = q.eq("status", status)
+
+        decay_logs = q.order("detected_at", desc=True).limit(50).execute().data or []
+    except Exception as e:
+        # Supabase unreachable must not 500 the list; there is no durable local
+        # decay table, so report an honest empty set with a reason.
+        logger.warning("content_decay_logs read failed: %s", e)
+        return {
+            "success": True,
+            "data": [],
+            "decay_logs": [],
+            "total": 0,
+            "note": "Decay data unavailable — database not reachable.",
+        }
 
     # Honest scoring only: rows missing a measured decay_percent are
     # returned with null score/severity instead of an invented 24.5.
@@ -98,18 +110,22 @@ async def queue_refresh(decay_id: str, website_id: str):
 @router.get("/decay/{website_id}/pipeline/{content_id}")
 async def get_refresh_pipeline(website_id: str, content_id: str):
     """Get full pipeline progress (111 steps) for refresh."""
-    from database import get_supabase
+    from utils.safe_query import safe_rows
+    logs = safe_rows(
+        lambda sb: sb.table("content_pipeline_logs").select("*").eq("content_id", content_id)
+        .eq("website_id", website_id).order("step_number").execute(),
+        label="decay.pipeline_logs",
+    )
+    expert_reviews = safe_rows(
+        lambda sb: sb.table("content_expert_reviews").select("*").eq("content_id", content_id).execute(),
+        label="decay.expert_reviews",
+    )
     
-    supabase = get_supabase()
-    logs = supabase.table("content_pipeline_logs").select("*").eq("content_id", content_id).eq("website_id", website_id).order("step_number").execute().data or []
-    
-    expert_reviews = supabase.table("content_expert_reviews").select("*").eq("content_id", content_id).execute().data or []
-    
-    from agents.pipeline_config import TOTAL_STEPS, PHASES
+    from agents.pipeline_config import TOTAL_STEPS, PIPELINE_PHASES
     completed_steps = len([l for l in logs if l.get("status") == "completed"])
     
     phase_progress = {}
-    for phase in PHASES:
+    for phase in PIPELINE_PHASES:
         phase_logs = [l for l in logs if l.get("phase") == phase["name"]]
         completed = len([l for l in phase_logs if l.get("status") == "completed"])
         phase_progress[phase["name"]] = {
@@ -176,14 +192,12 @@ async def approve_publish(decay_id: str, website_id: str, request: Request = Non
 @router.get("/decay/{website_id}/stats")
 async def decay_stats(website_id: str):
     """Get decay statistics."""
-    from database import get_supabase
-    
-    supabase = get_supabase()
-    
-    total = supabase.table("content_decay_logs").select("id").eq("website_id", website_id).execute().data or []
-    recent = supabase.table("content_decay_logs").select("id").eq("website_id", website_id).gte("detected_at", (datetime.utcnow() - __import__('datetime').timedelta(days=30)).isoformat()).execute().data or []
-    published = supabase.table("content_decay_logs").select("id").eq("website_id", website_id).eq("status", "published").execute().data or []
-    drafts = supabase.table("content_decay_logs").select("id").eq("website_id", website_id).eq("status", "draft_ready").execute().data or []
+    from utils.safe_query import safe_rows
+
+    total = safe_rows(lambda sb: sb.table("content_decay_logs").select("id").eq("website_id", website_id).execute(), label="decay.total")
+    recent = safe_rows(lambda sb: sb.table("content_decay_logs").select("id").eq("website_id", website_id).gte("detected_at", (datetime.utcnow() - __import__('datetime').timedelta(days=30)).isoformat()).execute(), label="decay.recent")
+    published = safe_rows(lambda sb: sb.table("content_decay_logs").select("id").eq("website_id", website_id).eq("status", "published").execute(), label="decay.published")
+    drafts = safe_rows(lambda sb: sb.table("content_decay_logs").select("id").eq("website_id", website_id).eq("status", "draft_ready").execute(), label="decay.drafts")
     
     return {
         "total_decayed": len(total),

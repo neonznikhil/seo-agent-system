@@ -132,20 +132,19 @@ async def reset_all_brain_memories(request: Request):
 @router.get("/api/brain/{website_id}/backlink-memories")
 async def get_backlink_memories(website_id: str, request: Request):
     account_id = get_current_account_id(request)
-    supabase = get_supabase()
-    set_account_context(supabase, account_id)
+    from utils.safe_query import safe_rows
 
-    memories = (
-        supabase.table("brain_memory")
-        .select("*")
-        .eq("website_id", website_id)
-        .eq("account_id", account_id)
-        .eq("source_type", "backlink")
-        .execute()
-        .data
-        or []
+    return safe_rows(
+        lambda sb: (
+            sb.table("brain_memory")
+            .select("*")
+            .eq("website_id", website_id)
+            .eq("account_id", account_id)
+            .eq("source_type", "backlink")
+            .execute()
+        ),
+        label="brain.backlink_memories",
     )
-    return memories
 
 
 @router.get("/brain/{website_id}/memory")
@@ -175,10 +174,15 @@ async def get_memories(
             min_confidence=min_confidence,
         )
     else:
-        q = supabase.table("brain_memory").select("*").eq("website_id", website_id).eq("account_id", account_id)
-        if memory_type:
-            q = q.eq("memory_type", memory_type)
-        memories = q.order("created_at", desc=True).limit(top_k).execute().data or []
+        from utils.safe_query import safe_rows
+
+        def _q(sb):
+            q = sb.table("brain_memory").select("*").eq("website_id", website_id).eq("account_id", account_id)
+            if memory_type:
+                q = q.eq("memory_type", memory_type)
+            return q.order("created_at", desc=True).limit(top_k).execute()
+
+        memories = safe_rows(_q, label="brain.memories")
 
     return memories
 

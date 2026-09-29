@@ -2,8 +2,6 @@
  * RankForge Open API Client & Fetch Wrapper.
  */
 
-const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 const API_TIMEOUT = 120000;
 
 export function buildUrl(path: string): string {
@@ -12,20 +10,22 @@ export function buildUrl(path: string): string {
   }
   let cleanPath = path.startsWith("/") ? path : `/${path}`;
 
-  // When running in browser on deployed domains, route through same-origin Next.js rewrites
-  // This completely eliminates CORS preflight issues
+  // In the browser, always call the same-origin Next.js proxy. The proxy owns
+  // the backend URL (BACKEND_URL) and forwards identity headers, so the browser
+  // never makes a cross-origin request and CORS can never break connectors.
+  // Previously this fell back to a direct http://127.0.0.1:8000 call whenever
+  // NEXT_PUBLIC_API_URL was unset, which failed CORS as soon as a website was
+  // connected and generation started.
   if (typeof window !== "undefined") {
-    const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (!isLocalhost) {
-      if (!cleanPath.startsWith("/api/") && cleanPath !== "/api") {
-        cleanPath = `/api${cleanPath}`;
-      }
-      return cleanPath;
+    if (!cleanPath.startsWith("/api/") && cleanPath !== "/api") {
+      cleanPath = `/api${cleanPath}`;
     }
+    return cleanPath;
   }
 
-  const rawBase = process.env.NEXT_PUBLIC_API_URL;
-  const base = (rawBase !== undefined ? rawBase : "http://127.0.0.1:8000").replace(/\/+$/, "");
+  // Server-side: resolve the backend base directly (same env the proxy uses).
+  const rawBase = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "";
+  const base = rawBase.replace(/\/+$/, "");
 
   if (!base) {
     if (!cleanPath.startsWith("/api/") && cleanPath !== "/api") {
@@ -87,8 +87,11 @@ export async function authFetch(
     });
     clearTimeout(timeout);
 
-    // Retry on 500 errors
-    if (!res.ok && res.status >= 500 && retryCount < 2) {
+    // Retry only idempotent methods on 5xx. Replaying a POST (e.g. creating a
+    // website) after an ambiguous failure would create duplicate resources.
+    const method = (options.method || "GET").toUpperCase();
+    const isIdempotent = method === "GET" || method === "HEAD" || method === "PUT" || method === "DELETE";
+    if (!res.ok && res.status >= 500 && isIdempotent && retryCount < 2) {
       await new Promise((r) => setTimeout(r, 600 * (retryCount + 1)));
       return authFetch(path, options, retryCount + 1);
     }
@@ -101,7 +104,9 @@ export async function authFetch(
                       String(error.message || "").toLowerCase().includes("abort") ||
                       String(error.message || "").toLowerCase().includes("signal");
 
-    if (!isAborted && retryCount < 2 && (error.name === "TypeError" || error.message?.includes("Failed to fetch"))) {
+    const method = (options.method || "GET").toUpperCase();
+    const isIdempotent = method === "GET" || method === "HEAD" || method === "PUT" || method === "DELETE";
+    if (!isAborted && isIdempotent && retryCount < 2 && (error.name === "TypeError" || error.message?.includes("Failed to fetch"))) {
       await new Promise((r) => setTimeout(r, 500));
       return authFetch(path, options, retryCount + 1);
     }

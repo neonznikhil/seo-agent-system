@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
@@ -298,9 +299,46 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SanitizeResponseMiddleware)
 
 
+from utils.errors import is_connectivity_error as _is_connectivity_error
+
+
+@app.exception_handler(FastAPIHTTPException)
+async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
+    """Reclassify a 500 whose cause is an unreachable dependency as a retryable 503.
+
+    Routes wrap DB failures in `HTTPException(500, str(e))`. Those are not bugs,
+    they are outages, so surface them honestly with Retry-After.
+    """
+    if exc.status_code >= 500 and _is_connectivity_error(Exception(str(exc.detail))):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "A required backend service (database or upstream API) is temporarily unavailable. Please retry shortly.",
+                "retryable": True,
+            },
+            headers={"Retry-After": "5"},
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=dict(getattr(exc, "headers", None) or {}),
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     correlation_id = log_server_error(exc, request, context="unhandled_exception")
+    if _is_connectivity_error(exc):
+        # Dependency is down, not a bug: report honestly and let the client retry.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "A required backend service (database or upstream API) is temporarily unavailable. Please retry shortly.",
+                "correlation_id": correlation_id,
+                "retryable": True,
+            },
+            headers={"X-Request-ID": correlation_id, "Retry-After": "5"},
+        )
     return JSONResponse(
         status_code=500,
         content={
@@ -693,13 +731,22 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
 async def get_blogs(request: Request, limit: int = 50, website_id: Optional[str] = None):
     """Fetch blog drafts and published articles from Supabase filtered by account_id."""
     account_id = get_current_account_id(request)
-    supabase = get_supabase()
-    set_account_context(supabase, account_id)
+    try:
+        supabase = get_supabase()
+        set_account_context(supabase, account_id)
 
-    q = supabase.table("content_log").select("*").eq("account_id", account_id)
-    if website_id:
-        q = q.eq("website_id", website_id)
-    return q.order("created_at", desc=True).limit(limit).execute().data or []
+        q = supabase.table("content_log").select("*").eq("account_id", account_id)
+        if website_id:
+            q = q.eq("website_id", website_id)
+        return q.order("created_at", desc=True).limit(limit).execute().data or []
+    except Exception as exc:
+        # Degrade to the durable local content store instead of 500ing when the
+        # database is unreachable, so drafts stay visible.
+        logger.warning("blogs read failed, using local store: %s", exc)
+        from services.local_store import list_local_content
+
+        rows = list_local_content(website_id)[:limit]
+        return rows
 
 
 @app.delete("/api/blogs/{blog_id}")

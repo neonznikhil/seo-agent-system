@@ -1,43 +1,15 @@
-import { NextResponse } from "next/server";
+import { proxyJson } from "../../_lib/proxy";
+
+// GET/PUT/DELETE all proxy to the backend with identity headers preserved and
+// the backend's real status passed through. The old GET used a 3s timeout and a
+// hardcoded public backend URL fallback; both are removed.
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = process.env.BACKEND_URL || "https://rankforge-backend-38mh.onrender.com";
-  try {
-    const res = await fetch(`${backendUrl}/api/websites/${id}`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch {
-    // Fall through
-  }
-
-  // HONEST: backend unreachable means the site is UNKNOWN, never a
-  // hardcoded demo site with invented stats.
-  return NextResponse.json(
-    {
-      error: "Backend unavailable — site data unknown",
-      connected: false,
-      id: id || null,
-      name: null,
-      domain: null,
-      url: null,
-      status: "unknown",
-      autonomous_mode: false,
-      health_score: null,
-      health_label: "No audit yet",
-      keywords_count: null,
-      articles_published: null,
-      created_at: null,
-    },
-    { status: 502 }
-  );
+  return proxyJson(`/api/websites/${encodeURIComponent(id)}`, req, 30000);
 }
 
 export async function PUT(
@@ -45,33 +17,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend-38mh.onrender.com")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/, "");
-  const body = await req.text().catch(() => undefined);
-  const headers: Record<string, string> = {};
-  req.headers.forEach((val, key) => {
-    if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
-      headers[key] = val;
-    }
-  });
-  try {
-    const res = await fetch(`${backendUrl}/api/websites/${id}`, {
-      method: "PUT",
-      headers,
-      body,
-      signal: AbortSignal.timeout(120000),
-    });
-    const text = await res.text().catch(() => "");
-    if (!text) return new NextResponse(null, { status: res.status });
-    try {
-      return NextResponse.json(JSON.parse(text), { status: res.status });
-    } catch {
-      return new NextResponse(text, { status: res.status });
-    }
-  } catch {
-    return NextResponse.json({ detail: "Backend unreachable" }, { status: 502 });
-  }
+  return proxyJson(`/api/websites/${encodeURIComponent(id)}`, req, 120000);
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  return proxyJson(`/api/websites/${encodeURIComponent(id)}`, req, 120000);
 }
 
 export async function DELETE(
@@ -79,29 +33,5 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "https://rankforge-backend-38mh.onrender.com")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/, "");
-  const headers: Record<string, string> = {};
-  req.headers.forEach((val, key) => {
-    if (!["host", "connection", "content-length", "expect"].includes(key.toLowerCase())) {
-      headers[key] = val;
-    }
-  });
-  try {
-    const res = await fetch(`${backendUrl}/api/websites/${id}`, {
-      method: "DELETE",
-      headers,
-      signal: AbortSignal.timeout(30000),
-    });
-    const text = await res.text().catch(() => "");
-    if (!text) return new NextResponse(null, { status: res.status });
-    try {
-      return NextResponse.json(JSON.parse(text), { status: res.status });
-    } catch {
-      return new NextResponse(text, { status: res.status });
-    }
-  } catch {
-    return NextResponse.json({ detail: "Backend unreachable" }, { status: 502 });
-  }
+  return proxyJson(`/api/websites/${encodeURIComponent(id)}`, req, 30000);
 }

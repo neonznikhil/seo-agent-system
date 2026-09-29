@@ -1,18 +1,11 @@
-import { NextResponse } from "next/server";
+import { proxyJson } from "../_lib/proxy";
 
-export async function GET() {
-  return NextResponse.json({
-    enabled: false,
-    mode: "production",
-    status: "ok",
-  });
+// Developer-mode flags live on the backend. This handler returned a static
+// {enabled:false} object, which shadowed the real endpoint.
+export async function GET(req: Request) {
+  return proxyJson("/api/developer-mode", req, 30000);
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  return NextResponse.json({
-    success: true,
-    enabled: Boolean(body.enabled),
-    mode: body.enabled ? "developer" : "production",
-  });
+  return proxyJson("/api/developer-mode", req, 30000);
 }

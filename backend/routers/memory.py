@@ -26,9 +26,20 @@ class MemoryUpsertIn(BaseModel):
 
 @router.get("/memory/{website_id}")
 async def get_memory(website_id: str):
-    kb = get_supabase().table("knowledge_base").select("*").eq("website_id", website_id).execute().data or []
-    tp = get_supabase().table("tone_profiles").select("*").eq("website_id", website_id).execute().data or []
-    thoughts = get_supabase().table("agent_thoughts").select("*").eq("website_id", website_id).order("created_at", desc=True).limit(50).execute().data or []
+    try:
+        supabase = get_supabase()
+        kb = supabase.table("knowledge_base").select("*").eq("website_id", website_id).execute().data or []
+        tp = supabase.table("tone_profiles").select("*").eq("website_id", website_id).execute().data or []
+        thoughts = supabase.table("agent_thoughts").select("*").eq("website_id", website_id).order("created_at", desc=True).limit(50).execute().data or []
+    except Exception as exc:
+        # Degrade to the durable local store rather than 500ing when the DB is
+        # unreachable.
+        logger.warning("memory read failed, using local store: %s", exc)
+        from services.local_store import list_local_knowledge, list_local_brain_memory
+
+        kb = list_local_knowledge(website_id)
+        tp = []
+        thoughts = list_local_brain_memory(website_id)
     return {
         "knowledge_base": kb,
         "tone_profiles": tp,
@@ -69,11 +80,20 @@ async def upsert_memory(body: MemoryUpsertIn):
 
 @router.get("/memory")
 async def list_memories(website_id: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200)):
-    q = get_supabase().table("agent_memory").select("*")
-    if website_id:
-        q = q.eq("website_id", website_id)
-    res = q.order("created_at", desc=True).limit(limit).execute()
-    return {"success": True, "data": res.data or []}
+    try:
+        q = get_supabase().table("agent_memory").select("*")
+        if website_id:
+            q = q.eq("website_id", website_id)
+        res = q.order("created_at", desc=True).limit(limit).execute()
+        return {"success": True, "data": res.data or []}
+    except Exception as exc:
+        # A Supabase outage must not turn the memory list into a 500 — fall back
+        # to the durable local store so indexed memories stay visible.
+        logger.warning("agent_memory read failed, using local store: %s", exc)
+        from services.local_store import list_local_brain_memory
+
+        rows = list_local_brain_memory(website_id)[:limit]
+        return {"success": True, "data": rows, "note": "served from local store"}
 
 
 @router.delete("/memory/{memory_id}")

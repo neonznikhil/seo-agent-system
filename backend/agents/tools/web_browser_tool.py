@@ -81,6 +81,11 @@ class WebBrowserTool(BaseTool):
 
         try:
             from playwright.sync_api import sync_playwright
+        except ImportError:
+            # playwright/chromium are optional heavy deps; fetch statically.
+            return self._httpx_fallback(url, extract)
+
+        try:
             from bs4 import BeautifulSoup
             import httpx
             
@@ -153,6 +158,46 @@ class WebBrowserTool(BaseTool):
                 "timestamp": datetime.utcnow().isoformat()
             }
         
+        return json.dumps(result)
+
+    def _httpx_fallback(self, url: str, extract: str = "content") -> str:
+        """Static fetch used when playwright/chromium is unavailable."""
+        import httpx
+        from bs4 import BeautifulSoup
+
+        result = {"url": url, "status": "success", "timestamp": datetime.utcnow().isoformat(), "data": {}}
+        try:
+            with httpx.Client(timeout=20, follow_redirects=True) as client:
+                resp = client.get(
+                    url, headers={"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"}
+                )
+            if resp.status_code != 200:
+                result["status"] = "error"
+                result["error"] = f"HTTP {resp.status_code}"
+                return json.dumps(result)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            if extract == "links":
+                result["data"]["links"] = [
+                    {"text": a.get_text(strip=True), "href": a["href"]}
+                    for a in soup.find_all("a", href=True)
+                ][:100]
+            elif extract == "images":
+                result["data"]["images"] = [
+                    {"alt": img.get("alt", ""), "src": img.get("src", "")}
+                    for img in soup.find_all("img")
+                ][:50]
+            elif extract == "tables":
+                result["data"]["tables"] = [
+                    [[c.get_text(strip=True) for c in row.find_all(["td", "th"])] for row in table.find_all("tr")]
+                    for table in soup.find_all("table")
+                ]
+            else:
+                result["data"]["content"] = soup.get_text(separator=" ", strip=True)[:50000]
+            result["source"] = "httpx_fallback"
+            _log_proof(self._website_id, self._agent_name, "web_browser", "httpx_fallback", f"url={url}")
+        except Exception as e:
+            result["status"] = "error"
+            result["error"] = str(e)
         return json.dumps(result)
 
 

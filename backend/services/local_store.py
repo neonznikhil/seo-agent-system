@@ -711,5 +711,31 @@ def list_local_keywords(website_id: Optional[str] = None, limit: int = 50) -> Li
     return items[:limit]
 
 
+# ============================================================================
+# CONNECTOR SETTINGS (non-secret durable fallback: GSC/GA4/Slack/auto-publish)
+# ============================================================================
+
+def set_local_connector_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge connector settings into a durable local JSON file.
+
+    Used so that saving GSC/GA4/Slack configuration survives even when Supabase
+    writes are unavailable. Values that are None are ignored so a partial save
+    never erases a previously stored setting.
+    """
+    current = _load_json("connector_settings.json")
+    current_dict = current[0] if current and isinstance(current, list) and current else {}
+    incoming = {k: v for k, v in (settings or {}).items() if v is not None}
+    updated = {**current_dict, **incoming, "updated_at": datetime.utcnow().isoformat()}
+    _save_json("connector_settings.json", [updated])
+    return updated
+
+
+def get_local_connector_settings() -> Dict[str, Any]:
+    current = _load_json("connector_settings.json")
+    if current and isinstance(current, list) and current:
+        return current[0]
+    return {}
+
+
 
 

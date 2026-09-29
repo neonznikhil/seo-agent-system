@@ -758,4 +758,5 @@ async def delete_approval(approval_id: str, request: Request):
         return {"success": True, "deleted_id": approval_id, "detail": "Approval item and draft deleted."}
     except Exception as e:
         logger.error(f"Failed to delete approval {approval_id}: {e}")
-        raise HTTPException(status_code=500, detail="Delete failed. Please try again.")
+        from utils.errors import raise_db_or_500
+        raise_db_or_500(e, "Delete failed. Please try again.")

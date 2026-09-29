@@ -1,6 +1,20 @@
-import { NextResponse } from "next/server";
-import { articlesStore } from "../../articles-store";
+import { proxyJson } from "../../../_lib/proxy";
 
-export async function GET() {
-  return NextResponse.json(articlesStore);
+// Real per-website writer content lives on the backend
+// (/api/writer/{website_id}/content). The old handler served an in-memory store.
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ website_id: string }> }
+) {
+  const { website_id } = await params;
+  const url = new URL(req.url);
+  return proxyJson(`/api/writer/${encodeURIComponent(website_id)}/content${url.search}`, req, 30000);
+}
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ website_id: string }> }
+) {
+  const { website_id } = await params;
+  return proxyJson(`/api/writer/${encodeURIComponent(website_id)}/content`, req, 60000);
 }

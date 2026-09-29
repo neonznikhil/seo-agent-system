@@ -75,15 +75,14 @@ class HomepageConfirmIn(BaseModel):
 
 @router.get("/proposals/{website_id}")
 async def list_proposals(website_id: str):
-    content_logs = (
-        get_supabase()
-        .table("content_log")
-        .select("id, title, content, status")
-        .eq("website_id", website_id)
-        .order("created_at", desc=True)
-        .execute()
+    from utils.safe_query import safe_rows
+
+    rows = safe_rows(
+        lambda sb: sb.table("content_log").select("id, title, content, status")
+        .eq("website_id", website_id).order("created_at", desc=True).execute(),
+        label="proposals.list",
     )
-    return {"proposals": content_logs.data or []}
+    return {"proposals": rows}
 
 
 @router.post("/proposals/{website_id}/approve/{proposal_id}")
@@ -337,15 +336,12 @@ async def post_feedback(content_log_id: str, body: RejectIn):
 
 @router.get("/critical-logs/{website_id}")
 async def critical_logs(website_id: str):
-    logs = (
-        get_supabase()
-        .table("critical_action_logs")
-        .select("*")
-        .eq("website_id", website_id)
-        .order("attempted_at", desc=True)
-        .limit(20)
-        .execute()
-        .data or []
+    from utils.safe_query import safe_rows
+
+    logs = safe_rows(
+        lambda sb: sb.table("critical_action_logs").select("*").eq("website_id", website_id)
+        .order("attempted_at", desc=True).limit(20).execute(),
+        label="proposals.critical_logs",
     )
     return {"logs": logs}
 

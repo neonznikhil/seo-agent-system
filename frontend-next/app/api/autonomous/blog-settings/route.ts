@@ -1,27 +1,17 @@
-import { NextResponse } from "next/server";
-import { getSchedule, updateSchedule } from "../schedule-store";
+import { proxyJson } from "../../_lib/proxy";
 
-export async function GET() {
-  const current = getSchedule();
-  return NextResponse.json(current);
+// Blog settings are persisted on the backend (per website/account). The old
+// in-memory handler shadowed it and returned defaults regardless of the real
+// saved values.
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  return proxyJson(`/api/autonomous/blog-settings${url.search}`, req, 30000);
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const updates: any = {};
-  if (body.daily_blog_target !== undefined) updates.daily_blog_target = Number(body.daily_blog_target);
-  if (body.auto_topic_selection !== undefined) updates.auto_topic_selection = Boolean(body.auto_topic_selection);
-  if (body.interval_minutes !== undefined) updates.generation_interval_minutes = Number(body.interval_minutes);
-  if (body.generation_interval_minutes !== undefined) updates.generation_interval_minutes = Number(body.generation_interval_minutes);
-
-  const updated = updateSchedule(updates);
-  return NextResponse.json({
-    success: true,
-    message: "Blog settings saved successfully",
-    ...updated,
-  });
+  return proxyJson("/api/autonomous/blog-settings", req, 30000);
 }
 
 export async function PUT(req: Request) {
-  return POST(req);
+  return proxyJson("/api/autonomous/blog-settings", req, 30000);
 }

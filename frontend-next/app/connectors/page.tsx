@@ -5,6 +5,10 @@ import Link from "next/link";
 import { get, post } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 import { saveWordPressForSite } from "@/lib/wordpress";
+import {
+  loadConnectorCredentials,
+  saveConnectorCredentials,
+} from "@/lib/credentials";
 
 const MASK = "••••••••••••••••••••••••";
 
@@ -96,35 +100,44 @@ export default function ConnectorsPage() {
 
   useEffect(() => {
     loadStatus();
-    try {
-      const stored = localStorage.getItem("rankforge_wp_credentials");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.site_url) setWpUrl(parsed.site_url);
-        if (parsed.username && parsed.username !== "admin") setWpUser(parsed.username);
-        else setWpUser("");
-        if (parsed.app_password) {
-          delete parsed.app_password;
-          try { localStorage.setItem("rankforge_wp_credentials", JSON.stringify(parsed)); } catch {}
-        }
-      } else {
-        // No stored URL: leave empty so the user must enter the real one.
-        setWpUrl("");
-        setWpUser("");
-      }
-    } catch {}
+    // Repopulate every connector input from the browser cache so the user does
+    // not have to paste the same keys on every visit.
+    const cached = loadConnectorCredentials();
+    if (cached.nvidia_api_key) setNvidiaKey(cached.nvidia_api_key);
+    if (cached.supabase_url) setSupabaseUrl(cached.supabase_url);
+    if (cached.supabase_anon_key) setSupabaseAnonKey(cached.supabase_anon_key);
+    if (cached.supabase_service_key) setSupabaseServiceKey(cached.supabase_service_key);
+    if (cached.supabase_db_password) setSupabaseDbPassword(cached.supabase_db_password);
+    if (cached.wordpress_site_url) setWpUrl(cached.wordpress_site_url);
+    if (cached.wordpress_username) setWpUser(cached.wordpress_username);
+    // Restore the saved app password too: it was persisted on save but never
+    // rehydrated, forcing users to paste it again on every visit.
+    if (cached.wordpress_app_password) setWpPass(cached.wordpress_app_password);
+    if (cached.serper_api_key) setSerperKey(cached.serper_api_key);
+    if (cached.gsc_property_url) setGscUrl(cached.gsc_property_url);
+    if (cached.gsc_credentials_json) setGscJson(cached.gsc_credentials_json);
+    if (cached.ga4_property_id) setGa4PropertyId(cached.ga4_property_id);
+    if (cached.ga4_credentials_json) setGa4Json(cached.ga4_credentials_json);
+    if (cached.slack_webhook_url) setSlackWebhook(cached.slack_webhook_url);
+    if (cached.openai_api_key) setOpenaiKey(cached.openai_api_key);
+    if (cached.perplexity_api_key) setPerplexityKey(cached.perplexity_api_key);
   }, [loadStatus]);
 
   // Test NVIDIA
   const handleTestNvidia = async () => {
     setNvidiaTesting(true);
     setErrorMsg(null);
+    // Cache before the network call: a failed/unreachable backend must never
+    // cost the user their typed key.
+    saveConnectorCredentials({ nvidia_api_key: nvidiaKey });
     try {
       const res = await post("/api/connectors/test-nvidia", { api_key: nvidiaKey });
       if (res.connected) {
         setNvidiaModels(res.models || []);
         showToast(`✓ NVIDIA NIM connected! ${res.models_count || 25} models available.`);
         loadStatus();
+      } else {
+        setErrorMsg(res.error || res.detail || "NVIDIA key could not be verified.");
       }
     } catch (e: any) {
       setErrorMsg(`NVIDIA Test Failed: ${e.message}`);
@@ -136,9 +149,20 @@ export default function ConnectorsPage() {
   // Save NVIDIA
   const handleSaveNvidia = async () => {
     if (!nvidiaKey.trim()) return;
+    // Cache first (see handleTestNvidia).
+    saveConnectorCredentials({ nvidia_api_key: nvidiaKey.trim() });
     try {
-      await post("/api/connectors/save-nvidia", { api_key: nvidiaKey.trim() });
-      showToast("✓ NVIDIA API Key saved to environment.");
+      const res = await post("/api/connectors/save-nvidia", { api_key: nvidiaKey.trim() });
+      if (res.success === false || res.persisted === false) {
+        setErrorMsg(res.error || res.detail || "NVIDIA key could not be saved.");
+        return;
+      }
+      // Stored is not the same as working — surface the backend's honest verdict.
+      if (res.connected === false) {
+        setErrorMsg(res.message || "NVIDIA key saved, but live verification failed.");
+      } else {
+        showToast("✓ NVIDIA API Key saved and verified.");
+      }
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`Save failed: ${e.message}`);
@@ -149,6 +173,14 @@ export default function ConnectorsPage() {
   const handleTestSupabase = async () => {
     setSupabaseTesting(true);
     setErrorMsg(null);
+    // Cache before the network call so a verification failure does not erase
+    // the credentials the user just typed.
+    saveConnectorCredentials({
+      supabase_url: supabaseUrl,
+      supabase_anon_key: supabaseAnonKey,
+      supabase_service_key: supabaseServiceKey,
+      supabase_db_password: supabaseDbPassword,
+    });
     try {
       const res = await post("/api/connectors/test-supabase", {
         supabase_url: supabaseUrl,
@@ -156,7 +188,11 @@ export default function ConnectorsPage() {
         service_key: supabaseServiceKey,
         db_password: supabaseDbPassword,
       });
-      showToast(res.message || "✓ Supabase connection verified!");
+      if (res.connected) {
+        showToast(res.message || "✓ Supabase connection verified!");
+      } else {
+        setErrorMsg(res.error || res.detail || res.message || "Supabase could not be verified.");
+      }
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`Supabase Test Failed: ${e.message}`);
@@ -169,6 +205,13 @@ export default function ConnectorsPage() {
   const handleSetupSupabase = async () => {
     setSupabaseSettingUp(true);
     setErrorMsg(null);
+    // Persist the credentials locally before the (slow) setup call.
+    saveConnectorCredentials({
+      supabase_url: supabaseUrl,
+      supabase_anon_key: supabaseAnonKey,
+      supabase_service_key: supabaseServiceKey,
+      supabase_db_password: supabaseDbPassword,
+    });
     try {
       const res = await post("/api/setup/supabase", {
         supabase_url: supabaseUrl,
@@ -190,16 +233,21 @@ export default function ConnectorsPage() {
     setWpTesting(true);
     setErrorMsg(null);
     try {
-      try {
-        localStorage.setItem(
-          "rankforge_wp_credentials",
-          JSON.stringify({ site_url: wpUrl, username: wpUser })
-        );
-      } catch {}
-      if (!websiteId) {
-        setErrorMsg("Select website in /websites first, then test.");
+      if (!wpUrl.trim() || !wpUser.trim() || !wpPass.trim()) {
+        setErrorMsg("Site URL, WordPress username, and App Password are all required.");
         return;
       }
+      if (!websiteId) {
+        setErrorMsg("Select a website in /websites first, then test.");
+        return;
+      }
+      // Cache first: a live test can fail (offline, wrong role) without meaning
+      // the user should have to retype their credentials next visit.
+      saveConnectorCredentials({
+        wordpress_site_url: wpUrl,
+        wordpress_username: wpUser,
+        wordpress_app_password: wpPass,
+      });
       const res = await saveWordPressForSite(websiteId, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
       if (res?.connected) {
         showToast(`✓ WordPress connected as ${res.wp_user || wpUser}`);
@@ -225,20 +273,25 @@ export default function ConnectorsPage() {
       return;
     }
     if (!websiteId) {
-      setErrorMsg("Select website in /websites first, then save.");
+      setErrorMsg("Select a website in /websites first, then save.");
       return;
     }
     setWpSaving(true);
     setErrorMsg(null);
+    // Persist locally before the network call so a failed verification (or an
+    // unreachable backend) never costs the user their typed credentials.
+    saveConnectorCredentials({
+      wordpress_site_url: wpUrl,
+      wordpress_username: wpUser,
+      wordpress_app_password: wpPass,
+    });
     try {
-      try {
-        localStorage.setItem(
-          "rankforge_wp_credentials",
-          JSON.stringify({ site_url: wpUrl, username: wpUser })
-        );
-      } catch {}
       const res = await saveWordPressForSite(websiteId, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
-      showToast(res?.connected ? `✓ WordPress connected as ${res.wp_user || wpUser}` : "✓ WordPress credentials saved. Check role if test failed.");
+      if (res?.connected) {
+        showToast(`✓ WordPress connected as ${res.wp_user || wpUser}`);
+      } else {
+        setErrorMsg(`WordPress saved, but verification failed: ${res?.message || "check role/credentials"}`);
+      }
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`WordPress Save Error: ${e.message}`);
@@ -256,12 +309,16 @@ export default function ConnectorsPage() {
     }
     setSerperTesting(true);
     setErrorMsg(null);
+    // Cache first so an invalid/rejected key is not lost on the next visit.
+    if (cleanKey) saveConnectorCredentials({ serper_api_key: cleanKey });
     try {
       const res = await post("/api/connectors/test-serper", { api_key: cleanKey || undefined });
       if (res.connected) {
         setSerperResults(res.organic || []);
         showToast(`✓ Serper.dev connected! ${res.results_count || 10} live Google SERP results retrieved.`);
         await loadStatus();
+      } else {
+        setErrorMsg(res.error || res.detail || res.message || "Serper key could not be verified.");
       }
     } catch (e: any) {
       setErrorMsg(`Serper Test Error: ${e.message || "Invalid Serper API key or network error"}`);
@@ -279,13 +336,22 @@ export default function ConnectorsPage() {
     }
     setSerperTesting(true);
     setErrorMsg(null);
+    // The key is durably stored on the backend; cache it in the browser too,
+    // before the call, so an unreachable backend does not lose it.
+    saveConnectorCredentials({ serper_api_key: cleanKey });
     try {
       const res = await post("/api/connectors/save-serper", { api_key: cleanKey });
-      if (res.connected) {
-        setSerperResults(res.organic || []);
-        showToast("✓ Serper API key verified and saved to environment!");
-        await loadStatus();
+      if (res.connected) setSerperResults(res.organic || []);
+      if (res.success === false || res.persisted === false) {
+        setErrorMsg(res.error || res.detail || res.message || "Serper key could not be saved.");
+        return;
       }
+      if (res.connected) {
+        showToast("✓ Serper API key verified and saved.");
+      } else {
+        setErrorMsg(res.message || "Serper key saved, but live verification failed.");
+      }
+      await loadStatus();
     } catch (e: any) {
       setErrorMsg(`Serper Save Error: ${e.message || "Invalid Serper API key"}`);
     } finally {
@@ -360,13 +426,7 @@ export default function ConnectorsPage() {
   // Save All Credentials
   const handleSaveAll = async () => {
     try {
-      try {
-        localStorage.setItem(
-          "rankforge_wp_credentials",
-          JSON.stringify({ site_url: wpUrl, username: wpUser })
-        );
-      } catch {}
-      await post("/api/connectors/save-all", {
+      const res = await post("/api/connectors/save-all", {
         nvidia_api_key: nvidiaKey || undefined,
         supabase_url: supabaseUrl || undefined,
         supabase_anon_key: supabaseAnonKey || undefined,
@@ -385,7 +445,37 @@ export default function ConnectorsPage() {
         perplexity_api_key: perplexityKey || undefined,
         auto_publish: autoPublish,
       });
-      showToast("✓ All credentials saved successfully to .env and database!");
+
+      if (res.success === false || res.persisted === false) {
+        setErrorMsg(res.wordpress_error || res.error || res.detail || res.message || "Credentials could not be saved.");
+        return;
+      }
+
+      // Cache every entry in the browser so the form is pre-filled next visit.
+      saveConnectorCredentials({
+        nvidia_api_key: nvidiaKey,
+        supabase_url: supabaseUrl,
+        supabase_anon_key: supabaseAnonKey,
+        supabase_service_key: supabaseServiceKey,
+        supabase_db_password: supabaseDbPassword,
+        wordpress_site_url: wpUrl,
+        wordpress_username: wpUser,
+        wordpress_app_password: wpPass,
+        serper_api_key: serperKey,
+        gsc_property_url: gscUrl,
+        gsc_credentials_json: gscJson,
+        ga4_property_id: ga4PropertyId,
+        ga4_credentials_json: ga4Json,
+        slack_webhook_url: slackWebhook,
+        openai_api_key: openaiKey,
+        perplexity_api_key: perplexityKey,
+      });
+
+      if (res.wordpress_error) {
+        setErrorMsg(res.wordpress_error);
+      } else {
+        showToast(res.message || "✓ All credentials saved.");
+      }
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`Save All Error: ${e.message}`);

@@ -35,3 +35,10 @@ langchain-nvidia-ai-endpoints>=0.3.0
 bleach>=6.1.0
 slowapi>=0.1.9
 tinyfish>=0.1.0
+
+# Optional crawlers. The backend degrades to an httpx/BeautifulSoup crawler and a
+# Serper-backed SERP when these are absent, so install them to enable JS-rendered
+# crawling and Google SERP scraping. `playwright install chromium` is also needed
+# for the PlaywrightCrawler path.
+crawlee>=0.6.0
+playwright>=1.40.0

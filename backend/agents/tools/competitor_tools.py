@@ -95,27 +95,49 @@ class CompetitorTools(BaseTool):
             pricing_page = comp.get("pricing_page_url") or f"https://{comp['competitor_domain']}/pricing"
             
             try:
-                from playwright.sync_api import sync_playwright
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
-                    page = browser.new_page()
-                    page.goto(pricing_page, wait_until="networkidle", timeout=30000)
-                    content = page.inner_text("body")[:5000]
-                    browser.close()
-                    
-                    content_hash = hash(content)
-                    
-                    existing = get_supabase().table("competitor_snapshots").select("content_hash").eq("competitor_id", comp["id"]).order("snapshot_at", desc=True).limit(1).execute().data
-                    
-                    if not existing or existing[0]["content_hash"] != str(content_hash):
-                        get_supabase().table("competitor_snapshots").insert({
-                            "competitor_id": comp["id"],
-                            "page_url": pricing_page,
-                            "content_hash": str(content_hash),
-                            "title": page.title(),
-                            "snapshot_at": datetime.utcnow()
-                        }).execute()
-                        scanned += 1
+                content = None
+                title = None
+                try:
+                    from playwright.sync_api import sync_playwright
+                except ImportError:
+                    # playwright/chromium optional: fall back to a static fetch.
+                    import httpx
+                    from bs4 import BeautifulSoup
+
+                    with httpx.Client(timeout=20, follow_redirects=True) as client:
+                        resp = client.get(
+                            pricing_page,
+                            headers={"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"},
+                        )
+                    if resp.status_code == 200:
+                        soup = BeautifulSoup(resp.text, "html.parser")
+                        content = soup.get_text(separator=" ", strip=True)[:5000]
+                        title = soup.title.string.strip() if soup.title and soup.title.string else None
+                else:
+                    with sync_playwright() as p:
+                        browser = p.chromium.launch(headless=True)
+                        page = browser.new_page()
+                        page.goto(pricing_page, wait_until="networkidle", timeout=30000)
+                        content = page.inner_text("body")[:5000]
+                        title = page.title()
+                        browser.close()
+
+                if content is None:
+                    continue
+
+                content_hash = hash(content)
+
+                existing = get_supabase().table("competitor_snapshots").select("content_hash").eq("competitor_id", comp["id"]).order("snapshot_at", desc=True).limit(1).execute().data
+
+                if not existing or existing[0]["content_hash"] != str(content_hash):
+                    get_supabase().table("competitor_snapshots").insert({
+                        "competitor_id": comp["id"],
+                        "page_url": pricing_page,
+                        "content_hash": str(content_hash),
+                        "title": title,
+                        "snapshot_at": datetime.utcnow()
+                    }).execute()
+                    scanned += 1
             except Exception as e:
                 logger.warning(f"Scan failed for {pricing_page}: {e}")
         

@@ -105,7 +105,11 @@ class CompetitorAnalysisTool(BaseTool):
         except Exception as e:
             logger.debug(f"[Competitor] provider fetch note {url}: {e}")
 
-        from playwright.sync_api import sync_playwright
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return self._httpx_analyze_fallback(url)
+
         from bs4 import BeautifulSoup
 
         result = {"url": url, "timestamp": datetime.utcnow().isoformat(), "source": "local_playwright"}
@@ -164,6 +168,42 @@ class CompetitorAnalysisTool(BaseTool):
         except Exception as e:
             result["error"] = str(e)
         
+        return result
+
+    def _httpx_analyze_fallback(self, url: str) -> Dict[str, Any]:
+        """Static competitor analysis used when playwright is unavailable."""
+        import httpx
+        from bs4 import BeautifulSoup
+
+        result = {"url": url, "timestamp": datetime.utcnow().isoformat(), "source": "httpx_fallback"}
+        try:
+            with httpx.Client(timeout=20, follow_redirects=True) as client:
+                resp = client.get(
+                    url, headers={"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"}
+                )
+            if resp.status_code != 200:
+                result["error"] = f"HTTP {resp.status_code}"
+                return result
+            soup = BeautifulSoup(resp.text, "html.parser")
+            content = soup.get_text(separator=" ", strip=True)
+            headings = [h.get_text(strip=True) for h in soup.find_all(["h1", "h2", "h3"])]
+            title_tag = soup.find("title")
+            meta_desc = soup.find("meta", attrs={"name": "description"})
+            result.update({
+                "title": title_tag.get_text(strip=True) if title_tag else "",
+                "meta_description": meta_desc.get("content", "") if meta_desc else "",
+                "h1": headings[0] if headings else "",
+                "content_length": len(content),
+                "word_count": len(content.split()),
+                "internal_links": len(soup.find_all("a", href=True)),
+                "images": len(soup.find_all("img")),
+                "headings": headings[:20],
+                "headings_structure": True,
+                "structured_data": "application/ld+json" in resp.text or "schema.org" in resp.text,
+                "last_analyzed": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            result["error"] = str(e)
         return result
 
     def _generate_insights(self, comparisons: List[Dict]) -> Dict[str, Any]:

@@ -1,19 +1,22 @@
-import { NextResponse } from "next/server";
-import { articlesStore } from "../writer/articles-store";
+import { proxyJson } from "../_lib/proxy";
 
-export async function GET() {
-  return NextResponse.json(
-    articlesStore.map((a) => ({
-      id: a.id,
-      title: a.title,
-      target_keyword: a.keyword,
-      status: a.status,
-      word_count: a.word_count,
-      seo_score: a.seo_score,
-      created_at: a.created_at,
-      url: a.wordpress_url,
-      wp_post_id: a.wp_post_id,
-      edit_url: a.edit_url,
-    }))
-  );
+// Real content listing lives on the backend (/api/content, Supabase-backed).
+// This handler previously returned an in-memory store, shadowing the backend.
+// GET and POST are both proxied so creation works too.
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  return proxyJson(`/api/content${url.search}`, req, 30000);
+}
+
+export async function POST(req: Request) {
+  return proxyJson("/api/content", req, 30000);
+}
+
+export async function PUT(req: Request) {
+  return proxyJson("/api/content", req, 30000);
+}
+
+export async function DELETE(req: Request) {
+  const url = new URL(req.url);
+  return proxyJson(`/api/content${url.search}`, req, 30000);
 }

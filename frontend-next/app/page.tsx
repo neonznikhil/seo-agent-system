@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { get, post, del } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
+import { loadConnectorCredentials, saveConnectorCredentials } from "@/lib/credentials";
 import { NetworkOverviewTable } from "@/components/NetworkOverviewTable";
 import { PrioritizedActionList } from "@/components/PrioritizedActionList";
 import { LeadAttributionCard } from "@/components/LeadAttributionCard";
@@ -365,19 +366,15 @@ export default function HomePage() {
     fetchBlogSettings();
     fetchReadinessCheck();
     try {
-      const stored = localStorage.getItem("rankforge_wp_credentials");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.app_password) {
-          delete parsed.app_password;
-          try { localStorage.setItem("rankforge_wp_credentials", JSON.stringify(parsed)); } catch {}
-        }
-        if (parsed.username && parsed.username !== "admin") {
-          setWpUser(parsed.username);
-        } else {
-          setWpUser("");
-        }
+      const cached = loadConnectorCredentials();
+      if (cached.wordpress_username && cached.wordpress_username !== "admin") {
+        setWpUser(cached.wordpress_username);
+      } else {
+        setWpUser("");
       }
+      // Rehydrate the saved app password so the user is not asked to paste it
+      // again after a reload.
+      if (cached.wordpress_app_password) setWpAppPass(cached.wordpress_app_password);
     } catch {}
   }, [fetchBlogSettings, fetchReadinessCheck]);
 
@@ -403,13 +400,11 @@ export default function HomePage() {
       if (res.connected) {
         setWpConnected(true);
         try {
-          localStorage.setItem(
-            "rankforge_wp_credentials",
-            JSON.stringify({
-              site_url: siteUrl,
-              username: targetUser,
-            })
-          );
+          saveConnectorCredentials({
+            wordpress_site_url: siteUrl,
+            wordpress_username: targetUser,
+            wordpress_app_password: wpAppPass.trim(),
+          });
         } catch {}
         showToast(`Connected to ${siteUrl} as ${targetUser}.`);
       } else {
@@ -436,8 +431,11 @@ export default function HomePage() {
     // Retrieve real WordPress credentials from localStorage if user entered them in /connectors
     let wpCreds: any = {};
     try {
-      const stored = localStorage.getItem("rankforge_wp_credentials");
-      if (stored) wpCreds = JSON.parse(stored);
+      const cached = loadConnectorCredentials();
+      wpCreds = {
+        site_url: cached.wordpress_site_url,
+        username: cached.wordpress_username,
+      };
     } catch {}
     if (!wpCreds.username || wpCreds.username === "admin") {
       wpCreds.username = wpUser.trim() || "";

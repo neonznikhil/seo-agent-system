@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { get, post, put, del } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
 import { saveWordPressForSite } from "@/lib/wordpress";
+import { loadConnectorCredentials, saveConnectorCredentials } from "@/lib/credentials";
 
 interface Website {
   id: string;
@@ -66,6 +67,14 @@ export default function WebsitesPage() {
 
   useEffect(() => {
     fetchWebsites();
+    // Pre-fill the WP credential fields from the browser cache so saved creds
+    // survive a reload instead of forcing a re-paste.
+    try {
+      const cached = loadConnectorCredentials();
+      if (cached.wordpress_username && cached.wordpress_username !== "admin") setWpUser(cached.wordpress_username);
+      if (cached.wordpress_app_password) setWpAppPass(cached.wordpress_app_password);
+      if (cached.wordpress_site_url) setCmsUrl(cached.wordpress_site_url);
+    } catch {}
   }, [fetchWebsites]);
 
   // Polling if any website is crawling + simulate progressive stage labels
@@ -137,6 +146,12 @@ export default function WebsitesPage() {
 
       const newId = res.id || (res.data && res.data[0]?.id);
       if (newId && wpUser.trim() && wpAppPass.trim()) {
+        // Cache WP creds in the browser so the user does not re-paste them next visit.
+        saveConnectorCredentials({
+          wordpress_site_url: payload.cms_url,
+          wordpress_username: wpUser.trim(),
+          wordpress_app_password: wpAppPass.trim(),
+        });
         // Also verify WP credentials immediately so /writer banner goes green
         try {
           await post(`/api/wordpress/${newId}/test`, {
@@ -180,6 +195,13 @@ export default function WebsitesPage() {
       setError(null);
       // Same canonical flow as /connectors: PUT websites + POST wordpress test
       const test = await saveWordPressForSite(id, { siteUrl, username: user, appPassword: pass });
+      // Persist to the browser cache even when live verification fails — the
+      // user should not have to retype the password to retry.
+      saveConnectorCredentials({
+        wordpress_site_url: siteUrl,
+        wordpress_username: user.trim(),
+        wordpress_app_password: pass.trim(),
+      });
       if (test.connected) {
         setNoticeMsg(`✓ WordPress connected as ${test.wp_user || user} — /writer will now show Connected`);
       } else {
