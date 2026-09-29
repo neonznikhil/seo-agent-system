@@ -12,7 +12,10 @@ from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger("backend.services.local_store")
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+DATA_DIR = os.getenv(
+    "RANKFORGE_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"),
+)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
@@ -664,6 +667,10 @@ def save_local_audit(audit: Dict[str, Any]) -> Dict[str, Any]:
     audits = _load_json("audits.json")
     audit_id = audit.get("id") or str(uuid.uuid4())
     audit["id"] = audit_id
+    # Ensure website scoping: without it a stored audit leaks into every other
+    # website's health/indexation view.
+    if "website_id" not in audit:
+        audit["website_id"] = audit.get("site_id") or audit.get("url") or "default"
     audit["created_at"] = audit.get("created_at") or datetime.utcnow().isoformat()
     audits.insert(0, audit)
     _save_json("audits.json", audits)

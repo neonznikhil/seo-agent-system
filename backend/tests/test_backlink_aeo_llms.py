@@ -33,7 +33,30 @@ async def test_backlink_opportunities_api():
 @pytest.mark.slow
 async def test_aeo_4_modules_and_schema():
     """Test AEO citation tracking, Share of Voice calculation, and Schema JSON-LD injection."""
-    aeo = AEOAgent()
+    # AEO now refuses to fabricate a Share-of-Voice for a site with no domain
+    # configured, so this test must connect a real site first.
+    from services.local_store import save_local_website
+    site_id = "aeo-test-site-001"
+    save_local_website({
+        "id": site_id,
+        "domain": "houston-injury-law.com",
+        "url": "https://houston-injury-law.com",
+        "business_name": "Houston Injury Law",
+    })
+    from services.local_store import save_local_content
+    save_local_content({
+        "id": "aeo-test-article-001",
+        "website_id": site_id,
+        "title": "How to Choose a Houston Car Accident Lawyer",
+        "keyword": "houston car accident lawyer",
+        "status": "published",
+        "content": "<h1>How to Choose a Houston Car Accident Lawyer</h1>" + (
+            "<p>A Houston car accident lawyer helps injured drivers recover medical costs, "
+            "lost wages, and pain-and-suffering damages after a collision. Texas follows a "
+            "modified comparative fault rule, so acting quickly preserves your claim.</p>"
+        ) * 40,
+    })
+    aeo = AEOAgent(website_id=site_id)
     
     # 1. Citation Tracking
     sov_data = await aeo.track_buyer_intent_queries([

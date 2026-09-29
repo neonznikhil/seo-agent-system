@@ -884,7 +884,10 @@ class WriterPipeline:
         if not self.supabase:
             return
 
-        self.supabase.table('content_pipeline_logs').insert(step_record).execute()
+        try:
+            self.supabase.table('content_pipeline_logs').insert(step_record).execute()
+        except Exception as e:
+            logger.debug(f"[agents_writer_agent] step log insert skipped: {e}")
 
     def _log_pipeline_start(self):
         """Initialize content_log entry with the real generated title and account_id."""
@@ -913,7 +916,18 @@ class WriterPipeline:
         if acc_id:
             insert_payload['account_id'] = acc_id
 
-        self.supabase.table('content_log').insert(insert_payload).execute()
+        # A Supabase hiccup here must not abort article generation: the pipeline
+        # previously died on an unguarded insert, discarding a fully-planned
+        # article. Persist to the local mirror so the run always has a record.
+        try:
+            self.supabase.table('content_log').insert(insert_payload).execute()
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] content_log insert failed, using local mirror: {e}")
+            try:
+                from services.local_store import save_local_content
+                save_local_content(dict(insert_payload))
+            except Exception as le:
+                logger.warning(f"[agents_writer_agent] local content mirror failed: {le}")
 
     VALID_CONTENT_LOG_COLS = {
         'id', 'website_id', 'title', 'content', 'status', 'keyword', 'use_case',
@@ -1741,19 +1755,38 @@ class WriterPipeline:
     # ==================== HELPER METHODS (Stubs / Extensible) ====================
 
     async def _fetch_website_knowledge(self) -> List[Dict]:
-        if not self.supabase: return []
-        result = self.supabase.table('website_knowledge').select('*').eq('website_id', self.website_id).limit(50).execute()
-        return result.data or []
+        rows = []
+        if self.supabase:
+            try:
+                result = self.supabase.table('website_knowledge').select('*').eq('website_id', self.website_id).limit(50).execute()
+                rows = result.data or []
+            except Exception as e:
+                logger.warning(f"[agents_writer_agent] website_knowledge read failed: {e}")
+        if not rows:
+            try:
+                from services.local_store import list_local_knowledge
+                rows = list_local_knowledge(self.website_id) or []
+            except Exception as e:
+                logger.debug(f"[agents_writer_agent] local knowledge fallback note: {e}")
+        return rows
 
     async def _fetch_knowledge_base(self) -> List[Dict]:
         if not self.supabase: return []
-        result = self.supabase.table('knowledge_base').select('*').limit(20).execute()
-        return result.data or []
+        try:
+            result = self.supabase.table('knowledge_base').select('*').limit(20).execute()
+            return result.data or []
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] knowledge_base read failed: {e}")
+            return []
 
     async def _fetch_gsc_keywords(self) -> List[Dict]:
         if not self.supabase: return []
-        result = self.supabase.table('gsc_keywords').select('*').eq('website_id', self.website_id).eq('is_active', True).execute()
-        return [k for k in (result.data or []) if k.get('impressions', 0) > 500]
+        try:
+            result = self.supabase.table('gsc_keywords').select('*').eq('website_id', self.website_id).eq('is_active', True).execute()
+            return [k for k in (result.data or []) if k.get('impressions', 0) > 500]
+        except Exception as e:
+            logger.warning(f"[agents_writer_agent] gsc_keywords read failed: {e}")
+            return []
 
     async def _score_business_potential(self, topic: str, kb: List[Dict]) -> int:
         from database import call_nim_llm
@@ -2090,14 +2123,17 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
     def _save_expert_reviews(self, reviews: Dict):
         if not self.supabase: return
         for name, data in reviews.items():
-            self.supabase.table('content_expert_reviews').insert({
-                'content_id': self.content_id,
-                'expert_name': name,
-                'score': data['score'],
-                'issues': data['issues'],
-                'passed': data['passed'],
-                'reviewed_at': datetime.now(timezone.utc).isoformat()
-            }).execute()
+            try:
+                self.supabase.table('content_expert_reviews').insert({
+                    'content_id': self.content_id,
+                    'expert_name': name,
+                    'score': data['score'],
+                    'issues': data['issues'],
+                    'passed': data['passed'],
+                    'reviewed_at': datetime.now(timezone.utc).isoformat()
+                }).execute()
+            except Exception as e:
+                logger.debug(f"[agents_writer_agent] expert review insert skipped: {e}")
 
     async def _load_content(self) -> str:
         return getattr(self, '_stored_content', '')
@@ -2700,7 +2736,10 @@ Return ONLY valid JSON: {{"score": 85, "issues": ["issue1"], "passed": true}}"""
 
     def update_content_log(self, **kwargs):
         if not self.supabase: return
-        self.supabase.table('content_log').update(kwargs).eq('id', self.content_id).execute()
+        try:
+            self.supabase.table('content_log').update(kwargs).eq('id', self.content_id).execute()
+        except Exception as e:
+            logger.debug(f"[agents_writer_agent] content_log update skipped: {e}")
 
 
 async def generate_content(website_id: str, topic: str, primary_keyword: str = None) -> Dict:

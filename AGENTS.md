@@ -72,3 +72,28 @@ unreachable backend never loses the user's typed credentials. Legacy key
 - Logging is configured once in `backend/main.py` via `logging.basicConfig`
   (`LOG_LEVEL` env, default INFO). Without it, background-job `logger.info` output is
   invisible because the root logger defaults to WARNING.
+
+## Network resilience (Supabase / LLM outages)
+The first-article pipeline (`agents/writer_agent.py`) previously **aborted whenever a
+single Supabase call failed** — a DNS blip discarded a fully-planned article. Rules:
+- Telemetry writes (`content_pipeline_logs`, `content_expert_reviews`, `content_log`
+  updates) are best-effort: wrap in try/except and log at debug. They must never raise.
+- Reads that feed generation (`_fetch_website_knowledge`, `_fetch_knowledge_base`,
+  `_fetch_gsc_keywords`) degrade gracefully: catch the error, fall back to the
+  local store (`services/local_store.py`), and return an empty list if all fail.
+- Any local-store fallback must be **outside** the remote `try/except`; if it sits
+  inside the same try block, an exception jumps past it and the fallback never runs
+  (this exact bug existed in `agents/aeo_agent.generate_and_inject_schema`).
+- `WriterPipeline(website_id=...)` takes **only** `website_id`; `topic` and
+  `primary_keyword` are arguments to `await generate(...)`. Passing `topic` to the
+  constructor raises `TypeError` (this silently killed onboarding article generation).
+
+## Sanitization
+- `backend/security.py::sanitize_html` uses `bleach.clean(..., css_sanitizer=CSSSanitizer(...))`
+  on bleach 6.x (the old `styles=` kwarg is gone). A regex fallback strips
+  `script/iframe/object/embed/applet/style/svg`, `on*` handlers and `javascript:` URIs.
+- `ALLOWED_HTML_TAGS` must never contain `script`, `style`, `svg` or `path` — bleach
+  only removes *disallowed* tags, so listing them lets XSS through.
+- `backend/middleware/sanitize_response.py` sanitizes **only** keys in
+  `HTML_FIELD_NAMES`; do not sanitize every HTML-looking string (it corrupts diffs
+  and code payloads).

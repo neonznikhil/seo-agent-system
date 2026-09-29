@@ -28,7 +28,10 @@ logger = logging.getLogger("backend.utils.job_queue")
 # before completion (the documented asyncio.create_task footgun).
 _INFLIGHT: set = set()
 
-_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+_DATA_DIR = os.getenv(
+    "RANKFORGE_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"),
+)
 os.makedirs(_DATA_DIR, exist_ok=True)
 _JOBS_FILE = os.path.join(_DATA_DIR, "background_jobs.json")
 

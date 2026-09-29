@@ -79,12 +79,13 @@ async def run_first_time_setup_pipeline(website_id: str, homepage_url: str) -> D
         nim_ok = await is_nim_available()
         if nim_ok:
             logger.info(f"[SetupPipeline] Phase 3/5: Generating first autonomous article for '{top_keyword}'...")
-            wp = WriterPipeline(
-                website_id=website_id,
-                topic=f"Complete Guide to {top_keyword.title()}",
-                primary_keyword=top_keyword,
-            )
-            draft_res = await wp.generate()
+            wp = WriterPipeline(website_id=website_id)
+            draft_topic = f"Complete Guide to {top_keyword.title()}"
+            draft_res = await wp.generate(topic=draft_topic, primary_keyword=top_keyword)
+            if draft_res.get("status") in ("failed", "blocked"):
+                raise ValueError(draft_res.get("error_message") or draft_res.get("reason") or "writer rejected topic")
+            if draft_res.get("status") == "skipped":
+                raise ValueError(draft_res.get("reason") or "writer skipped duplicate topic")
             article_title = draft_res.get("title", "")
             results["steps"]["writer"] = {
                 "status": "completed",
@@ -156,10 +157,14 @@ async def run_first_time_setup_pipeline(website_id: str, homepage_url: str) -> D
 def run_first_time_setup_bg(website_id: str, homepage_url: str) -> None:
     """Non-blocking background helper for FastAPI background_tasks."""
     import asyncio
+    from utils.job_queue import spawn_background
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            asyncio.create_task(run_first_time_setup_pipeline(website_id, homepage_url))
+            spawn_background(
+                run_first_time_setup_pipeline(website_id, homepage_url),
+                name=f"setup_pipeline:{website_id}",
+            )
         else:
             loop.run_until_complete(run_first_time_setup_pipeline(website_id, homepage_url))
     except Exception:

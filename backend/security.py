@@ -17,8 +17,10 @@ from typing import Any, Dict, Optional
 
 try:
     import bleach
+    from bleach.css_sanitizer import CSSSanitizer
 except ImportError:
     bleach = None
+    CSSSanitizer = None
 from cryptography.fernet import Fernet, MultiFernet, InvalidToken
 
 logger = logging.getLogger("backend.security")
@@ -229,7 +231,9 @@ ALLOWED_HTML_TAGS = [
     "figure", "figcaption",
     "dl", "dt", "dd",
     "sup", "sub",
-    "style", "script", "svg", "path", "button",
+    # Never allow script/style/svg/path here: bleach only strips *disallowed*
+    # tags, so listing them let <script> through (XSS).
+    "button",
 ]
 
 ALLOWED_HTML_ATTRIBUTES = {
@@ -275,31 +279,41 @@ ALLOWED_HTML_STYLES = [
 ]
 
 
+_CSS_SANITIZER = CSSSanitizer(allowed_css_properties=ALLOWED_HTML_STYLES) if CSSSanitizer else None
+
+
+def _regex_sanitize_html(html_content: str) -> str:
+    """Dependency-free fallback: strip script/iframe/object, event handlers, javascript: URIs."""
+    cleaned = re.sub(r"<(script|iframe|object|embed|applet|style|svg)[\s\S]*?/\1>", "", html_content, flags=re.I)
+    cleaned = re.sub(r"<(script|iframe|object|embed|applet|style|svg)[^>]*>", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\son\w+\s*=\s*(?:'[^']*'|\"[^\"]*\"|[^\s>]+)", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"javascript\s*:", "", cleaned, flags=re.I)
+    return cleaned
+
+
 def sanitize_html(html_content: str) -> str:
     """Sanitize HTML content to prevent XSS attacks.
 
     Uses bleach to strip dangerous tags/attributes while preserving safe formatting.
+    bleach >= 6 removed the ``styles`` keyword (CSS is now a separate `Cleaner`),
+    which previously raised TypeError here; the caller swallowed it and returned an
+    empty string, silently blanking every sanitized HTML field in API responses.
     """
     if not html_content or not isinstance(html_content, str):
         return ""
-    try:
-        if bleach:
-            cleaned = bleach.clean(
-                html_content,
-                tags=ALLOWED_HTML_TAGS,
-                attributes=ALLOWED_HTML_ATTRIBUTES,
-                styles=ALLOWED_HTML_STYLES,
-                strip=True,
-                strip_comments=True,
-            )
-            return cleaned
-        else:
-            # High-security regex fallback stripping script, iframe, object, event handlers, and javascript: URIs
-            cleaned = re.sub(r"<(script|iframe|object|embed|applet)[\s\S]*?/\1>", "", html_content, flags=re.I)
-            cleaned = re.sub(r"<(script|iframe|object|embed|applet)[^>]*>", "", cleaned, flags=re.I)
-            cleaned = re.sub(r"\son\w+\s*=\s*(?:'[^']*'|\"[^\"]*\"|[^\s>]+)", "", cleaned, flags=re.I)
-            cleaned = re.sub(r"javascript\s*:", "", cleaned, flags=re.I)
-            return cleaned
-    except Exception as e:
-        logger.warning(f"[Security] HTML sanitization failed: {e}")
-        return ""
+    if bleach:
+        kwargs = dict(
+            tags=ALLOWED_HTML_TAGS,
+            attributes=ALLOWED_HTML_ATTRIBUTES,
+            strip=True,
+            strip_comments=True,
+            css_sanitizer=_CSS_SANITIZER,
+        )
+        try:
+            return bleach.clean(html_content, styles=ALLOWED_HTML_STYLES, **kwargs)
+        except TypeError:
+            try:
+                return bleach.clean(html_content, **kwargs)
+            except Exception as e:
+                logger.warning(f"[Security] HTML sanitization failed: {e}")
+    return _regex_sanitize_html(html_content)

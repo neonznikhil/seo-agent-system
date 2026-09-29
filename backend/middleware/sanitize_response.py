@@ -5,7 +5,7 @@ Automatically sanitizes HTML fields in JSON responses to prevent XSS.
 
 import json
 import logging
-from typing import Callable, Dict, Any, List, Union
+from typing import Callable, Dict, Any, List, Optional, Union
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -28,18 +28,22 @@ HTML_FIELD_NAMES = {
 }
 
 
-def _sanitize_value(value: Any) -> Any:
-    """Recursively sanitize HTML strings in data structures."""
+def _sanitize_value(value: Any, key: Optional[str] = None) -> Any:
+    """Recursively sanitize HTML strings in data structures.
+
+    Only dict values whose key is in HTML_FIELD_NAMES are sanitized. Sanitizing
+    every HTML-looking string mangled non-HTML payloads (e.g. a unified diff whose
+    lines start with `<`), and any sanitizer error must never blank content.
+    """
     if isinstance(value, str):
-        # Only sanitize strings that look like HTML
-        if "<" in value and ">" in value and any(tag in value.lower() for tag in ["<p", "<div", "<span", "<h1", "<h2", "<h3", "<table", "<ul", "<ol", "<li", "<a", "<img", "<br", "<b", "<i", "<strong", "<em"]):
+        if key in HTML_FIELD_NAMES and "<" in value and ">" in value:
             from security import sanitize_html
             return sanitize_html(value)
         return value
     elif isinstance(value, dict):
-        return {k: _sanitize_value(v) for k, v in value.items()}
+        return {k: _sanitize_value(v, k) for k, v in value.items()}
     elif isinstance(value, list):
-        return [_sanitize_value(item) for item in value]
+        return [_sanitize_value(item, key) for item in value]
     return value
 
 

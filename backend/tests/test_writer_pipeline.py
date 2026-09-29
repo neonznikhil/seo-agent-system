@@ -44,3 +44,45 @@ Under Texas statute of limitations, claims must be filed within 2 years.
             assert "[TOPIC]" not in content
             assert "[KEYWORD]" not in content
 
+
+
+@pytest.mark.asyncio
+async def test_onboarding_calls_writer_with_correct_api():
+    """Regression: setup_pipeline previously built WriterPipeline(topic=..., primary_keyword=...),
+    which raised TypeError and killed first-article generation on every new connection."""
+    import inspect
+    from agents import setup_pipeline
+    source = inspect.getsource(setup_pipeline.run_first_time_setup_pipeline)
+    assert "WriterPipeline(website_id=website_id)" in source
+    ctor_args = source.split("WriterPipeline(")[1].split(")")[0]
+    assert "topic=" not in ctor_args, "topic must be passed to generate(), not the constructor"
+    assert ".generate(topic=" in source
+
+
+@pytest.mark.asyncio
+async def test_writer_survives_supabase_outage():
+    """A Supabase/network outage must not abort article generation.
+
+    The content_log insert and pipeline-log writes used to be unguarded, so one
+    DNS failure discarded a fully-planned article."""
+    from unittest.mock import patch, AsyncMock
+    from agents.writer_agent import WriterPipeline
+
+    def explode(*a, **k):
+        raise RuntimeError("network down")
+
+    mock_draft = "<h1>Title</h1>" + "<p>Grounded paragraph content.</p>" * 60
+    with patch("agents.writer_agent.WriterPipeline._phase_multi_step_content_writing",
+               new=AsyncMock(return_value={"content": mock_draft, "word_count": 1500})):
+        with patch("database.get_supabase") as mock_sup:
+            table = mock_sup.return_value.table.return_value
+            table.select.return_value.eq.return_value.execute.side_effect = explode
+            table.select.return_value.limit.return_value.execute.side_effect = explode
+            table.insert.return_value.execute.side_effect = explode
+            table.update.return_value.eq.return_value.execute.side_effect = explode
+
+            pipeline = WriterPipeline(website_id="outage-site")
+            pipeline.supabase = mock_sup.return_value
+            res = await pipeline.generate(topic="Emergency plumbing services guide",
+                                          primary_keyword="emergency plumbing services")
+    assert res is not None

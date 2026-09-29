@@ -263,24 +263,27 @@ class AEOAgent:
                             break
                     else:
                         row = None
-                # Local-store fallback: this deployment keeps the article
-                # corpus in local JSON (data/content_log.json) — use the
-                # latest substantial article the same way.
-                if not row or not (row.get("content") or "").strip():
-                    try:
-                        from services.local_store import list_local_content, list_local_approvals
-                        for cand in (list_local_content(self.website_id) or []) + (list_local_approvals(self.website_id) or []):
-                            text = cand.get("content") or cand.get("final_html") or cand.get("html") or ""
-                            title = (cand.get("title") or "")
-                            if text and len(text) > 500 and "draft:" not in title.lower():
-                                row = {"id": cand.get("id"), "title": title,
-                                       "content": text, "keyword": cand.get("keyword") or cand.get("topic") or "",
-                                       "website_id": self.website_id, "_local": True}
-                                break
-                    except Exception as e:
-                        logger.debug(f"[AEO] local article fallback note: {e}")
         except Exception as e:
+            # A Supabase outage must not skip the local-corpus fallback below —
+            # the previous code let the exception jump straight past it.
             logger.warning(f"[AEO] article lookup failed: {e}")
+
+        # Local-store fallback: this deployment keeps the article corpus in
+        # local JSON (data/content_log.json) — use the latest substantial
+        # article the same way. Runs whenever the remote lookup found nothing.
+        if not row or not (row.get("content") or "").strip():
+            try:
+                from services.local_store import list_local_content, list_local_approvals
+                for cand in (list_local_content(self.website_id) or []) + (list_local_approvals(self.website_id) or []):
+                    text = cand.get("content") or cand.get("final_html") or cand.get("html") or ""
+                    title = (cand.get("title") or "")
+                    if text and len(text) > 500 and "draft:" not in title.lower():
+                        row = {"id": cand.get("id"), "title": title,
+                               "content": text, "keyword": cand.get("keyword") or cand.get("topic") or "",
+                               "website_id": self.website_id, "_local": True}
+                        break
+            except Exception as e:
+                logger.debug(f"[AEO] local article fallback note: {e}")
 
         if not row or not (row.get("content") or "").strip():
             return {"error": "article_missing", "fallback_used": True,
