@@ -232,6 +232,28 @@ the user their typed creds, then repopulate on mount.
   are the frontend gates.
 
 ## Latency / event-loop (the "connect a site and everything breaks" report)
+- **Event-loop starvation is the other half of this bug** (fixed after the JSON
+  mirror work above). `supabase-py` is synchronous, so *any* inline
+  `.execute()` inside an `async def` handler blocks the whole API loop; one slow
+  query then stalls every concurrent request (topbar health, website list,
+  connector status). Two rules:
+  1. In an `async` handler, never call `.execute()` directly — await
+     `database.execute_db(query)` (or `to_thread(...)`).
+  2. Never run automation on the API loop. `services/background_runtime.py`
+     owns a dedicated event loop for APScheduler, the autonomous health poller
+     and the continuous monitors; `main.py`'s lifespan only starts/stops it.
+- `get_default_website_id()` is a synchronous Supabase round-trip used by many
+  polled endpoints. It is now TTL-cached (10s) and has an async sibling
+  `get_default_website_id_async()` for `async def` callers. Create/delete of a
+  website calls `invalidate_default_website_cache()`. Prefer passing an explicit
+  `website_id` over relying on the default.
+- Website creation must schedule onboarding + auto-crawl on the automation loop
+  (`background_runtime.submit_background`), **not** FastAPI `BackgroundTasks` —
+  those run on the API loop right after the response, i.e. exactly when the UI
+  starts polling, so the app appeared to hang the moment a site was connected.
+- Measured: 18 concurrent mixed requests complete in ~2.6s (was 17-40s);
+  `/api/health` stays ~3ms under load. Health is a read-only env check and must
+  never do network I/O.
 - Root cause was **not** the event loop but the local JSON mirror: a crawl calls
   `save_local_knowledge()` per chunk, and the old read-whole-file/write-whole-file
   turned a 101 MB `data/knowledge_base.json` into ~60s of blocking I/O per crawl.
