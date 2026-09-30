@@ -99,22 +99,14 @@ class GA4Service:
             creds = self._load_oauth_credentials()
             
             if not creds:
-                cred_path = self.credentials_path or os.getenv("GA4_CREDENTIALS_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-                cred_json = os.getenv("GA4_CREDENTIALS") or os.getenv("GSC_CREDENTIALS")
-                
-                if cred_path and os.path.exists(cred_path):
-                    creds = service_account.Credentials.from_service_account_file(
-                        cred_path,
-                        scopes=['https://www.googleapis.com/auth/analytics.readonly']
-                    )
-                elif cred_json:
-                    info = json.loads(cred_json) if isinstance(cred_json, str) else cred_json
-                    creds = service_account.Credentials.from_service_account_info(
-                        info,
-                        scopes=['https://www.googleapis.com/auth/analytics.readonly']
-                    )
-                else:
-                    raise ValueError("GA4 credentials not configured (neither OAuth nor service account found)")
+                # The Connectors UI saves the pasted service-account JSON as
+                # GA4_CREDENTIALS_JSON; the helper accepts a file path or JSON.
+                creds = load_service_account_credentials(
+                    scopes=_GA4_SCOPES,
+                    candidates=[self.credentials_path],
+                    json_env_keys=_GA4_JSON_KEYS,
+                    path_env_keys=_GA4_PATH_KEYS,
+                )
             
             self._credentials = creds
             self._service = build('analyticsdata', 'v1beta', credentials=self._credentials)
@@ -128,14 +120,14 @@ class GA4Service:
             raise
     
     def is_connected(self) -> bool:
-        """Check if GA4 is configured."""
-        has_creds = bool(
-            self.credentials_path 
-            or os.getenv("GA4_CREDENTIALS")
-            or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-            or self._has_oauth_tokens()
+        """Check if GA4 is configured via OAuth or service-account credentials."""
+        if self._has_oauth_tokens():
+            return bool(self.property_id)
+        return bool(self.property_id) and has_service_account_credentials(
+            candidates=[self.credentials_path],
+            json_env_keys=_GA4_JSON_KEYS,
+            path_env_keys=_GA4_PATH_KEYS,
         )
-        return bool(self.property_id and has_creds)
     
     async def get_page_traffic(self, 
                                start_date: str = None,
