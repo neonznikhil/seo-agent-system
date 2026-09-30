@@ -121,11 +121,32 @@ export async function authFetch(
   }
 }
 
+function readableErrorDetail(errorText: string, statusText: string): string {
+  // The backend returns JSON like {"error":"...","detail":"..."}; showing that
+  // raw to the user (e.g. `API 502: {"error":"Backend unreachable",...}`) is
+  // unreadable. Extract the human sentence, falling back to raw text.
+  const raw = (errorText || "").trim();
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw);
+      const detail = parsed.detail ?? parsed.error ?? parsed.message;
+      if (typeof detail === "string" && detail.trim()) return detail.trim();
+      if (Array.isArray(parsed.detail) && parsed.detail[0]?.msg) return String(parsed.detail[0].msg);
+    } catch {
+      /* not JSON — fall through to raw */
+    }
+  }
+  return raw || statusText;
+}
+
 function apiError(status: number, errorText: string, statusText: string): Error {
+  const detail = readableErrorDetail(errorText, statusText);
   const msg =
     status === 429
       ? "Too many requests (429) — backend waking or busy. Wait 30 seconds, then retry once."
-      : `API ${status}: ${errorText || statusText}`;
+      : status === 502 || status === 504
+      ? `Cannot reach the RankForge backend (${status}). ${detail}`
+      : `API ${status}: ${detail}`;
   const error = new Error(msg);
   (error as any).status = status;
   return error;
@@ -198,9 +219,7 @@ export async function del(path: string, headers: Record<string, string> = {}) {
   const res = await authFetch(path, { method: "DELETE", headers });
   if (!res.ok) {
     const errorText = await res.text().catch(() => "");
-    const error = new Error(`API ${res.status}: ${errorText || res.statusText}`);
-    (error as any).status = res.status;
-    throw error;
+    throw apiError(res.status, errorText, res.statusText);
   }
   return await res.json();
 }

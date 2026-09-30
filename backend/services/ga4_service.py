@@ -5,7 +5,17 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
+from services.google_credentials import (
+    GoogleCredentialsError,
+    has_service_account_credentials,
+    load_service_account_credentials,
+)
+
 logger = logging.getLogger("backend.services.ga4_service")
+
+_GA4_SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
+_GA4_JSON_KEYS = ["GA4_CREDENTIALS_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON"]
+_GA4_PATH_KEYS = ["GA4_CREDENTIALS_PATH", "GOOGLE_APPLICATION_CREDENTIALS"]
 
 
 class GA4Service:
@@ -84,7 +94,6 @@ class GA4Service:
             return
         
         try:
-            from google.oauth2 import service_account
             from googleapiclient.discovery import build
 
             creds = self._load_oauth_credentials()

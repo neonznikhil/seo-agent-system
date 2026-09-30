@@ -1,6 +1,6 @@
 import { proxyJson } from "../../_lib/proxy";
 
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 30000;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

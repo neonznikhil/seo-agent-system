@@ -4,7 +4,7 @@ import { buildBackendUrl, BACKEND_URL, forwardHeaders } from "../../_lib/proxy";
 // Previously this route hardcoded a public production backend and, on any
 // failure, returned fabricated scheduler data with `running: true`. That made
 // the dashboard show a healthy scheduler while the real one was unreachable.
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 30000;
 
 export async function GET(req: Request) {
   try {

@@ -6,6 +6,7 @@ maintains brain_memory integration, and runs continuous monitoring loops.
 import os
 import logging
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
@@ -45,6 +46,12 @@ except (ImportError, ValueError):
         )
 
 logger = logging.getLogger("backend.agents.scheduler")
+
+# Guard state for trigger_auto_crawl: at most one crawl per website, and not
+# more often than the cooldown, so a short-interval job cannot stack crawls.
+_CRAWL_IN_FLIGHT: set = set()
+_LAST_CRAWL_AT: Dict[str, float] = {}
+_CRAWL_COOLDOWN_SEC = 1800
 
 IST = "Asia/Kolkata"
 scheduler = AsyncIOScheduler(timezone=IST)
@@ -115,12 +122,19 @@ async def job_business_website_watch(website_id: Optional[str] = None):
         engine = AutonomousDecisionEngine(website_id=target_id)
         _add_log(job_name, "running", f"KnowledgeAgent scanning sitemap on {target_id}")
         try:
+            # Dispatch the crawl as a background task instead of awaiting it
+            # inline. A live sitemap crawl of a slow or WAF-throttled site takes
+            # tens of seconds; awaiting it here (as the old code did) blocked the
+            # single event loop, so every API call — including /api/health and
+            # the connectors page — hung until the crawl finished. trigger_auto_crawl
+            # is guarded against overlap, so the short-interval caller cannot
+            # stack concurrent crawls either.
             from services.knowledge_service import KnowledgeService
             ks = KnowledgeService(website_id=target_id)
-            res = await ks.watch_business_website()
+            url = ""
+            await trigger_auto_crawl(target_id, url)
             await engine.track_cost("KnowledgeAgent", 4500)
-            await engine.learn_from_result(job_name, res, True, "Sitemap synced")
-            _add_log(job_name, "completed", f"Business sitemap checked for {target_id} ({res.get('new_pages_ingested', 0)} new, {res.get('updated_pages', 0)} updated)")
+            _add_log(job_name, "completed", f"Business sitemap scan dispatched for {target_id}")
         except Exception as e:
             _add_log(job_name, "error", f"Business watch error on {target_id}: {str(e)}")
             engine.queue_job_for_retry(job_name, {}, str(e))
@@ -743,13 +757,36 @@ async def count_knowledge_base_rows(website_id: str) -> int:
 
 
 async def trigger_auto_crawl(website_id: str, url: str):
-    """Trigger background sitemap crawl for website."""
-    try:
-        from services.knowledge_service import KnowledgeService
-        ks = KnowledgeService(website_id=website_id)
-        asyncio.create_task(ks.watch_business_website())
-    except Exception as e:
-        logger.warning(f"[Scheduler] trigger_auto_crawl error on {website_id}: {e}")
+    """Trigger a background sitemap crawl for a website.
+
+    Guarded against overlap: the caller runs on a short scheduler interval, and
+    the previous unguarded version launched a fresh crawl every cycle. On a site
+    whose knowledge base stayed small (crawl returned nothing), those tasks
+    stacked without bound, saturating the single worker and getting the target
+    site to WAF-ban the crawler. One crawl per website at a time, plus a
+    cooldown, keeps the loop from feeding itself.
+    """
+    now = time.monotonic()
+    if website_id in _CRAWL_IN_FLIGHT:
+        logger.info(f"[Scheduler] crawl already in flight for {website_id[:8]}; skipping duplicate trigger")
+        return
+    if now - _LAST_CRAWL_AT.get(website_id, 0.0) < _CRAWL_COOLDOWN_SEC:
+        logger.info(f"[Scheduler] crawl cooldown active for {website_id[:8]}; skipping trigger")
+        return
+    _CRAWL_IN_FLIGHT.add(website_id)
+    _LAST_CRAWL_AT[website_id] = now
+
+    async def _run():
+        try:
+            from services.knowledge_service import KnowledgeService
+            ks = KnowledgeService(website_id=website_id)
+            await ks.watch_business_website()
+        except Exception as e:
+            logger.warning(f"[Scheduler] trigger_auto_crawl error on {website_id}: {e}")
+        finally:
+            _CRAWL_IN_FLIGHT.discard(website_id)
+
+    asyncio.create_task(_run())
 
 
 def ensure_default_blog_schedule(website_id: str, interval_minutes: int = 288,
@@ -2984,9 +3021,9 @@ def setup_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(
         func=run_autonomous_blog_generation,
         trigger="interval",
-        minutes=2,
+        minutes=10,
         id="job_auto_blog_10min",
-        name="Every 2m Autonomous Blog Writer (DEV bypasses limits)",
+        name="Autonomous Blog Writer Check (10m)",
         replace_existing=True,
         misfire_grace_time=60
     )
@@ -3432,8 +3469,12 @@ async def run_first_time_setup(website_id: str) -> Dict[str, Any]:
         url = (site_row or {}).get("cms_url") or (site_row or {}).get("url") or \
               f"https://{(site_row or {}).get('domain', '')}"
         if url and url != "https://":
-            await ks.watch_business_website()
-            _add_log("first_time_setup", "completed", f"Knowledge crawled for {website_id}")
+            # Dispatch through the guarded background trigger: the crawl is long
+            # (tens of seconds to minutes on a throttled site) and awaiting it
+            # inline starves the event loop, which is what made the whole app
+            # appear to "break" the moment a website was connected.
+            await trigger_auto_crawl(website_id, url)
+            _add_log("first_time_setup", "completed", f"Knowledge crawl dispatched for {website_id}")
 
     async def _research():
         from .research_agent import ResearchAgent

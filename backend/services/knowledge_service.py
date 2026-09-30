@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import math
@@ -766,13 +767,21 @@ class KnowledgeService:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     html_content = resp.text
-                if TRAFILATURA_AVAILABLE:
-                    extracted_text = trafilatura.extract(html_content, include_links=True, include_tables=True) or ""
-                if not extracted_text:
-                    soup = BeautifulSoup(html_content, "html.parser")
-                    for tag in soup(["nav", "footer", "header", "script", "style", "aside", "noscript"]):
-                        tag.decompose()
-                    extracted_text = soup.get_text(separator="\n\n", strip=True)
+                # HTML extraction is CPU-bound (trafilatura/BeautifulSoup parse the
+                # whole document). Running it on the event loop stalled every other
+                # request for the duration of a crawl; a worker thread keeps the API
+                # responsive.
+                def _extract_html(html: str) -> str:
+                    text = ""
+                    if TRAFILATURA_AVAILABLE:
+                        text = trafilatura.extract(html, include_links=True, include_tables=True) or ""
+                    if not text:
+                        soup = BeautifulSoup(html, "html.parser")
+                        for tag in soup(["nav", "footer", "header", "script", "style", "aside", "noscript"]):
+                            tag.decompose()
+                        text = soup.get_text(separator="\n\n", strip=True)
+                    return text
+                extracted_text = await asyncio.to_thread(_extract_html, html_content)
             except Exception as e:
                 logger.error(f"URL scraping (httpx) failed for {url}: {e}")
                 raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {str(e)}")
@@ -808,17 +817,28 @@ class KnowledgeService:
             entities = await self.extract_entities(ch_text)
 
             # Deduplication Check
+            #
+            # supabase-py is a *synchronous* client. Calling it directly from an
+            # async function blocks the single event loop for the whole round
+            # trip (~300ms each). A 50-page crawl issues ~100 of these, starving
+            # every other request — /api/health included — for ~30s. Offload the
+            # blocking I/O to a worker thread so the loop stays responsive.
             is_dup = False
             try:
-                existing = supabase.table("knowledge_base").select("id, embedding").limit(10).execute().data or []
+                existing = await asyncio.to_thread(
+                    lambda: supabase.table("knowledge_base")
+                    .select("id, embedding").limit(10).execute().data or []
+                )
                 for rec in existing:
                     rec_emb = rec.get("embedding")
                     if rec_emb and isinstance(rec_emb, list):
                         if _cosine_similarity(ch_embedding, rec_emb) > 0.95:
-                            supabase.table("knowledge_base").update({
-                                "freshness_score": 1.0,
-                                "last_used": datetime.now(timezone.utc).isoformat()
-                            }).eq("id", rec["id"]).execute()
+                            await asyncio.to_thread(
+                                lambda rec_id=rec["id"]: supabase.table("knowledge_base").update({
+                                    "freshness_score": 1.0,
+                                    "last_used": datetime.now(timezone.utc).isoformat()
+                                }).eq("id", rec_id).execute()
+                            )
                             is_dup = True
                             skipped_count += 1
                             break
@@ -851,14 +871,14 @@ class KnowledgeService:
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 try:
-                    supabase.table("knowledge_base").insert(base_row).execute()
+                    await asyncio.to_thread(lambda: supabase.table("knowledge_base").insert(base_row).execute())
                 except Exception as ins_err:
                     err_msg = str(ins_err)
                     if "dimensions" in err_msg or "1024" in err_msg:
                         try:
                             adapted_row = dict(base_row)
                             adapted_row["embedding"] = _adapt_embedding_1024(ch_embedding)
-                            supabase.table("knowledge_base").insert(adapted_row).execute()
+                            await asyncio.to_thread(lambda: supabase.table("knowledge_base").insert(adapted_row).execute())
                         except Exception as adapt_err:
                             logger.warning(f"[Knowledge] Dimension-adapted Supabase insert failed: {adapt_err}")
                     else:
@@ -1104,7 +1124,7 @@ class KnowledgeService:
                     try:
                         resp = await client.get(cur_url)
                         if resp.status_code == 200 and "text/html" in resp.headers.get("content-type","").lower():
-                            child_links = _extract_links(resp.text, cur_url)
+                            child_links = await asyncio.to_thread(_extract_links, resp.text, cur_url)
                             for cl in child_links:
                                 if cl not in queued_set and len(queue) < max_pages:
                                     queue.append((cl, cur_depth+1))
@@ -1133,14 +1153,19 @@ class KnowledgeService:
                         continue
                     raw_html = page_resp.text
 
-                extracted = ""
-                if TRAFILATURA_AVAILABLE:
-                    extracted = trafilatura.extract(raw_html, include_links=True) or ""
-                if not extracted:
-                    s = BeautifulSoup(raw_html, "html.parser")
-                    for tag in s(["nav", "footer", "header", "script", "style", "aside", "noscript"]):
-                        tag.decompose()
-                    extracted = s.get_text(separator="\n", strip=True)
+                # Same CPU-bound parse as ingest: off the event loop so a running
+                # crawl cannot freeze the rest of the API.
+                def _extract_page(html: str) -> str:
+                    text = ""
+                    if TRAFILATURA_AVAILABLE:
+                        text = trafilatura.extract(html, include_links=True) or ""
+                    if not text:
+                        s = BeautifulSoup(html, "html.parser")
+                        for tag in s(["nav", "footer", "header", "script", "style", "aside", "noscript"]):
+                            tag.decompose()
+                        text = s.get_text(separator="\n", strip=True)
+                    return text
+                extracted = await asyncio.to_thread(_extract_page, raw_html)
 
                 if len(extracted) < 80:
                     continue
@@ -1153,7 +1178,9 @@ class KnowledgeService:
                 # Check existing in DB
                 existing_entry = []
                 try:
-                    existing_entry = supabase.table("knowledge_base").select("id").eq("source_url", page_url).limit(1).execute().data or []
+                    existing_entry = await asyncio.to_thread(
+                        lambda: supabase.table("knowledge_base").select("id").eq("source_url", page_url).limit(1).execute().data or []
+                    )
                 except Exception as e:
                     logger.warning(f"[services_knowledge_service] operation failed: {e}")
 
@@ -1174,7 +1201,9 @@ class KnowledgeService:
         # Check total rows in knowledge_base for this site
         existing_kb = []
         try:
-            existing_kb = supabase.table("knowledge_base").select("id").eq("website_id", self.website_id).limit(10).execute().data or []
+            existing_kb = await asyncio.to_thread(
+                lambda: supabase.table("knowledge_base").select("id").eq("website_id", self.website_id).limit(10).execute().data or []
+            )
         except Exception as e:
             logger.warning(f"[services_knowledge_service] operation failed: {e}")
         local_kb = list_local_knowledge(self.website_id)

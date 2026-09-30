@@ -3,7 +3,7 @@ import { buildBackendUrl, BACKEND_URL, forwardHeaders } from "../../_lib/proxy";
 
 // Status performs live checks on the backend, so allow a longer window than the
 // old 3s (which produced false "backend unreachable" for slow hosts).
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 60000;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

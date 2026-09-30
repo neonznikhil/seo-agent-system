@@ -1,5 +1,6 @@
 import { post, put, buildUrl } from "@/lib/api";
 import { clearCurrentWebsiteId } from "@/lib/website";
+import { isPlaceholderWordPressUsername } from "@/lib/credentials";
 
 /** Name the failing step plus backend target so 404s point at env, not code. */
 function stepError(step: string, path: string, err: any): Error {
@@ -20,29 +21,16 @@ export interface WpCreds {
   appPassword: string;
 }
 
-// Mirrors the backend sentinel list: a username that is blank or an obvious
-// placeholder ("admin", "your-username", ...) is never a real WordPress login.
-// Rejecting it here gives the user an actionable message instead of a generic
-// "connection failed" after a round-trip.
-const PLACEHOLDER_WP_USERNAMES = new Set([
-  "",
-  "admin",
-  "nikhil_d",
-  "your-username",
-  "yourusername",
-  "your_user",
-  "username",
-  "wp-username",
-  "wpuser",
-  "test",
-  "demo",
-  "example",
-  "user@example.com",
-  "you@example.com",
-]);
-
+// Mirrors the backend sentinel list (services/connector_credentials.py): a
+// username that is blank or an obvious placeholder ("admin", "your-username",
+// ...) is never a real WordPress login. Rejecting it here gives the user an
+// actionable message instead of a generic "connection failed" after a round-trip.
+//
+// This list must NEVER contain a real account name. It previously blocklisted
+// the owner's own username, which made every genuine save fail client-side
+// before the request was even sent.
 function assertRealWpUsername(username: string) {
-  if (PLACEHOLDER_WP_USERNAMES.has(username.toLowerCase())) {
+  if (isPlaceholderWordPressUsername(username)) {
     throw new Error(
       `"${username}" looks like a placeholder, not a real WordPress username. ` +
         `Use the actual WordPress login (Users → Profile) that owns the Application Password.`

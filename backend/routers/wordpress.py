@@ -67,10 +67,19 @@ def _record_verification(website_id: str, site_url: str, username: str, diag: Di
 
     connected = bool(diag.get("connected"))
     now = datetime.now(timezone.utc).isoformat()
+    # test_connection reports the WordPress role as a list under "roles"
+    # (e.g. ["administrator"]). Reading "user_role"/"role" here always missed it,
+    # leaving the stored role empty — which made the status endpoint fall back to
+    # a hardcoded "Editor" and misreport an administrator account.
+    roles = diag.get("roles") or diag.get("user_role") or diag.get("role")
+    if isinstance(roles, (list, tuple)):
+        verified_role = roles[0] if roles else None
+    else:
+        verified_role = roles or None
     update: Dict[str, Any] = {
         "wp_verified": connected,
         "wp_verified_at": now if connected else None,
-        "wp_verified_role": (diag.get("user_role") or diag.get("role")) if connected else None,
+        "wp_verified_role": verified_role if connected else None,
         "wp_last_error": None if connected else (diag.get("message") or "Verification failed"),
         "updated_at": now,
     }
@@ -549,6 +558,11 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
     if wid and wid not in ("default", "all", ""):
         _record_verification(wid, url, username, diag)
 
+    roles = diag.get("roles")
+    if isinstance(roles, (list, tuple)):
+        primary_role = roles[0] if roles else None
+    else:
+        primary_role = roles or diag.get("role")
     return {
         "success": is_connected,
         "connected": is_connected,
@@ -558,6 +572,9 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
         "error_type": diag.get("error_type"),
         "message": diag.get("message", "Connection verified ✅" if is_connected else "Connection failed"),
         "wp_user": username,
+        # Structured role so callers do not have to parse it out of `message`.
+        "roles": list(roles) if isinstance(roles, (list, tuple)) else ([roles] if roles else []),
+        "role": primary_role,
     }
 
 

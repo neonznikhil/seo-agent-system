@@ -200,15 +200,16 @@ export default function WebsitesPage() {
     try {
       setWpTesting(id);
       setError(null);
-      // Same canonical flow as /connectors: PUT websites + POST wordpress test
-      const test = await saveWordPressForSite(id, { siteUrl, username: user, appPassword: pass });
-      // Persist to the browser cache even when live verification fails — the
-      // user should not have to retype the password to retry.
+      // Cache first: if the backend is unreachable the verify below throws and
+      // saving afterwards would discard what the user just typed, forcing them
+      // to paste the same credentials again.
       saveConnectorCredentials({
         wordpress_site_url: siteUrl,
         wordpress_username: user.trim(),
         wordpress_app_password: pass.trim(),
       });
+      // Same canonical flow as /connectors: PUT websites + POST wordpress test
+      const test = await saveWordPressForSite(id, { siteUrl, username: user, appPassword: pass });
       if (test.connected) {
         setNoticeMsg(`✓ WordPress connected as ${test.wp_user || user} — /writer will now show Connected`);
       } else {
@@ -225,16 +226,35 @@ export default function WebsitesPage() {
   const handleTestWpForSite = async (id: string, siteUrl: string) => {
     try {
       setWpTesting(id);
-      const test = await get(`/api/wordpress/${id}/info` as any);
-      setNoticeMsg(`WP info: ${test.status || test.site?.url || "checked"}`);
-    } catch (e: any) {
-      // fallback to direct test with stored creds
-      try {
-        const diag = await get(`/api/writer/${id}/wordpress-status` as any);
-        setNoticeMsg(diag.message || "checked");
-      } catch (err: any) {
-        setError(`WP check failed: ${err.message}`);
+      setError(null);
+      // A live credential test, not a metadata lookup: the old /info call
+      // reported "connected" whenever creds were merely present, so a broken
+      // app password looked fine. Use the form values, falling back to the
+      // browser cache so the button works without retyping.
+      const cached = loadConnectorCredentials();
+      const user = (wpForms[id]?.user || cached.wordpress_username || "").trim();
+      const pass = (wpForms[id]?.pass || cached.wordpress_app_password || "").trim();
+      const url = (wpForms[id]?.url || siteUrl || cached.wordpress_site_url || "").trim();
+      if (!url || !user || !pass) {
+        setError("Enter the site URL, WP username and App Password (or save them first), then test.");
+        return;
       }
+      const test: any = await post(`/api/wordpress/${id}/test`, {
+        url,
+        wordpress_url: url,
+        username: user,
+        wordpress_user: user,
+        password: pass,
+        wordpress_password: pass,
+      });
+      if (test.connected) {
+        setNoticeMsg(`✓ WordPress verified as ${test.wp_user || user}${test.message ? ` — ${test.message}` : ""}`);
+      } else {
+        setError(`WordPress test failed: ${test.message || "check credentials and role"}`);
+      }
+      fetchWebsites();
+    } catch (e: any) {
+      setError(`WP check failed: ${e.message}`);
     } finally {
       setWpTesting(null);
     }
@@ -396,7 +416,7 @@ export default function WebsitesPage() {
                                 type="text"
                                 value={form.user}
                                 onChange={(e) => setWpForms((p) => ({ ...p, [site.id]: { ...form, user: e.target.value } }))}
-                                placeholder="WP user (admin)"
+                                placeholder="WP username (not admin)"
                                 className="field"
                                 style={{ width: "100%", padding: "6px", fontSize: "11px" }}
                               />
@@ -485,7 +505,7 @@ export default function WebsitesPage() {
                       type="text"
                       value={wpUser}
                       onChange={(e) => setWpUser(e.target.value)}
-                      placeholder="admin"
+                      placeholder="your WP login (not 'admin')"
                       className="field"
                       style={{ width: "100%", padding: "8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" }}
                     />

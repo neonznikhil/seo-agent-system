@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 
 from database import get_supabase
-from services.internal_link_service import build_internal_link_graph
+from services.internal_link_service import build_internal_link_graph, get_stored_link_graph
 
 logger = logging.getLogger("backend.routers.links")
 
@@ -14,23 +14,39 @@ router = APIRouter(prefix="/links", tags=["Internal Links & PageRank Graph"])
 
 
 @router.get("/{website_id}/graph")
-async def get_link_graph(website_id: str = Path(..., description="Website ID")):
-    """Compute and return internal link graph, PageRank scores, and cluster connectivity."""
+async def get_link_graph(
+    website_id: str = Path(..., description="Website ID"),
+    refresh: bool = Query(False, description="Force a fresh crawl instead of serving stored data"),
+):
+    """Return the internal link graph, PageRank scores, and cluster connectivity.
+
+    By default this serves the last persisted graph (fast, no outbound crawl).
+    Pass ``refresh=true`` to trigger a live crawl, which is throttled by the
+    service so repeated page loads cannot hammer the target site.
+    """
+    if not refresh:
+        stored = get_stored_link_graph(website_id)
+        if stored.get("edges"):
+            return {"success": True, "website_id": website_id, "graph": stored, "source": "stored"}
+
     try:
         graph_data = await build_internal_link_graph(website_id=website_id)
-        return {"success": True, "website_id": website_id, "graph": graph_data}
+        source = "crawl"
     except Exception as e:
         logger.warning(f"Error computing link graph for {website_id}: {e}")
-        return {
-            "success": True,
-            "website_id": website_id,
-            "graph": {
-                "nodes": [],
-                "edges": [],
-                "orphan_pages": [],
-                "top_pagerank_urls": []
-            }
-        }
+        graph_data = {"nodes": [], "edges": [], "orphans": []}
+        source = "error"
+
+    # A live crawl can legitimately return nothing (site blocked the crawler,
+    # sitemap unreachable). Serve the last persisted graph rather than an empty
+    # one so the UI reflects real historical data instead of looking broken.
+    if not graph_data.get("edges"):
+        stored = get_stored_link_graph(website_id)
+        if stored.get("edges"):
+            graph_data = stored
+            source = "stored"
+
+    return {"success": True, "website_id": website_id, "graph": graph_data, "source": source}
 
 
 @router.get("/{website_id}/suggestions")

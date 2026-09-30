@@ -38,8 +38,8 @@ def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Di
             "id": f"act-setup-crawl-{site_prefix}",
             "title": f"Run Initial Technical SEO Crawl on {domain}",
             "category": "TECHNICAL_CRAWL",
-            "impact_clicks_per_month": 450,
-            "estimated_monthly_value": 1575.0,
+            "impact_clicks_per_month": None,
+            "estimated_monthly_value": None,
             "effort": "LOW",
             "target_url": f"https://{domain}/",
             "target_query": f"{domain} site health",
@@ -58,8 +58,8 @@ def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Di
             "id": f"act-setup-gsc-{site_prefix}",
             "title": f"Connect Google Search Console API for {domain}",
             "category": "SEARCH_CONSOLE",
-            "impact_clicks_per_month": 350,
-            "estimated_monthly_value": 1225.0,
+            "impact_clicks_per_month": None,
+            "estimated_monthly_value": None,
             "effort": "LOW",
             "target_url": f"https://{domain}/",
             "target_query": f"{domain} search performance",
@@ -78,8 +78,8 @@ def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Di
             "id": f"act-setup-wp-{site_prefix}",
             "title": f"Verify WordPress REST API Connection for {domain}",
             "category": "CMS_INTEGRATION",
-            "impact_clicks_per_month": 250,
-            "estimated_monthly_value": 875.0,
+            "impact_clicks_per_month": None,
+            "estimated_monthly_value": None,
             "effort": "LOW",
             "target_url": f"https://{domain}/wp-json/wp/v2",
             "target_query": f"{domain} automated publishing",
@@ -151,8 +151,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-title-{hashlib.md5(f'{site_id}-{target_url}'.encode()).hexdigest()[:8]}",
                     "title": f"Implement Missing Title Tag on {target_url}",
                     "category": "CTR_OPTIMIZATION",
-                    "impact_clicks_per_month": 320,
-                    "estimated_monthly_value": 1120.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": target_url,
                     "target_query": f"{domain} services",
@@ -172,8 +172,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-meta-{hashlib.md5(f'{site_id}-{target_url}'.encode()).hexdigest()[:8]}",
                     "title": f"Add High-CTR Meta Description to {target_url}",
                     "category": "CTR_OPTIMIZATION",
-                    "impact_clicks_per_month": 210,
-                    "estimated_monthly_value": 735.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": target_url,
                     "target_query": f"{domain} guide",
@@ -193,8 +193,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-h1-{hashlib.md5(f'{site_id}-{target_url}'.encode()).hexdigest()[:8]}",
                     "title": f"Define Primary <h1> Heading for {target_url}",
                     "category": "TECHNICAL_FIX",
-                    "impact_clicks_per_month": 240,
-                    "estimated_monthly_value": 840.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": target_url,
                     "target_query": f"{domain} primary offering",
@@ -214,8 +214,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-canon-{hashlib.md5(f'{site_id}-{target_url}'.encode()).hexdigest()[:8]}",
                     "title": f"Apply Canonical Tag on {target_url}",
                     "category": "TECHNICAL_FIX",
-                    "impact_clicks_per_month": 180,
-                    "estimated_monthly_value": 630.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": target_url,
                     "target_query": f"{domain} canonical URL",
@@ -235,8 +235,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-broken-{hashlib.md5(f'{site_id}-{target_url}'.encode()).hexdigest()[:8]}",
                     "title": f"Resolve Broken Internal Route on {target_url}",
                     "category": "TECHNICAL_FIX",
-                    "impact_clicks_per_month": 340,
-                    "estimated_monthly_value": 1190.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": target_url,
                     "target_query": f"{domain} internal link",
@@ -256,8 +256,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-robots-{hashlib.md5(f'{site_id}-robots'.encode()).hexdigest()[:8]}",
                     "title": f"Deploy Valid robots.txt Directives for {domain}",
                     "category": "INDEXATION_REPAIR",
-                    "impact_clicks_per_month": 290,
-                    "estimated_monthly_value": 1015.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": f"https://{domain}/robots.txt",
                     "target_query": f"{domain} crawl budget",
@@ -277,8 +277,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-sitemap-{hashlib.md5(f'{site_id}-sitemap'.encode()).hexdigest()[:8]}",
                     "title": f"Submit and Verify XML Sitemap for {domain}",
                     "category": "INDEXATION_REPAIR",
-                    "impact_clicks_per_month": 260,
-                    "estimated_monthly_value": 910.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": f"https://{domain}/sitemap.xml",
                     "target_query": f"{domain} sitemap",
@@ -298,8 +298,8 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
                     "id": f"act-audit-sec-{hashlib.md5(f'{site_id}-sec'.encode()).hexdigest()[:8]}",
                     "title": f"Harden HTTPS & Security Headers on {domain}",
                     "category": "SECURITY_FIX",
-                    "impact_clicks_per_month": 150,
-                    "estimated_monthly_value": 525.0,
+                    "impact_clicks_per_month": None,
+                    "estimated_monthly_value": None,
                     "effort": "LOW",
                     "target_url": f"https://{domain}/",
                     "target_query": f"{domain} security",
@@ -322,18 +322,27 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
             action_key = f"kw-{query}"
             if action_key not in seen_keys:
                 seen_keys.add(action_key)
-                vol = kw.get("search_volume") or kw.get("volume") or 600
-                potential_clicks = max(120, int(vol * 0.18))
+                vol = kw.get("search_volume") or kw.get("volume")
+                # Only project clicks when a real search volume was measured.
+                # Without volume there is no defensible traffic estimate.
+                if vol:
+                    potential_clicks = max(120, int(vol * 0.18))
+                    estimated_value = round(potential_clicks * 3.5, 2)
+                    volume_note = f"with {vol} monthly searches"
+                else:
+                    potential_clicks = None
+                    estimated_value = None
+                    volume_note = "search volume not yet measured"
                 candidates.append({
                     "id": f"act-kw-{hashlib.md5(f'{site_id}-{query}'.encode()).hexdigest()[:8]}",
                     "title": f"Capture Striking-Distance Rank for '{query}' (Position #{pos})",
                     "category": "STRIKING_DISTANCE",
                     "impact_clicks_per_month": potential_clicks,
-                    "estimated_monthly_value": round(potential_clicks * 3.5, 2),
+                    "estimated_monthly_value": estimated_value,
                     "effort": "LOW",
                     "target_url": kw.get("url") or f"https://{domain}/",
                     "target_query": query,
-                    "rationale": f"Currently ranking at position #{pos} with {vol} monthly searches. Title hook optimization and schema enrichment can push this onto page 1.",
+                    "rationale": f"Currently ranking at position #{pos} {volume_note}. Title hook optimization and schema enrichment can push this onto page 1.",
                     "action_type": "APPLY_TITLE_CTR_FIX",
                     "preview_diff": {
                         "before": f"<title>{domain.title()} - {query.title()}</title>",
@@ -345,8 +354,9 @@ def _generate_curated_actions_for_site(website: Dict[str, Any]) -> List[Dict[str
     if not candidates:
         return _get_operational_onboarding_actions(site_id, domain)
 
-    # Sort strictly by estimated monthly traffic impact descending
-    candidates.sort(key=lambda a: a["impact_clicks_per_month"], reverse=True)
+    # Sort by measured monthly traffic impact descending; actions with no
+    # measured impact rank after those that have one.
+    candidates.sort(key=lambda a: a.get("impact_clicks_per_month") or 0, reverse=True)
     for idx, act in enumerate(candidates, 1):
         act["rank"] = idx
         if "preview_diff" in act:
@@ -365,8 +375,9 @@ def get_top_10_actions(website_id: str) -> Dict[str, Any]:
         site = {"id": website_id, "domain": "example.com", "cms_type": "WordPress"}
 
     actions = _generate_curated_actions_for_site(site)
-    total_potential_clicks = sum(a["impact_clicks_per_month"] for a in actions)
-    total_potential_value = sum(a["estimated_monthly_value"] for a in actions)
+    measured = [a for a in actions if a.get("impact_clicks_per_month") is not None]
+    total_potential_clicks = sum(a["impact_clicks_per_month"] for a in measured) if measured else None
+    total_potential_value = sum(a["estimated_monthly_value"] or 0 for a in measured) if measured else None
 
     return {
         "website_id": website_id,
@@ -374,6 +385,7 @@ def get_top_10_actions(website_id: str) -> Dict[str, Any]:
         "total_actions": len(actions),
         "total_potential_clicks_per_month": total_potential_clicks,
         "total_potential_value_per_month": total_potential_value,
+        "impact_measured": bool(measured),
         "actions": actions[:10],
         "generated_at": datetime.utcnow().isoformat(),
     }

@@ -184,3 +184,72 @@ reported a healthy Supabase while every real write silently failed.
 - A shell-exported `SUPABASE_URL` overrides `.env` (python-dotenv does not override
   existing env). If status shows the wrong URL, check `env | grep SUPABASE` before
   restarting the backend.
+
+## Connect Website / Connectors connectivity (the "everything breaks once I connect a site" bug)
+Root causes were compounding, not a single fault:
+- **Same-origin proxy is mandatory.** The browser must never call the backend
+  directly (CORS broke the moment a site was connected and generation started).
+  `frontend-next/lib/api.ts::buildUrl` routes browser calls through the Next
+  proxy; `app/api/_lib/proxy.ts` owns the canonical backend base. Never add a
+  hardcoded prod fallback there.
+- **Per-route method shadowing.** A route file under `app/api/...` shadows the
+  `/api/:path*` rewrite for that path. `app/api/websites/route.ts` exported only
+  `GET`, so `POST /api/websites` was answered by Next with **405** (the
+  "Failed to create website: API 405" bug). Any route file must proxy *every*
+  method the UI uses, or not exist at all.
+- **Unbounded LLM on a page-load path.** `GET /api/writer/{id}/suggestions` ran
+  `call_nim_llm` with no timeout (~50s), which exceeded the frontend proxy's 30s
+  limit and returned 500. Any LLM call on a GET/page-load path must be bounded
+  (`asyncio.wait_for(..., timeout=15)`); keep the honest DB rows on timeout.
+- **Long probes block the event loop.** `demo/readiness-check` live-tests NIM +
+  Serper (~14s). It is fine under its 30s proxy timeout, but keep such probes
+  off synchronous page-critical paths.
+- **Dashboard `/` never reaches `networkidle`** because status endpoints poll.
+  UI tests must wait on `domcontentloaded` + a settle delay, not `networkidle`.
+
+## Connector credential caching (localStorage)
+`frontend-next/lib/credentials.ts` is the single source of truth for the browser
+copy (`rankforge_connector_credentials`, folding in legacy
+`rankforge_wp_credentials`). Save-before-network so a dead backend never costs
+the user their typed creds, then repopulate on mount.
+- **Never cache a placeholder WordPress username** (`admin`, `your-username`, ...).
+  The backend refuses to persist it (`is_placeholder_wp_username`), so caching it
+  only re-populates a rejected identity on reload. `isPlaceholderWordPressUsername`
+  in `credentials.ts` mirrors `backend/services/connector_credentials.py` - that
+  list is the canonical client copy; `lib/wordpress.ts` imports it (do not
+  duplicate the list).
+
+## Real-user verification recipe
+- Backend: `JWT_SECRET=... ENCRYPTION_KEY=... python -m uvicorn main:app --port 8000`
+  (config.py raises without `JWT_SECRET`).
+- Frontend: `npx next dev -p 3000`. **`next build` clobbers the dev server's
+  `.next`**, causing 400s on stale chunks and a page stuck on "LOADING..." - restart
+  dev after every build.
+- Real site: `accident.innovatcs.com` (id `5434eccb-b1d3-47c7-afba-d10ebd255d0a`),
+  WP user `nikhil_d`, role administrator. Seed `current-website-id` /
+  `active_website_id` in localStorage before UI tests.
+- Jest is NOT installed here (no config/dep); `npx next build` + `tsc --noEmit`
+  are the frontend gates.
+
+## Latency / event-loop (the "connect a site and everything breaks" report)
+- Root cause was **not** the event loop but the local JSON mirror: a crawl calls
+  `save_local_knowledge()` per chunk, and the old read-whole-file/write-whole-file
+  turned a 101 MB `data/knowledge_base.json` into ~60s of blocking I/O per crawl.
+  `services/local_store.py` now keeps an in-memory cache, dedupes on
+  (website_id, source_url, fact), caps the mirror at `_CACHE_MAX_ROWS`, and
+  flushes on a 1s coalescing timer (`flush_local_store()` on shutdown). Appends
+  are now O(1). A POST /api/websites dropped from ~60s to ~2s.
+- Lock order: `_load_json_cached`/`_flush_dirty` must **not** hold `_CACHE_LOCK`
+  while calling `_load_json`/`_save_json` (which take `_LOCK`). `_atomic` takes
+  `_LOCK` first, so cache-inside-file would deadlock against it.
+- Frontend proxy timeouts must exceed real backend latency. `connectors/status`
+  does live NVIDIA/Serper probes (~15-19s cold); the proxy's 15s window returned
+  502 "Backend unreachable" precisely when a user had just connected. Timeouts
+  are now 60-90s, and `main.py` warms the connector caches in the background at
+  startup. Writer suggestions are cached per website (`_AI_SUGGESTION_CACHE`),
+  cutting reloads from ~19s to ~2.6s.
+- WordPress "Test": POST `{url, wordpress_url, username, wordpress_user, password,
+  wordpress_password}` to `/api/wordpress/{id}/test`. `site_url`/`app_password`
+  are NOT accepted field names and yield 400.
+- Connector test bodies: `test-nvidia` needs `{api_key}`, `test-serper` needs
+  `{api_key}`. Empty `{}` returns 422 (required body field).

@@ -1,15 +1,25 @@
-import json
-import asyncio
 import os
+import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime, timedelta
+
+from services.google_credentials import (
+    GoogleCredentialsError,
+    has_service_account_credentials,
+    load_service_account_credentials,
+)
+
 logger = logging.getLogger("backend.services.gsc_service")
+
+_GSC_SCOPES = ["https://www.googleapis.com/auth/webmasters"]
+_GSC_JSON_KEYS = ["GSC_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON"]
+_GSC_PATH_KEYS = ["GSC_CREDENTIALS_PATH", "GSC_CREDENTIALS", "GOOGLE_APPLICATION_CREDENTIALS"]
 
 
 class GSCService:
     """Google Search Console API service for real traffic data."""
-    
+
     def __init__(self, website_url: str = None, credentials_path: str = None):
         self.website_url = (
             website_url
@@ -17,7 +27,9 @@ class GSCService:
             or os.getenv("GSC_PROPERTY")
             or "https://accident.innovatcs.com"
         )
-        self.credentials_path = credentials_path or os.getenv("GSC_CREDENTIALS_PATH")
+        # `credentials_path` may be a file path *or* the service-account JSON
+        # itself; the Connectors UI saves the pasted JSON, so both must work.
+        self.credentials = credentials_path or os.getenv("GSC_SERVICE_ACCOUNT_JSON")
         self.service = None
 
     def _load_oauth_credentials(self):
@@ -61,7 +73,7 @@ class GSCService:
             except Exception as e:
                 logger.warning(f"Failed to create Google OAuth Credentials: {e}")
         return None
-    
+
     def _get_service(self):
         """Get authenticated GSC API service via OAuth, Service Account file, or JSON string."""
         if self.service:
@@ -78,47 +90,32 @@ class GSCService:
             except Exception as e:
                 logger.warning(f"GSC OAuth client init failed: {e}")
 
-        # 2. Try Service Account File
-        if self.credentials_path and os.path.isfile(self.credentials_path):
-            try:
-                from google.oauth2 import service_account
-                creds = service_account.Credentials.from_service_account_file(
-                    self.credentials_path,
-                    scopes=['https://www.googleapis.com/auth/webmasters']
-                )
-                self.service = build('webmasters', 'v3', credentials=creds, cache_discovery=False)
-                return self.service
-            except Exception as e:
-                logger.warning(f"GSC service account file init failed: {e}")
+        # 2. Try a service-account file path or pasted JSON (helper handles both)
+        try:
+            creds = load_service_account_credentials(
+                scopes=_GSC_SCOPES,
+                candidates=[self.credentials],
+                json_env_keys=_GSC_JSON_KEYS,
+                path_env_keys=_GSC_PATH_KEYS,
+            )
+            self.service = build('webmasters', 'v3', credentials=creds, cache_discovery=False)
+            return self.service
+        except GoogleCredentialsError as e:
+            raise ValueError(str(e))
+        except Exception as e:
+            logger.error(f"GSC client init error: {e}")
+            raise ValueError(f"GSC client init failed: {e}")
 
-        # 3. Try Service Account JSON string in GSC_CREDENTIALS or GOOGLE_APPLICATION_CREDENTIALS
-        raw_creds = os.getenv("GSC_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if raw_creds and raw_creds.strip().startswith("{"):
-            try:
-                from google.oauth2 import service_account
-                info = json.loads(raw_creds)
-                creds = service_account.Credentials.from_service_account_info(
-                    info,
-                    scopes=['https://www.googleapis.com/auth/webmasters']
-                )
-                self.service = build('webmasters', 'v3', credentials=creds, cache_discovery=False)
-                return self.service
-            except Exception as e:
-                logger.warning(f"GSC service account json init failed: {e}")
-
-        raise ValueError("GSC credentials not configured - connect via OAuth or set GSC_CREDENTIALS_PATH")
-    
     def is_connected(self) -> bool:
         """Check if GSC is configured via OAuth, service account file, or JSON string."""
         if self._load_oauth_credentials() is not None:
             return True
-        if self.credentials_path and os.path.isfile(self.credentials_path):
-            return True
-        raw_creds = os.getenv("GSC_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if raw_creds and (raw_creds.strip().startswith("{") or os.path.isfile(raw_creds)):
-            return True
-        return False
-    
+        return has_service_account_credentials(
+            candidates=[self.credentials],
+            json_env_keys=_GSC_JSON_KEYS,
+            path_env_keys=_GSC_PATH_KEYS,
+        )
+
     async def get_keyword_performance(self, 
                                        start_date: str = None,
                                        end_date: str = None,
@@ -200,7 +197,13 @@ class GSCService:
                 'startDate': (datetime.utcnow() - timedelta(days=28)).strftime('%Y-%m-%d'),
                 'endDate': datetime.utcnow().strftime('%Y-%m-%d'),
                 'dimensions': ['page'],
-                'rowLimit': limit
+                'rowLimit': limit,
+                'dimensionFilterGroups': [{
+                    'filters': [{
+                        'dimension': 'page',
+                        'expression': 'pageLevel'
+                    }]
+                }]
             }
             
             result = service.searchanalytics().query(
@@ -326,7 +329,7 @@ async def list_verified_sites(website_url: str = None) -> List[str]:
     """Return the list of verified Search Console properties for the configured account."""
     svc = GSCService(website_url)
     if not svc.is_connected():
-        raise ValueError("GSC not configured — set GSC_CREDENTIALS_PATH in Connectors")
+        raise ValueError("GSC not configured — paste the service-account JSON in Connectors")
     service = svc._get_service()
     sites = service.sites().list().execute()
     verified = [
@@ -335,12 +338,3 @@ async def list_verified_sites(website_url: str = None) -> List[str]:
         if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser")
     ]
     return [v for v in verified if v]
-
-
-async def sync_gsc_data(website_id: Optional[str] = None) -> Dict[str, Any]:
-    """Sync GSC search analytics data into database."""
-    try:
-        from services.analytics_service import AnalyticsService
-    except (ImportError, ValueError):
-        from backend.services.analytics_service import AnalyticsService
-    return await AnalyticsService.sync_gsc_data(website_id=website_id)

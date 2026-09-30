@@ -30,6 +30,31 @@ export interface StoredConnectorCredentials {
 const STORAGE_KEY = "rankforge_connector_credentials";
 const LEGACY_WP_KEY = "rankforge_wp_credentials";
 
+// Mirrors the backend sentinel list (services/connector_credentials.py): a
+// username that is blank or an obvious placeholder ("admin", "your-username",
+// ...) is never a real WordPress login. Rejecting it here gives the user an
+// actionable message instead of a generic "connection failed" after a round-trip.
+//
+// This list must NEVER contain a real account name. It previously blocklisted
+// the owner's own username, which made every genuine save fail client-side
+// before the request was even sent.
+const PLACEHOLDER_WP_USERNAMES = new Set(
+  [
+    "", "admin", "administrator", "root", "your-username", "yourusername",
+    "your_username", "your name", "yourname", "your_user", "youruser",
+    "username", "wp-username", "wp_username", "wpuser", "test", "testuser",
+    "demo", "example", "exampleuser", "user@example.com", "you@example.com",
+  ].map((n) => n.trim().toLowerCase().replace(/[-_. ]/g, ""))
+);
+
+function normalizeWpUsername(username: string): string {
+  return username.trim().toLowerCase().replace(/[-_. ]/g, "");
+}
+
+export function isPlaceholderWordPressUsername(username: string | undefined | null): boolean {
+  return PLACEHOLDER_WP_USERNAMES.has(normalizeWpUsername(username || ""));
+}
+
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }

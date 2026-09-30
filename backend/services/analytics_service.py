@@ -19,6 +19,8 @@ class AnalyticsService:
         """Pull live keyword rows from GSC API and persist into analytics_data.
 
         Real rows only. Without GSC credentials returns not_configured with 0.
+        Accepts either a service-account file path or the pasted JSON content,
+        matching how the Connectors UI saves credentials.
         """
         website_url = None
         supabase = get_supabase()
@@ -288,3 +290,11 @@ class AnalyticsService:
             "decaying_content": decaying,
             "timestamp": datetime.utcnow().isoformat()
         }
+
+
+analytics_service = AnalyticsService()
+
+
+async def sync_gsc_data(website_id: Optional[str] = None) -> Dict[str, Any]:
+    """Module-level wrapper so callers can `from services.analytics_service import sync_gsc_data`."""
+    return await AnalyticsService.sync_gsc_data(website_id=website_id)

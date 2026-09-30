@@ -28,13 +28,14 @@ class TopicOwnershipEngine:
         
         supabase = get_supabase()
 
-        # Dynamic node definitions parameterized by pillar_keyword
+        # Node definitions are query patterns, not measurements. Volumes are
+        # unknown until real keyword data is attached, so they are left null.
         node_types = [
-            {"type": "question", "text": f"What are the core fundamentals of {pillar_keyword}?", "vol": 2400, "covered": False, "comp_cov": 3},
-            {"type": "comparison", "text": f"Key frameworks and approaches in {pillar_keyword}", "vol": 1900, "covered": False, "comp_cov": 4},
-            {"type": "entity", "text": f"Industry standards and compliance for {pillar_keyword}", "vol": 3200, "covered": False, "comp_cov": 2},
-            {"type": "howto", "text": f"How to master and implement {pillar_keyword}", "vol": 4100, "covered": False, "comp_cov": 5},
-            {"type": "temporal", "text": f"2026 Trends and future developments in {pillar_keyword}", "vol": 2800, "covered": False, "comp_cov": 1}
+            {"type": "question", "text": f"What are the core fundamentals of {pillar_keyword}?", "vol": None, "covered": False, "comp_cov": 3},
+            {"type": "comparison", "text": f"Key frameworks and approaches in {pillar_keyword}", "vol": None, "covered": False, "comp_cov": 4},
+            {"type": "entity", "text": f"Industry standards and compliance for {pillar_keyword}", "vol": None, "covered": False, "comp_cov": 2},
+            {"type": "howto", "text": f"How to master and implement {pillar_keyword}", "vol": None, "covered": False, "comp_cov": 5},
+            {"type": "temporal", "text": f"2026 Trends and future developments in {pillar_keyword}", "vol": None, "covered": False, "comp_cov": 1}
         ]
 
         mapped_nodes = []

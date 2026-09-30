@@ -412,9 +412,9 @@ export default function ApprovalsPage() {
           const isEditing = editingId === a.id;
           const isRefresh = a.approval_type === "refresh" || a.type === "refresh_update" || Boolean(a.refresh_reason);
           const isRevised = a.rejection_reason?.startsWith("Revised:") || a.status === "revision_requested";
-          const score = a.seo_score ?? 85;
-          const scoreBadgeClass = score >= 85 ? "badge-green" : score >= 70 ? "badge-amber" : "badge-red";
-          const wordCount = (a as any).word_count || a.html_content?.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length || 1200;
+          const score = a.seo_score;
+          const scoreBadgeClass = score == null ? "badge-amber" : score >= 85 ? "badge-green" : score >= 70 ? "badge-amber" : "badge-red";
+          const wordCount = (a as any).word_count || a.html_content?.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length || null;
 
           return (
             <div className="panel" key={a.id} style={{ marginBottom: "16px" }}>

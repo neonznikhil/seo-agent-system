@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+import time
 import uuid
 import asyncio
 import json
@@ -37,6 +38,11 @@ except (ImportError, ValueError):
 
 logger = logging.getLogger("backend.routers.writer")
 router = APIRouter()
+
+# Per-website cache of LLM-generated writer topics. Generating them costs a
+# ~15s model round-trip; page reloads should not repeat it.
+_AI_SUGGESTION_CACHE: Dict[str, Dict[str, Any]] = {}
+_AI_SUGGESTION_TTL_SEC = 900
 
 # Frontend placeholder strings that must never reach the database.
 FORBIDDEN_TITLE_FRAGMENTS = [
@@ -170,32 +176,52 @@ async def get_writer_suggestions(website_id: str):
     # real rows above or be explicitly labeled AI estimates below. An empty
     # list is honest ("run research first"), filler is not.
 
-    # 4. NIM autonomous generation if still sparse (<6) — ask LLM for fresh gap topics
+    # 4. NIM autonomous generation if still sparse (<6) — ask LLM for fresh gap topics.
+    # Bounded: this runs on a page-load request, and an unbounded generation was
+    # taking ~50s, which exceeded the frontend proxy timeout and made the Writer
+    # page 500. On timeout we keep the honest DB-derived rows and skip AI extras.
     if len(suggestions) < 6:
-        try:
-            from database import call_nim_llm
-            ai_prompt = f"For business '{business_name}' domain '{domain}' niche '{niche}', suggest 4 distinct high-value SEO blog topics for 2026. Each should target a specific commercial or informational keyword. Return JSON list [{{'title':'...','keyword':'...','category':'...'}}] only."
-            raw = await call_nim_llm(ai_prompt, system="You output only valid JSON array.", max_tokens=600, temperature=0.7, fail_silently=True) or ""
-            import json as _json, re as _re
-            if "[" in raw:
-                raw = raw[raw.index("["): raw.rindex("]")+1]
-                parsed = _json.loads(raw)
-                for item in parsed[:4]:
-                    kw = (item.get("keyword") or item.get("title",""))[:80]
-                    title = item.get("title") or kw.title()
-                    if kw and not any(s["keyword"].lower()==kw.lower() for s in suggestions):
-                        suggestions.append({
-                            "keyword": kw,
-                            "title": title,
-                            "category": item.get("category","AI Suggestion"),
-                            # Estimated: the model guessed this topic. Volume
-                            # is unknown (null), never a plausible 1700.
-                            "volume": None,
-                            "provenance": "estimated",
-                            "source": "AI Suggestion (unverified)"
-                        })
-        except Exception as e:
-            logger.warning(f"[routers_writer] operation failed: {e}")
+        # The LLM topics for a given (site, niche) barely change between page
+        # loads, but every load re-asked the model (~15s). Cache them per website
+        # so the first load pays the cost and later loads are instant.
+        ai_cache = _AI_SUGGESTION_CACHE.get(website_id)
+        if ai_cache and (time.monotonic() - ai_cache["at"]) < _AI_SUGGESTION_TTL_SEC:
+            ai_items = ai_cache["items"]
+        else:
+            ai_items = []
+            try:
+                from database import call_nim_llm
+                ai_prompt = f"For business '{business_name}' domain '{domain}' niche '{niche}', suggest 4 distinct high-value SEO blog topics for 2026. Each should target a specific commercial or informational keyword. Return JSON list [{{'title':'...','keyword':'...','category':'...'}}] only."
+                raw = await asyncio.wait_for(
+                    call_nim_llm(ai_prompt, system="You output only valid JSON array.", max_tokens=600, temperature=0.7, fail_silently=True),
+                    timeout=20,
+                ) or ""
+                import json as _json, re as _re
+                if "[" in raw:
+                    raw = raw[raw.index("["): raw.rindex("]")+1]
+                    parsed = _json.loads(raw)
+                    ai_items = [p for p in parsed[:4] if isinstance(p, dict)]
+            except Exception as e:
+                logger.warning(f"[routers_writer] operation failed: {e}")
+            # Only cache a non-empty result: a transient model failure must not
+            # be remembered as "this site has no ideas".
+            if ai_items:
+                _AI_SUGGESTION_CACHE[website_id] = {"items": ai_items, "at": time.monotonic()}
+
+        for item in ai_items:
+            kw = (item.get("keyword") or item.get("title", ""))[:80]
+            title = item.get("title") or kw.title()
+            if kw and not any(s["keyword"].lower() == kw.lower() for s in suggestions):
+                suggestions.append({
+                    "keyword": kw,
+                    "title": title,
+                    "category": item.get("category", "AI Suggestion"),
+                    # Estimated: the model guessed this topic. Volume
+                    # is unknown (null), never a plausible 1700.
+                    "volume": None,
+                    "provenance": "estimated",
+                    "source": "AI Suggestion (unverified)"
+                })
 
     # 5. WordPress connectivity hint for autonomous UI
     wordpress_connected = False
@@ -252,7 +278,8 @@ async def get_writer_wordpress_status(website_id: str):
             "is_dummy": True,
             "website_id": website_id,
             "domain": site.get("domain") or "",
-            "demo_mode": True
+            "demo_mode": True,
+            "credentials_placeholder": True
         }
     if base and user and _pwd:
         try:

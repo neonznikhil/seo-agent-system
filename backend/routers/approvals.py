@@ -276,7 +276,7 @@ async def list_approvals(
             html_body = wrap_tldr_css(html_body)
         except Exception:
             pass
-        word_count = len(html_body.replace("<", " <").split()) if html_body else 1200
+        word_count = len(html_body.replace("<", " <").split()) if html_body else None
         preview_parts = [
             p.strip() for p in _strip_tags(html_body).split("\n") if p.strip()
         ]
@@ -287,11 +287,11 @@ async def list_approvals(
             "target_keyword": r.get("target_keyword") or r.get("keyword") or "",
             "word_count": r.get("word_count") or word_count,
             "preview_paragraphs": preview_parts[:3],
-            "seo_score": r.get("seo_score") or 85,
+            "seo_score": r.get("seo_score"),
             "status": r.get("status", "pending"),
             "citations": r.get("citations") or [],
-            "validation_score": r.get("validation_score") or 0.88,
-            "grounding_score": r.get("grounding_score") or 0.85,
+            "validation_score": r.get("validation_score"),
+            "grounding_score": r.get("grounding_score"),
         })
     return enriched
 

@@ -8,6 +8,7 @@ import { saveWordPressForSite } from "@/lib/wordpress";
 import {
   loadConnectorCredentials,
   saveConnectorCredentials,
+  isPlaceholderWordPressUsername,
 } from "@/lib/credentials";
 
 const MASK = "••••••••••••••••••••••••";
@@ -32,6 +33,7 @@ export default function ConnectorsPage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [status, setStatus] = useState<ConnectorStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Section A: Core Credentials
   const [nvidiaKey, setNvidiaKey] = useState("");
@@ -92,8 +94,15 @@ export default function ConnectorsPage() {
       setLoading(true);
       const res: ConnectorStatus = await get(`/api/connectors/status${wid ? `?website_id=${wid}` : ""}`);
       setStatus(res);
+      setStatusError(null);
     } catch (err: any) {
-      // warn removed
+      // Do not leave the previous status in place silently: a failed fetch means
+      // we do not know the connector state, and rendering the badges as "Not
+      // Configured" would misreport a connectivity blip as an unconfigured
+      // integration. Surface it instead.
+      setStatusError(
+        "Could not reach the backend to read connector status. Badges below may be stale."
+      );
     } finally {
       setLoading(false);
     }
@@ -282,11 +291,13 @@ export default function ConnectorsPage() {
         return;
       }
       // Cache first, before any early return: the credentials the user typed are
-      // theirs regardless of whether a website is selected yet.
+      // theirs regardless of whether a website is selected yet. A placeholder
+      // username is not a real identity — don't cache what the backend rejects.
+      const realIdentity = !isPlaceholderWordPressUsername(wpUser);
       saveConnectorCredentials({
         wordpress_site_url: wpUrl,
-        wordpress_username: wpUser,
-        wordpress_app_password: wpPass,
+        wordpress_username: realIdentity ? wpUser : undefined,
+        wordpress_app_password: realIdentity ? wpPass : undefined,
       });
       // Re-read the id instead of trusting state: the Topbar writes it to
       // localStorage and the value may have changed since this page mounted.
@@ -324,11 +335,13 @@ export default function ConnectorsPage() {
     setErrorMsg(null);
     // Persist locally before the network call so a failed verification (or an
     // unreachable backend) never costs the user their typed credentials. This
-    // must happen before the website-id guard for the same reason.
+    // must happen before the website-id guard for the same reason. A placeholder
+    // username is skipped: it is not a real identity the backend will store.
+    const realIdentity = !isPlaceholderWordPressUsername(wpUser);
     saveConnectorCredentials({
       wordpress_site_url: wpUrl,
-      wordpress_username: wpUser,
-      wordpress_app_password: wpPass,
+      wordpress_username: realIdentity ? wpUser : undefined,
+      wordpress_app_password: realIdentity ? wpPass : undefined,
     });
     const wid = websiteId || getCurrentWebsiteId();
     if (!wid) {
@@ -414,9 +427,17 @@ export default function ConnectorsPage() {
   // Test GSC
   const handleTestGsc = async () => {
     setGscTesting(true);
+    setErrorMsg(null);
+    // Cache locally first so a failed/slow network call never loses what the
+    // user pasted — they can retry without re-entering the JSON.
+    saveConnectorCredentials({ gsc_property_url: gscUrl, gsc_credentials_json: gscJson });
     try {
       const res = await post("/api/connectors/test-gsc", { credentials_json: gscJson, property_url: gscUrl });
-      showToast(res.message || "✓ GSC credentials verified.");
+      if (res?.connected) {
+        showToast(res.message || "✓ GSC credentials verified and saved.");
+      } else {
+        setErrorMsg(res?.message || "GSC not connected. Check the service-account JSON.");
+      }
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`GSC Test Error: ${e.message}`);
@@ -430,7 +451,7 @@ export default function ConnectorsPage() {
     setGscSyncing(true);
     setErrorMsg(null);
     try {
-      const res = await post("/api/connectors/sync-gsc", { property_url: gscUrl });
+      const res = await post("/api/connectors/sync-gsc", { website_id: websiteId || undefined });
       if (res?.synced) showToast("✓ Synced search impressions and clicks from GSC.");
       else setErrorMsg(res?.message || "GSC sync failed. Check credentials.");
       loadStatus();
@@ -444,9 +465,15 @@ export default function ConnectorsPage() {
   // Test GA4
   const handleTestGa4 = async () => {
     setGa4Testing(true);
+    setErrorMsg(null);
+    saveConnectorCredentials({ ga4_property_id: ga4PropertyId, ga4_credentials_json: ga4Json });
     try {
       const res = await post("/api/connectors/test-ga4", { property_id: ga4PropertyId, credentials_json: ga4Json });
-      showToast(res.message || "✓ GA4 connected successfully.");
+      if (res?.connected) {
+        showToast(res.message || "✓ GA4 connected successfully.");
+      } else {
+        setErrorMsg(res?.message || "GA4 not connected. Check the Property ID and service-account JSON.");
+      }
       loadStatus();
     } catch (e: any) {
       setErrorMsg(`GA4 Test Error: ${e.message}`);
@@ -457,8 +484,12 @@ export default function ConnectorsPage() {
 
   // Test GA4 Stream
   const handleTestGa4Stream = async () => {
+    saveConnectorCredentials({ ga4_property_id: ga4PropertyId, ga4_credentials_json: ga4Json });
     try {
-      const res = await post("/api/connectors/test-ga4-stream", {});
+      const res = await post("/api/connectors/test-ga4-stream", {
+        property_id: ga4PropertyId || undefined,
+        credentials_json: ga4Json || undefined,
+      });
       if (res?.connected) {
         setGa4StreamActive(true);
         setGa4Visitors(res.active_visitors ?? null);
@@ -477,6 +508,33 @@ export default function ConnectorsPage() {
 
   // Save All Credentials
   const handleSaveAll = async () => {
+    // Cache every entry in the browser BEFORE the network call. If the backend
+    // is unreachable the request throws below, and saving afterwards would lose
+    // everything the user just typed — the exact "I have to paste my creds
+    // again" complaint. The local copy is the user's, regardless of the backend.
+    //
+    // Exception: a placeholder WordPress username is not a real identity and the
+    // backend refuses to persist it, so caching it would only re-populate a
+    // rejected value on reload. Cache the site URL, skip the fake identity.
+    const wpUsernameIsReal = !isPlaceholderWordPressUsername(wpUser);
+    saveConnectorCredentials({
+      nvidia_api_key: nvidiaKey,
+      supabase_url: supabaseUrl,
+      supabase_anon_key: supabaseAnonKey,
+      supabase_service_key: supabaseServiceKey,
+      supabase_db_password: supabaseDbPassword,
+      wordpress_site_url: wpUrl,
+      wordpress_username: wpUsernameIsReal ? wpUser : undefined,
+      wordpress_app_password: wpUsernameIsReal ? wpPass : undefined,
+      serper_api_key: serperKey,
+      gsc_property_url: gscUrl,
+      gsc_credentials_json: gscJson,
+      ga4_property_id: ga4PropertyId,
+      ga4_credentials_json: ga4Json,
+      slack_webhook_url: slackWebhook,
+      openai_api_key: openaiKey,
+      perplexity_api_key: perplexityKey,
+    });
     try {
       const res = await post("/api/connectors/save-all", {
         nvidia_api_key: nvidiaKey || undefined,
@@ -503,26 +561,6 @@ export default function ConnectorsPage() {
         return;
       }
 
-      // Cache every entry in the browser so the form is pre-filled next visit.
-      saveConnectorCredentials({
-        nvidia_api_key: nvidiaKey,
-        supabase_url: supabaseUrl,
-        supabase_anon_key: supabaseAnonKey,
-        supabase_service_key: supabaseServiceKey,
-        supabase_db_password: supabaseDbPassword,
-        wordpress_site_url: wpUrl,
-        wordpress_username: wpUser,
-        wordpress_app_password: wpPass,
-        serper_api_key: serperKey,
-        gsc_property_url: gscUrl,
-        gsc_credentials_json: gscJson,
-        ga4_property_id: ga4PropertyId,
-        ga4_credentials_json: ga4Json,
-        slack_webhook_url: slackWebhook,
-        openai_api_key: openaiKey,
-        perplexity_api_key: perplexityKey,
-      });
-
       if (res.wordpress_error) {
         setErrorMsg(res.wordpress_error);
       } else {
@@ -530,7 +568,7 @@ export default function ConnectorsPage() {
       }
       loadStatus();
     } catch (e: any) {
-      setErrorMsg(`Save All Error: ${e.message}`);
+      setErrorMsg(`Save All Error: ${e.message}. Your credentials are still saved in this browser.`);
     }
   };
 
@@ -563,6 +601,13 @@ export default function ConnectorsPage() {
         <div className="notice" style={{ borderColor: "var(--red)", background: "rgba(239, 68, 68, 0.08)", marginBottom: "16px" }}>
           <span className="notice-sq" style={{ background: "var(--red)" }}></span>
           <span style={{ color: "var(--red)" }}>{errorMsg}</span>
+        </div>
+      )}
+
+      {statusError && (
+        <div className="notice" style={{ borderColor: "var(--amber, #f59e0b)", background: "rgba(245, 158, 11, 0.08)", marginBottom: "16px" }}>
+          <span className="notice-sq" style={{ background: "var(--amber, #f59e0b)" }}></span>
+          <span style={{ color: "var(--amber, #f59e0b)" }}>{statusError}</span>
         </div>
       )}
 
@@ -747,7 +792,7 @@ export default function ConnectorsPage() {
                         className="field"
                         value={wpUser}
                         onChange={(e) => setWpUser(e.target.value)}
-                        placeholder="admin"
+                        placeholder="your WP login (not 'admin')"
                         style={{ width: "100%", padding: "8px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)" }}
                       />
                     </div>

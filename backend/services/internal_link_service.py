@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import re
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
@@ -17,6 +18,14 @@ from services.crawlee_service import _is_url_blocked
 from services.reporting_service import report_problem
 
 logger = logging.getLogger("backend.services.internal_link")
+
+# A page view must not trigger a full site crawl. Every graph build fans out
+# across the whole sitemap, and hammering the target site on each dashboard load
+# is what gets the crawler WAF-banned (403s), which then silently produced an
+# empty graph. Results are reused for a cooldown window instead.
+_GRAPH_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_GRAPH_COOLDOWN_SEC = 900
+_GRAPH_LOCK = asyncio.Lock()
 
 
 def _chunks(lst: List[Any], n: int):
@@ -33,6 +42,62 @@ def _extract_internal_links(soup: BeautifulSoup, base_url: str, parsed_domain: s
         if href.startswith("http") and urlparse(href).netloc.lower() == parsed_domain:
             links.append({"to": href, "anchor": a.get_text(strip=True)})
     return links
+
+
+async def _discover_sitemap_urls(cms_url: str, domain: str) -> List[str]:
+    """Resolve the real page URLs for a site, following redirects and sitemap indexes.
+
+    WordPress commonly 301s /sitemap.xml to /wp-sitemap.xml, which is itself a
+    <sitemapindex> pointing at per-post-type sitemaps. A single non-redirecting
+    GET of /sitemap.xml therefore yields nothing usable on most WordPress sites.
+    """
+    import httpx
+
+    base = cms_url.rstrip("/")
+    candidates = [
+        f"{base}/sitemap.xml",
+        f"{base}/wp-sitemap.xml",
+        f"{base}/sitemap_index.xml",
+        f"{base}/sitemap-index.xml",
+    ]
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; RankForgeBot/1.0)"}
+
+    page_urls: List[str] = []
+    visited: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=headers) as client:
+
+        async def _walk(url: str, depth: int = 0) -> None:
+            if depth > 2 or url in visited or len(page_urls) >= 500:
+                return
+            visited.add(url)
+            try:
+                r = await client.get(url)
+            except Exception as exc:
+                logger.debug("Sitemap fetch skipped %s: %s", url, exc)
+                return
+            if r.status_code != 200 or "<" not in r.text:
+                return
+            locs = re.findall(r"<loc>\s*(.*?)\s*</loc>", r.text, flags=re.IGNORECASE | re.DOTALL)
+            is_index = "<sitemapindex" in r.text.lower()
+            if is_index or locs and all(l.rstrip("/").endswith(".xml") for l in locs):
+                for loc in locs:
+                    await _walk(loc.strip(), depth + 1)
+                return
+            for loc in locs:
+                clean = loc.strip()
+                if clean and urlparse(clean).netloc.lower().endswith(domain):
+                    page_urls.append(clean)
+
+        for candidate in candidates:
+            await _walk(candidate)
+            if page_urls:
+                break
+
+    # De-duplicate while preserving order.
+    seen: set[str] = set()
+    unique = [u for u in page_urls if not (u in seen or seen.add(u))]
+    return unique
 
 
 async def _crawl_pages_fallback(sitemap_urls: List[str], parsed_domain: str) -> List[Dict[str, Any]]:
@@ -65,6 +130,28 @@ async def _crawl_pages_fallback(sitemap_urls: List[str], parsed_domain: str) -> 
 
 
 async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
+    """Return the internal link graph, crawling at most once per cooldown window.
+
+    Callers (page loads, dashboards) are served the cached build so a burst of
+    requests cannot turn into a crawl storm against the target site.
+    """
+    now = time.monotonic()
+    cached = _GRAPH_CACHE.get(website_id)
+    if cached and now - cached[0] < _GRAPH_COOLDOWN_SEC and cached[1].get("edges"):
+        return cached[1]
+
+    async with _GRAPH_LOCK:
+        now = time.monotonic()
+        cached = _GRAPH_CACHE.get(website_id)
+        if cached and now - cached[0] < _GRAPH_COOLDOWN_SEC and cached[1].get("edges"):
+            return cached[1]
+        result = await _build_internal_link_graph_uncached(website_id)
+        if result.get("edges"):
+            _GRAPH_CACHE[website_id] = (time.monotonic(), result)
+        return result
+
+
+async def _build_internal_link_graph_uncached(website_id: str) -> Dict[str, Any]:
     website: Dict[str, Any] = {}
     try:
         supabase = get_supabase()
@@ -94,19 +181,17 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
         return {"nodes": [], "edges": [], "orphans": []}
 
     parsed_domain = urlparse(cms_url).netloc.lower()
-    sitemap_url = f"{cms_url.rstrip('/')}/sitemap.xml"
 
-    sitemap_urls: List[str] = []
     try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(sitemap_url)
-            if r.status_code == 200:
-                sitemap_urls = re.findall(r"<loc>(.*?)</loc>", r.text)
+        sitemap_urls = await _discover_sitemap_urls(cms_url, parsed_domain)
     except Exception as exc:
-        logger.warning("Sitemap fetch failed: %s", exc)
+        logger.warning("Sitemap discovery failed: %s", exc)
+        sitemap_urls = []
 
+    # Only fall back to crawling the homepage when discovery genuinely found
+    # nothing. A homepage-only crawl cannot produce an edge graph, so this path
+    # is treated as "no data" rather than overwriting a previously good graph.
+    discovered = bool(sitemap_urls)
     if not sitemap_urls:
         sitemap_urls = [cms_url]
 
@@ -180,32 +265,42 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
     pagerank = nx.pagerank(G, alpha=0.85) if G.nodes else {}
     orphans = [u for u in urls if G.in_degree(u) == 0 and url_to_sessions.get(u, 0) > 50]
 
-    try:
-        supabase.table("internal_link_graph").delete().eq("website_id", website_id).execute()
+    graph_rows = []
+    for e in G.edges(data=True):
+        from_u, to_u, data = e
+        graph_rows.append(
+            {
+                "website_id": website_id,
+                "from_url": from_u,
+                "to_url": to_u,
+                "anchor_text": data.get("anchor"),
+                "pagerank_from": float(pagerank.get(from_u, 0.0)),
+                "pagerank_to": float(pagerank.get(to_u, 0.0)),
+                "sessions_from": int(url_to_sessions.get(from_u, 0)),
+                "is_orphan_target": to_u in orphans,
+                "crawled_at": datetime.utcnow().isoformat(),
+            }
+        )
 
-        graph_rows = []
-        for e in G.edges(data=True):
-            from_u, to_u, data = e
-            graph_rows.append(
-                {
-                    "website_id": website_id,
-                    "from_url": from_u,
-                    "to_url": to_u,
-                    "anchor_text": data.get("anchor"),
-                    "pagerank_from": float(pagerank.get(from_u, 0.0)),
-                    "pagerank_to": float(pagerank.get(to_u, 0.0)),
-                    "sessions_from": int(url_to_sessions.get(from_u, 0)),
-                    "is_orphan_target": to_u in orphans,
-                    "crawled_at": datetime.utcnow().isoformat(),
-                }
-            )
-
-        for chunk in _chunks(graph_rows, 500):
-            supabase.table("internal_link_graph").insert(chunk).execute()
-    except Exception as exc:
-        # Persisting the graph is best-effort; the freshly built graph is still
-        # returned below so the UI is not blocked by a database outage.
-        logger.warning("internal_link_graph persistence failed: %s", exc)
+    # A crawl that found no real pages (sitemap blocked/redirected, site down,
+    # WAF) must never wipe the last good graph. Previously an unconditional
+    # delete-then-insert turned a transient fetch failure into permanent data
+    # loss, and the UI silently showed an empty graph.
+    if graph_rows:
+        try:
+            supabase.table("internal_link_graph").delete().eq("website_id", website_id).execute()
+            for chunk in _chunks(graph_rows, 500):
+                supabase.table("internal_link_graph").insert(chunk).execute()
+        except Exception as exc:
+            # Persisting is best-effort; the freshly built graph is still
+            # returned below so the UI is not blocked by a database outage.
+            logger.warning("internal_link_graph persistence failed: %s", exc)
+    else:
+        logger.info(
+            "Internal link graph for %s produced no edges (discovered=%s); keeping stored graph",
+            website_id,
+            discovered,
+        )
 
     try:
         await report_problem(
@@ -236,6 +331,53 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
         "edges": edges,
         "orphans": orphans,
     }
+
+
+def get_stored_link_graph(website_id: str) -> Dict[str, Any]:
+    """Return the last persisted internal link graph for a website.
+
+    Used as an honest fallback when a live crawl cannot run, so the UI shows
+    real previously-crawled edges instead of a misleading empty state.
+    """
+    try:
+        supabase = get_supabase()
+        rows = (
+            supabase.table("internal_link_graph")
+            .select("from_url,to_url,anchor_text,pagerank_from,pagerank_to,sessions_from,is_orphan_target,crawled_at")
+            .eq("website_id", website_id)
+            .limit(2000)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:
+        logger.warning("Stored link graph read failed for %s: %s", website_id, exc)
+        return {"nodes": [], "edges": [], "orphans": []}
+
+    if not rows:
+        return {"nodes": [], "edges": [], "orphans": []}
+
+    nodes: Dict[str, Dict[str, Any]] = {}
+    edges: List[Dict[str, Any]] = []
+    orphans: List[str] = []
+    for r in rows:
+        src = r.get("from_url")
+        dst = r.get("to_url")
+        edges.append({"from": src, "to": dst, "anchor": r.get("anchor_text")})
+        for url, pr_key, sess_key in ((src, "pagerank_from", "sessions_from"), (dst, "pagerank_to", None)):
+            if not url:
+                continue
+            node = nodes.setdefault(url, {"url": url, "pagerank": 0.0, "sessions": 0})
+            node["pagerank"] = max(node["pagerank"], float(r.get(pr_key) or 0.0))
+            if sess_key:
+                node["sessions"] = max(node["sessions"], int(r.get(sess_key) or 0))
+        if r.get("is_orphan_target") and dst and dst not in orphans:
+            orphans.append(dst)
+
+    for url in nodes:
+        nodes[url]["is_orphan"] = url in orphans
+
+    return {"nodes": list(nodes.values()), "edges": edges, "orphans": orphans}
 
 
 async def suggest_internal_links(

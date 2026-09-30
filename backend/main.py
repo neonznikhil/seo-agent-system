@@ -142,6 +142,36 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_validate_nim_bg())
 
+    # 2b. Warm the connector-status live-check caches (NVIDIA + Serper).
+    #
+    # The status endpoint performs real probes so it never claims a connector is
+    # healthy just because a key string exists. Those probes are slow on a cold
+    # cache (NVIDIA model list ~15s), which used to exceed the frontend proxy
+    # timeout and surface as "Backend unreachable" — exactly when a user had just
+    # connected a site. Pre-computing them in the background keeps the endpoint
+    # fast for the first real page load without faking any state.
+    async def _warm_connector_caches():
+        try:
+            await asyncio.sleep(1)
+            from routers.connectors import verify_serper_key, _cached_google_check
+            serper_key = os.environ.get("SERPER_API_KEY", "")
+            if serper_key:
+                await verify_serper_key(serper_key)
+            from database import is_nim_available
+            await is_nim_available()
+        except Exception as e:
+            logger.debug(f"[Connectors] Cache warm-up note: {e}")
+
+    asyncio.create_task(_warm_connector_caches())
+
+    # 2c. Seed the knowledge-mirror dedup index in the background so a re-crawl
+    # collapses onto existing rows instead of re-appending them.
+    try:
+        from services.local_store import _kb_dedup_seed
+        asyncio.get_event_loop().run_in_executor(None, _kb_dedup_seed)
+    except Exception as e:
+        logger.debug(f"[local_store] dedup seed note: {e}")
+
     # 3. Autonomous Health Service Startup
     try:
         await autonomous_health_service.start()
@@ -321,6 +351,12 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
     except Exception as e:
         logger.warning("[Main] Scheduler stop failed: %s", e)
+    try:
+        # Persist any knowledge rows still sitting in the deferred-write cache.
+        from services.local_store import flush_local_store
+        flush_local_store()
+    except Exception as e:
+        logger.warning("[Main] Local store flush failed: %s", e)
 
 
 is_prod = os.getenv("ENVIRONMENT") == "production"

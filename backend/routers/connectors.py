@@ -178,6 +178,35 @@ async def verify_serper_key(api_key: str, *, use_cache: bool = True) -> tuple[bo
     return result
 
 
+# GSC/GA4 live verification is cached like Serper: /connectors/status is polled
+# by the UI, so we must not hit the Google APIs on every render, yet a revoked
+# credential must stop reading "Connected" within the TTL.
+_GOOGLE_STATUS_CACHE: dict = {}
+_GOOGLE_CACHE_TTL_SECONDS = 300
+
+
+async def _cached_google_check(cache_key: str, signature: str, check) -> tuple[bool, str]:
+    """Return a cached (connected, message) for a Google connector live check."""
+    import time as _time
+
+    entry = _GOOGLE_STATUS_CACHE.get(cache_key)
+    if (
+        entry
+        and entry.get("signature") == signature
+        and (_time.monotonic() - entry["at"]) < _GOOGLE_CACHE_TTL_SECONDS
+    ):
+        return entry["ok"], entry["message"]
+
+    try:
+        ok, message = await check()
+    except Exception as e:
+        ok, message = False, str(e)[:200]
+    _GOOGLE_STATUS_CACHE[cache_key] = {
+        "signature": signature, "ok": ok, "message": message, "at": _time.monotonic()
+    }
+    return ok, message
+
+
 # ---------------------------------------------------------
 # Pydantic Request / Response Models
 # ---------------------------------------------------------
@@ -424,23 +453,34 @@ async def test_supabase(payload: TestSupabaseRequest):
         raise HTTPException(status_code=400, detail="Supabase URL must start with http:// or https://")
 
     rest_connected = False
+    rest_detail = ""
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(
-                f"{supabase_url.rstrip('/')}/auth/v1/health",
-                headers={"apikey": anon_key, "Authorization": f"Bearer {anon_key}"},
-            )
-            if resp.status_code in (200, 204):
-                rest_connected = True
-            else:
-                rest_resp = await client.get(
-                    f"{supabase_url.rstrip('/')}/rest/v1/",
-                    headers={"apikey": anon_key, "Authorization": f"Bearer {anon_key}"},
-                )
-                if rest_resp.status_code in (200, 204):
-                    rest_connected = True
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            headers = {"apikey": anon_key, "Authorization": f"Bearer {anon_key}"}
+            base = supabase_url.rstrip("/")
+            # Probe the REST endpoint first: /auth/v1/health is frequently
+            # unreachable or slow on a healthy project, and the old ordering
+            # burned the full 8s timeout before falling through to a REST check
+            # that answers in ~200ms. That delay pushed the whole test past the
+            # client timeout, so a working Supabase reported "timed out".
+            for probe in (f"{base}/rest/v1/", f"{base}/auth/v1/health"):
+                try:
+                    resp = await client.get(probe, headers=headers)
+                except Exception as exc:
+                    rest_detail = str(exc)[:200]
+                    continue
+                if resp.status_code in (200, 204, 401, 403):
+                    # 401/403 still proves the project answers; the key scope is
+                    # a separate concern reported elsewhere.
+                    rest_connected = resp.status_code in (200, 204)
+                    rest_detail = f"{probe} -> HTTP {resp.status_code}"
+                    if rest_connected:
+                        break
+                else:
+                    rest_detail = f"{probe} -> HTTP {resp.status_code}"
     except Exception as e:
         logger.warning(f"REST health check warning: {e}")
+        rest_detail = str(e)[:200]
 
     db_connected = False
     if payload.db_password:
@@ -458,7 +498,7 @@ async def test_supabase(payload: TestSupabaseRequest):
     # connected when a real REST/DB probe succeeded, otherwise the UI shows a
     # green "Connected" badge for a bogus URL and every later query fails.
     connected = rest_connected or db_connected
-    return {
+    response = {
         "connected": connected,
         "rest_connected": rest_connected,
         "db_connected": db_connected,
@@ -470,6 +510,9 @@ async def test_supabase(payload: TestSupabaseRequest):
             else "Could not reach Supabase. Verify the project URL and anon key."
         ),
     }
+    if rest_detail:
+        response["rest_detail"] = rest_detail
+    return response
 
 
 @router.post("/api/connectors/setup-supabase")
@@ -854,6 +897,65 @@ async def save_serper(payload: TestSerperRequest):
 # 5. Analytics (GSC & GA4)
 # ---------------------------------------------------------
 
+def _persist_google_credentials(env_updates: Dict[str, str], settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist verified Google credentials to .env, the process, and the local store.
+
+    Returns an honest per-sink report; the caller only claims a save when at
+    least one durable sink actually succeeded.
+    """
+    sinks: Dict[str, bool] = {"env_file": False, "process": False, "local_store": False}
+    try:
+        write_env_file(custom_keys=env_updates)
+        sinks["env_file"] = True
+    except Exception as e:
+        logger.error(f"[Connectors] Google credentials .env write failed: {e}")
+    try:
+        _apply_env_credentials(env_updates)
+        sinks["process"] = True
+    except Exception as e:
+        logger.error(f"[Connectors] Google credentials process apply failed: {e}")
+    try:
+        from services.local_store import set_local_connector_settings
+        set_local_connector_settings(settings)
+        sinks["local_store"] = True
+    except Exception as e:
+        logger.error(f"[Connectors] Google credentials local store failed: {e}")
+    return sinks
+
+
+async def _verify_gsc_live(credentials_json: Optional[str], property_url: Optional[str]) -> Dict[str, Any]:
+    """Run a live Search Console call with the supplied or stored credentials.
+
+    The Google client is synchronous, so it runs in a worker thread with a
+    timeout — otherwise a slow/hung API call would block the event loop and the
+    status endpoint (polled by the UI) would hang with it.
+    """
+    import asyncio
+
+    from services.gsc_service import GSCService
+    svc = GSCService(website_url=property_url or os.getenv("GSC_SITE_URL") or None,
+                     credentials_path=credentials_json)
+    if not svc.is_connected():
+        return {"connected": False, "status": "not_configured", "properties": [],
+                "message": "GSC not connected. Paste the service-account JSON in Connectors."}
+
+    def _call() -> List[str]:
+        service = svc._get_service()
+        sites = service.sites().list().execute()
+        return [
+            s.get("siteUrl")
+            for s in (sites.get("siteEntry") or [])
+            if s.get("permissionLevel") in ("siteOwner", "siteFullUser", "siteRestrictedUser") and s.get("siteUrl")
+        ]
+
+    verified = await asyncio.wait_for(asyncio.to_thread(_call), timeout=20.0)
+    if not verified:
+        return {"connected": False, "status": "no_properties", "properties": [],
+                "message": "GSC credentials valid but no verified properties. Verify the site in Search Console."}
+    return {"connected": True, "status": "success", "properties": verified,
+            "message": f"GSC credentials active ({len(verified)} properties accessible)"}
+
+
 @router.get("/api/connectors/gsc/test")
 @router.get("/connectors/gsc/test")
 @router.post("/api/connectors/gsc/test")
@@ -861,8 +963,16 @@ async def save_serper(payload: TestSerperRequest):
 @router.post("/api/connectors/test-gsc")
 @router.post("/connectors/test-gsc")
 async def test_gsc(payload: Optional[TestGscRequest] = None):
-    """Verify Google Search Console credentials and return verified properties."""
-    cred_json = payload.credentials_json if payload else None
+    """Verify Google Search Console credentials live, then persist them durably.
+
+    The pasted service-account JSON is written as GSC_SERVICE_ACCOUNT_JSON; the
+    services previously only read GSC_CREDENTIALS_PATH, so a successful save was
+    silently ignored. Persistence is reported per sink instead of a blanket
+    "saved" that could hide a lost write.
+    """
+    cred_json = (payload.credentials_json if payload else None) or os.getenv("GSC_SERVICE_ACCOUNT_JSON")
+    property_url = (payload.property_url if payload else None) or os.getenv("GSC_SITE_URL")
+
     if cred_json:
         try:
             json.loads(cred_json)
@@ -870,80 +980,137 @@ async def test_gsc(payload: Optional[TestGscRequest] = None):
             raise HTTPException(status_code=400, detail="Invalid Service Account JSON format")
 
     try:
-        from services.gsc_service import list_verified_sites
-        sites = await list_verified_sites()
-        if not sites:
-            return {
-                "connected": False,
-                "status": "not_configured",
-                "message": "GSC reachable but no verified properties. Verify property in Search Console.",
-                "properties": [],
-            }
-        return {
-            "connected": True,
-            "status": "success",
-            "message": f"GSC credentials active ({len(sites)} properties accessible)",
-            "properties": sites,
-        }
+        result = await _verify_gsc_live(cred_json, property_url)
     except Exception as e:
         logger.warning(f"GSC test failed: {e}")
         return {
             "connected": False,
-            "status": "not_configured",
-            "message": "GSC not connected. Add service JSON and property URL.",
+            "status": "error",
             "properties": [],
+            "message": f"GSC connection failed: {str(e)[:180]}",
+            "saved": False,
         }
+
+    if not result.get("connected"):
+        return {**result, "saved": False}
+
+    # Credentials are proven live — persist them.
+    env_updates: Dict[str, str] = {}
+    if cred_json:
+        env_updates["GSC_SERVICE_ACCOUNT_JSON"] = cred_json.strip()
+    if property_url:
+        env_updates["GSC_SITE_URL"] = property_url.strip()
+    settings: Dict[str, Any] = {}
+    if property_url:
+        settings["gsc_property_url"] = property_url.strip()
+    sinks = _persist_google_credentials(env_updates, settings) if (env_updates or settings) else {}
+    return {**result, "saved": any(sinks.values()) if sinks else False, "persisted_to": sinks}
 
 
 @router.post("/api/connectors/sync-gsc")
 @router.post("/connectors/sync-gsc")
 async def sync_gsc(payload: Optional[dict] = None):
     """Pull live search impressions, clicks, and queries from Google Search Console."""
-    target_id = get_default_website_id()
+    target_id = None
+    if isinstance(payload, dict):
+        target_id = payload.get("website_id")
+    target_id = target_id or get_default_website_id()
     try:
-        from services.gsc_service import sync_gsc_data
-        result = await sync_gsc_data(website_id=target_id)
-        return {"success": True, "synced": True, "data": result}
+        from services.analytics_service import AnalyticsService
+        result = await AnalyticsService.sync_gsc_data(website_id=target_id)
+        if isinstance(result, dict) and result.get("success"):
+            return {"success": True, "synced": True, "data": result}
+        message = (result or {}).get("message") if isinstance(result, dict) else None
+        return {
+            "success": False,
+            "synced": False,
+            "message": message or "GSC sync failed. Check credentials in Connectors.",
+            "records_synced": (result or {}).get("records_synced", 0) if isinstance(result, dict) else 0,
+        }
     except Exception as e:
+        logger.warning(f"GSC sync failed: {e}")
         return {"success": False, "synced": False, "message": "GSC sync failed. Please try again later.", "records_synced": 0}
+
+
+async def _verify_ga4_live(property_id: Optional[str], credentials_json: Optional[str]) -> Dict[str, Any]:
+    """Run a live GA4 Data API call with the supplied or stored credentials."""
+    import asyncio
+
+    from services.ga4_service import GA4Service
+    svc = GA4Service(property_id=property_id, credentials_path=credentials_json)
+    if not svc.is_connected():
+        return {"connected": False, "status": "not_configured", "sessions_last_7_days": None,
+                "message": "GA4 not connected. Set the Property ID and paste service-account JSON in Connectors."}
+    end_date = datetime.utcnow().strftime("%Y-%m-%d")
+    start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    def _call() -> int:
+        svc._ensure_initialized()
+        response = svc._service.properties().runReport(
+            property=f"properties/{svc.property_id}",
+            body={
+                "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+                "metrics": [{"name": "sessions"}],
+            },
+        ).execute()
+        metrics = response.get("rows", [{}])[0].get("metricValues", [])
+        return int(metrics[0].get("value", 0)) if metrics else 0
+
+    sessions = await asyncio.wait_for(asyncio.to_thread(_call), timeout=20.0)
+    return {
+        "connected": True,
+        "status": "success",
+        "sessions_last_7_days": sessions,
+        "message": f"Successfully connected to Google Analytics 4 ({sessions} sessions in the last 7 days)",
+    }
 
 
 @router.post("/api/connectors/test-ga4")
 @router.post("/connectors/test-ga4")
 async def test_ga4(payload: Optional[TestGa4Request] = None):
-    """Verify GA4 Data API connection with real sessions only."""
-    prop_id = (payload.property_id if payload and payload.property_id else "") or os.getenv("GA4_PROPERTY_ID", "")
+    """Verify GA4 Data API connection live, then persist credentials durably."""
+    prop_id = ((payload.property_id if payload else None) or "").strip() or os.getenv("GA4_PROPERTY_ID", "")
+    cred_json = ((payload.credentials_json if payload else None) or "").strip() or os.getenv("GA4_CREDENTIALS_JSON", "")
+
+    if cred_json:
+        try:
+            json.loads(cred_json)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid Service Account JSON format")
+
     try:
-        from services.ga4_service import ga4_service
-        res = await ga4_service.get_recent_sessions(website_id=get_default_website_id(), days=7)
-        if res.get("error"):
-            return {
-                "connected": False,
-                "status": "not_configured",
-                "sessions_last_7_days": None,
-                "message": res.get("message") or "GA4 not configured. Set GA4_PROPERTY_ID and credentials.",
-            }
-        return {
-            "connected": True,
-            "status": "success",
-            "sessions_last_7_days": res.get("sessions"),
-            "message": "Successfully connected to Google Analytics 4",
-        }
+        result = await _verify_ga4_live(prop_id, cred_json or None)
     except Exception as e:
         logger.warning(f"GA4 test failed: {e}")
         return {
             "connected": False,
-            "status": "not_configured",
+            "status": "error",
             "sessions_last_7_days": None,
-            "message": "GA4 not connected. Set GA4_PROPERTY_ID and credentials JSON.",
+            "message": f"GA4 connection failed: {str(e)[:180]}",
+            "saved": False,
         }
+
+    if not result.get("connected"):
+        return {**result, "saved": False}
+
+    env_updates: Dict[str, str] = {}
+    if prop_id:
+        env_updates["GA4_PROPERTY_ID"] = prop_id
+    if cred_json:
+        env_updates["GA4_CREDENTIALS_JSON"] = cred_json
+    settings: Dict[str, Any] = {}
+    if prop_id:
+        settings["ga4_property_id"] = prop_id
+    sinks = _persist_google_credentials(env_updates, settings) if (env_updates or settings) else {}
+    return {**result, "saved": any(sinks.values()) if sinks else False, "persisted_to": sinks}
 
 
 @router.post("/api/connectors/test-ga4-stream")
 @router.post("/connectors/test-ga4-stream")
-async def test_ga4_stream(website_id: Optional[str] = Query(None)):
+async def test_ga4_stream(payload: Optional[TestGa4Request] = None, website_id: Optional[str] = Query(None)):
     """Live GA4 realtime stream status for the selected website."""
-    prop_id = os.getenv("GA4_PROPERTY_ID", "")
+    prop_id = ((payload.property_id if payload else None) or "").strip() or os.getenv("GA4_PROPERTY_ID", "")
+    cred_json = ((payload.credentials_json if payload else None) or "").strip() or os.getenv("GA4_CREDENTIALS_JSON", "")
     if not prop_id:
         return {
             "connected": False,
@@ -953,13 +1120,22 @@ async def test_ga4_stream(website_id: Optional[str] = Query(None)):
 
     try:
         from services.ga4_service import GA4Service
-        svc = GA4Service(property_id=prop_id)
+        svc = GA4Service(property_id=prop_id, credentials_path=cred_json or None)
         data = await svc.get_page_traffic(
             start_date=(datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d"),
             end_date=datetime.utcnow().strftime("%Y-%m-%d"),
             limit=10,
         )
-        sessions = int(data.get("sessions", 0) or 0)
+        if data.get("error"):
+            return {
+                "connected": False,
+                "stream_status": "error",
+                "active_visitors": None,
+                "message": str(data.get("error"))[:200],
+            }
+        # `get_page_traffic` reports the total under `total_sessions`; reading the
+        # nonexistent `sessions` key always produced 0 active visitors.
+        sessions = int(data.get("total_sessions", 0) or 0)
         return {
             "connected": True,
             "stream_status": "live",
@@ -968,11 +1144,10 @@ async def test_ga4_stream(website_id: Optional[str] = Query(None)):
         }
     except Exception as exc:
         return {
-            "connected": bool(prop_id),
+            "connected": False,
             "stream_status": "error",
             "message": str(exc)[:200],
         }
-
 
 # ---------------------------------------------------------
 # 6. Save Generic & Save All
@@ -1041,7 +1216,10 @@ async def save_all_connectors(payload: SaveAllRequest):
     if payload.wordpress_site_url:
         env_updates["WORDPRESS_SITE_URL"] = payload.wordpress_site_url.strip()
         env_updates["WP_SITE_URL"] = payload.wordpress_site_url.strip()
-    if payload.wordpress_username:
+    # Never persist a placeholder username to the durable .env: it would later be
+    # picked up as a default identity and authenticate as the wrong account. The
+    # real username is stored with the WP credentials below.
+    if payload.wordpress_username and not is_placeholder_wp_username(payload.wordpress_username):
         env_updates["WORDPRESS_USERNAME"] = payload.wordpress_username.strip()
     if payload.gsc_property_url:
         env_updates["GSC_SITE_URL"] = payload.gsc_property_url.strip()
@@ -1245,39 +1423,44 @@ async def get_connectors_status(website_id: Optional[str] = None):
     if serper_message:
         serper_status["message"] = serper_message
 
-    # 5. GSC Status
+    # 5. GSC Status — presence of a key is not a connection; only a live test
+    # may claim success. The badge stays honest until GSC is actually verified.
+    gsc_key = os.environ.get("GSC_SERVICE_ACCOUNT_JSON") or os.environ.get("GSC_SITE_URL", "")
+    gsc_configured = bool(gsc_key)
     gsc_connected = False
-    try:
-        from services.gsc_service import GSCService
-        gsc_connected = GSCService().is_connected()
-    except Exception as e:
-        logger.debug(f"GSC is_connected check: {e}")
-        gsc_connected = False
-
-    gsc_site_url = os.environ.get("GSC_SITE_URL") or os.environ.get("GSC_PROPERTY", "")
+    gsc_message: Optional[str] = None
+    if gsc_configured:
+        async def _gsc_live() -> tuple[bool, str]:
+            res = await _verify_gsc_live(os.environ.get("GSC_SERVICE_ACCOUNT_JSON"),
+                                         os.environ.get("GSC_SITE_URL"))
+            return bool(res.get("connected")), res.get("message", "")
+        gsc_connected, gsc_message = await _cached_google_check("gsc", gsc_key, _gsc_live)
     gsc_status = {
         "connected": gsc_connected,
-        "is_configured": gsc_connected or bool(gsc_site_url),
-        "status_label": "Connected" if gsc_connected else ("Configured" if gsc_site_url else "Awaiting Sync"),
-        "site_url": gsc_site_url,
+        "is_configured": gsc_configured,
+        "status_label": "Connected" if gsc_connected else ("Configured (unverified)" if gsc_configured else "Not Configured"),
     }
+    if gsc_message:
+        gsc_status["message"] = gsc_message
 
-    # 6. GA4 Status
+    # 6. GA4 Status — same rule: an unconfigured property must never read "Ready".
+    ga4_key = os.environ.get("GA4_PROPERTY_ID") or os.environ.get("GA4_CREDENTIALS_JSON", "")
+    ga4_configured = bool(os.environ.get("GA4_PROPERTY_ID") and os.environ.get("GA4_CREDENTIALS_JSON"))
     ga4_connected = False
-    try:
-        from services.ga4_service import ga4_service
-        ga4_connected = ga4_service.is_connected()
-    except Exception as e:
-        logger.debug(f"GA4 is_connected check: {e}")
-        ga4_connected = False
-
-    ga4_prop_id = os.environ.get("GA4_PROPERTY_ID", "")
+    ga4_message: Optional[str] = None
+    if ga4_configured:
+        async def _ga4_live() -> tuple[bool, str]:
+            res = await _verify_ga4_live(os.environ.get("GA4_PROPERTY_ID"),
+                                         os.environ.get("GA4_CREDENTIALS_JSON"))
+            return bool(res.get("connected")), res.get("message", "")
+        ga4_connected, ga4_message = await _cached_google_check("ga4", ga4_key, _ga4_live)
     ga4_status = {
         "connected": ga4_connected,
-        "is_configured": ga4_connected or bool(ga4_prop_id),
-        "status_label": "Connected" if ga4_connected else ("Configured" if ga4_prop_id else "Ready"),
-        "property_id": ga4_prop_id,
+        "is_configured": ga4_configured,
+        "status_label": "Connected" if ga4_connected else ("Configured (unverified)" if ga4_configured else "Not Configured"),
     }
+    if ga4_message:
+        ga4_status["message"] = ga4_message
 
     # 7. WordPress Status
     #
@@ -1297,16 +1480,19 @@ async def get_connectors_status(website_id: Optional[str] = None):
 
     # Gather the persisted record (Supabase primary, local store fallback).
     record: Dict[str, Any] = {}
+    supabase_record: Dict[str, Any] = {}
+    loc: Optional[Dict[str, Any]] = None
     if target_id:
         try:
-            record = (
+            supabase_record = (
                 get_supabase().table("websites")
-                .select("app_password, wordpress_password, cms_url, url, cms_user, wordpress_user, wordpress_url")
+                .select("app_password, wordpress_password, cms_url, url, cms_user, wordpress_user, wordpress_url, wp_verified, wp_verified_at, wp_verified_role, wp_last_error")
                 .eq("id", target_id)
                 .single()
                 .execute()
                 .data or {}
             )
+            record.update(supabase_record)
         except Exception as e:
             logger.debug(f"Website connector status lookup note: {e}")
     try:
@@ -1320,7 +1506,15 @@ async def get_connectors_status(website_id: Optional[str] = None):
             loc = all_loc[0] if all_loc else None
         if loc:
             for k, v in loc.items():
-                record.setdefault(k, v)
+                # Do not let a null from Supabase mask a real value in the local
+                # store: the verification write goes to both sinks, and Supabase
+                # can silently reject it (RLS) while the local write succeeds.
+                # setdefault alone left record[k] = None, and bool(None) is False
+                # — so a verified site intermittently reported as disconnected.
+                if record.get(k) in (None, "", []) and v not in (None, "", []):
+                    record[k] = v
+                elif k not in record:
+                    record[k] = v
             if loc.get("app_password") or loc.get("wordpress_password") or loc.get("wordpress_password_encrypted"):
                 record.setdefault("app_password", loc.get("app_password") or loc.get("wordpress_password_encrypted"))
     except Exception:
@@ -1332,11 +1526,40 @@ async def get_connectors_status(website_id: Optional[str] = None):
         (record.get("app_password") or record.get("wordpress_password") or record.get("wordpress_password_encrypted"))
         and wp_row_site
     )
-    wp_verified = bool(record.get("wp_verified"))
-    wp_verified_at = record.get("wp_verified_at")
-    wp_verified_role = record.get("wp_verified_role")
-    if record.get("wp_last_error"):
-        wp_error = record.get("wp_last_error")
+
+    # The verification write goes to both sinks, but Supabase can silently reject
+    # it (RLS) while the local write succeeds — or vice versa. Resolve the true
+    # state by timestamp rather than letting one sink's null (or stale value)
+    # mask the other's. This is what made a verified site flip back to
+    # "not connected" intermittently.
+    def _verified_state(src: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if "wp_verified" not in src:
+            return None
+        return {
+            "verified": bool(src.get("wp_verified")),
+            "at": src.get("wp_verified_at"),
+            "role": src.get("wp_verified_role"),
+            "error": src.get("wp_last_error"),
+        }
+
+    candidates = [c for c in (_verified_state(supabase_record), _verified_state(loc or {})) if c]
+
+    def _ts(value: Optional[str]) -> float:
+        if not value:
+            return float("-inf")
+        try:
+            from datetime import datetime as _dt
+            return _dt.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return float("-inf")
+
+    if candidates:
+        chosen = max(candidates, key=lambda c: _ts(c.get("at")))
+        wp_verified = chosen["verified"]
+        wp_verified_at = chosen["at"]
+        wp_verified_role = chosen["role"]
+        if chosen.get("error"):
+            wp_error = chosen["error"]
 
     site_for_status = wp_row_site or wp_site
     configured = wp_has_saved_creds or wp_has_creds
@@ -1348,7 +1571,9 @@ async def get_connectors_status(website_id: Optional[str] = None):
         "connected": connected,
         "verified": wp_verified,
         "is_configured": configured,
-        "role": wp_verified_role or ("Editor" if connected else None),
+        # Never invent a role: an unrecorded role is reported as null so the UI
+        # shows the real state instead of a hardcoded "Editor".
+        "role": wp_verified_role or None,
         "site_url": site_for_status,
         "wp_user": wp_row_user or wp_user or None,
         "verified_at": wp_verified_at,
