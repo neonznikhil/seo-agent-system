@@ -590,6 +590,15 @@ async def wordpress_connect(payload: WordPressConnectRequest):
         if not password or "•" in password:
             password = os.getenv("WORDPRESS_APP_PASSWORD", "")
 
+    return await _verify_wordpress_credentials(site_url, username, password)
+
+
+async def _verify_wordpress_credentials(site_url: str, username: str, password: str) -> Dict[str, Any]:
+    """Live-test WordPress credentials. Raises HTTPException on auth/API failure.
+
+    Shared by the Test button and the Save button so "saved" never implies
+    "connected" unless the credentials actually authenticated.
+    """
     if not site_url.startswith("http"):
         raise HTTPException(status_code=400, detail="Site URL must start with http:// or https://")
 
@@ -687,6 +696,7 @@ async def wordpress_connect(payload: WordPressConnectRequest):
         )
 
 
+
 @router.post("/api/wordpress/save")
 @router.post("/api/connectors/save-wordpress")
 @router.post("/wordpress/save")
@@ -703,6 +713,10 @@ async def wordpress_save(payload: WordPressSaveRequest):
     password = (payload.wp_app_password or payload.app_password or "").strip().replace(" ", "")
     if not password:
         raise HTTPException(status_code=400, detail="WordPress application password is required")
+
+    # Verify BEFORE persisting: a "saved" response must never imply "connected"
+    # unless the credentials actually authenticated (R4 — no fabricated success).
+    verification = await _verify_wordpress_credentials(site_url, username, password)
 
     write_env_file(custom_keys={
         "WORDPRESS_SITE_URL": site_url,
@@ -786,10 +800,12 @@ async def wordpress_save(payload: WordPressSaveRequest):
 
     return {
         "success": True,
-        "connected": True,
+        "connected": bool(verification.get("connected")),
+        "can_publish": verification.get("can_publish"),
+        "role": (verification.get("user") or {}).get("roles") or [],
         "site_url": site_url,
         "website_id": wid,
-        "message": "WordPress credentials saved securely (Fernet-encrypted)",
+        "message": "WordPress credentials verified and saved securely (Fernet-encrypted)",
     }
 
 
