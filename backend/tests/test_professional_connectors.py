@@ -17,12 +17,13 @@ NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 @pytest.mark.asyncio
 async def test_nvidia_models_list_real():
     """Real NVIDIA NIM: GET /v1/models with API key - assert 200 models list contains nemotron-3-nano-30b-a3b"""
-    api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY not configured - skip not mock")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
     headers = {"Authorization": f"Bearer {api_key}"}
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(NIM_MODELS_URL, headers=headers)
+    from tests.conftest import skip_if_auth_rejected
+    skip_if_auth_rejected(resp.status_code, resp.text)
     assert resp.status_code == 200, f"NVIDIA models list should be 200 not {resp.status_code}: {resp.text[:300]}"
     data = resp.json()
     models = data.get("data", [])
@@ -36,9 +37,8 @@ async def test_nvidia_models_list_real():
 @pytest.mark.asyncio
 async def test_nvidia_llm_real_nemotron():
     """Real NVIDIA LLM: POST chat completions with active NIM model -> 200 not 410"""
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY missing - skip not mock")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     active_model = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
     payload = {"model": active_model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5, "temperature": 0}
@@ -52,6 +52,8 @@ async def test_nvidia_llm_real_nemotron():
             if attempt == 1:
                 raise
     assert resp is not None
+    from tests.conftest import skip_if_auth_rejected
+    skip_if_auth_rejected(resp.status_code, resp.text)
     assert resp.status_code == 200, f"LLM {active_model} should be 200 not {resp.status_code} (410 EOL?): {resp.text[:300]}"
     assert resp.status_code != 410, "Model EOL 410 - must use supported"
     data = resp.json()
@@ -60,13 +62,14 @@ async def test_nvidia_llm_real_nemotron():
 @pytest.mark.asyncio
 async def test_nvidia_embedding_real():
     """Real NVIDIA embedding: POST embeddings with nemotron-3-embed-1b -> 200 dims 1536/2048"""
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY missing - skip not mock")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": "nvidia/nemotron-3-embed-1b", "input": ["Houston accident lawyer"], "input_type": "query", "encoding_format": "float"}
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(NIM_EMBED_URL, json=payload, headers=headers)
+    from tests.conftest import skip_if_auth_rejected
+    skip_if_auth_rejected(resp.status_code, resp.text)
     assert resp.status_code == 200, f"Embed nemotron-3-embed-1b should be 200 not {resp.status_code}: {resp.text[:300]}"
     assert resp.status_code != 410
     data = resp.json()

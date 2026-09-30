@@ -67,3 +67,23 @@ def _isolate_credential_env():
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+
+
+def live_nvidia_key() -> str:
+    """Return the configured NVIDIA key, or skip when there is none to test with.
+
+    A present-but-rejected key (the common case on a dev box) is NOT a code
+    failure: the honest 401 behaviour is asserted with mocks in
+    test_connector_honesty.py. Live tests should skip rather than report red, so
+    the suite distinguishes "no usable key here" from "the integration broke".
+    """
+    key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY")
+    if not key or key.strip().lower() in ("dummy", "mock-key", "test-key"):
+        pytest.skip("NVIDIA_API_KEY not configured")
+    return key
+
+
+def skip_if_auth_rejected(status_code: int, body: str = "") -> None:
+    """Skip a live test when the provider rejects the configured credential."""
+    if status_code in (401, 403):
+        pytest.skip(f"NVIDIA_API_KEY rejected by provider (HTTP {status_code})")

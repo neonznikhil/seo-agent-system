@@ -778,6 +778,21 @@ def save_local_competitor(website_id_or_comp: Any, competitor: Optional[Dict[str
     return record
 
 
+@_atomic
+def update_local_competitor_metrics(competitor_id: str, metrics: Dict[str, Any]) -> bool:
+    """Merge measured metrics into an existing competitor record by id."""
+    competitors = _load_json("competitors.json")
+    changed = False
+    for i, c in enumerate(competitors):
+        if c.get("id") == competitor_id:
+            competitors[i] = {**c, **{k: v for k, v in metrics.items() if k != "id"}, "updated_at": datetime.utcnow().isoformat()}
+            changed = True
+            break
+    if changed:
+        _save_json("competitors.json", competitors)
+    return changed
+
+
 def list_local_competitors(website_id: Optional[str] = None) -> List[Dict[str, Any]]:
     competitors = _load_json("competitors.json")
     if website_id and website_id not in ("all", "default"):

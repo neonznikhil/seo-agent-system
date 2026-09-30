@@ -578,6 +578,18 @@ export default function ConnectorsPage() {
       ? status.health_score
       : (status?.connected_count ? status.connected_count * 25 : null);
 
+  // While the first status fetch is in flight we genuinely do not know the
+  // connector state. Rendering "Not Configured" then is a lie that reads to the
+  // user as "connecting a website broke my integrations" — show "Checking…"
+  // instead, and only fall back to Not Configured once a real answer arrives.
+  const statusPending = loading && status === null;
+  const badgeState = (connected?: boolean): "green" | "amber" | "muted" =>
+    connected ? "green" : statusPending ? "muted" : "amber";
+  const badgeClass = (connected?: boolean) =>
+    badgeState(connected) === "green" ? "badge-green" : badgeState(connected) === "muted" ? "badge-muted" : "badge-amber";
+  const badgeText = (connected?: boolean, notConfigured = "Not Configured") =>
+    connected ? null : statusPending ? "Checking…" : notConfigured;
+
   return (
     <div className="page-container active" style={{ padding: "24px", position: "relative" }}>
       {/* PAGE HEADER */}
@@ -630,8 +642,8 @@ export default function ConnectorsPage() {
                   <div>
                     <span className="panel-label">1. NVIDIA NIM API (LLM & Embeddings)</span>
                   </div>
-                  <span className={`badge ${status?.nvidia?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.nvidia?.connected ? "Connected" : "Not Configured"}
+                  <span className={`badge ${badgeClass(status?.nvidia?.connected)}`}>
+                    {badgeText(status?.nvidia?.connected) || "Connected"}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -684,8 +696,8 @@ export default function ConnectorsPage() {
               <div className="panel" style={{ borderLeft: status?.supabase?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="panel-label">2. Supabase Database & pgvector</span>
-                  <span className={`badge ${status?.supabase?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.supabase?.connected ? "Connected & Tables Ready" : "Not Configured"}
+                  <span className={`badge ${badgeClass(status?.supabase?.connected)}`}>
+                    {badgeText(status?.supabase?.connected, "Connected & Tables Ready") || "Connected & Tables Ready"}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -762,9 +774,11 @@ export default function ConnectorsPage() {
               <div className="panel" style={{ borderLeft: status?.wordpress?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="panel-label">3. WordPress CMS (OAuth / Application Password)</span>
-                  <span className={`badge ${status?.wordpress?.connected ? "badge-green" : "badge-amber"}`}>
+                  <span className={`badge ${badgeClass(status?.wordpress?.connected)}`}>
                     {status?.wordpress?.connected
                       ? `Connected (Role: ${status?.wordpress?.role || "verified"})`
+                      : statusPending
+                      ? "Checking…"
                       : (status?.wordpress?.is_configured ? "Credentials saved — not verified" : "Not Configured")}
                   </span>
                 </div>
@@ -848,9 +862,11 @@ export default function ConnectorsPage() {
               <div className="panel" style={{ borderLeft: status?.serper?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="panel-label">Serper.dev (Google SERP)</span>
-                  <span className={`badge ${status?.serper?.connected ? "badge-green" : "badge-amber"}`}>
+                  <span className={`badge ${badgeClass(status?.serper?.connected)}`}>
                     {status?.serper?.connected
                       ? "Connected"
+                      : statusPending
+                      ? "Checking…"
                       : status?.serper?.is_configured
                       ? "Key Rejected"
                       : "Not Configured"}
@@ -970,8 +986,8 @@ export default function ConnectorsPage() {
               <div className="panel" style={{ borderLeft: status?.gsc?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="panel-label">Google Search Console</span>
-                  <span className={`badge ${status?.gsc?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.gsc?.status_label || (status?.gsc?.connected ? "Connected" : "Not connected")}
+                  <span className={`badge ${badgeClass(status?.gsc?.connected)}`}>
+                    {status?.gsc?.status_label || (status?.gsc?.connected ? "Connected" : statusPending ? "Checking…" : "Not connected")}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -1006,8 +1022,8 @@ export default function ConnectorsPage() {
               <div className="panel" style={{ borderLeft: status?.ga4?.connected ? "4px solid var(--green)" : "4px solid var(--amber)" }}>
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="panel-label">Google Analytics 4</span>
-                  <span className={`badge ${status?.ga4?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.ga4?.status_label || (status?.ga4?.connected ? "Connected" : "Not connected")}
+                  <span className={`badge ${badgeClass(status?.ga4?.connected)}`}>
+                    {status?.ga4?.status_label || (status?.ga4?.connected ? "Connected" : statusPending ? "Checking…" : "Not connected")}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -1121,37 +1137,37 @@ export default function ConnectorsPage() {
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>NVIDIA NIM</span>
                 <strong style={{ color: status?.nvidia?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.nvidia?.connected ? "Connected" : "Not Set"}
+                  {status?.nvidia?.connected ? "Connected" : statusPending ? "Checking…" : "Not Set"}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Supabase</span>
                 <strong style={{ color: status?.supabase?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.supabase?.connected ? "✓ 14 Tables" : "Not Set"}
+                  {status?.supabase?.connected ? "✓ 14 Tables" : statusPending ? "Checking…" : "Not Set"}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>WordPress</span>
                 <strong style={{ color: status?.wordpress?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.wordpress?.connected ? "✓ Verified" : (status?.wordpress?.is_configured ? "Saved — unverified" : "Not Set")}
+                  {status?.wordpress?.connected ? "✓ Verified" : statusPending ? "Checking…" : (status?.wordpress?.is_configured ? "Saved — unverified" : "Not Set")}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Serper.dev</span>
                 <strong style={{ color: status?.serper?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.serper?.connected ? "✓ Organic SERP" : "Not Set"}
+                  {status?.serper?.connected ? "✓ Organic SERP" : statusPending ? "Checking…" : "Not Set"}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Search Console</span>
                 <strong style={{ color: status?.gsc?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.gsc?.connected ? "✓ Connected" : "Not Set"}
+                  {status?.gsc?.connected ? "✓ Connected" : statusPending ? "Checking…" : "Not Set"}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Google Analytics 4</span>
                 <strong style={{ color: status?.ga4?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.ga4?.connected ? "✓ Connected" : "Not Set"}
+                  {status?.ga4?.connected ? "✓ Connected" : statusPending ? "Checking…" : "Not Set"}
                 </strong>
               </div>
             </div>

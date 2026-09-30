@@ -47,6 +47,7 @@ from routers.proposals import router as proposals_router
 from routers.memory import router as memory_router
 from routers.llms_txt import router as llms_txt_router
 from routers.gsc import router as gsc_router
+from routers.ga4 import router as ga4_router
 from routers.tech_seo import router as tech_seo_router
 from routers.backlinks import router as backlinks_router
 from routers.calendar import router as calendar_router
@@ -975,6 +976,7 @@ app.include_router(seo_aeo_geo_router)                                 # declare
 app.include_router(aeo_router, prefix="/api")                           # /api/aeo/*
 app.include_router(tech_seo_router, prefix="/api")                    # /api/tech-seo/*
 app.include_router(gsc_router, prefix="/api")                         # /api/gsc/*
+app.include_router(ga4_router)                                        # /api/ga4/* (declares its own prefix)
 app.include_router(analytics_router, prefix="/api")            # /api/analytics/*
 app.include_router(roi_router, prefix="/api")                         # /api/roi/*
 app.include_router(report_router, prefix="/api")               # /api/report/*

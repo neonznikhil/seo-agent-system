@@ -8,14 +8,15 @@ NIM_EMBED_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 
 @pytest.mark.asyncio
 async def test_llm_nemotron_3_nano():
-    api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY not set")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     model = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
     payload = {"model": model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5, "temperature": 0}
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(NIM_LLM_URL, json=payload, headers=headers)
+    from tests.conftest import skip_if_auth_rejected
+    skip_if_auth_rejected(resp.status_code, resp.text)
     assert resp.status_code == 200, f"Expected 200 for {model}, got {resp.status_code}: {resp.text[:300]}"
     data = resp.json()
     assert "choices" in data
@@ -23,13 +24,14 @@ async def test_llm_nemotron_3_nano():
 
 @pytest.mark.asyncio
 async def test_embed_nemotron_3_embed():
-    api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY not set")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": "nvidia/nemotron-3-embed-1b", "input": ["hello world"], "input_type": "query", "encoding_format": "float"}
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(NIM_EMBED_URL, json=payload, headers=headers)
+    from tests.conftest import skip_if_auth_rejected
+    skip_if_auth_rejected(resp.status_code, resp.text)
     assert resp.status_code == 200, f"Expected 200 for nemotron-3-embed-1b, got {resp.status_code}: {resp.text[:300]}"
     data = resp.json()
     assert "data" in data
@@ -40,9 +42,8 @@ async def test_embed_nemotron_3_embed():
 
 @pytest.mark.asyncio
 async def test_llm_fallback_70b():
-    api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("NIM_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY not set")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": "nvidia/llama-3.1-nemotron-70b-instruct", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5, "temperature": 0}
     async with httpx.AsyncClient(timeout=15.0) as client:

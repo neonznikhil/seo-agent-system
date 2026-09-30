@@ -26,6 +26,7 @@ async function handleProxy(req: Request, slug: string[]) {
     "/research",
     "/sync",
     "/live",
+    "/measure",
   ].some((segment) => path.includes(segment));
   const timeoutMs = requestWantsStream ? 600000 : isLongRunning ? 300000 : 90000;
 

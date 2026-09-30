@@ -24,6 +24,51 @@ except ImportError:
 logger = logging.getLogger("backend.services.network_service")
 
 
+def _gsc_credentials_configured() -> bool:
+    try:
+        try:
+            from backend.services.google_credentials import has_service_account_credentials
+        except ImportError:
+            from services.google_credentials import has_service_account_credentials
+        return has_service_account_credentials(
+            json_env_keys=["GSC_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON"],
+            path_env_keys=["GSC_CREDENTIALS_PATH", "GSC_CREDENTIALS", "GOOGLE_APPLICATION_CREDENTIALS"],
+        )
+    except Exception:
+        return False
+
+
+def _fetch_site_search_totals(site_id: str) -> Optional[Dict[str, int]]:
+    """Sum real GSC-synced rows from `analytics_data` for one site.
+
+    Returns None when the table cannot be read, so a site with no synced data is
+    distinguishable from "measured zero".
+    """
+    try:
+        try:
+            from backend.database import get_supabase
+        except (ImportError, ValueError):
+            from database import get_supabase
+        supabase = get_supabase()
+        rows = (
+            supabase.table("analytics_data")
+            .select("clicks, impressions")
+            .eq("website_id", site_id)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return None
+        return {
+            "clicks": sum(int(float(r.get("clicks", 0) or 0)) for r in rows),
+            "impressions": sum(int(float(r.get("impressions", 0) or 0)) for r in rows),
+        }
+    except Exception as e:
+        logger.debug(f"[network] analytics_data note for {site_id}: {e}")
+        return None
+
+
 def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
     """Retrieve high-density network overview across all connected sites."""
     sites = list_local_websites(account_id)
@@ -101,21 +146,30 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
 
         indexation_rate = round((indexed / max(total_pages, 1)) * 100, 1) if total_pages > 0 else 0.0
 
-        # 3. 28-day Clicks & Impressions from keyword research / GSC records
-        kw_records = list_local_keyword_research(site_id, limit=5)
-        if kw_records and isinstance(kw_records[0].get("summary"), dict):
-            summary = kw_records[0].get("summary", {})
-            try:
-                clicks = int(float(summary.get("total_clicks", 0) or 0))
-            except (ValueError, TypeError):
-                clicks = 0
-            try:
-                impressions = int(float(summary.get("total_impressions", 0) or 0))
-            except (ValueError, TypeError):
-                impressions = 0
+        # 3. 28-day Clicks & Impressions. Prefer real GSC-synced rows in
+        # `analytics_data`; fall back to local keyword research summaries.
+        gsc_totals = _fetch_site_search_totals(site_id)
+        if gsc_totals is not None:
+            clicks = gsc_totals["clicks"]
+            impressions = gsc_totals["impressions"]
+            clicks_source = "gsc"
         else:
-            clicks = 0
-            impressions = 0
+            kw_records = list_local_keyword_research(site_id, limit=5)
+            if kw_records and isinstance(kw_records[0].get("summary"), dict):
+                summary = kw_records[0].get("summary", {})
+                try:
+                    clicks = int(float(summary.get("total_clicks", 0) or 0))
+                except (ValueError, TypeError):
+                    clicks = 0
+                try:
+                    impressions = int(float(summary.get("total_impressions", 0) or 0))
+                except (ValueError, TypeError):
+                    impressions = 0
+                clicks_source = "keyword_research"
+            else:
+                clicks = 0
+                impressions = 0
+                clicks_source = "unavailable"
 
         total_clicks += clicks
         total_impressions += impressions
@@ -151,6 +205,7 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
             "submitted_pages": total_pages,
             "clicks_28d": clicks,
             "impressions_28d": impressions,
+            "clicks_source": clicks_source,
             "open_issues_count": crit + warn + info,
             "critical_issues": crit,
             "warning_issues": warn,
@@ -166,6 +221,8 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
             "performance_28d": {
                 "clicks": clicks,
                 "impressions": impressions,
+                "source": clicks_source,
+                "measured": clicks_source == "gsc",
                 "ctr": round((clicks / max(impressions, 1)) * 100, 2) if impressions > 0 else 0.0,
             },
             "open_issues": {
@@ -186,6 +243,15 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
     avg_indexation = round(sum(s["indexation_rate"] for s in indexed_sites) / max(len(indexed_sites), 1), 1) if indexed_sites else 0.0
 
     total_issues = total_critical + total_warning
+    gsc_configured = _gsc_credentials_configured()
+    sites_with_gsc_data = len([s for s in site_rows if s.get("clicks_source") == "gsc"])
+
+    if not gsc_configured:
+        data_note = "Connect Google Search Console in Connectors to populate real clicks and impressions."
+    elif sites_with_gsc_data == 0:
+        data_note = "GSC is configured but no site has synced search data yet. Run a GSC sync in Connectors."
+    else:
+        data_note = f"Search performance sourced from GSC for {sites_with_gsc_data} of {len(site_rows)} site(s)."
 
     return {
         "success": True,
@@ -194,6 +260,8 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         "network_indexation_avg": avg_indexation,
         "network_clicks_28d": total_clicks,
         "total_open_issues": total_issues,
+        "gsc_configured": gsc_configured,
+        "data_note": data_note,
         "summary": {
             "total_sites": len(site_rows),
             "avg_health_score": avg_health,
@@ -203,6 +271,8 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
             "warning_issues_total": total_warning,
             "healthy_sites_count": len([s for s in site_rows if s["health_score"] >= 85]),
             "needs_attention_count": len([s for s in site_rows if s["health_score"] < 75]),
+            "sites_with_search_data": sites_with_gsc_data,
+            "gsc_configured": gsc_configured,
         },
         "sites": site_rows,
         "generated_at": datetime.utcnow().isoformat(),

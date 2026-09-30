@@ -24,6 +24,107 @@ except ImportError:
 
 logger = logging.getLogger("backend.services.lead_attribution_service")
 
+# GA4 reporting calls are slow; cache per website so a page load that fires
+# several attribution requests does not issue several live API round-trips.
+_GA4_CACHE: Dict[str, Any] = {}
+_GA4_CACHE_TTL_SECONDS = 300
+
+
+def _get_ga4_conversions(website_id: str, days: int = 28) -> Dict[str, Any]:
+    """Live GA4 conversion + landing-page data.
+
+    Returns a dict with `status`:
+      - "ok":            `total_conversions` and `page_sessions` are real
+      - "not_connected": GA4 has no usable credentials configured
+      - "error":         configured but the API call failed (`detail` explains)
+
+    Callers report `None` CPL in the non-"ok" cases rather than presenting an
+    unmeasured 0 as a real result.
+    """
+    now = datetime.utcnow()
+    cached = _GA4_CACHE.get(website_id)
+    if cached and (now - cached["at"]).total_seconds() < _GA4_CACHE_TTL_SECONDS:
+        return cached["data"]
+
+    try:
+        from backend.services.ga4_service import GA4Service
+    except ImportError:
+        from services.ga4_service import GA4Service
+
+    svc = GA4Service()
+    if not svc.is_connected():
+        result = {"status": "not_connected"}
+        _GA4_CACHE[website_id] = {"at": now, "data": result}
+        return result
+
+    from datetime import timedelta
+
+    end_date = now.strftime("%Y-%m-%d")
+    start_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    def _call() -> Dict[str, Any]:
+        svc._ensure_initialized()
+        props = f"properties/{svc.property_id}"
+
+        conv_rows = svc._service.properties().runReport(
+            property=props,
+            body={
+                "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+                "metrics": [{"name": "eventCount"}],
+                "dimensionFilter": {
+                    "filter": {
+                        "fieldName": "eventName",
+                        "inListFilter": {
+                            "values": ["generate_lead", "purchase", "submit_lead_form", "contact", "signup"]
+                        },
+                    }
+                },
+            },
+        ).execute()
+        total_conversions = 0
+        for row in conv_rows.get("rows", []):
+            mets = row.get("metricValues") or [{}]
+            total_conversions += int(float(mets[0].get("value", 0) or 0))
+
+        page_rows = svc._service.properties().runReport(
+            property=props,
+            body={
+                "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+                "dimensions": [{"name": "landingPagePlusQueryString"}],
+                "metrics": [{"name": "sessions"}],
+                "limit": 500,
+            },
+        ).execute()
+        pages: Dict[str, int] = {}
+        for row in page_rows.get("rows", []):
+            dims = row.get("dimensionValues") or [{}]
+            mets = row.get("metricValues") or [{}]
+            pages[dims[0].get("value", "")] = int(float(mets[0].get("value", 0) or 0))
+
+        return {"status": "ok", "total_conversions": total_conversions, "page_sessions": pages}
+
+    try:
+        data = _call()
+    except Exception as e:
+        logger.warning(f"[leads] GA4 lookup failed: {e}")
+        result = {"status": "error", "detail": str(e)[:200]}
+        _GA4_CACHE[website_id] = {"at": now, "data": result}
+        return result
+
+    _GA4_CACHE[website_id] = {"at": now, "data": data}
+    return data
+
+
+def _normalise_path(url: str) -> str:
+    """Reduce a URL or path to a comparable path segment."""
+    if not url:
+        return "/"
+    path = url.split("://", 1)[-1]
+    path = path.split("?", 1)[0].split("#", 1)[0]
+    if "/" in path:
+        path = "/" + path.split("/", 1)[1]
+    return path or "/"
+
 
 def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
     """Calculate and return keyword-level lead attribution, CVR %, and CPL."""
@@ -101,6 +202,16 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
         for q, v in agg.items()
     ]
 
+    # Real GA4 data, when connected. Conversions are only distributed to keywords
+    # proportionally to their measured click share and the result is labelled as
+    # an estimate; the summary CVR/CPL below are measured directly.
+    ga4 = _get_ga4_conversions(website_id)
+    ga4_status = ga4.get("status")
+    ga4_ok = ga4_status == "ok"
+    total_ga4_sessions = sum(ga4["page_sessions"].values()) if ga4_ok else None
+    total_ga4_conversions = ga4["total_conversions"] if ga4_ok else None
+    conversions_attributed = ga4_ok
+
     keyword_rows = []
     total_clicks = 0
 
@@ -126,8 +237,8 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
             "clicks": clicks,
             "clicks_28d": clicks,
             "impressions_28d": impressions,
-            "conversions": 0,
-            "attributed_leads": 0,
+            "conversions": None,
+            "attributed_leads": None,
             "cvr": None,
             "conversion_rate_pct": None,
             "pipeline_value": 0.0,
@@ -139,24 +250,75 @@ def get_keyword_lead_attribution(website_id: str) -> Dict[str, Any]:
 
     keyword_rows.sort(key=lambda k: k["clicks"], reverse=True)
 
+    # Distribute measured GA4 conversions across keywords by click share. This is
+    # an estimate (GA4 cannot attribute a conversion to a query), so it is
+    # explicitly flagged rather than presented as per-keyword truth.
+    if conversions_attributed and total_clicks > 0:
+        for row in keyword_rows:
+            share = row["clicks"] / total_clicks
+            conv = round((total_ga4_conversions or 0) * share, 1)
+            row["conversions"] = conv
+            row["attributed_leads"] = round(conv)
+            if row["clicks"] > 0:
+                row["cvr"] = round(conv / row["clicks"], 4)
+                row["conversion_rate_pct"] = round((conv / row["clicks"]) * 100, 2)
+            row["conversion_attribution"] = "estimated_by_click_share"
+            row["opportunity_flag"] = "OK"
+
+    blended_cvr = None
+    blended_cpl = None
+    total_leads = None
+    if conversions_attributed:
+        total_leads = total_ga4_conversions
+        if total_ga4_sessions:
+            blended_cvr = round((total_ga4_conversions or 0) / total_ga4_sessions, 4)
+        if total_ga4_conversions:
+            blended_cpl = round(monthly_spend / total_ga4_conversions, 2)
+
+    cpl_variance = None
+    if blended_cpl is not None and target_cpl:
+        cpl_variance = round(((blended_cpl - target_cpl) / target_cpl) * 100, 1)
+
+    if ga4_status == "not_connected":
+        message = "Connect GA4 conversions to attribute leads. Clicks shown are measured; leads need conversion data."
+    elif ga4_status == "error":
+        message = (
+            "GA4 is configured but the API call failed, so leads and CPL are unavailable. "
+            f"{ga4.get('detail', '')[:160]}"
+        )
+        message = message.strip()
+    elif not total_ga4_conversions:
+        message = (
+            "GA4 is connected but recorded no lead events in this period. "
+            "Clicks are measured; CPL cannot be calculated until conversions exist."
+        )
+    else:
+        message = (
+            f"GA4 measured {total_ga4_conversions} conversion(s) over {total_ga4_sessions or 0} sessions. "
+            "Per-keyword leads are estimated from click share."
+        )
+
     return {
         "website_id": website_id,
         "domain": domain,
         "settings": settings,
+        "ga4_connected": conversions_attributed,
+        "ga4_status": ga4_status,
         "summary": {
-            "total_organic_leads": 0,
-            "total_organic_leads_28d": 0,
+            "total_organic_leads": total_leads,
+            "total_organic_leads_28d": total_leads,
             "total_organic_clicks": total_clicks,
             "total_organic_clicks_28d": total_clicks,
-            "blended_cvr": None,
-            "blended_cvr_pct": None,
-            "blended_cpl": None,
+            "total_ga4_sessions": total_ga4_sessions,
+            "blended_cvr": blended_cvr,
+            "blended_cvr_pct": round(blended_cvr * 100, 2) if blended_cvr is not None else None,
+            "blended_cpl": blended_cpl,
             "target_cpl": target_cpl,
-            "cpl_variance_pct": None,
+            "cpl_variance_pct": cpl_variance,
             "total_pipeline_value": 0.0,
             "monthly_seo_spend": monthly_spend,
             "roi_ratio": None,
-            "message": "Connect GA4 conversions to attribute leads. Clicks shown are measured; leads need conversion data.",
+            "message": message,
         },
         "keywords": keyword_rows,
         "generated_at": datetime.utcnow().isoformat(),

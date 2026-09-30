@@ -10,7 +10,7 @@ load_dotenv()
 import httpx
 import tenacity
 from supabase import create_client, Client
-from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_not_exception_type
 
 try:
     from config import SUPABASE_URL, SUPABASE_KEY, NVIDIA_API_KEY
@@ -199,13 +199,13 @@ async def validate_nim_connection(force: bool = False) -> dict:
             "diagnostic": f"NVIDIA NIM healthy — model {NIM_LLM_MODEL} responded.",
         })
         logger.info("[NIM] Startup validation passed ✅")
-    elif status == 401:
+    elif status in (401, 403):
         _nim_state.update({
-            "available": False, "http_status": 401, "error": "HTTP 401 Unauthorized",
+            "available": False, "http_status": 401, "error": f"HTTP {status} Unauthorized",
             "diagnostic": "NVIDIA NIM: Invalid API key — update it in Connectors.",
             "last_check": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         })
-        logger.error("[NIM] Invalid API key (401).")
+        logger.error(f"[NIM] Invalid API key ({status}).")
     elif status == 404:
         _nim_state.update({
             "available": False, "http_status": 404, "error": "HTTP 404 Not Found",
@@ -279,6 +279,12 @@ class NIMEmbeddingError(RuntimeError):
 
 class NIMLLMError(RuntimeError):
     """Raised when the NVIDIA NIM chat API fails after all retries."""
+
+
+class NIMAuthError(NIMLLMError):
+    """Raised on 401/403 — a rejected key. Never retried and never tried against
+    other models, because a bad key fails identically everywhere and retrying it
+    only floods the API (and the logs) with guaranteed failures."""
 
 
 _nim_http_client: Optional[httpx.AsyncClient] = None
@@ -364,6 +370,10 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
     resp = await client.post(url, json=payload, headers=headers)
     if resp.status_code == 429:
         raise httpx.HTTPStatusError("rate_limited", request=resp.request, response=resp)
+    if resp.status_code in (401, 403):
+        raise NIMAuthError(
+            f"NIM returned {resp.status_code}: {resp.text[:200]}"
+        )
     if resp.status_code != 200:
         raise httpx.HTTPStatusError(
             f"NIM returned {resp.status_code}: {resp.text[:200]}",
@@ -379,7 +389,10 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
 @tenacity.retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=15),
-    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError, NIMLLMError)),
+    retry=(
+        retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError, NIMLLMError))
+        & retry_if_not_exception_type(NIMAuthError)
+    ),
     reraise=True,
 )
 async def _nim_chat_with_retry(model_name: str, messages: list, headers: dict,
@@ -392,6 +405,17 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
                        max_tokens: int = 8192, temperature: float = 0.7,
                        fail_silently: bool = True, model: Optional[str] = None, **kwargs) -> str:
     """Call NVIDIA NIM chat completions with 3x retry and model fallbacks."""
+    # A key already proven invalid cannot recover between scheduler ticks, so
+    # short-circuit instead of re-attempting every model on every job. Without
+    # this guard a single bad key produced thousands of guaranteed 403s once a
+    # website was connected and the scheduler started calling NIM.
+    if _nim_state.get("available") is False and _nim_state.get("http_status") == 401:
+        msg = _nim_state.get("diagnostic") or "NVIDIA NIM: Invalid API key — update it in Connectors."
+        if website_id:
+            _log_task_fail(website_id, "call_nim_llm", msg)
+        if not fail_silently:
+            raise NIMAuthError(msg)
+        return ""
     # Rate limiting: min 1.5s gap between requests
     global _last_request_time_db
     try:
@@ -446,7 +470,7 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
             last_error = e
             msg = str(e)
             logger.warning(f"NIM LLM model {model_name} failed after retries: {e}")
-            if "401" in msg:
+            if isinstance(e, NIMAuthError) or "401" in msg or "403" in msg:
                 _nim_state.update({"available": False, "http_status": 401,
                                    "diagnostic": "NVIDIA NIM: Invalid API key — update it in Connectors.",
                                    "error": msg[:300]})

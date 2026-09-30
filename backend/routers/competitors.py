@@ -11,6 +11,8 @@ try:
         add_competitor,
         remove_competitor,
         calculate_share_of_voice,
+        get_measured_share_of_voice,
+        measure_competitors_serp,
         get_competitor_new_pages,
         get_outranking_gap_matrix,
     )
@@ -20,6 +22,8 @@ except ImportError:
         add_competitor,
         remove_competitor,
         calculate_share_of_voice,
+        get_measured_share_of_voice,
+        measure_competitors_serp,
         get_competitor_new_pages,
         get_outranking_gap_matrix,
     )
@@ -72,9 +76,24 @@ async def delete_site_competitor(website_id: str, competitor_id: str):
 async def get_site_share_of_voice(website_id: str):
     """Calculate organic search Share of Voice (SOV) against competitors."""
     try:
-        return calculate_share_of_voice(website_id)
+        return get_measured_share_of_voice(website_id)
     except Exception as e:
         logger.error(f"Error calculating share of voice for website {website_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{website_id}/measure")
+async def measure_site_competitors(website_id: str, max_keywords: int = 8):
+    """Measure real head-to-head visibility against competitors via live SERPs.
+
+    Runs a SERP lookup per tracked keyword and records where our domain and each
+    competitor rank. No fabricated shares: if the SERP provider returns nothing
+    the response says so with `measured: false`.
+    """
+    try:
+        return await measure_competitors_serp(website_id, max_keywords=max_keywords)
+    except Exception as e:
+        logger.error(f"Error measuring competitors for website {website_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

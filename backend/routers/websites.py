@@ -16,6 +16,7 @@ from services.local_store import (
     get_local_website,
     delete_local_website,
 )
+from services.supabase_write import write_website
 
 logger = logging.getLogger("backend.routers.websites")
 router = APIRouter()
@@ -360,16 +361,18 @@ async def create_or_update_website(website: WebsiteIn, request: Request, backgro
         existing = supabase.table("websites").select("id").eq("domain", resolved_domain).execute().data
         if existing and len(existing) > 0:
             target_id = existing[0]["id"]
-            res = supabase.table("websites").update(payload).eq("id", target_id).eq("account_id", account_id).execute()
+            # write_website retries without any column this project lacks, so a
+            # reduced schema cannot drop the WordPress credentials on the floor.
+            rows = write_website(supabase, payload, target_id, account_id=account_id)
             created_website_id = target_id
-            if res.data:
-                res_obj = sanitize_website_row(res.data[0])
+            if rows:
+                res_obj = sanitize_website_row(rows[0])
         else:
             payload["created_at"] = datetime.utcnow().isoformat()
-            res = supabase.table("websites").insert(payload).execute()
-            if res.data:
-                created_website_id = res.data[0]["id"]
-                res_obj = sanitize_website_row(res.data[0])
+            rows = write_website(supabase, payload)
+            if rows:
+                created_website_id = rows[0]["id"]
+                res_obj = sanitize_website_row(rows[0])
     except Exception as e:
         logger.debug(f"[Websites] Supabase write note (falling back to persistent store): {e}")
 
@@ -428,9 +431,11 @@ async def update_website(website_id: str, update: WebsiteUpdate, request: Reques
     payload["id"] = website_id
 
     try:
-        supabase.table("websites").update(payload).eq("id", website_id).eq("account_id", account_id).execute()
-    except Exception:
-        pass
+        # Resilient write: a project missing an optional column (e.g.
+        # wordpress_password_encrypted) must still persist the real credentials.
+        write_website(supabase, payload, website_id, account_id=account_id)
+    except Exception as e:
+        logger.debug(f"[Websites] Supabase update note (falling back to persistent store): {e}")
 
     saved = save_local_website(payload)
     return sanitize_website_row(saved)

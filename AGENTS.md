@@ -253,3 +253,13 @@ the user their typed creds, then repopulate on mount.
   are NOT accepted field names and yield 400.
 - Connector test bodies: `test-nvidia` needs `{api_key}`, `test-serper` needs
   `{api_key}`. Empty `{}` returns 422 (required body field).
+- Supabase `websites` schema is NOT guaranteed to match the DDL migrations: this
+  project has no `wordpress_password_encrypted` (nor `wp_verified*`) column.
+  PostgREST is all-or-nothing, so any INSERT/UPDATE carrying one unknown column
+  is rejected wholesale (PGRST204) and *nothing* is written. Because the
+  website/WP write paths caught that error and fell back to the local mirror,
+  the API returned 200 while the WordPress credentials never reached Supabase —
+  the site then "vanished" from any Supabase-backed read. Always write
+  `websites` through `services/supabase_write.write_website`, which retries
+  without unknown/optional columns and returns the rows actually persisted.
+  Never treat a local-mirror fallback as a durable save.

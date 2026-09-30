@@ -9,6 +9,11 @@ from pydantic import BaseModel
 logger = logging.getLogger("backend.routers.wordpress")
 
 try:
+    from services.supabase_write import write_website
+except (ImportError, ValueError):
+    from backend.services.supabase_write import write_website
+
+try:
     from database import get_supabase
 except (ImportError, ValueError):
     try:
@@ -86,7 +91,15 @@ def _record_verification(website_id: str, site_url: str, username: str, diag: Di
     try:
         get_supabase().table("websites").update(update).eq("id", website_id).execute()
     except Exception as e:
+        # wp_verified* may not exist on this deployment's schema. A rejected
+        # update drops the whole write, so retry with only the columns that are
+        # guaranteed to exist — otherwise `updated_at` (and the local-store
+        # mirror below) is the only trace and Supabase never learns of it.
         logger.debug(f"[WP verify] Supabase verification write note: {e}")
+        try:
+            get_supabase().table("websites").update({"updated_at": now}).eq("id", website_id).execute()
+        except Exception as inner:
+            logger.debug(f"[WP verify] Supabase updated_at write note: {inner}")
     try:
         from services.local_store import save_local_website
         save_local_website({"id": website_id, **update})
@@ -493,47 +506,28 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
         try:
             supabase = get_supabase()
             encrypted = encrypt_secret(password)
+            creds = {
+                "cms_url": url,
+                "url": url,
+                "cms_user": username,
+                "wordpress_url": url,
+                "wordpress_user": username,
+                "app_password": encrypted,
+                "wordpress_password": encrypted,
+                "status": "active",
+                "updated_at": datetime.utcnow().isoformat(),
+            }
             if wid and wid not in ("default", "all", ""):
-                supabase.table("websites").update({
-                    "cms_url": url,
-                    "url": url,
-                    "cms_user": username,
-                    "wordpress_url": url,
-                    "wordpress_user": username,
-                    "app_password": encrypted,
-                    "wordpress_password": encrypted,
-                    "status": "active",
-                    "updated_at": datetime.utcnow().isoformat(),
-                }).eq("id", wid).execute()
+                write_website(supabase, creds, wid)
             else:
                 existing_site = supabase.table("websites").select("id").eq("domain", domain).limit(1).execute().data
                 if existing_site:
                     wid = existing_site[0]["id"]
-                    supabase.table("websites").update({
-                        "cms_url": url,
-                        "url": url,
-                        "cms_user": username,
-                        "wordpress_url": url,
-                        "wordpress_user": username,
-                        "app_password": encrypted,
-                        "wordpress_password": encrypted,
-                        "status": "active",
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }).eq("id", wid).execute()
+                    write_website(supabase, creds, wid)
                 else:
-                    new_site_res = supabase.table("websites").insert({
-                        "domain": domain,
-                        "cms_url": url,
-                        "url": url,
-                        "cms_user": username,
-                        "wordpress_url": url,
-                        "wordpress_user": username,
-                        "app_password": encrypted,
-                        "wordpress_password": encrypted,
-                        "status": "active",
-                        "created_at": datetime.utcnow().isoformat(),
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }).execute().data
+                    creds["domain"] = domain
+                    creds["created_at"] = datetime.utcnow().isoformat()
+                    new_site_res = write_website(supabase, creds)
                     if new_site_res:
                         wid = new_site_res[0]["id"]
         except Exception as e:
@@ -578,6 +572,32 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
     }
 
 
+def _update_website_credentials(supabase, website_id: str, update_data: Dict[str, Any],
+                                domain: Optional[str] = None) -> bool:
+    """Persist website credentials, returning whether a row was really written.
+
+    Two production failure modes this guards against:
+
+    1. PostgREST rejects the entire UPDATE when any column is unknown, so a
+       deployment whose `websites` table lacks the wp_verified* columns would
+       fail the whole credential save. `write_website` retries without the
+       offending column.
+    2. PostgREST answers 200 with an empty body when an UPDATE matches no row.
+       A stale/unknown website_id therefore looked "saved" while Supabase stored
+       nothing and the credentials only ever existed in the local mirror. When
+       no row matched, insert one so the write is durable.
+    """
+    rows = write_website(supabase, update_data, website_id)
+    if not rows:
+        insert_payload = dict(update_data)
+        insert_payload["id"] = website_id
+        if domain:
+            insert_payload.setdefault("domain", domain)
+        insert_payload.setdefault("created_at", datetime.utcnow().isoformat())
+        rows = write_website(supabase, insert_payload)
+    return bool(rows)
+
+
 @router.post("/wordpress/{website_id}/credentials")
 async def save_wordpress_credentials(website_id: str, body: WordPressCredentialsIn):
     """Save WordPress URL, username, and application password into websites table."""
@@ -618,21 +638,33 @@ async def save_wordpress_credentials(website_id: str, body: WordPressCredentials
 
     try:
         if wid and wid not in ("default", "all", ""):
-            supabase.table("websites").update(update_data).eq("id", wid).execute()
+            persisted = _update_website_credentials(supabase, wid, update_data, domain)
         else:
             existing = supabase.table("websites").select("id").eq("domain", domain).limit(1).execute().data
             if existing:
                 wid = existing[0]["id"]
-                supabase.table("websites").update(update_data).eq("id", wid).execute()
+                persisted = _update_website_credentials(supabase, wid, update_data, domain)
             else:
                 update_data["domain"] = domain
                 update_data["created_at"] = datetime.utcnow().isoformat()
-                new_site = supabase.table("websites").insert(update_data).execute().data
+                try:
+                    new_site = supabase.table("websites").insert(update_data).execute().data
+                except Exception:
+                    # Insert is all-or-nothing: a missing verification column
+                    # must not block creating the site with its real creds.
+                    insert_data = {k: v for k, v in update_data.items() if not k.startswith("wp_")}
+                    new_site = supabase.table("websites").insert(insert_data).execute().data
+                persisted = bool(new_site)
                 if new_site:
                     wid = new_site[0]["id"]
     except Exception as e:
         logger.error(f"Error updating website credentials: {e}")
         raise HTTPException(500, "Failed to save credentials. Please try again.")
+
+    if not persisted:
+        # Never claim success when Supabase stored nothing — the caller must know
+        # the credentials are not durable.
+        raise HTTPException(502, "Could not persist credentials to the database. Please retry.")
 
     return {"status": "saved", "website_id": wid}
 

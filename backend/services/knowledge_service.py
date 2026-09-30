@@ -261,6 +261,16 @@ class KnowledgeService:
             msg = str(e)
             if "410" in msg or "EOL" in msg:
                 logger.warning(f"[Knowledge] Embedding model EOL 410 - switching to fallback: {e}")
+            elif "401" in msg or "403" in msg or "circuit breaker" in msg:
+                # A rejected key (or an already-tripped breaker) will fail
+                # identically on every model and on every retry. Falling through
+                # to the per-model direct httpx loop below just multiplies the
+                # 403s, so go straight to the local deterministic fallback.
+                logger.warning(
+                    "[Knowledge] NVIDIA key rejected / NIM unavailable - "
+                    "using deterministic fallback (no further NIM attempts)"
+                )
+                return [_deterministic_embedding(t, VECTOR_DIM) for t in clean_inputs]
             else:
                 logger.warning(f"[Knowledge] Central embedding failed: {e} - trying direct httpx fallback")
 

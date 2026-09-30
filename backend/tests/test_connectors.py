@@ -45,13 +45,14 @@ async def test_placeholder_supabase_is_not_reported_connected(monkeypatch):
 @pytest.mark.asyncio
 async def test_nvidia_connector():
     """Test POST /api/connectors/test-nvidia with real NVIDIA API key."""
-    api_key = os.getenv("NVIDIA_API_KEY")
-    if not api_key:
-        pytest.skip("NVIDIA_API_KEY not configured")
+    from tests.conftest import live_nvidia_key
+    api_key = live_nvidia_key()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.post("/api/connectors/test-nvidia", json={"api_key": api_key})
+        from tests.conftest import skip_if_auth_rejected
+        skip_if_auth_rejected(res.status_code, res.text)
         assert res.status_code == 200
         data = res.json()
         assert data["connected"] is True

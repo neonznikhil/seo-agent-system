@@ -34,13 +34,21 @@ export default function NetworkPage() {
       <div className="page-heading">Network: All Sites</div>
       <div className="page-sub"><span className="sub-sq"></span>Health, indexation, clicks, open issues per site</div>
       {error && <div className="notice" style={{ borderColor: "var(--red)", marginBottom: 16 }}><span>{error}</span></div>}
-      <div className="panel" style={{ marginBottom: 16 }}><div className="panel-body" style={{ display: "flex", gap: 24, fontSize: 12 }}>
+      <div className="panel" style={{ marginBottom: 16 }}><div className="panel-body" style={{ display: "flex", gap: 24, fontSize: 12, flexWrap: "wrap", alignItems: "center" }}>
         <span>Sites: <strong>{summary.total_sites ?? data?.total_sites ?? sites.length}</strong></span>
         <span>Avg health: <strong>{summary.avg_health_score ?? data?.network_health_avg ?? "—"}</strong></span>
-        <span>Clicks 28d: <strong>{summary.total_clicks_28d ?? data?.network_clicks_28d ?? 0}</strong></span>
+        <span>Clicks 28d: <strong>{summary.total_clicks_28d ?? data?.network_clicks_28d ?? 0}</strong>
+          {summary.sites_with_search_data ? <span style={{ color: "var(--muted)" }}> (GSC, {summary.sites_with_search_data} site(s))</span> : null}
+        </span>
         <span>Critical: <strong>{summary.critical_issues_total ?? 0}</strong></span>
         <button className="btn" onClick={load} style={{ marginLeft: "auto" }}>Refresh</button>
-      </div></div>
+      </div>
+      {data?.data_note && (
+        <div style={{ padding: "8px 14px", fontSize: 11, color: data?.gsc_configured ? "var(--muted)" : "var(--amber)", borderTop: "1px solid var(--line)" }}>
+          {data.data_note}
+        </div>
+      )}
+      </div>
       <div className="panel"><div className="panel-head"><span className="panel-label">Sites ({sites.length})</span></div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {sites.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)" }}>No sites yet. <Link href="/websites">Add website</Link></div>}
@@ -52,7 +60,9 @@ export default function NetworkPage() {
               </div>
               <span>Health <strong>{s.health_score}</strong></span>
               <span>Index <strong>{s.indexation_rate}%</strong> ({s.indexed_pages}/{s.submitted_pages})</span>
-              <span>Clicks <strong>{s.clicks_28d ?? s.performance_28d?.clicks ?? 0}</strong></span>
+              <span>Clicks <strong>{s.clicks_28d ?? s.performance_28d?.clicks ?? 0}</strong>
+                {s.clicks_source && s.clicks_source !== "gsc" ? <span style={{ color: "var(--muted)", fontSize: 10 }}> ({s.clicks_source === "unavailable" ? "not measured" : s.clicks_source})</span> : null}
+              </span>
               <span>Issues <strong>{s.open_issues_count ?? s.open_issues?.total ?? 0}</strong></span>
               <button className="btn" onClick={() => { setCurrentWebsiteId(s.id); window.dispatchEvent(new CustomEvent("website-changed", { detail: s.id })); }}>Select</button>
               <Link className="btn" href={`/actions?site=${s.id}`}>Top 10</Link>

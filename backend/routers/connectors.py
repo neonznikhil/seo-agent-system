@@ -1483,18 +1483,28 @@ async def get_connectors_status(website_id: Optional[str] = None):
     supabase_record: Dict[str, Any] = {}
     loc: Optional[Dict[str, Any]] = None
     if target_id:
-        try:
-            supabase_record = (
-                get_supabase().table("websites")
-                .select("app_password, wordpress_password, cms_url, url, cms_user, wordpress_user, wordpress_url, wp_verified, wp_verified_at, wp_verified_role, wp_last_error")
-                .eq("id", target_id)
-                .single()
-                .execute()
-                .data or {}
-            )
-            record.update(supabase_record)
-        except Exception as e:
-            logger.debug(f"Website connector status lookup note: {e}")
+        # The verification columns (wp_verified*) are not present on every
+        # deployment. Selecting a column that does not exist makes PostgREST
+        # reject the WHOLE row with HTTP 400, so the Supabase read returned
+        # nothing and WP status silently depended on the local store alone.
+        # Try the full projection first, then fall back to the columns that are
+        # guaranteed to exist.
+        base_cols = "app_password, wordpress_password, cms_url, url, cms_user, wordpress_user, wordpress_url"
+        verify_cols = "wp_verified, wp_verified_at, wp_verified_role, wp_last_error"
+        for projection in (f"{base_cols}, {verify_cols}", base_cols):
+            try:
+                supabase_record = (
+                    get_supabase().table("websites")
+                    .select(projection)
+                    .eq("id", target_id)
+                    .single()
+                    .execute()
+                    .data or {}
+                )
+                record.update(supabase_record)
+                break
+            except Exception as e:
+                logger.debug(f"Website connector status lookup note ({projection}): {e}")
     try:
         from services.local_store import get_local_website, list_local_websites
         loc = get_local_website(target_id) if target_id else None

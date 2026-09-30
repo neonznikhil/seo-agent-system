@@ -29,6 +29,62 @@ except ImportError:
 
 logger = logging.getLogger("backend.services.action_prioritization_service")
 
+# Fields the Preview Diff modal renders. The action builders below only author
+# `before`/`after`, so they are derived centrally in `_enrich_preview_diff`
+# rather than repeated in every literal.
+_PREVIEW_RISK_LEVELS = {
+    "APPLY_TITLE_TAG": ("LOW", "Modifies the page <title>, the primary CTR signal in search results."),
+    "APPLY_META_DESCRIPTION": ("LOW", "Modifies the meta description; affects CTR, not ranking directly."),
+    "APPLY_H1_TAG": ("LOW", "Adds a primary <h1>; affects on-page relevance and accessibility."),
+    "APPLY_CANONICAL": ("MEDIUM", "Changes canonicalisation; a wrong target can de-index the page."),
+    "RESOLVE_BROKEN_URL": ("MEDIUM", "Adds a redirect; a wrong target can create a redirect loop."),
+    "REPAIR_ROBOTS_TXT": ("HIGH", "Edits robots.txt; a mistake can block crawlers site-wide."),
+    "SUBMIT_XML_SITEMAP": ("LOW", "Registers a sitemap; no change to existing page content."),
+    "APPLY_SECURITY_HEADERS": ("MEDIUM", "Adds HTTP security headers at the server/CDN layer."),
+    "APPLY_TITLE_CTR_FIX": ("LOW", "Rewrites the <title> for CTR; no structural change."),
+    "RUN_TECH_AUDIT": ("LOW", "Read-only crawl; makes no change to the live site."),
+    "CONNECT_GSC": ("LOW", "Read-only Search Console access; no change to the live site."),
+    "VERIFY_WP_CONNECTION": ("LOW", "Authentication check only; no change to the live site."),
+}
+
+# Actions that only read from the live site. They are executed for real (a crawl
+# or an API probe), but there is nothing to write back, so they must not be
+# reported as a CMS content update.
+_READ_ONLY_ACTION_TYPES = {"RUN_TECH_AUDIT", "CONNECT_GSC", "VERIFY_WP_CONNECTION"}
+
+
+def _enrich_preview_diff(action: Dict[str, Any]) -> Dict[str, Any]:
+    """Fill the Preview Diff fields the UI renders but the builders omit.
+
+    Without this the modal showed a blank "Impact Summary", "Risk Level: UNKNOWN"
+    and an always-"PASSED" YMYL badge that never actually scanned anything.
+    """
+    try:
+        from backend.services.change_guardrail_service import check_ymyl_risk
+    except ImportError:
+        from services.change_guardrail_service import check_ymyl_risk
+
+    diff = dict(action.get("preview_diff") or {})
+    before = diff.get("before") or ""
+    after = diff.get("after") or ""
+
+    ymyl = check_ymyl_risk(before, after)
+    default_risk, default_summary = _PREVIEW_RISK_LEVELS.get(
+        action.get("action_type", ""), ("MEDIUM", "Automated change applied under guardrail review.")
+    )
+
+    diff["before"] = before
+    diff["after"] = after
+    diff["summary"] = diff.get("summary") or default_summary
+    diff["risk_level"] = ymyl["risk_level"] if ymyl["flagged_terms"] else default_risk
+    diff["ymyl_compliant"] = ymyl["is_safe"]
+    diff["flagged_terms"] = ymyl["flagged_terms"]
+    diff["compliance_message"] = ymyl["compliance_message"]
+
+    enriched = dict(action)
+    enriched["preview_diff"] = diff
+    return enriched
+
 
 def _get_operational_onboarding_actions(website_id: str, domain: str) -> List[Dict[str, Any]]:
     """Concrete, high-leverage onboarding actions required to establish baseline telemetry."""
@@ -374,7 +430,7 @@ def get_top_10_actions(website_id: str) -> Dict[str, Any]:
     if not site:
         site = {"id": website_id, "domain": "example.com", "cms_type": "WordPress"}
 
-    actions = _generate_curated_actions_for_site(site)
+    actions = [_enrich_preview_diff(a) for a in _generate_curated_actions_for_site(site)]
     measured = [a for a in actions if a.get("impact_clicks_per_month") is not None]
     total_potential_clicks = sum(a["impact_clicks_per_month"] for a in measured) if measured else None
     total_potential_value = sum(a["estimated_monthly_value"] or 0 for a in measured) if measured else None
@@ -399,7 +455,6 @@ def execute_prioritized_action(website_id: str, action_id: str, author: str = "A
         return {"status": "error", "message": f"Action {action_id} not found."}
 
     action_type = matching_action.get("action_type", "")
-    cms_sync_status = "SAVED_LOCALLY_NO_CMS_CONFIGURED"
 
     # Check for live WordPress credentials
     has_wp_creds = False
@@ -413,15 +468,19 @@ def execute_prioritized_action(website_id: str, action_id: str, author: str = "A
     except Exception as e:
         logger.debug(f"[action_prioritization] WP cred lookup note: {e}")
 
-    if action_type == "RUN_TECH_AUDIT":
-        cms_sync_status = "AUDIT_COMPLETED"
-    elif action_type == "VERIFY_WP_CONNECTION":
-        cms_sync_status = "WP_CONNECTED_AND_VERIFIED" if has_wp_creds else "WP_CREDENTIALS_MISSING"
+    # Be explicit about what actually happened. Having WordPress credentials is
+    # not the same as having written to WordPress: nothing in this function
+    # pushes the change to the CMS, so it must never report a live content
+    # update. The change is recorded locally and staged for application.
+    if action_type in _READ_ONLY_ACTION_TYPES:
+        cms_sync_status = "READ_ONLY_NO_SITE_CHANGE"
+        cms_synced = False
     elif has_wp_creds:
-        # Authentic CMS capability: WordPress REST API is configured
-        cms_sync_status = "LIVE_CMS_UPDATED"
+        cms_sync_status = "STAGED_FOR_CMS_PUSH"
+        cms_synced = False
     else:
         cms_sync_status = "SAVED_LOCALLY_NO_CMS_CONFIGURED"
+        cms_synced = False
 
     # Automatically record to Guardrail change log
     diff = matching_action.get("preview_diff", {})
@@ -441,11 +500,41 @@ def execute_prioritized_action(website_id: str, action_id: str, author: str = "A
     }
     saved_change = save_local_guardrail_change(change_record)
 
+    # Register the fix for 28-day ROI tracking so "prove the work" has data to
+    # show. Without this the ROI Proof section stays empty forever because the
+    # only other way in is a manual POST to /api/roi-proof/{id}/track.
+    roi_fix_id = None
+    try:
+        try:
+            from backend.services.roi_proof_service import track_new_fix
+        except ImportError:
+            from services.roi_proof_service import track_new_fix
+        roi_fix = track_new_fix(
+            website_id=website_id,
+            target_url=matching_action.get("target_url", ""),
+            fix_title=matching_action.get("title", ""),
+            category=matching_action.get("category", ""),
+            target_keyword=matching_action.get("target_query", ""),
+            action_id=action_id,
+        )
+        roi_fix_id = roi_fix.get("id") if isinstance(roi_fix, dict) else None
+    except Exception as e:
+        logger.debug(f"[action_prioritization] ROI tracking note: {e}")
+
     return {
         "status": "success",
-        "message": f"Action '{matching_action['title']}' applied successfully with guardrail protection.",
+        "message": f"Action '{matching_action['title']}' recorded with guardrail protection and queued for 28-day ROI tracking.",
         "action": matching_action,
         "guardrail_change_id": saved_change["id"],
+        "roi_fix_id": roi_fix_id,
         "cms_sync_status": cms_sync_status,
+        "cms_synced": cms_synced,
+        "cms_sync_note": (
+            "Read-only action: nothing was written to the live site."
+            if action_type in _READ_ONLY_ACTION_TYPES
+            else "Change recorded and staged. Push to WordPress from the Guardrails page to apply it live."
+            if has_wp_creds
+            else "Change recorded locally. Connect WordPress to apply it to the live site."
+        ),
     }
 

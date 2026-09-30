@@ -9,11 +9,21 @@ import time
 import httpx
 from typing import List
 from dotenv import load_dotenv
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_not_exception_type
 
 load_dotenv()
 
 logger = logging.getLogger("backend.services.nim_client")
+
+
+class NIMAuthError(RuntimeError):
+    """Raised on 401/403 — a rejected NVIDIA key.
+
+    Retrying a rejected key cannot succeed and trying it against every other
+    model multiplies the failure by the size of the model list, which is what
+    turned a single bad key into thousands of 403s once a website was connected
+    and the scheduler started calling NIM.
+    """
 
 # Rate limiting: min gap between requests (1.5s = 40 RPM max)
 _MIN_REQUEST_GAP = 1.5
@@ -182,7 +192,7 @@ async def validate_embedding_model(force: bool = False) -> str:
     return _cached_embed_model
 
 # Tenacity retry wrappers for 410 handling
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30), retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)), reraise=True)
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30), retry=(retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)) & retry_if_not_exception_type(NIMAuthError)), reraise=True)
 async def _call_llm_with_retry(model: str, messages: list, headers: dict, max_tokens: int, temperature: float) -> str:
     await _rate_limit()
     async with httpx.AsyncClient(timeout=180.0) as client:
@@ -191,6 +201,8 @@ async def _call_llm_with_retry(model: str, messages: list, headers: dict, max_to
         if resp.status_code == 410:
             logger.warning(f"[NIM Client] Model EOL 410 {model} - switching to fallback (retry)")
             raise httpx.HTTPStatusError(f"Model EOL 410 {model}", request=resp.request, response=resp)
+        if resp.status_code in (401, 403):
+            raise NIMAuthError(f"NIM returned {resp.status_code}: {resp.text[:200]}")
         if resp.status_code == 429:
             retry_after = resp.headers.get("retry-after", "10")
             wait_secs = int(retry_after) if retry_after.isdigit() else 10
@@ -287,9 +299,9 @@ async def call_llm_central(prompt: str, system: str = "", max_tokens: int = 4096
             if "410" in msg or "404" in msg:
                 logger.warning(f"[NIM Client] Model {model} EOL/gone, trying fallback")
                 continue
-            if "401" in msg:
+            if isinstance(e, NIMAuthError) or "401" in msg or "403" in msg:
                 _record_failure()
-                logger.error(f"[NIM Client] 401 Invalid key, aborting")
+                logger.error(f"[NIM Client] NVIDIA key rejected (401/403), aborting model fallback")
                 break
             logger.warning(f"[NIM Client] Model {model} failed: {e}, trying fallback")
             continue
@@ -320,7 +332,7 @@ async def call_llm_central(prompt: str, system: str = "", max_tokens: int = 4096
     raise RuntimeError(f"NVIDIA NIM unavailable after trying {len(LLM_MODELS)} models: {last_error}")
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30), retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)), reraise=True)
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30), retry=(retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)) & retry_if_not_exception_type(NIMAuthError)), reraise=True)
 async def _call_embed_with_retry(model: str, inputs: list, headers: dict) -> list:
     await _rate_limit()
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -329,6 +341,8 @@ async def _call_embed_with_retry(model: str, inputs: list, headers: dict) -> lis
         if resp.status_code == 410:
             logger.warning(f"[NIM Client] Embed Model EOL 410 {model} - fallback")
             raise httpx.HTTPStatusError(f"Embed EOL 410 {model}", request=resp.request, response=resp)
+        if resp.status_code in (401, 403):
+            raise NIMAuthError(f"NIM Embed returned {resp.status_code}: {resp.text[:200]}")
         if resp.status_code != 200:
             raise httpx.HTTPStatusError(f"NIM Embed {resp.status_code}: {resp.text[:200]}", request=resp.request, response=resp)
         data = resp.json()
@@ -361,7 +375,7 @@ async def call_embedding_central(texts: list, truncate: str = "END") -> list:
             if "410" in msg or "404" in msg:
                 logger.warning(f"[NIM Client] Embed model {model} EOL, trying fallback")
                 continue
-            if "401" in msg:
+            if isinstance(e, NIMAuthError) or "401" in msg or "403" in msg:
                 _record_failure()
                 break
             continue
