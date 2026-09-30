@@ -10,8 +10,9 @@ import time
 from typing import Dict, Optional, Tuple
 from collections import defaultdict
 
-from fastapi import Request, HTTPException
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 logger = logging.getLogger("backend.middleware.rate_limit")
 
@@ -97,10 +98,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         
         if not is_allowed:
-            raise HTTPException(
+            # BaseHTTPMiddleware sits OUTSIDE FastAPI's exception handlers, so
+            # raising HTTPException here was never converted to a 429 — it
+            # surfaced as a 500 "internal server error" with a correlation id.
+            # Return the response directly.
+            retry_after = str(config["window"])
+            return JSONResponse(
                 status_code=429,
-                detail=f"Rate limit exceeded. Please try again later.",
-                headers={"Retry-After": str(config["window"])},
+                content={"detail": "Rate limit exceeded. Please try again later."},
+                headers={
+                    "Retry-After": retry_after,
+                    "X-RateLimit-Limit": str(config["requests"]),
+                    "X-RateLimit-Remaining": "0",
+                },
             )
         
         response = await call_next(request)

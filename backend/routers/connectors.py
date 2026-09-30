@@ -187,21 +187,34 @@ async def verify_serper_key(api_key: str, *, use_cache: bool = True) -> tuple[bo
                 headers={"X-API-KEY": key, "Content-Type": "application/json"},
                 json={"q": "RankForge SEO test", "num": 3},
             )
+        transient = False
         if resp.status_code == 200:
             result = (True, "Serper key verified")
         elif resp.status_code in (401, 403):
             result = (False, "Serper rejected this API key (401/403 Unauthorized)")
+        elif resp.status_code == 429:
+            # Rate limited / out of credits. The key itself is not rejected, so
+            # do not cache this: the next check may succeed once the window
+            # resets or credits are topped up.
+            transient = True
+            result = (
+                False,
+                "Serper rate limit reached (429) — out of credits or too many requests. Wait a moment and retry.",
+            )
         elif "credit" in resp.text.lower() or "not enough" in resp.text.lower():
             result = (False, "Serper account has no credits left")
         else:
             result = (False, f"Serper request failed (HTTP {resp.status_code})")
     except httpx.TimeoutException:
+        transient = True
         result = (False, "Connection to Serper timed out")
     except Exception as e:
         logger.error(f"Error verifying Serper API key: {e}")
+        transient = True
         result = (False, "Failed to reach Serper. Please try again.")
 
-    _SERPER_STATUS_CACHE.update({"key": key, "ok": result[0], "message": result[1], "at": _time.monotonic()})
+    if not transient:
+        _SERPER_STATUS_CACHE.update({"key": key, "ok": result[0], "message": result[1], "at": _time.monotonic()})
     return result
 
 

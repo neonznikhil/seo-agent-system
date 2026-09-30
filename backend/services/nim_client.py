@@ -7,7 +7,7 @@ import os
 import logging
 import time
 import httpx
-from typing import List
+from typing import List, Optional
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_not_exception_type
 
@@ -25,20 +25,45 @@ class NIMAuthError(RuntimeError):
     and the scheduler started calling NIM.
     """
 
+
+class NIMRateLimitError(RuntimeError):
+    """Raised on 429 after one Retry-After wait.
+
+    NVIDIA's 429 is a transient, per-key limit. The old code slept and raised a
+    retryable HTTPStatusError, so tenacity re-ran it 3x *and* the caller then
+    tried every fallback model — up to 12 extra requests, which deepened the very
+    rate limit it was waiting out. This error is not retried and aborts model
+    fallback so the limit can actually clear.
+    """
+
 # Rate limiting: min gap between requests (1.5s = 40 RPM max)
 _MIN_REQUEST_GAP = 1.5
 _last_request_time = 0.0
+# The gap must be reserved under a lock: several concurrent calls (the onboarding
+# pipeline fans out) all read the same stale timestamp and fired at once, so the
+# client blew past its own 40 RPM budget and got throttled with 429s.
+_rate_lock: Optional[asyncio.Lock] = None
+
+
+def _get_rate_lock() -> asyncio.Lock:
+    global _rate_lock
+    if _rate_lock is None:
+        _rate_lock = asyncio.Lock()
+    return _rate_lock
+
 
 async def _rate_limit():
     """Enforce minimum gap between API calls to stay under rate limit."""
     global _last_request_time
-    now = time.monotonic()
-    elapsed = now - _last_request_time
-    if elapsed < _MIN_REQUEST_GAP:
-        wait_time = _MIN_REQUEST_GAP - elapsed
+    async with _get_rate_lock():
+        now = time.monotonic()
+        wait_time = max(0.0, _MIN_REQUEST_GAP - (now - _last_request_time))
+        # Reserve this call's slot while still holding the lock so the next
+        # waiter queues behind it instead of firing in parallel.
+        _last_request_time = now + wait_time
+    if wait_time > 0:
         logger.debug(f"[NIM RateLimit] Waiting {wait_time:.1f}s")
         await asyncio.sleep(wait_time)
-    _last_request_time = time.monotonic()
 
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")  # "nvidia" or "openrouter"
@@ -206,9 +231,12 @@ async def _call_llm_with_retry(model: str, messages: list, headers: dict, max_to
         if resp.status_code == 429:
             retry_after = resp.headers.get("retry-after", "10")
             wait_secs = int(retry_after) if retry_after.isdigit() else 10
+            wait_secs = min(wait_secs, 30)
             logger.warning(f"[NIM Client] Rate limited 429 on {model}. Waiting {wait_secs}s (Retry-After: {retry_after})")
             await asyncio.sleep(wait_secs)
-            raise httpx.HTTPStatusError("rate_limited", request=resp.request, response=resp)
+            # Non-retryable: a single wait is enough. Raising the retryable
+            # HTTPStatusError here made tenacity hammer the endpoint 3x.
+            raise NIMRateLimitError(f"NVIDIA NIM rate limited (429) on {model}")
         if resp.status_code == 503:
             logger.warning(f"[NIM Client] Service overloaded 503 on {model}. Waiting 15s...")
             await asyncio.sleep(15)
@@ -303,6 +331,12 @@ async def call_llm_central(prompt: str, system: str = "", max_tokens: int = 4096
                 _record_failure()
                 logger.error(f"[NIM Client] NVIDIA key rejected (401/403), aborting model fallback")
                 break
+            if isinstance(e, NIMRateLimitError) or "429" in msg or "rate limit" in msg.lower():
+                # Trying another model only adds requests and prolongs the
+                # throttle. Stop and let the caller back off.
+                _record_failure()
+                logger.warning(f"[NIM Client] Rate limited (429), aborting model fallback to let the limit clear")
+                break
             logger.warning(f"[NIM Client] Model {model} failed: {e}, trying fallback")
             continue
     # All NVIDIA models failed - try OpenRouter if key available and not already using it
@@ -377,6 +411,10 @@ async def call_embedding_central(texts: list, truncate: str = "END") -> list:
                 continue
             if isinstance(e, NIMAuthError) or "401" in msg or "403" in msg:
                 _record_failure()
+                break
+            if isinstance(e, NIMRateLimitError) or "429" in msg or "rate limit" in msg.lower():
+                _record_failure()
+                logger.warning(f"[NIM Client] Embed rate limited (429), aborting model fallback")
                 break
             continue
     _record_failure()
