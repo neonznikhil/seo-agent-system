@@ -264,9 +264,9 @@ async def get_autonomous_settings():
 @router.get("/autonomous/blog-settings")
 async def get_blog_settings(website_id: Optional[str] = None):
     """Get daily blog target + today's progress + next blog timer."""
-    from services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id_async
     from agents.scheduler import get_autonomous_settings, get_last_blog_time
-    wid = website_id if website_id and website_id not in ("default", "all") else get_default_website_id()
+    wid = website_id if website_id and website_id not in ("default", "all") else await get_default_website_id_async()
     if not wid:
         # fallback to first website
         try:
@@ -363,9 +363,9 @@ async def update_blog_settings(payload: BlogSettingsRequest):
     import json as _json
     import os as _os
     from pathlib import Path as _Path
-    from services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id_async
     supabase = get_supabase()
-    wid = payload.website_id if payload.website_id and payload.website_id not in ("default", "all") else get_default_website_id()
+    wid = payload.website_id if payload.website_id and payload.website_id not in ("default", "all") else await get_default_website_id_async()
     # fallback to first website if still not resolved
     if not wid:
         try:
@@ -490,11 +490,11 @@ async def update_blog_settings(payload: BlogSettingsRequest):
 @router.get("/autonomous/blog-schedule")
 async def get_blog_schedule(request: Request, website_id: Optional[str] = None):
     """Return saved generation interval and label for website — survives refresh/restart."""
-    from services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id_async
     supabase = get_supabase()
     wid = website_id or request.query_params.get("website_id") or request.headers.get("X-Website-Id")
     if not wid or wid in ("default", "all", "", "null", "undefined"):
-        wid = get_default_website_id()
+        wid = await get_default_website_id_async()
     if not wid:
         try:
             res = supabase.table("websites").select("id").limit(1).execute()
@@ -561,11 +561,11 @@ async def save_blog_schedule(request: Request):
     body = await request.json() if request.headers.get("content-type","").startswith("application/json") else {}
     # Support both JSON body and query
     website_id = body.get("website_id") or request.query_params.get("website_id") or request.headers.get("X-Website-Id")
-    from services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id_async
     from database import get_supabase
     supabase = get_supabase()
     if not website_id or website_id in ("default", "all", "", "null", "undefined"):
-        website_id = get_default_website_id()
+        website_id = await get_default_website_id_async()
     if not website_id:
         try:
             res = supabase.table("websites").select("id").limit(1).execute()

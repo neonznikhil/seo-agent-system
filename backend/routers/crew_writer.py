@@ -78,8 +78,8 @@ async def crew_generate(payload: CrewGenerateRequest, request: Request, backgrou
         raise HTTPException(status_code=400, detail="topic required")
     website_id = payload.website_id or request.headers.get("X-Website-Id")
     if not website_id or website_id in ("default-website-id", "default", "all", "", "null", "undefined"):
-        from services.website_service import get_default_website_id
-        website_id = get_default_website_id()
+        from services.website_service import get_default_website_id_async
+        website_id = await get_default_website_id_async()
     if not website_id:
         raise HTTPException(status_code=400, detail="No website connected — Go to /websites to connect your domain first.")
     

@@ -126,8 +126,8 @@ async def get_reddit_opportunities(request: Request):
 
     if not website_id:
         try:
-            from services.website_service import get_default_website_id
-            website_id = get_default_website_id()
+            from services.website_service import get_default_website_id_async
+            website_id = await get_default_website_id_async()
         except Exception:
             pass
 

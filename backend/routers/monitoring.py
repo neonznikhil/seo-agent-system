@@ -16,9 +16,9 @@ router = APIRouter()
 @router.get("/api/monitoring/{website_id}/alerts")
 async def get_alerts(website_id: str, filter: str = "unread"):
     from database import get_supabase
-    from services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id_async
     
-    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
+    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else await get_default_website_id_async()
     if not target_id:
         return []
     
@@ -199,10 +199,10 @@ async def get_logs(website_id: str, hours: int = 24):
 @router.get("/api/monitoring/{website_id}/stats")
 async def get_stats(website_id: str):
     from database import get_supabase
-    from services.website_service import get_default_website_id
+    from services.website_service import get_default_website_id_async
     from datetime import datetime, timedelta
     
-    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
+    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else await get_default_website_id_async()
     
     monitors = ["rank_monitor", "serp_monitor", "competitor_monitor", "tech_monitor", "geo_monitor", "structure_monitor"]
     monitor_status = {m: "running" for m in monitors}
@@ -263,8 +263,8 @@ async def get_stats(website_id: str):
 async def get_ranking_predictions(website_id: str):
     """Retrieve preemptive ranking predictions sorted by confidence descending."""
     from services.rank_prediction_service import RankPredictionService
-    from services.website_service import get_default_website_id
-    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all") else get_default_website_id()
+    from services.website_service import get_default_website_id_async
+    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all") else await get_default_website_id_async()
     svc = RankPredictionService(website_id=target_id)
     predictions = await svc.list_predictions()
     return {"success": True, "data": predictions, "predictions": predictions}
@@ -275,8 +275,8 @@ async def get_ranking_predictions(website_id: str):
 async def act_on_prediction(prediction_id: str, website_id: Optional[str] = None, action: Optional[str] = None):
     """Take immediate preemptive action on predicted ranking movement."""
     from services.rank_prediction_service import RankPredictionService
-    from services.website_service import get_default_website_id
-    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all") else get_default_website_id()
+    from services.website_service import get_default_website_id_async
+    target_id = website_id if website_id and website_id not in ("default", "default-website-id", "all") else await get_default_website_id_async()
     svc = RankPredictionService(website_id=target_id)
     result = await svc.execute_prediction_action(prediction_id=prediction_id, action=action)
     return result

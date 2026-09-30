@@ -11,7 +11,7 @@ from services.autonomous_health_service import (
     autonomous_health_service,
     get_latest_health_snapshot,
 )
-from database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm, execute_db
 from services.serper_service import serper_service
 from middleware.circuit_breaker import CircuitBreaker
 
@@ -52,7 +52,7 @@ async def get_autonomous_health(request: Request, website_id: Optional[str] = No
         query = get_supabase().table("autonomous_health_log").select("*")
         if account_id:
             query = query.eq("account_id", account_id)
-        res = query.order("created_at", desc=True).limit(1).execute()
+        res = await execute_db(query.order("created_at", desc=True).limit(1))
         if res.data and len(res.data) > 0:
             row = res.data[0]
             stored_score = row.get("health_score")

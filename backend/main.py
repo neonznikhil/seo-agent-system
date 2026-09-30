@@ -99,7 +99,6 @@ from routers.lead_attribution import router as lead_attribution_router
 from routers.guardrails import router as guardrails_router
 from routers.competitors import router as competitors_router
 from routers.roi_proof import router as roi_proof_router
-from scripts.migrate import run_migrations
 from agents.seo_agent_group import seo_agent_group
 
 validate_env()
@@ -120,244 +119,30 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("RANKFORGE starting up with Multi-Tenant Custom Auth...")
 
-    # 1. Run database migrations in background
-    def _run_migrations_bg():
-        try:
-            run_migrations()
-        except Exception as e:
-            logger.warning(f"[Migrations] Startup migration warning: {e}")
-
-    asyncio.get_event_loop().run_in_executor(None, _run_migrations_bg)
-
-    # 2. NVIDIA NIM startup validation
-    async def _validate_nim_bg():
-        try:
-            from database import validate_nim_connection
-            nim_state = await validate_nim_connection(force=True)
-            if nim_state.get("available"):
-                logger.info(f"[NIM] {nim_state.get('diagnostic')}")
-            else:
-                logger.error(f"[NIM] UNAVAILABLE: {nim_state.get('diagnostic')} (HTTP {nim_state.get('http_status')})")
-        except Exception as e:
-            logger.error(f"[NIM] Startup validation crashed: {e}")
-
-    asyncio.create_task(_validate_nim_bg())
-
-    # 2b. Warm the connector-status live-check caches (NVIDIA + Serper).
-    #
-    # The status endpoint performs real probes so it never claims a connector is
-    # healthy just because a key string exists. Those probes are slow on a cold
-    # cache (NVIDIA model list ~15s), which used to exceed the frontend proxy
-    # timeout and surface as "Backend unreachable" — exactly when a user had just
-    # connected a site. Pre-computing them in the background keeps the endpoint
-    # fast for the first real page load without faking any state.
-    async def _warm_connector_caches():
-        try:
-            await asyncio.sleep(1)
-            from routers.connectors import verify_serper_key, _cached_google_check
-            serper_key = os.environ.get("SERPER_API_KEY", "")
-            if serper_key:
-                await verify_serper_key(serper_key)
-            from database import is_nim_available
-            await is_nim_available()
-        except Exception as e:
-            logger.debug(f"[Connectors] Cache warm-up note: {e}")
-
-    asyncio.create_task(_warm_connector_caches())
-
-    # 2c. Seed the knowledge-mirror dedup index in the background so a re-crawl
-    # collapses onto existing rows instead of re-appending them.
+    # All scheduled automation (APScheduler jobs, the autonomous health poller and
+    # the six continuous monitors) runs on a dedicated event loop, not the API
+    # loop. Those jobs call the synchronous Supabase client inline, so on the API
+    # loop they blocked request handling for tens of seconds - which is why
+    # connecting a website made the whole app appear to hang. See
+    # services/background_runtime for the isolation and the cross-loop primitives
+    # it required.
     try:
-        from services.local_store import _kb_dedup_seed
-        asyncio.get_event_loop().run_in_executor(None, _kb_dedup_seed)
+        from services.background_runtime import start_background_runtime
+        start_background_runtime()
     except Exception as e:
-        logger.debug(f"[local_store] dedup seed note: {e}")
+        logger.error(f"[Startup] Background runtime failed to start: {e}")
 
-    # 3. Autonomous Health Service Startup
-    try:
-        await autonomous_health_service.start()
-        logger.info("[HealthService] Master autonomous health engine initialized.")
-    except Exception as e:
-        logger.error(f"[HealthService] Startup failed: {e}")
-
-    # 4. Single scheduling authority: agents/scheduler.py (Asia/Kolkata)
-    try:
-        from agents.scheduler import setup_scheduler, get_scheduler_status, run_pending_daily_jobs
-        sched = setup_scheduler()
-        if not sched.running:
-            sched.start()
-        status = get_scheduler_status()
-        logger.info(f"[Scheduler] Started ({len(status.get('jobs', []))} jobs registered in Asia/Kolkata):")
-        for j in status.get('jobs', []):
-            logger.info(f"  {j['name']} -> Next run: {j['next_run']}")
-
-        # Catch up missed jobs
-        async def _run_catchup():
-            try:
-                await asyncio.sleep(2)
-                catchup = await run_pending_daily_jobs()
-                if catchup.get("ran"):
-                    logger.info(f"[Startup] Catch-up executed missed daily jobs: {catchup['ran']}")
-            except Exception as e:
-                logger.warning(f"[Startup] Daily job catch-up failed: {e}")
-
-        asyncio.create_task(_run_catchup())
-
-        # Restore all saved blog schedules — P1 persistence across restarts
-        async def restore_all_schedules():
-            try:
-                from database import get_supabase
-                supabase_local = get_supabase()
-                result = None
-                try:
-                    result = supabase_local.table("autonomous_settings").select("website_id, generation_interval_minutes, auto_generate_enabled, schedule_label, daily_blog_target, auto_generate").eq("auto_generate_enabled", True).execute()
-                except Exception:
-                    try:
-                        result = supabase_local.table("autonomous_settings").select("website_id, generation_interval_minutes, schedule_label").limit(50).execute()
-                        # filter in python
-                        if result.data:
-                            result.data = [r for r in result.data if r.get("auto_generate_enabled") is not False]
-                    except Exception:
-                        result = None
-                # Fallback to local file if DB cache miss
-                schedules = []
-                if result and result.data:
-                    schedules = result.data
-                else:
-                    import json as _json
-                    from pathlib import Path as _Path
-                    p = _Path(__file__).resolve().parent / "local_data" / "blog_settings.json"
-                    if p.exists():
-                        try:
-                            jdata = _json.loads(p.read_text(encoding="utf-8"))
-                            for wid, vals in jdata.items():
-                                schedules.append({"website_id": wid, "generation_interval_minutes": vals.get("generation_interval_minutes") or vals.get("interval_minutes") or 288, "schedule_label": vals.get("schedule_label") or vals.get("label") or "default", "auto_generate_enabled": vals.get("auto_generate_enabled", True)})
-                        except Exception as e:
-                            logger.warning("[Main] Schedule config parse failed: %s", e)
-                from agents.scheduler import scheduler, run_autonomous_blog_generation
-                for setting in (schedules or []):
-                    wid = setting.get("website_id")
-                    if not wid:
-                        continue
-                    interval = int(setting.get("generation_interval_minutes") or 288)
-                    label = setting.get("schedule_label") or f"every {interval} min"
-                    job_id = f"auto_blog_{wid}"
-                    try:
-                        scheduler.add_job(
-                            func=run_autonomous_blog_generation,
-                            trigger="interval",
-                            minutes=interval,
-                            id=job_id,
-                            name=f"Auto Blog — {label} — {wid[:8]}",
-                            replace_existing=True,
-                            misfire_grace_time=120
-                        )
-                        logger.info(f"[SCHEDULER] Restored: {job_id} every {interval} min ({label})")
-                    except Exception as e:
-                        logger.warning(f"[SCHEDULER] Failed to restore {job_id}: {e}")
-            except Exception as e:
-                logger.warning(f"[SCHEDULER] restore_all_schedules failed: {e}")
-
-        asyncio.create_task(restore_all_schedules())
-
-        # Crash recovery: durable jobs left pending/running by a previous
-        # process are re-dispatched so onboarding/first-article work is not lost.
-        async def _recover_interrupted_jobs():
-            try:
-                await asyncio.sleep(5)
-                from utils.job_queue import list_jobs, mark_failed
-                from agents.scheduler import dispatch_onboarding
-                interrupted = [
-                    j for j in list_jobs()
-                    if j.get("status") in ("pending", "running")
-                ]
-                if not interrupted:
-                    return
-                logger.info(f"[Startup] Recovering {len(interrupted)} interrupted background job(s)")
-                for job in interrupted:
-                    kind = job.get("kind")
-                    payload = job.get("payload") or {}
-                    if kind == "first_time_setup" and payload.get("website_id"):
-                        await dispatch_onboarding(
-                            payload["website_id"],
-                            payload.get("url") or "",
-                            payload.get("account_id"),
-                            bool(payload.get("has_wordpress")),
-                        )
-                    else:
-                        mark_failed(job.get("job_id", ""), "unknown job kind after restart")
-            except Exception as e:
-                logger.warning(f"[Startup] Job recovery failed: {e}")
-
-        asyncio.create_task(_recover_interrupted_jobs())
-
-        # Stale crawl recovery: a process that died mid-crawl left websites
-        # pinned to status="crawling" forever (nothing else flips them back,
-        # and the UI shows a permanent spinner). Anything still "crawling"
-        # long past the crawl budget is stale by definition.
-        async def _recover_stale_crawls():
-            try:
-                await asyncio.sleep(8)
-                from datetime import datetime, timedelta
-                from services import local_store
-                cutoff = datetime.utcnow() - timedelta(minutes=15)
-                recovered = 0
-                for site in local_store._load_json("websites.json"):
-                    if site.get("status") != "crawling":
-                        continue
-                    updated = site.get("updated_at") or site.get("created_at") or ""
-                    try:
-                        ts = datetime.fromisoformat(str(updated).replace("Z", "").split("+")[0])
-                    except Exception:
-                        ts = None
-                    if ts is None or ts < cutoff:
-                        local_store.save_local_website({
-                            "id": site.get("id"),
-                            "domain": site.get("domain"),
-                            "status": "active",
-                        })
-                        recovered += 1
-                if recovered:
-                    logger.info(f"[Startup] Cleared {recovered} stale 'crawling' website status(es)")
-            except Exception as e:
-                logger.warning(f"[Startup] Stale crawl recovery failed: {e}")
-
-        asyncio.create_task(_recover_stale_crawls())
-    except Exception as e:
-        logger.error(f"[Scheduler] Failed to start: {e}")
-
-    # 5. Backlink autopilot: scheduler is single authority (Phase 3)
-    logger.info("[Startup] Backlink jobs delegated to APScheduler (single authority Asia/Kolkata)")
-
-    # 6. Continuous 24/7 Monitoring Engine (6 loops)
-    try:
-        from services.continuous_monitor import start_all_monitors
-        start_all_monitors()
-        logger.info("[ContinuousMonitor] 6 autonomous monitoring loops started (Rank, SERP, Competitor, Tech, Geo, Structure).")
-    except Exception as e:
-        logger.error(f"[ContinuousMonitor] Startup failed: {e}")
-
-    # 7. No seeded alerts: an empty alerts table is honest (0 alerts).
-    # Never invent a "Monitoring Active" alert to make the dashboard look alive.
+    # No seeded alerts: an empty alerts table is honest (0 alerts). Never invent a
+    # "Monitoring Active" alert to make the dashboard look alive.
     yield
 
     # Shutdown
     logger.info("RankForge shutting down...")
     try:
-        await autonomous_health_service.stop()
+        from services.background_runtime import stop_background_runtime
+        stop_background_runtime()
     except Exception as e:
-        logger.warning("[Main] Health service stop failed: %s", e)
-    try:
-        from agents.scheduler import stop_scheduler
-        stop_scheduler()
-    except Exception as e:
-        logger.warning("[Main] Scheduler stop failed: %s", e)
-    try:
-        # Persist any knowledge rows still sitting in the deferred-write cache.
-        from services.local_store import flush_local_store
-        flush_local_store()
-    except Exception as e:
-        logger.warning("[Main] Local store flush failed: %s", e)
+        logger.warning("[Main] Background runtime stop failed: %s", e)
 
 
 is_prod = os.getenv("ENVIRONMENT") == "production"

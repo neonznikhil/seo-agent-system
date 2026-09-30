@@ -8,12 +8,12 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel, Field
 
 try:
-    from database import get_supabase
+    from database import get_supabase, execute_db
 except (ImportError, ValueError):
     try:
-        from database import get_supabase
+        from database import get_supabase, execute_db
     except (ImportError, ValueError):
-        from backend.database import get_supabase
+        from backend.database import get_supabase, execute_db
 
 try:
     from security import encrypt_secret, decrypt_secret
@@ -28,7 +28,7 @@ from auto_supabase import (
     extract_project_ref,
     build_db_url,
 )
-from services.website_service import get_default_website_id
+from services.website_service import get_default_website_id, get_default_website_id_async
 from services.connector_credentials import resolve_wp_username, is_placeholder_wp_username
 
 logger = logging.getLogger("backend.routers.connectors")
@@ -1014,7 +1014,7 @@ async def sync_gsc(payload: Optional[dict] = None):
     target_id = None
     if isinstance(payload, dict):
         target_id = payload.get("website_id")
-    target_id = target_id or get_default_website_id()
+    target_id = target_id or await get_default_website_id_async()
     try:
         from services.analytics_service import AnalyticsService
         result = await AnalyticsService.sync_gsc_data(website_id=target_id)
@@ -1302,7 +1302,7 @@ async def save_all_connectors(payload: SaveAllRequest):
     if payload.auto_publish is not None:
         try:
             supabase = get_supabase()
-            target_id = get_default_website_id()
+            target_id = await get_default_website_id_async()
             supabase.table("autonomous_settings").upsert({
                 "website_id": target_id,
                 "auto_publish": payload.auto_publish,
@@ -1351,7 +1351,7 @@ async def save_all_connectors(payload: SaveAllRequest):
 @router.get("/connectors/status")
 async def get_connectors_status(website_id: Optional[str] = None):
     """Get live connection status of all integrations."""
-    target_id = website_id or get_default_website_id()
+    target_id = website_id or await get_default_website_id_async()
 
     # 1. Supabase Status
     supabase_url = os.environ.get("SUPABASE_URL", "")
@@ -1365,7 +1365,10 @@ async def get_connectors_status(website_id: Optional[str] = None):
     table_count = 0
     if supabase_url:
         try:
-            get_supabase().table("websites").select("id").limit(1).execute()
+            # supabase-py is synchronous; awaiting it off-loop keeps this polled
+            # endpoint from freezing every other request while the health probe
+            # is in flight.
+            await execute_db(get_supabase().table("websites").select("id").limit(1))
             supabase_connected = True
             table_count = 14
         except Exception as e:
@@ -1494,13 +1497,13 @@ async def get_connectors_status(website_id: Optional[str] = None):
         for projection in (f"{base_cols}, {verify_cols}", base_cols):
             try:
                 supabase_record = (
-                    get_supabase().table("websites")
-                    .select(projection)
-                    .eq("id", target_id)
-                    .single()
-                    .execute()
-                    .data or {}
-                )
+                    await execute_db(
+                        get_supabase().table("websites")
+                        .select(projection)
+                        .eq("id", target_id)
+                        .single()
+                    )
+                ).data or {}
                 record.update(supabase_record)
                 break
             except Exception as e:
@@ -1635,14 +1638,13 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
     wid = website_id or request.query_params.get("website_id") or request.headers.get("X-Website-Id") or request.headers.get("x-website-id")
     if not wid or wid in ("default", "all", "", "null", "undefined"):
         try:
-            from services.website_service import get_default_website_id
-            wid = get_default_website_id()
+            wid = await get_default_website_id_async()
         except Exception:
             wid = None
     if not wid:
         try:
             supabase = get_supabase()
-            res = supabase.table("websites").select("id").limit(1).execute()
+            res = await execute_db(supabase.table("websites").select("id").limit(1))
             if res.data:
                 wid = res.data[0]["id"]
         except Exception:
@@ -1676,7 +1678,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
             missing.append("NVIDIA NIM")
     # Supabase
     try:
-        get_supabase().table("websites").select("id").limit(1).execute()
+        await execute_db(get_supabase().table("websites").select("id").limit(1))
         health["supabase"] = "connected"
     except Exception:
         health["supabase"] = "error"
@@ -1687,7 +1689,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
         site = None
         if wid:
             try:
-                res = supabase.table("websites").select("cms_url, url, wordpress_url, cms_user, wordpress_user, app_password, wordpress_password").eq("id", wid).single().execute()
+                res = await execute_db(supabase.table("websites").select("cms_url, url, wordpress_url, cms_user, wordpress_user, app_password, wordpress_password").eq("id", wid).single())
                 site = res.data if res.data else None
             except Exception:
                 site = None
@@ -1766,7 +1768,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
     if "domain" not in health and wid:
         try:
             supabase = get_supabase()
-            res = supabase.table("websites").select("domain").eq("id", wid).single().execute()
+            res = await execute_db(supabase.table("websites").select("domain").eq("id", wid).single())
             if res.data and res.data.get("domain"):
                 health["domain"] = res.data.get("domain")
         except Exception:

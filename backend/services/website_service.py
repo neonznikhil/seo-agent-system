@@ -4,15 +4,28 @@ Strictly returns real website UUIDs or None. Never returns the string 'default'.
 """
 
 import logging
+import threading
+import time
 from typing import Optional, Dict, Any, List
 from database import get_supabase
 from services.local_store import list_local_websites, get_local_website
 
 logger = logging.getLogger("backend.services.website_service")
 
+# Resolving the default website is a synchronous Supabase round-trip that several
+# polled endpoints used to run inline on the API event loop, blocking every other
+# request for seconds. The answer is also stable for a whole session, so cache it
+# briefly. A negative result is cached too: when no site exists yet the query is
+# the slow path (it falls through to the local store) and would otherwise run on
+# every poll.
+_DEFAULT_ID_TTL_SEC = 10.0
+_default_id_lock = threading.Lock()
+_default_id_cache: Optional[str] = None
+_default_id_cached_at = 0.0
 
-def get_default_website_id() -> Optional[str]:
-    """Retrieve the primary active website ID from Supabase websites table or local store."""
+
+def _fetch_default_website_id() -> Optional[str]:
+    """Uncached resolution. Call from a worker thread, never the event loop."""
     try:
         supabase = get_supabase()
         res = (
@@ -31,6 +44,48 @@ def get_default_website_id() -> Optional[str]:
     if local and len(local) > 0 and local[0].get("id"):
         return str(local[0]["id"])
     return None
+
+
+def get_default_website_id() -> Optional[str]:
+    """Retrieve the primary active website ID from Supabase websites table or local store.
+
+    Synchronous and TTL-cached. Async callers on the event loop must use
+    ``get_default_website_id_async`` so the blocking query does not stall the loop.
+    """
+    global _default_id_cache, _default_id_cached_at
+    now = time.monotonic()
+    with _default_id_lock:
+        if _default_id_cached_at and (now - _default_id_cached_at) < _DEFAULT_ID_TTL_SEC:
+            return _default_id_cache
+    resolved = _fetch_default_website_id()
+    with _default_id_lock:
+        _default_id_cache = resolved
+        _default_id_cached_at = time.monotonic()
+    return resolved
+
+
+async def get_default_website_id_async() -> Optional[str]:
+    """Async wrapper: resolve on a worker thread and never block the event loop."""
+    import asyncio
+    global _default_id_cache, _default_id_cached_at
+    now = time.monotonic()
+    with _default_id_lock:
+        if _default_id_cached_at and (now - _default_id_cached_at) < _DEFAULT_ID_TTL_SEC:
+            return _default_id_cache
+    resolved = await asyncio.to_thread(_fetch_default_website_id)
+    with _default_id_lock:
+        _default_id_cache = resolved
+        _default_id_cached_at = time.monotonic()
+    return resolved
+
+
+def invalidate_default_website_cache() -> None:
+    """Drop the cached default id so the next lookup reflects a create/delete."""
+    global _default_id_cache, _default_id_cached_at
+    with _default_id_lock:
+        _default_id_cache = None
+        _default_id_cached_at = 0.0
+
 
 
 def get_website_domain(website_id: Optional[str] = None) -> str:

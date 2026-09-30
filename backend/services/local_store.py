@@ -24,29 +24,48 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # onboarding pipeline and the WordPress verification all persist to the same
 # file). A plain read-modify-write let one writer's load/save pair overwrite
 # another's, so a freshly verified flag could silently disappear — the source
-# of the intermittent "connected, then not connected" report. Serialise access
-# and make each write atomic.
-_LOCK = threading.RLock()
+# of the intermittent "connected, then not connected" report. Each file gets its
+# own lock (see below) so access is serialised per collection.
+#
+# A single global lock was not enough: serialising the 77 MB
+# knowledge_base.json held that lock for the whole dump, so an unrelated
+# `list_local_websites()` (a 4 KB file) blocked behind it — which is exactly why
+# connecting a website froze the websites page. Locking per file keeps readers
+# and writers of small files independent of a large knowledge flush.
+_FILE_LOCKS: Dict[str, threading.RLock] = {}
+_FILE_LOCKS_GUARD = threading.Lock()
 
 
-def _atomic(fn):
-    """Run a read-modify-write file operation under the store lock.
+def _file_lock(filename: str) -> threading.RLock:
+    with _FILE_LOCKS_GUARD:
+        lock = _FILE_LOCKS.get(filename)
+        if lock is None:
+            lock = threading.RLock()
+            _FILE_LOCKS[filename] = lock
+        return lock
+
+
+def _atomic(filename: str = ""):
+    """Run a read-modify-write file operation under that file's lock.
 
     The lock must cover the whole load -> mutate -> save sequence, not just each
     file call, otherwise two concurrent writers interleave and the later save
-    overwrites the earlier one's changes (a lost update).
+    overwrites the earlier one's changes (a lost update). The lock is per file so
+    a slow write of one collection cannot stall operations on another.
     """
-    def wrapper(*args, **kwargs):
-        with _LOCK:
-            return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
-    return wrapper
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            with _file_lock(filename):
+                return fn(*args, **kwargs)
+        wrapper.__name__ = fn.__name__
+        wrapper.__doc__ = fn.__doc__
+        return wrapper
+    return decorator
 
 
 def _load_json(filename: str) -> List[Dict[str, Any]]:
     path = os.path.join(DATA_DIR, filename)
-    with _LOCK:
+    with _file_lock(filename):
         if not os.path.exists(path):
             return []
         try:
@@ -160,7 +179,7 @@ def flush_local_store() -> None:
 
 def _save_json(filename: str, data: List[Dict[str, Any]]) -> None:
     path = os.path.join(DATA_DIR, filename)
-    with _LOCK:
+    with _file_lock(filename):
         try:
             # Write to a sibling temp file and rename: os.replace is atomic on
             # POSIX, so a reader never sees a half-written or truncated file even
@@ -177,7 +196,7 @@ def _save_json(filename: str, data: List[Dict[str, Any]]) -> None:
 # WEBSITES
 # ============================================================================
 
-@_atomic
+@_atomic("websites.json")
 def save_local_website(site: Dict[str, Any]) -> Dict[str, Any]:
     sites = _load_json("websites.json")
     site_id = site.get("id") or str(uuid.uuid4())
@@ -217,7 +236,7 @@ def get_local_website(website_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-@_atomic
+@_atomic("websites.json")
 def delete_local_website(website_id: str) -> bool:
     sites = _load_json("websites.json")
     initial_len = len(sites)
@@ -232,7 +251,7 @@ def delete_local_website(website_id: str) -> bool:
 # KNOWLEDGE BASE
 # ============================================================================
 
-@_atomic
+@_atomic("knowledge_base.json")
 def save_local_knowledge(item: Dict[str, Any]) -> Dict[str, Any]:
     """Append one knowledge chunk to the local mirror.
 
@@ -272,7 +291,7 @@ def list_local_knowledge(website_id: Optional[str] = None) -> List[Dict[str, Any
 # BRAIN MEMORY
 # ============================================================================
 
-@_atomic
+@_atomic("brain_memory.json")
 def save_local_brain_memory(item: Dict[str, Any]) -> Dict[str, Any]:
     memories = _load_json("brain_memory.json")
     mem_id = item.get("id") or str(uuid.uuid4())
@@ -297,7 +316,7 @@ def list_local_brain_memory(website_id: Optional[str] = None, memory_type: Optio
 # CONTENT & APPROVALS
 # ============================================================================
 
-@_atomic
+@_atomic("content_log.json")
 def save_local_content(item: Dict[str, Any]) -> Dict[str, Any]:
     content = _load_json("content_log.json")
     item_id = item.get("id") or str(uuid.uuid4())
@@ -367,7 +386,7 @@ def is_run_active(content_id: str, grace_seconds: float = 300.0) -> bool:
     return (time.time() - started) < grace_seconds
 
 
-@_atomic
+@_atomic("blog_approvals.json")
 def save_local_approval(item: Dict[str, Any]) -> Dict[str, Any]:
     approvals = _load_json("blog_approvals.json")
     item_id = item.get("id") or str(uuid.uuid4())
@@ -409,7 +428,7 @@ def get_local_approval(approval_id: str) -> Optional[Dict[str, Any]]:
 # RANK TRACKING
 # ============================================================================
 
-@_atomic
+@_atomic("rank_tracking.json")
 def save_local_rank_tracking(item: Dict[str, Any]) -> Dict[str, Any]:
     records = _load_json("rank_tracking.json")
     item_id = item.get("id") or str(uuid.uuid4())
@@ -453,7 +472,7 @@ def get_local_rank_tracking(track_id: str) -> Optional[Dict[str, Any]]:
 # INTERNAL LINK INDEX
 # ============================================================================
 
-@_atomic
+@_atomic("internal_link_index.json")
 def save_local_internal_link(item: Dict[str, Any]) -> Dict[str, Any]:
     records = _load_json("internal_link_index.json")
     item_id = item.get("id") or str(uuid.uuid4())
@@ -488,7 +507,7 @@ def list_local_internal_links(website_id: Optional[str] = None, limit: int = 20)
 # CONTENT REFRESH QUEUE
 # ============================================================================
 
-@_atomic
+@_atomic("content_refresh_queue.json")
 def save_local_refresh_queue(item: Dict[str, Any]) -> Dict[str, Any]:
     queue = _load_json("content_refresh_queue.json")
     item_id = item.get("id") or str(uuid.uuid4())
@@ -524,7 +543,7 @@ def list_local_refresh_queue(website_id: Optional[str] = None, status: Optional[
 # WORDPRESS CONNECTIONS
 # ============================================================================
 
-@_atomic
+@_atomic("wordpress_connections.json")
 def save_local_wp_connection(item: Dict[str, Any]) -> Dict[str, Any]:
     conns = _load_json("wordpress_connections.json")
     item_id = item.get("id") or str(uuid.uuid4())
@@ -567,7 +586,7 @@ def get_local_wp_connection(website_id: Optional[str] = None) -> Optional[Dict[s
 # DAILY COSTS & AUTONOMOUS SETTINGS
 # ============================================================================
 
-@_atomic
+@_atomic("daily_costs.json")
 def save_local_cost(cost_item: Dict[str, Any]) -> Dict[str, Any]:
     costs = _load_json("daily_costs.json")
     item_id = cost_item.get("id") or str(uuid.uuid4())
@@ -593,7 +612,7 @@ def list_local_costs(website_id: Optional[str] = None, date_str: Optional[str] =
     return filtered
 
 
-@_atomic
+@_atomic("autonomous_settings.json")
 def save_local_autonomous_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     current = _load_json("autonomous_settings.json")
     if current and isinstance(current, list):
@@ -623,7 +642,7 @@ def get_local_autonomous_settings() -> Dict[str, Any]:
 # LEAD ATTRIBUTION SETTINGS
 # ============================================================================
 
-@_atomic
+@_atomic("lead_settings.json")
 def save_local_lead_settings(website_id: str, settings: Dict[str, Any]) -> Dict[str, Any]:
     all_settings = _load_json("lead_settings.json")
     record = {**settings, "website_id": website_id, "updated_at": datetime.utcnow().isoformat()}
@@ -657,7 +676,7 @@ def get_local_lead_settings(website_id: str) -> Dict[str, Any]:
 # INDEXATION CHECKS
 # ============================================================================
 
-@_atomic
+@_atomic("indexation_checks.json")
 def save_local_indexation_check(check: Dict[str, Any]) -> Dict[str, Any]:
     checks = _load_json("indexation_checks.json")
     check_id = check.get("id") or str(uuid.uuid4())
@@ -681,7 +700,7 @@ def list_local_indexation_checks(website_id: Optional[str] = None, limit: int = 
 # BRAND VOICE GUIDES
 # ============================================================================
 
-@_atomic
+@_atomic("brand_voice_guides.json")
 def save_local_brand_voice(website_id: str, guide: Dict[str, Any]) -> Dict[str, Any]:
     guides = _load_json("brand_voice_guides.json")
     existing = [g for g in guides if g.get("website_id") == website_id]
@@ -705,7 +724,7 @@ def get_local_brand_voice(website_id: str) -> Optional[Dict[str, Any]]:
 # GUARDRAIL AUDIT CHANGES & ROLLBACK
 # ============================================================================
 
-@_atomic
+@_atomic("guardrail_changes.json")
 def save_local_guardrail_change(change: Dict[str, Any]) -> Dict[str, Any]:
     changes = _load_json("guardrail_changes.json")
     change_id = change.get("id") or str(uuid.uuid4())
@@ -732,7 +751,7 @@ def get_local_guardrail_change(change_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-@_atomic
+@_atomic("guardrail_changes.json")
 def update_local_guardrail_change(change_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     changes = _load_json("guardrail_changes.json")
     for i, c in enumerate(changes):
@@ -748,7 +767,7 @@ def update_local_guardrail_change(change_id: str, updates: Dict[str, Any]) -> Op
 # COMPETITORS
 # ============================================================================
 
-@_atomic
+@_atomic("competitors.json")
 def save_local_competitor(website_id_or_comp: Any, competitor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     competitors = _load_json("competitors.json")
     if isinstance(website_id_or_comp, dict) and competitor is None:
@@ -778,7 +797,7 @@ def save_local_competitor(website_id_or_comp: Any, competitor: Optional[Dict[str
     return record
 
 
-@_atomic
+@_atomic("competitors.json")
 def update_local_competitor_metrics(competitor_id: str, metrics: Dict[str, Any]) -> bool:
     """Merge measured metrics into an existing competitor record by id."""
     competitors = _load_json("competitors.json")
@@ -800,7 +819,7 @@ def list_local_competitors(website_id: Optional[str] = None) -> List[Dict[str, A
     return competitors
 
 
-@_atomic
+@_atomic("competitors.json")
 def delete_local_competitor(website_id_or_id: str, competitor_id: Optional[str] = None) -> bool:
     competitors = _load_json("competitors.json")
     initial_len = len(competitors)
@@ -814,7 +833,7 @@ def delete_local_competitor(website_id_or_id: str, competitor_id: Optional[str] 
     return False
 
 
-@_atomic
+@_atomic("competitor_pages.json")
 def save_local_competitor_pages(website_id: str, pages: List[Dict[str, Any]]) -> None:
     all_pages = _load_json("competitor_pages.json")
     existing_urls = {p.get("url") for p in all_pages if p.get("website_id") == website_id}
@@ -835,7 +854,7 @@ def list_local_competitor_pages(website_id: Optional[str] = None) -> List[Dict[s
 # ROI POST-FIX TRACKER (28-DAY EVIDENCE OF ROI)
 # ============================================================================
 
-@_atomic
+@_atomic("roi_tracked_fixes.json")
 def save_local_roi_tracked_fix(fix: Dict[str, Any]) -> Dict[str, Any]:
     fixes = _load_json("roi_tracked_fixes.json")
     fix_id = fix.get("id") or str(uuid.uuid4())
@@ -872,7 +891,7 @@ def get_local_roi_tracked_fix(fix_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-@_atomic
+@_atomic("roi_tracked_fixes.json")
 def update_local_roi_tracked_fix(fix_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     fixes = _load_json("roi_tracked_fixes.json")
     for i, f in enumerate(fixes):
@@ -895,7 +914,7 @@ update_local_roi_fix = update_local_roi_tracked_fix
 # AUDITS & KEYWORD RESEARCH
 # ============================================================================
 
-@_atomic
+@_atomic("audits.json")
 def save_local_audit(audit: Dict[str, Any]) -> Dict[str, Any]:
     audits = _load_json("audits.json")
     audit_id = audit.get("id") or str(uuid.uuid4())
@@ -917,7 +936,7 @@ def list_local_audits(website_id: Optional[str] = None, limit: int = 10) -> List
     return audits[:limit]
 
 
-@_atomic
+@_atomic("keyword_research.json")
 def save_local_keyword_research(research: Dict[str, Any]) -> Dict[str, Any]:
     items = _load_json("keyword_research.json")
     r_id = research.get("id") or str(uuid.uuid4())
@@ -935,7 +954,7 @@ def list_local_keyword_research(website_id: Optional[str] = None, limit: int = 2
     return items[:limit]
 
 
-@_atomic
+@_atomic("keywords.json")
 def save_local_keyword(keyword: Dict[str, Any]) -> Dict[str, Any]:
     items = _load_json("keywords.json")
     k_id = keyword.get("id") or str(uuid.uuid4())
@@ -957,7 +976,7 @@ def list_local_keywords(website_id: Optional[str] = None, limit: int = 50) -> Li
 # CONNECTOR SETTINGS (non-secret durable fallback: GSC/GA4/Slack/auto-publish)
 # ============================================================================
 
-@_atomic
+@_atomic("connector_settings.json")
 def set_local_connector_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Merge connector settings into a durable local JSON file.
 
@@ -984,7 +1003,7 @@ def get_local_connector_settings() -> Dict[str, Any]:
 # SLACK MESSAGE LOG (durable fallback when the slack_message_log table is absent)
 # ============================================================================
 
-@_atomic
+@_atomic("slack_message_log.json")
 def save_local_slack_message_log(entry: Dict[str, Any]) -> Dict[str, Any]:
     """Append a Slack dispatch record to a durable local JSON file.
 

@@ -1,5 +1,7 @@
 import os
 import time
+import asyncio
+import functools
 import logging
 from typing import Optional, List
 from dotenv import load_dotenv
@@ -48,17 +50,32 @@ def get_supabase() -> Client:
                 raise ValueError("SUPABASE_URL and SUPABASE_KEY/SUPABASE_SERVICE_ROLE_KEY must be set in environment")
         # Log which key type is being used
         key_source = "SERVICE_ROLE" if os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY") else "ANON"
-        # Pooling: supabase-py uses httpx under the hood; configure limits via options if available
+        # PostgREST defaults to http2=True on a single httpx client. httpcore
+        # serialises every request over that one HTTP/2 connection, so a slow
+        # query issued by the knowledge crawl (the first crawl of a site can take
+        # 30-60s) blocked every other Supabase call — including the tiny
+        # `GET /api/websites` that the websites page waits on. The user-visible
+        # symptom was "connecting a website breaks the app". An HTTP/1.1 client
+        # with a real connection pool gives each concurrent query its own
+        # connection, so a slow crawl cannot stall unrelated reads.
+        http_client = httpx.Client(
+            timeout=httpx.Timeout(30.0),
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+            follow_redirects=True,
+            http2=False,
+        )
         try:
-            from supabase.lib.client_options import ClientOptions
-            opts = ClientOptions(
+            from supabase.lib.client_options import SyncClientOptions
+            opts = SyncClientOptions(
                 postgrest_client_timeout=30,
                 storage_client_timeout=30,
                 schema="public",
+                httpx_client=http_client,
             )
             supabase_client = create_client(url, key, options=opts)
-        except Exception:
+        except Exception as e:
             # Fallback without options for older supabase-py
+            logger.warning(f"[DB] Supabase pooling options unavailable, using default transport: {e}")
             supabase_client = create_client(url, key)
         logger.info(f"[DB] Supabase singleton initialized with pooling (key={key_source})")
     return supabase_client
@@ -66,6 +83,12 @@ def get_supabase() -> Client:
 
 def reset_supabase_client() -> None:
     global supabase_client
+    # Close the pooled transport so its sockets are not leaked across resets.
+    try:
+        if supabase_client is not None:
+            supabase_client.postgrest.session.close()
+    except Exception:
+        pass
     supabase_client = None
 
 
@@ -77,6 +100,24 @@ def set_account_context(supabase_client: Optional[Client], account_id: str) -> N
         supabase_client.rpc("set_account_context", {"p_account_id": str(account_id)}).execute()
     except Exception as e:
         logger.debug(f"RLS set_account_context note: {e}")
+
+
+async def to_thread(func, /, *args, **kwargs):
+    """Run a blocking callable (e.g. the synchronous Supabase client) off the loop.
+
+    supabase-py is synchronous, so awaiting it from an ``async def`` handler
+    blocks the whole event loop: concurrent browser requests (topbar health +
+    websites + connectors) then serialize behind each other and behind any
+    in-flight crawl, which is what made "connect website" feel broken and time
+    out through the Next proxy. Offloading keeps the loop responsive.
+    """
+    call = functools.partial(func, *args, **kwargs)
+    return await asyncio.to_thread(call)
+
+
+async def execute_db(query):
+    """Await a Supabase query builder's blocking ``.execute()`` on a worker thread."""
+    return await to_thread(query.execute)
 
 
 async def check_supabase_connection() -> bool:

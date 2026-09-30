@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 
-from database import get_supabase, set_account_context
+from database import get_supabase, set_account_context, to_thread, execute_db
 from middleware.auth import get_current_account_id
 from security import encrypt_secret, decrypt_secret, sanitize_website_row
 from agents.knowledge_agent import run_knowledge_agent
@@ -101,12 +101,12 @@ def _resolve_app_password(row: dict) -> str:
     return decrypted
 
 
-def _verify_website_ownership(website_id: str, account_id: str, supabase) -> dict:
+async def _verify_website_ownership(website_id: str, account_id: str, supabase) -> dict:
     """Verify that website exists and belongs to the authenticated account."""
     if not website_id:
         raise HTTPException(status_code=400, detail="website_id is required")
     try:
-        res = supabase.table("websites").select("*").eq("id", website_id).execute()
+        res = await execute_db(supabase.table("websites").select("*").eq("id", website_id))
         rows = res.data or []
         if rows:
             site = rows[0]
@@ -138,7 +138,9 @@ async def list_websites(request: Request):
     supabase = get_supabase()
     rows = []
     try:
-        res = supabase.table("websites").select("*").eq("account_id", account_id).order("created_at", desc=False).execute()
+        res = await execute_db(
+            supabase.table("websites").select("*").eq("account_id", account_id).order("created_at", desc=False)
+        )
         rows = res.data or []
     except Exception as e:
         logger.debug(f"[Websites] Supabase query note: {e}")
@@ -184,9 +186,13 @@ async def get_active_website(request: Request):
     try:
         # Use account_id filter if column exists, else fallback
         try:
-            result = supabase.table("websites").select("id, domain, url, cms_url, status, updated_at").eq("account_id", account_id).eq("status", "active").order("updated_at", desc=True).limit(1).execute()
+            result = await execute_db(
+                supabase.table("websites").select("id, domain, url, cms_url, status, updated_at").eq("account_id", account_id).eq("status", "active").order("updated_at", desc=True).limit(1)
+            )
         except Exception:
-            result = supabase.table("websites").select("id, domain, url, status, updated_at").eq("status", "active").order("updated_at", desc=True).limit(1).execute()
+            result = await execute_db(
+                supabase.table("websites").select("id, domain, url, status, updated_at").eq("status", "active").order("updated_at", desc=True).limit(1)
+            )
         if result and result.data:
             site = result.data[0]
             return {"website_id": site["id"], "domain": site.get("domain"), "url": site.get("url") or site.get("cms_url"), "status": site.get("status")}
@@ -225,7 +231,7 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
         # "connect website" working instead of stranding the site.
         site_url = ""
         try:
-            site_data = supabase.table("websites").select("url, domain, cms_url, wordpress_url").eq("id", website_id).single().execute().data
+            site_data = (await execute_db(supabase.table("websites").select("url, domain, cms_url, wordpress_url").eq("id", website_id).single())).data
             if site_data:
                 site_url = site_data.get("url") or site_data.get("cms_url") or site_data.get("wordpress_url") or f"https://{site_data.get('domain', '')}"
         except Exception as e:
@@ -240,7 +246,7 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
 
         if not site_url or site_url in ("https://", "http://"):
             logger.error(f"[AutoCrawl] No URL for website {website_id}")
-            _finalize_crawl_status(website_id, "error")
+            await _finalize_crawl_status(website_id, "error")
             return
 
         # Use the new robust crawl function
@@ -249,25 +255,25 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
 
         count = res.get("chunks_saved", 0)
         try:
-            supabase.table("content_log").insert({
+            await execute_db(supabase.table("content_log").insert({
                 "website_id": website_id,
                 "account_id": account_id,
                 "title": f"Knowledge Crawl: {res.get('pages_found', 0)} pages found, {count} chunks indexed",
                 "status": "completed",
                 "pipeline_status": "knowledge_indexed",
                 "created_at": datetime.utcnow().isoformat()
-            }).execute()
+            }))
         except Exception:
             pass
 
         logger.info(f"[AutoCrawl] Completed for site {website_id}: {count} chunks indexed.")
-        _finalize_crawl_status(website_id, "active")
+        await _finalize_crawl_status(website_id, "active")
     except Exception as e:
         logger.error(f"[AutoCrawl] Failed for website {website_id}: {e}")
-        _finalize_crawl_status(website_id, "active")
+        await _finalize_crawl_status(website_id, "active")
 
 
-def _finalize_crawl_status(website_id: str, status: str) -> None:
+async def _finalize_crawl_status(website_id: str, status: str) -> None:
     """Reset a website's status after a crawl attempt, durably.
 
     Writing this through Supabase alone is not enough: when Supabase is
@@ -285,10 +291,10 @@ def _finalize_crawl_status(website_id: str, status: str) -> None:
     except Exception as e:
         logger.warning(f"[AutoCrawl] Local status finalize failed for {website_id}: {e}")
     try:
-        get_supabase().table("websites").update({
+        await execute_db(get_supabase().table("websites").update({
             "status": status,
             "updated_at": datetime.utcnow().isoformat(),
-        }).eq("id", website_id).execute()
+        }).eq("id", website_id))
     except Exception:
         pass
 
@@ -342,10 +348,10 @@ async def create_or_update_website(website: WebsiteIn, request: Request, backgro
     # 1. Try Supabase
     try:
         # Check plan limit on max websites for new domain additions
-        acc_res = supabase.table("accounts").select("max_websites").eq("id", account_id).single().execute()
+        acc_res = await execute_db(supabase.table("accounts").select("max_websites").eq("id", account_id).single())
         if acc_res.data:
             max_sites = acc_res.data.get("max_websites", 1)
-            existing_count_res = supabase.table("websites").select("id").eq("account_id", account_id).execute()
+            existing_count_res = await execute_db(supabase.table("websites").select("id").eq("account_id", account_id))
             existing_count = len(existing_count_res.data or [])
             if existing_count >= max_sites and not website.id:
                 raise HTTPException(
@@ -358,18 +364,18 @@ async def create_or_update_website(website: WebsiteIn, request: Request, backgro
         logger.debug(f"Plan website limit check note: {e}")
 
     try:
-        existing = supabase.table("websites").select("id").eq("domain", resolved_domain).execute().data
+        existing = (await execute_db(supabase.table("websites").select("id").eq("domain", resolved_domain))).data
         if existing and len(existing) > 0:
             target_id = existing[0]["id"]
             # write_website retries without any column this project lacks, so a
             # reduced schema cannot drop the WordPress credentials on the floor.
-            rows = write_website(supabase, payload, target_id, account_id=account_id)
+            rows = await to_thread(write_website, supabase, payload, target_id, account_id=account_id)
             created_website_id = target_id
             if rows:
                 res_obj = sanitize_website_row(rows[0])
         else:
             payload["created_at"] = datetime.utcnow().isoformat()
-            rows = write_website(supabase, payload)
+            rows = await to_thread(write_website, supabase, payload)
             if rows:
                 created_website_id = rows[0]["id"]
                 res_obj = sanitize_website_row(rows[0])
@@ -389,14 +395,42 @@ async def create_or_update_website(website: WebsiteIn, request: Request, backgro
         # pipeline previously had no callers, so connecting a site only crawled.
         from agents.scheduler import dispatch_onboarding
         has_wordpress = bool(payload.get("cms_user") or payload.get("wordpress_user"))
-        background_tasks.add_task(
-            dispatch_onboarding,
-            created_website_id,
-            payload.get("url") or payload.get("cms_url") or resolved_domain,
-            account_id,
-            has_wordpress,
+        onboarding_url = payload.get("url") or payload.get("cms_url") or resolved_domain
+
+        # Onboarding (knowledge crawl -> research -> first article -> audit ->
+        # backlinks) and the auto-crawl are long and do synchronous Supabase I/O.
+        # Running them on the API loop — which is what FastAPI BackgroundTasks do —
+        # starved every request the moment a site was connected. Prefer the
+        # dedicated automation loop and fall back to BackgroundTasks only if the
+        # runtime is unavailable.
+        from services.background_runtime import submit_background
+        submitted_onboarding = submit_background(
+            dispatch_onboarding(created_website_id, onboarding_url, account_id, has_wordpress),
+            name=f"onboarding:{created_website_id}",
         )
-        background_tasks.add_task(trigger_auto_crawl, created_website_id, account_id)
+        submitted_crawl = submit_background(
+            trigger_auto_crawl(created_website_id, account_id),
+            name=f"autocrawl:{created_website_id}",
+        )
+        if not submitted_onboarding:
+            background_tasks.add_task(
+                dispatch_onboarding,
+                created_website_id,
+                onboarding_url,
+                account_id,
+                has_wordpress,
+            )
+        if not submitted_crawl:
+            background_tasks.add_task(trigger_auto_crawl, created_website_id, account_id)
+
+        # The default-website lookup is TTL-cached to keep polled endpoints off
+        # the blocking Supabase path; drop it so a just-connected site is
+        # resolvable immediately instead of up to one TTL later.
+        try:
+            from services.website_service import invalidate_default_website_cache
+            invalidate_default_website_cache()
+        except Exception:
+            pass
 
     return res_obj
 
@@ -406,7 +440,7 @@ async def get_website(website_id: str, request: Request):
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
-    site = _verify_website_ownership(website_id, account_id, supabase)
+    site = await _verify_website_ownership(website_id, account_id, supabase)
     return sanitize_website_row(site)
 
 
@@ -415,7 +449,7 @@ async def update_website(website_id: str, update: WebsiteUpdate, request: Reques
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
-    _verify_website_ownership(website_id, account_id, supabase)
+    await _verify_website_ownership(website_id, account_id, supabase)
 
     payload = {k: v for k, v in update.model_dump().items() if v is not None}
     if not payload:
@@ -433,7 +467,7 @@ async def update_website(website_id: str, update: WebsiteUpdate, request: Reques
     try:
         # Resilient write: a project missing an optional column (e.g.
         # wordpress_password_encrypted) must still persist the real credentials.
-        write_website(supabase, payload, website_id, account_id=account_id)
+        await to_thread(write_website, supabase, payload, website_id, account_id=account_id)
     except Exception as e:
         logger.debug(f"[Websites] Supabase update note (falling back to persistent store): {e}")
 
@@ -447,7 +481,7 @@ async def crawl_website_on_demand(website_id: str, request: Request, background_
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
-    _verify_website_ownership(website_id, account_id, supabase)
+    await _verify_website_ownership(website_id, account_id, supabase)
 
     # Support sync full-site crawl via query ?sync=true or JSON body {sync:true, max_pages:50, site_url:"..."}
     sync = False
@@ -484,10 +518,10 @@ async def crawl_website_on_demand(website_id: str, request: Request, background_
     if sync:
         # Synchronous full-site crawl — wait for result and return detailed stats
         try:
-            supabase.table("websites").update({
+            await execute_db(supabase.table("websites").update({
                 "status": "crawling",
                 "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", website_id).execute()
+            }).eq("id", website_id))
         except Exception:
             pass
         try:
@@ -496,10 +530,10 @@ async def crawl_website_on_demand(website_id: str, request: Request, background_
             res = await ks.watch_business_website(target_site=site_url_override, max_pages=max_pages)
             # Mark active after crawl
             try:
-                supabase.table("websites").update({
+                await execute_db(supabase.table("websites").update({
                     "status": "active",
                     "updated_at": datetime.utcnow().isoformat()
-                }).eq("id", website_id).execute()
+                }).eq("id", website_id))
             except Exception:
                 pass
             return {
@@ -512,20 +546,20 @@ async def crawl_website_on_demand(website_id: str, request: Request, background_
         except Exception as e:
             logger.error(f"[Crawl] Sync crawl failed for {website_id}: {e}")
             try:
-                supabase.table("websites").update({
+                await execute_db(supabase.table("websites").update({
                     "status": "active",
                     "updated_at": datetime.utcnow().isoformat()
-                }).eq("id", website_id).execute()
+                }).eq("id", website_id))
             except Exception:
                 pass
             raise HTTPException(status_code=500, detail=str(e))
 
     # Default: background async crawl (legacy)
     try:
-        supabase.table("websites").update({
+        await execute_db(supabase.table("websites").update({
             "status": "crawling",
             "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", website_id).execute()
+        }).eq("id", website_id))
     except Exception:
         pass
 
@@ -539,13 +573,18 @@ async def delete_website(website_id: str, request: Request):
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
-    _verify_website_ownership(website_id, account_id, supabase)
+    await _verify_website_ownership(website_id, account_id, supabase)
 
     try:
-        supabase.table("websites").delete().eq("id", website_id).eq("account_id", account_id).execute()
+        await execute_db(supabase.table("websites").delete().eq("id", website_id).eq("account_id", account_id))
     except Exception:
         pass
 
     delete_local_website(website_id)
+    try:
+        from services.website_service import invalidate_default_website_cache
+        invalidate_default_website_cache()
+    except Exception:
+        pass
     return {"success": True, "id": website_id, "detail": "Website removed."}
 

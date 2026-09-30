@@ -14,8 +14,8 @@ router = APIRouter()
 @router.get("/tech-seo/{website_id}")
 async def get_tech_seo(website_id: str):
     """Fetch latest technical audit for a website or run initial audit."""
-    from services.website_service import get_default_website_id
-    resolved_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else get_default_website_id()
+    from services.website_service import get_default_website_id_async
+    resolved_id = website_id if website_id and website_id not in ("default", "default-website-id", "all", "", "null", "undefined") else await get_default_website_id_async()
     if not resolved_id:
         return {
             "health_score": None,

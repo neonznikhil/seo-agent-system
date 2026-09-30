@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import re
+import threading
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -25,7 +26,13 @@ logger = logging.getLogger("backend.services.internal_link")
 # empty graph. Results are reused for a cooldown window instead.
 _GRAPH_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
 _GRAPH_COOLDOWN_SEC = 900
-_GRAPH_LOCK = asyncio.Lock()
+# Graph builds are requested from both the API loop (dashboard/links routes) and
+# the background loop (scheduler jobs). An asyncio.Lock is bound to the loop that
+# first acquires it, so a single shared lock would raise "attached to a different
+# loop" across the two. A plain thread lock is loop-agnostic; acquisition is
+# awaited via a worker thread and release may be called from any thread (unlike
+# RLock), so holding it across the I/O-bound build is safe.
+_GRAPH_LOCK = threading.Lock()
 
 
 def _chunks(lst: List[Any], n: int):
@@ -140,7 +147,10 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
     if cached and now - cached[0] < _GRAPH_COOLDOWN_SEC and cached[1].get("edges"):
         return cached[1]
 
-    async with _GRAPH_LOCK:
+    # Acquire off-loop so a concurrent builder on the other loop never blocks
+    # this one while we wait for the lock.
+    await asyncio.to_thread(_GRAPH_LOCK.acquire)
+    try:
         now = time.monotonic()
         cached = _GRAPH_CACHE.get(website_id)
         if cached and now - cached[0] < _GRAPH_COOLDOWN_SEC and cached[1].get("edges"):
@@ -149,6 +159,8 @@ async def build_internal_link_graph(website_id: str) -> Dict[str, Any]:
         if result.get("edges"):
             _GRAPH_CACHE[website_id] = (time.monotonic(), result)
         return result
+    finally:
+        _GRAPH_LOCK.release()
 
 
 async def _build_internal_link_graph_uncached(website_id: str) -> Dict[str, Any]:
