@@ -46,7 +46,11 @@ export default function WebsitesPage() {
       } catch {
         res = await get("/websites");
       }
-      const list = Array.isArray(res) ? res : res?.websites || [];
+      const rawList = Array.isArray(res) ? res : res?.websites || [];
+      // A row without a domain is corrupt (e.g. a partially-written record) and
+      // would render as "https://undefined" in the card and the WP form. Drop it
+      // rather than show a broken, un-clickable website.
+      const list = rawList.filter((w: any) => w && typeof w.domain === "string" && w.domain.trim());
       setWebsites(list);
 
       const current = getCurrentWebsiteId();
@@ -71,9 +75,12 @@ export default function WebsitesPage() {
     // survive a reload instead of forcing a re-paste.
     try {
       const cached = loadConnectorCredentials();
+      // Only the WordPress identity (user/password) is a reusable credential.
+      // Pre-filling cmsUrl here would leak the previously-connected site's URL
+      // into the "Add New Website" form, so a brand-new domain silently saved
+      // under the old site's URL. The URL is per-site and must stay blank.
       if (cached.wordpress_username && cached.wordpress_username !== "admin") setWpUser(cached.wordpress_username);
       if (cached.wordpress_app_password) setWpAppPass(cached.wordpress_app_password);
-      if (cached.wordpress_site_url) setCmsUrl(cached.wordpress_site_url);
     } catch {}
   }, [fetchWebsites]);
 

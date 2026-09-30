@@ -215,7 +215,7 @@ export function ChangelogRollbackCard({
                       <div style={{ fontSize: "10.5px", color: "var(--muted)", marginTop: "2px" }}>
                         <span>Target: </span>
                         <code style={{ color: "var(--ink)" }}>{item.target_url}</code>
-                        <span style={{ marginLeft: "10px" }}>By: {item.author} · {item.applied_at.split("T")[0]}</span>
+                        <span style={{ marginLeft: "10px" }}>By: {item.author} · {item.applied_at ? item.applied_at.split("T")[0] : "—"}</span>
                       </div>
                     </div>
 
@@ -230,7 +230,7 @@ export function ChangelogRollbackCard({
                           borderRadius: "2px",
                         }}
                       >
-                        YMYL: {item.ymyl_risk.toUpperCase()}
+                        YMYL: {(item.ymyl_risk || "unknown").toUpperCase()}
                       </span>
 
                       <button

@@ -213,15 +213,15 @@ async def _job_site_health(website_id: str) -> Dict[str, Any]:
 
 async def _job_on_page_audit(website_id: str) -> Dict[str, Any]:
     supabase = get_supabase()
-    pages = supabase.table("pages").select("url, title, h1").eq("website_id", website_id).limit(20).execute().data or []
+    pages = supabase.table("pages").select("url, title, content_text").eq("website_id", website_id).limit(20).execute().data or []
     issues = []
     for p in pages:
         if not p.get("title"):
             issues.append(f"missing_title:{p.get('url')}")
-        if not p.get("h1"):
-            issues.append(f"missing_h1:{p.get('url')}")
+        if not (p.get("content_text") or "").strip():
+            issues.append(f"missing_content:{p.get('url')}")
 
-    narrative = f"On-page audit checked {len(pages)} pages. Found {len(issues)} title/H1 structural issues."
+    narrative = f"On-page audit checked {len(pages)} pages. Found {len(issues)} title/content structural issues."
     return {
         "snapshot": {"pages_audited": len(pages), "issue_ids": issues},
         "narrative_summary": narrative,
@@ -254,7 +254,7 @@ async def _job_keyword_research(website_id: str) -> Dict[str, Any]:
     supabase = get_supabase()
     try:
         tracked = supabase.table("rank_tracking").select(
-            "keyword, target_keyword, current_position").eq(
+            "target_keyword, current_position").eq(
             "website_id", website_id).execute().data or []
     except Exception:
         tracked = []
@@ -266,7 +266,7 @@ async def _job_keyword_research(website_id: str) -> Dict[str, Any]:
     except Exception:
         opps = []
     gap_list = [r.get("keyword") for r in opps if r.get("keyword")]
-    issue_ids = ([f"striking:{(r.get('keyword') or r.get('target_keyword'))}" for r in striking[:10]]
+    issue_ids = ([f"striking:{r.get('target_keyword')}" for r in striking[:10]]
                  + [f"untargeted_keyword:{k}" for k in gap_list[:10]])
 
     narrative = (f"Keyword research: {len(striking)} striking-distance keyword(s) closest to page 1, "
@@ -311,8 +311,8 @@ async def _job_ai_citation_monitoring(website_id: str) -> Dict[str, Any]:
         domain = ""
     try:
         rows = supabase.table("rank_tracking").select(
-            "keyword, target_keyword").eq("website_id", website_id).limit(10).execute().data or []
-        keywords = [r.get("keyword") or r.get("target_keyword") for r in rows]
+            "target_keyword").eq("website_id", website_id).limit(10).execute().data or []
+        keywords = [r.get("target_keyword") for r in rows]
         keywords = [k for k in keywords if k]
     except Exception:
         keywords = []

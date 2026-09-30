@@ -240,10 +240,10 @@ class BacklinkAuthorityEngine:
         domain = None
         if self.website_id:
             try:
-                site = supabase.table("websites").select("domain, name").eq("id", self.website_id).single().execute().data
+                site = supabase.table("websites").select("domain").eq("id", self.website_id).single().execute().data
                 if site:
                     domain = site.get("domain")
-                    brand_name = brand_name or site.get("name") or domain
+                    brand_name = brand_name or domain
             except Exception as e:
                 logger.warning(f"[BacklinkEngine] Failed to fetch site domain: {e}")
 
@@ -353,7 +353,7 @@ class BacklinkAuthorityEngine:
         try:
             res_all = (
                 supabase.table("backlinks")
-                .select("id, domain_rating, acquired_date, relevance_score")
+                .select("id, domain_rating, first_seen, status")
                 .eq("website_id", self.website_id)
                 .execute()
             )
@@ -362,23 +362,24 @@ class BacklinkAuthorityEngine:
             links = []
 
         total_acquired = len(links)
-        recent_30d = len([l for l in links if str(l.get("acquired_date") or "") >= cutoff_30d])
+        recent_30d = len([l for l in links if str(l.get("first_seen") or "") >= cutoff_30d])
 
         # Average DR from real rows only
         drs = [float(l["domain_rating"]) for l in links if l.get("domain_rating") is not None]
         avg_dr = round(sum(drs) / len(drs), 1) if drs else None
 
-        # Topical Authority Score %
+        # Topical Authority Score % — backlinks has no relevance column, so
+        # score on real domain rating (>=60 counts as topical authority).
         topical_links = [
             l for l in links
-            if l.get("relevance_score") is not None and float(l["relevance_score"]) >= 0.75
+            if l.get("domain_rating") is not None and float(l["domain_rating"]) >= 60
         ]
         topical_authority_score = round((len(topical_links) / len(links)) * 100, 1) if links else None
 
         # Weekly trajectory built strictly from actual acquisition dates
         weekly_buckets: Dict[str, dict] = {}
         for l in links:
-            acquired = str(l.get("acquired_date") or "")[:10]
+            acquired = str(l.get("first_seen") or "")[:10]
             if not acquired:
                 continue
             try:

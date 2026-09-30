@@ -376,7 +376,7 @@ class KnowledgeService:
         updated = 0
         outdated_count = 0
         try:
-            rows = supabase.table("knowledge_base").select("id, credibility_score, source_type, created_at, last_used").execute().data or []
+            rows = supabase.table("knowledge_base").select("id, credibility_score, source_url, created_at, last_used").execute().data or []
             now = datetime.now(timezone.utc)
             for r in rows:
                 ts_str = r.get("last_used") or r.get("created_at") or now.isoformat()
@@ -411,11 +411,15 @@ class KnowledgeService:
     # 5. Auto-Consolidation of Duplicate/Overlapping Chunks
     # ---------------------------------------------------------
     async def auto_consolidate(self) -> Dict[str, Any]:
-        """Merge knowledge chunks where cosine similarity > 0.92 and type is business_info."""
+        """Merge knowledge chunks where cosine similarity > 0.92 and type is company_info."""
         supabase = get_supabase()
         merged_count = 0
         try:
-            docs = supabase.table("knowledge_base").select("*").eq("type", "business_info").execute().data or []
+            # The schema column is `fact_type`; querying `type` raised Postgres
+            # 42703 ("column knowledge_base.type does not exist") and silently
+            # disabled consolidation. `company_info` is the canonical fact type
+            # (see valid_fact_types below).
+            docs = supabase.table("knowledge_base").select("*").eq("fact_type", "company_info").execute().data or []
             visited = set()
 
             for i in range(len(docs)):
@@ -1246,6 +1250,31 @@ async def get_verified_facts(topic: str, website_id: Optional[str] = None) -> Li
 # ---------------------------------------------------------
 # NEW ROBUST CRAWL FUNCTION — cannot fail silently
 # ---------------------------------------------------------
+def _persist_crawl_status(website_id: str, status: str) -> None:
+    """Persist a post-crawl website status durably (local first).
+
+    Supabase writes are best-effort: when it is unconfigured or unauthorized
+    the update silently 401s and a finished crawl would leave the site stuck on
+    "crawling". The local store is the durable source of truth for status.
+    """
+    from services.local_store import save_local_website
+    try:
+        save_local_website({
+            "id": website_id,
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"[CRAWL] Local status persist failed for {website_id}: {e}")
+    try:
+        get_supabase().table("websites").update({
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", website_id).execute()
+    except Exception:
+        pass
+
+
 async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int = 5) -> dict:
     """
     Crawls a website and indexes content into knowledge_base.
@@ -1277,9 +1306,10 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", website_id).execute()
     except Exception as e:
+        # Non-fatal: the crawl itself can proceed without the status mirror.
         err = f"Failed to update website status: {e}"
         results["errors"].append(err)
-        logger.error(f"[CRAWL] {err}")
+        logger.warning(f"[CRAWL] {err}")
 
     # STEP 2: Discover pages
     pages = []
@@ -1478,10 +1508,9 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
         logger.info(f"[CRAWL] Total chunks created: {len(all_chunks)}")
 
         if not all_chunks:
-            supabase.table("websites").update({
-                "status": "error",
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }).eq("id", website_id).execute()
+            # Unguarded Supabase here used to raise and escape the whole crawl
+            # (leaving status="crawling"). Persist durably instead.
+            _persist_crawl_status(website_id, "error")
             results["errors"].append("No content extracted from any page")
             return results
 
@@ -1520,9 +1549,18 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                         if insert_result and insert_result.data:
                             results["chunks_saved"] += 1
                     except Exception as ins_err:
-                        err = f"DB insert failed for chunk from {chunk['source_url']}: {ins_err}"
-                        results["errors"].append(err)
-                        logger.error(f"[CRAWL] {err}")
+                        # Supabase unavailable/unauthorized must not silently drop
+                        # the crawl. Persist the chunk to the durable local store
+                        # so connecting a website still produces knowledge.
+                        logger.warning(f"[CRAWL] Supabase insert failed, saving locally: {ins_err}")
+                        try:
+                            save_local_knowledge(row)
+                            results["chunks_saved"] += 1
+                            results["errors"].append(f"Supabase insert fell back to local store: {ins_err}")
+                        except Exception as local_err:
+                            err = f"DB insert failed for chunk from {chunk['source_url']}: {ins_err}; local fallback failed: {local_err}"
+                            results["errors"].append(err)
+                            logger.error(f"[CRAWL] {err}")
 
                 except Exception as e:
                     err = f"Failed to save chunk from {chunk['source_url']}: {e}"
@@ -1530,15 +1568,10 @@ async def crawl_and_index_website(website_id: str, site_url: str, max_pages: int
                     logger.error(f"[CRAWL] {err}")
                     continue
 
-        # STEP 6: Update website status
-        final_status = "active" if results["chunks_saved"] >= 3 else "error"
-        try:
-            supabase.table("websites").update({
-                "status": final_status,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }).eq("id", website_id).execute()
-        except Exception as e:
-            logger.warning(f"[CRAWL] Failed to update website status: {e}")
+        # STEP 6: Update website status. Persist locally first (durable even when
+        # Supabase is down), then best-effort mirror to Supabase.
+        final_status = "active" if results["chunks_saved"] >= 1 else "error"
+        _persist_crawl_status(website_id, final_status)
 
         # STEP 7: Log the decision
         try:

@@ -295,19 +295,32 @@ async def suggest_internal_links(
     cluster_candidates = []
     try:
         kw_emb = await get_embedding(new_article_keyword, website_id=website_id)
+        # cluster_articles stores content_id (no url column); resolve the
+        # published URL from content_log for each clustered article.
         articles = (
             supabase.table("cluster_articles")
-            .select("url,keyword")
+            .select("keyword,content_id")
             .eq("website_id", website_id)
             .execute()
             .data
             or []
         )
+        url_by_content_id = {}
+        content_ids = [a.get("content_id") for a in articles if a.get("content_id")]
+        if content_ids:
+            try:
+                rows = supabase.table("content_log").select("id,published_url,wordpress_url").in_("id", content_ids).execute().data or []
+                url_by_content_id = {r["id"]: (r.get("published_url") or r.get("wordpress_url")) for r in rows}
+            except Exception as e:
+                logger.warning(f"[services_internal_link_service] content_log url lookup failed: {e}")
         for art in articles:
+            art_url = url_by_content_id.get(art.get("content_id"))
+            if not art_url:
+                continue
             art_emb = await get_embedding(art.get("keyword", ""), website_id=website_id)
             sim = cosine(kw_emb, art_emb)
             if sim > 0.75:
-                cluster_candidates.append({"url": art["url"], "relevance": sim})
+                cluster_candidates.append({"url": art_url, "relevance": sim})
     except Exception as e:
         logger.warning(f"[services_internal_link_service] operation failed: {e}")
 

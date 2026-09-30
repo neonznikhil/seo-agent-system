@@ -219,14 +219,27 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
     supabase = get_supabase()
     set_account_context(supabase, account_id)
     try:
-        # Get website URL
-        site_data = supabase.table("websites").select("url, domain, cms_url, wordpress_url").eq("id", website_id).single().execute().data
+        # Resolve the URL. Supabase is primary, but when it is unreachable or
+        # unauthorized the local store still has the record; using it keeps
+        # "connect website" working instead of stranding the site.
         site_url = ""
-        if site_data:
-            site_url = site_data.get("url") or site_data.get("cms_url") or site_data.get("wordpress_url") or f"https://{site_data.get('domain', '')}"
-        
+        try:
+            site_data = supabase.table("websites").select("url, domain, cms_url, wordpress_url").eq("id", website_id).single().execute().data
+            if site_data:
+                site_url = site_data.get("url") or site_data.get("cms_url") or site_data.get("wordpress_url") or f"https://{site_data.get('domain', '')}"
+        except Exception as e:
+            logger.warning(f"[AutoCrawl] Supabase lookup failed, using local store: {e}")
+        if not site_url:
+            try:
+                from services.local_store import get_local_website
+                local = get_local_website(website_id) or {}
+                site_url = local.get("url") or local.get("cms_url") or local.get("wordpress_url") or f"https://{local.get('domain', '')}"
+            except Exception:
+                pass
+
         if not site_url or site_url in ("https://", "http://"):
             logger.error(f"[AutoCrawl] No URL for website {website_id}")
+            _finalize_crawl_status(website_id, "error")
             return
 
         # Use the new robust crawl function
@@ -247,15 +260,36 @@ async def trigger_auto_crawl(website_id: str, account_id: str):
             pass
 
         logger.info(f"[AutoCrawl] Completed for site {website_id}: {count} chunks indexed.")
+        _finalize_crawl_status(website_id, "active")
     except Exception as e:
         logger.error(f"[AutoCrawl] Failed for website {website_id}: {e}")
-        try:
-            supabase.table("websites").update({
-                "status": "active",
-                "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", website_id).execute()
-        except Exception:
-            pass
+        _finalize_crawl_status(website_id, "active")
+
+
+def _finalize_crawl_status(website_id: str, status: str) -> None:
+    """Reset a website's status after a crawl attempt, durably.
+
+    Writing this through Supabase alone is not enough: when Supabase is
+    unconfigured/unauthorized the write silently 401s and the site is stranded
+    in "crawling" forever (the UI then shows a permanent spinner). The local
+    store is the durable fallback, so update it first and unconditionally.
+    """
+    try:
+        from services.local_store import save_local_website
+        save_local_website({
+            "id": website_id,
+            "status": status,
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"[AutoCrawl] Local status finalize failed for {website_id}: {e}")
+    try:
+        get_supabase().table("websites").update({
+            "status": status,
+            "updated_at": datetime.utcnow().isoformat(),
+        }).eq("id", website_id).execute()
+    except Exception:
+        pass
 
 
 @router.post("/websites")

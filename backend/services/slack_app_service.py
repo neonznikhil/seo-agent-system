@@ -26,7 +26,7 @@ class SlackAppService:
     """Slack App integration using the REAL Web API (chat.postMessage).
 
     Token resolution order:
-      1. Per-website Fernet-encrypted token from websites.slack_credentials
+      1. Per-website Fernet-encrypted token from the durable connector settings store
       2. Environment SLACK_BOT_TOKEN
     Delivery is never mocked: if no token/webhook is configured the call
     returns False with an explicit reason.
@@ -42,17 +42,16 @@ class SlackAppService:
     async def _resolve_token(self, website_id: Optional[str] = None) -> str:
         if website_id and website_id not in ("default", "all", "", None):
             try:
-                row = (
-                    get_supabase().table("websites")
-                    .select("slack_credentials")
-                    .eq("id", website_id)
-                    .single()
-                    .execute()
-                    .data or {}
+                from services.local_store import get_local_connector_settings
+                creds = get_local_connector_settings() or {}
+                # The connector settings store keys the encrypted token per
+                # website so multiple connected sites never share a bot token.
+                token_encrypted = (
+                    creds.get(f"slack_token_encrypted_{website_id}")
+                    or creds.get("slack_token_encrypted")
                 )
-                creds = row.get("slack_credentials") or {}
-                if isinstance(creds, dict) and creds.get("token_encrypted"):
-                    token = decrypt_secret(creds["token_encrypted"])
+                if token_encrypted:
+                    token = decrypt_secret(token_encrypted)
                     if token:
                         return token
             except Exception as e:
@@ -114,9 +113,10 @@ class SlackAppService:
 
         if created:
             try:
-                get_supabase().table("websites").update({
-                    "slack_channels": created,
-                }).eq("id", website_id).execute()
+                from services.local_store import set_local_connector_settings
+                set_local_connector_settings({
+                    f"slack_channels_{website_id}": created,
+                })
             except Exception as e:
                 logger.debug(f"[SlackApp] Channel map update note: {e}")
 
@@ -174,18 +174,26 @@ class SlackAppService:
 
         # Log every attempt for observability
         summary = text_fallback[:120] if text_fallback else f"Slack {report_type} dispatched."
+        entry = {
+            "website_id": website_id,
+            "report_type": report_type,
+            "channel": channel,
+            "sent_at": datetime.utcnow().isoformat(),
+            "message_summary": summary,
+            "delivery_status": delivery_status,
+            "payload": {"blocks": blocks, "fallback": text_fallback},
+        }
         try:
-            get_supabase().table("slack_message_log").insert({
-                "website_id": website_id,
-                "report_type": report_type,
-                "channel": channel,
-                "sent_at": datetime.utcnow().isoformat(),
-                "message_summary": summary,
-                "delivery_status": delivery_status,
-                "payload": {"blocks": blocks, "fallback": text_fallback},
-            }).execute()
+            get_supabase().table("slack_message_log").insert(entry).execute()
         except Exception as e:
+            # The table may not exist on the connected project. Fall back to the
+            # durable local store instead of silently dropping the dispatch log.
             logger.debug(f"[SlackApp] Log note: {e}")
+            try:
+                from services.local_store import save_local_slack_message_log
+            except (ImportError, ValueError):
+                from backend.services.local_store import save_local_slack_message_log
+            save_local_slack_message_log(entry)
 
         return sent
 

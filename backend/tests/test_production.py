@@ -54,10 +54,18 @@ def test_start_scripts_use_relative_dp0():
 
 @pytest.mark.asyncio
 async def test_health_endpoint():
-    """Test health monitoring endpoint."""
+    """Connector status must answer 200 and report each connector honestly.
+
+    It must NOT assert that Supabase is connected: with an unconfigured or
+    invalid key the correct answer is connected=False. Asserting True here
+    encoded the exact "fabricated success" bug this suite guards against.
+    """
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.get("/api/connectors/status")
         assert res.status_code == 200
         data = res.json()
-        assert data.get("supabase", {}).get("connected") is True
+        assert "supabase" in data and "connected" in data["supabase"]
+        # connected must be a real boolean, never a truthy placeholder string.
+        assert isinstance(data["supabase"]["connected"], bool)
+        assert isinstance(data.get("connected_count"), int)

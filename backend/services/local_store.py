@@ -5,6 +5,7 @@ when Supabase RLS policies restrict anon writes in local dev environments.
 
 import os
 import json
+import time
 import uuid
 import logging
 from datetime import datetime
@@ -146,6 +147,16 @@ def save_local_content(item: Dict[str, Any]) -> Dict[str, Any]:
     content = _load_json("content_log.json")
     item_id = item.get("id") or str(uuid.uuid4())
     item["id"] = item_id
+    # Upsert by id: generation writes a placeholder row up-front and later the
+    # finished article under the same id. Appending unconditionally produced two
+    # rows per blog (one empty "in_progress", one filled), and status lookups
+    # could return the empty one.
+    for i, existing in enumerate(content):
+        if existing.get("id") == item_id:
+            item["created_at"] = item.get("created_at") or existing.get("created_at")
+            content[i] = {**existing, **item}
+            _save_json("content_log.json", content)
+            return content[i]
     item["created_at"] = item.get("created_at") or datetime.utcnow().isoformat()
     content.append(item)
     _save_json("content_log.json", content)
@@ -165,6 +176,40 @@ def get_local_content(content_id: str) -> Optional[Dict[str, Any]]:
         if c.get("id") == content_id:
             return c
     return None
+
+
+# ---------------------------------------------------------------------------
+# In-flight generation liveness
+#
+# A generation run can legitimately take far longer than any fixed timeout when
+# the LLM is cold or under load (observed: ~46 minutes on shared NIM). Guessing
+# staleness from a timestamp alone is wrong in both directions — it hides a
+# genuinely still-running job, or falsely fails one. These helpers track which
+# runs this process is actually executing, so "still generating" is decided by
+# liveness, not by clock arithmetic.
+# ---------------------------------------------------------------------------
+_ACTIVE_RUNS: Dict[str, float] = {}
+
+
+def mark_run_active(content_id: str) -> None:
+    _ACTIVE_RUNS[str(content_id)] = time.time()
+
+
+def mark_run_finished(content_id: str) -> None:
+    _ACTIVE_RUNS.pop(str(content_id), None)
+
+
+def is_run_active(content_id: str, grace_seconds: float = 300.0) -> bool:
+    """True if this process is running (or very recently ran) the generation.
+
+    The grace window covers the brief moment after a run finishes but before the
+    finished row is written, and the handoff between task scheduling and the
+    task body starting.
+    """
+    started = _ACTIVE_RUNS.get(str(content_id))
+    if started is None:
+        return False
+    return (time.time() - started) < grace_seconds
 
 
 def save_local_approval(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -742,6 +787,35 @@ def get_local_connector_settings() -> Dict[str, Any]:
     if current and isinstance(current, list) and current:
         return current[0]
     return {}
+
+
+# ============================================================================
+# SLACK MESSAGE LOG (durable fallback when the slack_message_log table is absent)
+# ============================================================================
+
+def save_local_slack_message_log(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Append a Slack dispatch record to a durable local JSON file.
+
+    Mirrors the `slack_message_log` table so observability survives when the
+    table has not been provisioned on the connected Supabase project. The insert
+    used to fail silently and the dispatch history was simply lost.
+    """
+    logs = _load_json("slack_message_log.json")
+    record = {
+        "id": entry.get("id") or str(uuid.uuid4()),
+        "created_at": datetime.utcnow().isoformat(),
+        **entry,
+    }
+    logs.append(record)
+    _save_json("slack_message_log.json", logs[-500:])
+    return record
+
+
+def list_local_slack_message_log(website_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    logs = _load_json("slack_message_log.json")
+    if website_id:
+        logs = [x for x in logs if x.get("website_id") == website_id]
+    return logs[-limit:][::-1]
 
 
 

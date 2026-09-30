@@ -415,8 +415,8 @@ async def edit_approval(approval_id: str, body: ApprovalEdit, request: Request):
     _update_approval(approval_id, updates)
 
     try:
-        row = supabase.table("blog_approvals").select("blog_id").eq("id", approval_id).maybe_single().execute().data or {}
-        if row.get("blog_id"):
+        row = supabase.table("blog_approvals").select("content_log_id").eq("id", approval_id).maybe_single().execute().data or {}
+        if row.get("content_log_id"):
             mirror = {}
             if updates.get("title"):
                 mirror["title"] = updates["title"]
@@ -425,7 +425,7 @@ async def edit_approval(approval_id: str, body: ApprovalEdit, request: Request):
             if updates.get("html_content"):
                 mirror["content"] = updates["html_content"]
             if mirror:
-                supabase.table("content_log").update(mirror).eq("id", row["blog_id"]).execute()
+                supabase.table("content_log").update(mirror).eq("id", row["content_log_id"]).execute()
     except Exception:
         pass
 
@@ -447,9 +447,9 @@ async def reject_approval(approval_id: str, request: Request, body: Optional[dic
     _update_approval(approval_id, {"status": "rejected", "rejection_reason": reason[:500] or None})
 
     try:
-        row = supabase.table("blog_approvals").select("blog_id").eq("id", approval_id).maybe_single().execute().data or {}
-        if row.get("blog_id"):
-            supabase.table("content_log").update({"status": "rejected"}).eq("id", row["blog_id"]).execute()
+        row = supabase.table("blog_approvals").select("content_log_id").eq("id", approval_id).maybe_single().execute().data or {}
+        if row.get("content_log_id"):
+            supabase.table("content_log").update({"status": "rejected"}).eq("id", row["content_log_id"]).execute()
     except Exception:
         pass
 
@@ -734,10 +734,10 @@ async def delete_approval(approval_id: str, request: Request):
 
     blog_id = None
     try:
-        res = supabase.table("blog_approvals").select("blog_id, title, content").eq("id", approval_id).execute()
+        res = supabase.table("blog_approvals").select("content_log_id, title, content").eq("id", approval_id).execute()
         if res.data:
             target = res.data[0]
-            blog_id = target.get("blog_id")
+            blog_id = target.get("content_log_id")
             # Snapshot
             supabase.table("deleted_content_log").insert({
                 "original_id": approval_id,

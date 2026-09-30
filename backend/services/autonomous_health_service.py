@@ -27,28 +27,45 @@ from database import (
 
 logger = logging.getLogger("backend.services.autonomous_health")
 
-# Global in-memory cache of latest health snapshot
+# Global in-memory cache of latest health snapshot.
+#
+# Until the first real diagnostic completes this must NOT claim a perfect
+# score: a fresh process reported "LIVE (100%) / all systems ok" for up to
+# ~15 minutes even while Supabase was unauthorized and NIM/WordPress were
+# down. `health_score=None` + "unknown" checks make the API honest about not
+# having measured anything yet.
 _latest_health_cache: Dict[str, Any] = {
-    "health_score": 100,
+    "health_score": None,
     "checks": {
-        "nvidia_nim": "ok",
-        "supabase": "ok",
-        "serper": "ok",
-        "wordpress": "ok",
-        "slack": "ok",
-        "scheduler": "ok",
+        "nvidia_nim": "unknown",
+        "supabase": "unknown",
+        "serper": "unknown",
+        "wordpress": "unknown",
+        "slack": "unknown",
+        "scheduler": "unknown",
     },
     "jobs_today": {
-        "due": 8,
-        "completed": 8,
+        "due": 0,
+        "completed": 0,
         "failed": 0,
     },
     "auto_fixes_applied": 0,
-    "last_check": datetime.now(timezone.utc).isoformat() + "Z",
-    "next_check": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat() + "Z",
+    "last_check": None,
+    "next_check": None,
     "issues": [],
     "auto_fixed": [],
+    "status": "unknown",
 }
+
+
+def get_latest_health_snapshot() -> Dict[str, Any]:
+    """Return the live health snapshot.
+
+    Consumers must call this instead of `from ... import _latest_health_cache`,
+    which binds the original dict object and keeps serving the stale "all ok"
+    defaults forever because run_full_health_check rebinds the module global.
+    """
+    return dict(_latest_health_cache)
 
 
 class AutonomousHealthService:
@@ -475,11 +492,14 @@ class AutonomousHealthService:
             "next_check": next_iso,
             "issues": issues,
             "auto_fixed": auto_fixed,
+            "status": "healthy" if final_score >= 80 else ("degraded" if final_score >= 50 else "critical"),
         }
 
-        # Update cache
+        # Update cache in place so any module that imported the dict object
+        # (not just the ones using get_latest_health_snapshot) sees fresh data.
         global _latest_health_cache
-        _latest_health_cache = dict(result)
+        _latest_health_cache.clear()
+        _latest_health_cache.update(result)
 
         # Persist log to autonomous_health_log
         try:

@@ -109,14 +109,14 @@ async def run_ai_visibility_check_all_sites():
         website_ids = list_active_website_ids()
         for wid in website_ids:
             try:
-                site = get_supabase().table("websites").select("domain, target_keywords").eq("id", wid).maybe_single().execute().data
+                site = get_supabase().table("websites").select("domain").eq("id", wid).maybe_single().execute().data
                 if not site:
                     continue
                 domain = site.get("domain", "")
-                keywords = site.get("target_keywords") or []
-                if not keywords:
-                    blogs = get_supabase().table("content_log").select("target_keyword").eq("website_id", wid).order("created_at", desc=True).limit(10).execute().data or []
-                    keywords = [b.get("target_keyword") for b in blogs if b.get("target_keyword")]
+                # websites has no target_keywords column; derive from real
+                # content keywords for this site.
+                blogs = get_supabase().table("content_log").select("keyword").eq("website_id", wid).order("created_at", desc=True).limit(10).execute().data or []
+                keywords = [b.get("keyword") for b in blogs if b.get("keyword")]
                 if domain and keywords:
                     await check_ai_visibility(wid, domain, keywords[:10])
             except Exception as e:

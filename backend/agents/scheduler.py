@@ -272,7 +272,7 @@ async def job_daily_content_gap(website_id: Optional[str] = None):
                 # Self-healing retry fallback model already in crew (tenacity 1s 5s)
                 # Track in realtime_alerts if fails 2 times
                 if "NIM timeout" in str(e) or "timeout" in str(e).lower():
-                    logger.warning(f"[Gap] NIM timeout for {gap_keyword}, retry fallback nvidia/llama-3.3-nemotron-super-49b-v1.5")
+                    logger.warning(f"[Gap] NIM timeout for {gap_keyword}, retry fallback google/gemma-4-31b-it")
                     # crew already retries, this is second level
                     pass
                 # Supabase down queue
@@ -599,8 +599,8 @@ async def job_auto_blog_writer_crew(website_id: Optional[str] = None):
                 b_rows = supabase.table("blogs").select("primary_keyword").eq("website_id", target_id).limit(50).execute().data or []
                 existing_kw = {r.get("primary_keyword","").lower() for r in b_rows if r.get("primary_keyword")}
                 # also check blog_approvals
-                ba_rows = supabase.table("blog_approvals").select("keyword").eq("website_id", target_id).limit(50).execute().data or []
-                existing_kw.update({r.get("keyword","").lower() for r in ba_rows if r.get("keyword")})
+                ba_rows = supabase.table("blog_approvals").select("target_keyword").eq("website_id", target_id).limit(50).execute().data or []
+                existing_kw.update({r.get("target_keyword","").lower() for r in ba_rows if r.get("target_keyword")})
             except Exception:
                 logger.warning(f"[SCHEDULER] existing blog keyword query failed for {target_id}")
             for g in gaps:
@@ -1632,7 +1632,7 @@ async def get_autonomous_settings(website_id: str) -> Dict[str, Any]:
     return defaults
 
 async def get_last_blog_time(website_id: str) -> Optional[datetime]:
-    """Return datetime of last blog for website (content_log or blog_approvals)."""
+    """Return the timezone-aware UTC datetime of the last blog for a website."""
     from database import get_supabase
     supabase = get_supabase()
     try:
@@ -1640,17 +1640,20 @@ async def get_last_blog_time(website_id: str) -> Optional[datetime]:
         res = supabase.table("content_log").select("created_at").eq("website_id", website_id).order("created_at", desc=True).limit(1).execute()
         if res.data and res.data[0].get("created_at"):
             try:
-                return datetime.fromisoformat(res.data[0]["created_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                # Keep the offset: callers subtract this from an aware `now`, and
+                # a naive value raised TypeError ("can't subtract offset-naive and
+                # offset-aware datetimes") in the blog-settings endpoint.
+                return datetime.fromisoformat(res.data[0]["created_at"].replace("Z", "+00:00"))
             except Exception:
                 logger.debug(f"[SCHEDULER] datetime parse note for content_log on {website_id}")
         # blog_approvals fallback
         res2 = supabase.table("blog_approvals").select("created_at").eq("website_id", website_id).order("created_at", desc=True).limit(1).execute()
         if res2.data and res2.data[0].get("created_at"):
-            return datetime.fromisoformat(res2.data[0]["created_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+            return datetime.fromisoformat(res2.data[0]["created_at"].replace("Z", "+00:00"))
         # blogs table
         res3 = supabase.table("blogs").select("created_at").eq("website_id", website_id).order("created_at", desc=True).limit(1).execute()
         if res3.data and res3.data[0].get("created_at"):
-            return datetime.fromisoformat(res3.data[0]["created_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+            return datetime.fromisoformat(res3.data[0]["created_at"].replace("Z", "+00:00"))
     except Exception:
         logger.debug(f"[SCHEDULER] get_last_blog_time note for {website_id}")
     return None
@@ -1898,7 +1901,7 @@ async def get_data_driven_keyword(website_id: str, blogs_today: int = 0,
         from backend.seo_constants import STRIKING_DISTANCE_MIN, STRIKING_DISTANCE_MAX
     try:
         striking = supabase.table("rank_tracking").select(
-            "keyword, target_keyword, current_position").eq(
+            "target_keyword, current_position").eq(
             "website_id", website_id).gte(
             "current_position", STRIKING_DISTANCE_MIN).lte(
             "current_position", STRIKING_DISTANCE_MAX).order(

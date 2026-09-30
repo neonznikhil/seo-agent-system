@@ -12,6 +12,18 @@ export async function GET(
   return proxyJson(`/api/websites/${encodeURIComponent(id)}`, req, 30000);
 }
 
+// This dynamic segment also captures backend aliases such as
+// /api/websites/create and /api/websites/list. A route handler shadows the
+// catch-all proxy, so without POST/PUT/PATCH here those aliases returned 405
+// instead of reaching the backend.
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  return proxyJson(`/api/websites/${encodeURIComponent(id)}`, req, 120000);
+}
+
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

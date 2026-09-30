@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Dep
 from pydantic import BaseModel, Field
 
 from database import get_supabase
-from services.knowledge_service import KnowledgeService
+from services.knowledge_service import KnowledgeService, _adapt_embedding_1024
 from services.knowledge_service import crawl_and_index_website
 
 logger = logging.getLogger("backend.routers.knowledge")
@@ -392,12 +392,15 @@ async def reindex_knowledge():
     """Re-compute embeddings for all knowledge base entries."""
     supabase = get_supabase()
     try:
-        items = supabase.table("knowledge_base").select("id, content, title").execute().data or []
+        items = supabase.table("knowledge_base").select("id, content, fact").execute().data or []
         reindexed = 0
         for it in items:
-            txt = it.get("content") or it.get("title", "")
+            txt = it.get("content") or it.get("fact", "")
             if txt:
                 emb = await KnowledgeService.create_embedding(txt)
+                # knowledge_base.embedding is vector(1024); adapt the 1536-dim
+                # NVIDIA vector or Postgres rejects the row with code 22000.
+                emb = _adapt_embedding_1024(emb)
                 supabase.table("knowledge_base").update({"embedding": emb, "freshness_score": 1.0}).eq("id", it["id"]).execute()
                 reindexed += 1
         return {"success": True, "reindexed_count": reindexed}

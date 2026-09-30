@@ -42,9 +42,11 @@ OPENROUTER_LLM_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 
 # Ordered lists - first 200 wins, EOL 410 triggers fallback
+# These ids are verified live; the old llama-3.2/llama-3.3 ids return 410 Gone.
 LLM_MODELS: List[str] = [
-    os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+    os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it"),
     os.getenv("NIM_LLM_FALLBACK", "meta/llama-3.2-11b-vision-instruct"),
+    "google/gemma-4-31b-it",
     "meta/llama-3.2-11b-vision-instruct",
 ]
 # Add OpenRouter free model as final fallback if key available

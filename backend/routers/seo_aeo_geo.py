@@ -273,12 +273,12 @@ async def get_aeo_share_of_voice(website_id: Optional[str] = None):
     total_audited = 0
     brand_citations = 0
     try:
-        q = supabase.table("geo_visibility_logs").select("id, cited")
+        q = supabase.table("geo_visibility_logs").select("id, was_cited")
         if website_id and website_id not in ("default", "all"):
             q = q.eq("website_id", website_id)
         rows = q.execute().data or []
         total_audited = len(rows)
-        brand_citations = sum(1 for r in rows if r.get("cited"))
+        brand_citations = sum(1 for r in rows if r.get("was_cited"))
     except Exception:
         pass
 

@@ -259,6 +259,39 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"[Startup] Job recovery failed: {e}")
 
         asyncio.create_task(_recover_interrupted_jobs())
+
+        # Stale crawl recovery: a process that died mid-crawl left websites
+        # pinned to status="crawling" forever (nothing else flips them back,
+        # and the UI shows a permanent spinner). Anything still "crawling"
+        # long past the crawl budget is stale by definition.
+        async def _recover_stale_crawls():
+            try:
+                await asyncio.sleep(8)
+                from datetime import datetime, timedelta
+                from services import local_store
+                cutoff = datetime.utcnow() - timedelta(minutes=15)
+                recovered = 0
+                for site in local_store._load_json("websites.json"):
+                    if site.get("status") != "crawling":
+                        continue
+                    updated = site.get("updated_at") or site.get("created_at") or ""
+                    try:
+                        ts = datetime.fromisoformat(str(updated).replace("Z", "").split("+")[0])
+                    except Exception:
+                        ts = None
+                    if ts is None or ts < cutoff:
+                        local_store.save_local_website({
+                            "id": site.get("id"),
+                            "domain": site.get("domain"),
+                            "status": "active",
+                        })
+                        recovered += 1
+                if recovered:
+                    logger.info(f"[Startup] Cleared {recovered} stale 'crawling' website status(es)")
+            except Exception as e:
+                logger.warning(f"[Startup] Stale crawl recovery failed: {e}")
+
+        asyncio.create_task(_recover_stale_crawls())
     except Exception as e:
         logger.error(f"[Scheduler] Failed to start: {e}")
 
@@ -648,7 +681,7 @@ Never deviate from these rules. Always output clean HTML. Never use markdown."""
         "content": content,
         "status": "pending_approval",
         "website_id": website_id,
-        "model_used": "meta/llama-3.1-70b-instruct (NVIDIA NIM)",
+        "model_used": os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it") + " (NVIDIA NIM)",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
@@ -744,7 +777,7 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
             "backlinks_count": backlinks_count,
             "wp_connected": wp_connected,
             "recent_blogs": rows,
-            "ai_engine": "Llama-3.1-70B (NVIDIA NIM Live)",
+            "ai_engine": f'{os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it")} (NVIDIA NIM Live)',
         }
         _STATS_CACHE[cache_key] = res_payload
         _STATS_CACHE_TS[cache_key] = now
@@ -762,7 +795,7 @@ async def get_dashboard_stats(request: Request, website_id: Optional[str] = None
             "backlinks_count": 0,
             "wp_connected": False,
             "recent_blogs": [],
-            "ai_engine": "Llama-3.1-70B (NVIDIA NIM Live)",
+            "ai_engine": f'{os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it")} (NVIDIA NIM Live)',
         }
 
 

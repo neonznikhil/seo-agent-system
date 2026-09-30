@@ -111,10 +111,24 @@ async def generate_llms_txt_content(website_id: Optional[str] = None, user_id: O
     # 1. Business facts from knowledge_base
     kb_items = []
     try:
-        q_kb = supabase.table("knowledge_base").select("title, content, type, url")
+        # The knowledge_base table stores facts as (fact, fact_type, source_url);
+        # the previous "title, type, url" select raised a PostgREST 400 (42703)
+        # which the bare except swallowed, so this section was always empty.
+        q_kb = supabase.table("knowledge_base").select("fact, fact_type, content, source_url")
         if wid:
             q_kb = q_kb.eq("website_id", wid)
-        kb_items = q_kb.limit(25).execute().data or []
+        rows = q_kb.limit(25).execute().data or []
+        kb_items = [
+            {
+                "title": (r.get("fact") or "").strip()[:120]
+                or (r.get("fact_type") or "").replace("_", " ").title(),
+                "content": r.get("content") or r.get("fact") or "",
+                "type": r.get("fact_type"),
+                "url": r.get("source_url"),
+            }
+            for r in rows
+            if r.get("fact") or r.get("content")
+        ]
     except Exception:
         pass
 

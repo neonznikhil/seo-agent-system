@@ -219,7 +219,7 @@ async def get_recent_decisions():
     """Fetch last 10 autonomous decision logs from agent_memory."""
     supabase = get_supabase()
     try:
-        rows = supabase.table("agent_memory").select("id, title, content, created_at").eq("memory_type", "decision").order("created_at", desc=True).limit(10).execute().data or []
+        rows = supabase.table("agent_memory").select("id, memory_type, content, created_at").eq("memory_type", "decision").order("created_at", desc=True).limit(10).execute().data or []
         return rows
     except Exception:
         return []
@@ -283,6 +283,11 @@ async def get_blog_settings(website_id: Optional[str] = None):
     blogs_today = int(settings.get("blogs_generated_today", 0))
     interval = (24 * 60) // max(1, daily_target)
     last_blog = await get_last_blog_time(wid)
+    # get_last_blog_time can return a naive datetime (from an ISO string without
+    # an offset); subtracting it from an aware `now` raises TypeError and turned
+    # this endpoint into a 500. Normalise to UTC-aware before the arithmetic.
+    if last_blog is not None and last_blog.tzinfo is None:
+        last_blog = last_blog.replace(tzinfo=timezone.utc)
     next_in_minutes = 0
     if last_blog:
         mins_since = (datetime.now(timezone.utc) - last_blog).total_seconds() / 60

@@ -114,21 +114,22 @@ class RankTools(BaseTool):
     def _calculate_visibility_score(self, website_id: str) -> Dict:
         from ...database import get_supabase
         
-        rankings = get_supabase().table("rank_tracking").select("impressions, current_position").eq("website_id", website_id).execute().data or []
-        
+        # rank_tracking has no impressions column; derive visibility from the
+        # real best_position/current_position pair instead.
+        rankings = get_supabase().table("rank_tracking").select("current_position, best_position").eq("website_id", website_id).execute().data or []
+
         if not rankings:
             return {"visibility_score": 0, "total_keywords": 0, "avg_position": 0}
-        
-        total_impressions = sum(r.get("impressions", 0) for r in rankings)
-        total_score = sum(r.get("impressions", 0) / max(r.get("current_position", 1), 1) for r in rankings)
-        visibility = min(100, (total_score / max(total_impressions, 1)) * 100)
-        avg_position = sum(r.get("current_position", 0) for r in rankings) / len(rankings)
-        
+
+        total_score = sum(100.0 / max(r.get("current_position") or 100, 1) for r in rankings)
+        visibility = min(100, total_score / len(rankings))
+        avg_position = sum(r.get("current_position") or 0 for r in rankings) / len(rankings)
+
         return {
             "visibility_score": round(visibility, 2),
             "total_keywords": len(rankings),
             "avg_position": round(avg_position, 2),
-            "total_impressions": total_impressions
+            "total_impressions": 0
         }
 
 

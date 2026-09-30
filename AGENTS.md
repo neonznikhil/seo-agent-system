@@ -48,6 +48,45 @@ Handlers must call `saveConnectorCredentials` **before** the network call so an
 unreachable backend never loses the user's typed credentials. Legacy key
 `rankforge_wp_credentials` is preserved for backward compatibility.
 
+## Datetime arithmetic (naive vs aware)
+Supabase `created_at` values are stored ISO strings. When converting with
+`datetime.fromisoformat`, **keep the offset** (`.replace("Z", "+00:00")` only).
+Callers subtract the result from `datetime.now(timezone.utc)`; a `.replace(tzinfo=None)`
+made it naive and raised `TypeError: can't subtract offset-naive and offset-aware
+datetimes`, which surfaced as a 500 on `GET /api/autonomous/blog-settings`.
+`agents/scheduler.py::get_last_blog_time` returns aware datetimes; keep caller-side
+`if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)` guards for safety.
+
+## Embedding dimensions (knowledge_base)
+`knowledge_base.embedding` is `vector(1024)` but NVIDIA NIM returns 1536-dim
+vectors. Always route writes through `_adapt_embedding_1024()` before an insert or
+update, or Postgres rejects the row with code `22000` ("expected 1024 dimensions,
+not 1536"). This bit `POST /api/knowledge/reindex` and the crawl/ingest paths.
+
+## knowledge_base has no `type` column
+The fact classifier column is **`fact_type`**, not `type` (values: `product_name`,
+`pricing`, `feature`, `company_info`, `tone_rule`; legacy `business_info` maps to
+`company_info`). Querying `.eq("type", ...)` fails with Postgres `42703`
+("column knowledge_base.type does not exist") and the caller silently swallowed
+it — this disabled knowledge auto-consolidation. Grep for `.eq("type"` against
+`knowledge_base` when touching that table.
+
+## Duplicate route prefixes are harmless
+Routers declare both `/api/x` and `/x` decorators and `main.py` adds
+`prefix="/api"`, so `/api/api/x` also resolves. This is aliasing, not a bug —
+don't "fix" it by removing decorators without checking the frontend's `buildUrl`.
+
+## Next.js dynamic segments shadow the catch-all proxy
+`app/api/[...slug]/route.ts` only sees paths with **no** other matching route.
+A dynamic folder such as `app/api/websites/[id]/route.ts` captures every
+`/api/websites/<anything>` path — including backend aliases like
+`/api/websites/create` and `/api/websites/list`. If the dynamic route exports
+only `GET`, those aliases get Next's automatic **405 Method Not Allowed**
+instead of reaching the backend. When adding a backend alias under an existing
+dynamic segment, export the matching HTTP methods in the `[id]` handler too.
+This was the second "create website 405" (distinct from the missing `POST` on
+`app/api/websites/route.ts`).
+
 ## Testing
 - Backend: `cd backend && python -m pytest tests/ -q` (requires JWT_SECRET,
   ENCRYPTION_KEY, SUPABASE_URL, SUPABASE_KEY, TESTING=1).
@@ -87,6 +126,40 @@ single Supabase call failed** — a DNS blip discarded a fully-planned article. 
 - `WriterPipeline(website_id=...)` takes **only** `website_id`; `topic` and
   `primary_keyword` are arguments to `await generate(...)`. Passing `topic` to the
   constructor raises `TypeError` (this silently killed onboarding article generation).
+
+## Generation liveness (do not fail a slow run)
+`/api/crew/status/{blog_id}` must distinguish a dead run from a slow one by
+**liveness**, never by age alone. A valid NIM run can take 45+ minutes when the
+model is cold or shared, so an age-only "stale" check falsely flipped a running
+job to `failed/stalled`.
+- `backend/services/local_store.py` exports `mark_run_active`, `mark_run_finished`,
+  `is_run_active`. `generate_blog_autonomous` wraps its body with these markers, so
+  every call path (router, direct, self-healing retry) is covered.
+- `crew_status` only reports `failed/stalled` for a `generating` row when
+  `is_run_active()` is false **and** the row is older than 45 min with no content.
+- A generation started before a backend restart has no liveness marker, so the age
+  fallback still surfaces it as failed instead of spinning forever.
+- A generation that **raises** must be written to the store as `failed`
+  (`routers/crew_writer.py::_run_generation` catches the exception and calls
+  `save_local_content`). Publishing a failure event alone is not enough: the
+  placeholder row kept `generating/running` on disk and listings advertised a dead
+  run forever, while only `/crew/status` masked it via the age check.
+  Regression: `tests/test_durable_persistence.py::test_failed_generation_is_persisted_as_failed`.
+
+## Connector proxy timeouts must exceed the upstream budget
+Next route handlers under `frontend-next/app/api/connectors/` abort with
+`AbortSignal.timeout(...)`/`proxyToBackend(..., TIMEOUT_MS)`. That budget must be
+**larger** than the backend's own upstream call, or the proxy aborts first and
+reports a false failure at the exact moment the user clicks Connect.
+- NVIDIA NIM validation allows 45s in `routers/connectors.py::verify_nvidia_key`,
+  so `app/api/connectors/test-nvidia/route.ts` uses 70s (20s caused false
+  "NIM validation timed out" for valid keys).
+
+## WordPress publish config resolution (tests)
+`WordPressService.publish_post_via_crew` re-resolves the site via
+`self._get_site_config()` rather than using `self.site`, so a test that only sets
+`svc.site = {...}` sees "credentials not configured". Patch `_get_site_config`
+(see `tests/test_wp_draft_fix.py`).
 
 ## Sanitization
 - `backend/security.py::sanitize_html` uses `bleach.clean(..., css_sanitizer=CSSSanitizer(...))`

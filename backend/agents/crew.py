@@ -59,7 +59,7 @@ def _get_chat_openai():
 class NIM_LLM:
     """LangChain-compatible NVIDIA NIM wrapper for CrewAI agents."""
 
-    def __init__(self, model: str = "meta/llama-3.1-70b-instruct"):
+    def __init__(self, model: str = "google/gemma-4-31b-it"):
         from database import NIM_API_KEY
 
         ChatOpenAI = _get_chat_openai()
@@ -91,7 +91,7 @@ class NIM_LLM:
         return self.call(prompt)
 
 
-def _build_nim_chat(model: str = "meta/llama-3.1-70b-instruct"):
+def _build_nim_chat(model: str = "google/gemma-4-31b-it"):
     from database import NIM_API_KEY
 
     ChatOpenAI = _get_chat_openai()

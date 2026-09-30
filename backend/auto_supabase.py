@@ -743,10 +743,12 @@ def update_env_keys(keys_dict: dict) -> dict:
         for key, value in frontend_env.items():
             f.write(f"{key}={value}\n")
             
-    # Also update current process os.environ
-    for k, v in keys_dict.items():
-        os.environ[k] = str(v)
-        
+    # Persist-only: do NOT mirror arbitrary keys into the running process here.
+    # Doing so let an unverified/garbage key (e.g. from a Save click or a bad
+    # key in /api/connectors/save-all) silently replace a working NVIDIA or
+    # SERPER key for the whole process, after which every NIM/Serper call failed
+    # with 403 until a restart. Callers that have actually verified a key against
+    # the live provider promote it via os.environ themselves.
     return {
         "backend_env": str(ENV_FILE),
         "frontend_env": str(FRONTEND_ENV_FILE),

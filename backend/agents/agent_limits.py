@@ -75,7 +75,7 @@ def should_run_agent(agent_name: str, website_id: str) -> tuple[bool, str]:
             res = (
                 get_supabase()
                 .table("tasks")
-                .select("created_at, metadata")
+                .select("created_at, payload")
                 .eq("website_id", website_id)
                 .eq("action", "run_editor")
                 .gte("created_at", cutoff.isoformat())

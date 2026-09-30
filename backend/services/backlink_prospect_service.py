@@ -629,27 +629,18 @@ async def monitor_backlinks(website_id: str) -> Dict[str, Any]:
     try:
         monitors = (
             supabase.table("backlink_monitor")
-            .select("anchor_text,target_keyword")
+            .select("anchor_text")
             .eq("website_id", website_id)
             .execute()
             .data
             or []
         )
     except Exception:
-        # Older schemas may lack target_keyword; degrade gracefully.
-        try:
-            monitors = (
-                supabase.table("backlink_monitor")
-                .select("anchor_text")
-                .eq("website_id", website_id)
-                .execute()
-                .data
-                or []
-            )
-        except Exception:
-            monitors = []
+        monitors = []
     if monitors:
-        primary_keyword = monitors[0].get("target_keyword") or ""
+        # backlink_monitor has no target_keyword column; the anchor text is
+        # the best available proxy for the monitored keyword.
+        primary_keyword = monitors[0].get("anchor_text") or ""
         if primary_keyword:
             exact = sum(
                 1

@@ -35,6 +35,45 @@ logger = logging.getLogger("backend.routers.connectors")
 router = APIRouter(tags=["connectors"])
 
 
+def _apply_env_credentials(updates: Dict[str, str]) -> bool:
+    """Promote already-verified credentials into the running process.
+
+    `write_env_file` intentionally only touches disk, so without this a saved
+    credential has no effect until the next restart. Callers must verify the
+    value against the live provider first (an unverified key would otherwise
+    poison the process). Changing any SUPABASE_* var also invalidates the
+    cached singleton, otherwise `get_supabase()` keeps using the old client.
+    """
+    applied = {k: v for k, v in updates.items() if v}
+    if not applied:
+        return False
+    os.environ.update(applied)
+    if any(k.startswith("SUPABASE") for k in applied):
+        try:
+            from database import reset_supabase_client, reset_nim_availability
+            reset_supabase_client()
+            reset_nim_availability()
+        except Exception as e:
+            logger.debug(f"[Connectors] Supabase client reset note: {e}")
+        return True
+    return False
+
+
+async def _probe_supabase(url: str, key: str) -> tuple[bool, str]:
+    """Live-check Supabase credentials before adopting them into the process."""
+    import asyncio
+
+    def _run() -> tuple[bool, str]:
+        try:
+            from supabase import create_client
+            create_client(url, key).table("websites").select("id").limit(1).execute()
+            return True, "ok"
+        except Exception as e:
+            return False, str(e)[:200]
+
+    return await asyncio.to_thread(_run)
+
+
 async def verify_nvidia_key(api_key: str, model: Optional[str] = None) -> tuple[bool, str, int]:
     """Return (connected, message, models_count) for an NVIDIA NIM key.
 
@@ -47,16 +86,18 @@ async def verify_nvidia_key(api_key: str, model: Optional[str] = None) -> tuple[
     if not key:
         return False, "NVIDIA API key is required", 0
 
-    model_id = model or os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
+    model_id = model or os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it")
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        # NVIDIA's first (cold) completion can take 20-30s; a 15s budget produced
+        # spurious "timed out" results for perfectly valid keys.
+        async with httpx.AsyncClient(timeout=45.0) as client:
             resp = await client.post(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
                     "model": model_id,
                     "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 1,
+                    "max_tokens": 8,
                 },
             )
             if resp.status_code in (401, 403):
@@ -80,6 +121,61 @@ async def verify_nvidia_key(api_key: str, model: Optional[str] = None) -> tuple[
     except Exception as e:
         logger.error(f"Error verifying NVIDIA API key: {e}")
         return False, "Failed to reach NVIDIA. Please try again.", 0
+
+
+# Serper results are cached briefly so /connectors/status (polled by the UI) does
+# not fire a live search on every render, while still reflecting a revoked or
+# credit-exhausted key within the TTL instead of reporting a permanent green.
+_SERPER_STATUS_CACHE: dict = {"key": None, "ok": None, "message": None, "at": 0.0}
+_SERPER_CACHE_TTL_SECONDS = 120
+
+
+async def verify_serper_key(api_key: str, *, use_cache: bool = True) -> tuple[bool, str]:
+    """Return (connected, message) for a Serper.dev key via a live query.
+
+    A present-but-invalid key used to report connected=true because the status
+    endpoint only checked that the env var was non-empty. Only a 200 from the
+    search endpoint proves the key works; 401/403 means it is rejected and 402/400
+    with a credits message means the account is out of credits.
+    """
+    import time as _time
+
+    key = (api_key or "").strip()
+    if not key:
+        return False, "Serper API key is required"
+
+    if use_cache:
+        cached = _SERPER_STATUS_CACHE
+        if (
+            cached["key"] == key
+            and cached["ok"] is not None
+            and (_time.monotonic() - cached["at"]) < _SERPER_CACHE_TTL_SECONDS
+        ):
+            return cached["ok"], cached["message"]
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": key, "Content-Type": "application/json"},
+                json={"q": "RankForge SEO test", "num": 3},
+            )
+        if resp.status_code == 200:
+            result = (True, "Serper key verified")
+        elif resp.status_code in (401, 403):
+            result = (False, "Serper rejected this API key (401/403 Unauthorized)")
+        elif "credit" in resp.text.lower() or "not enough" in resp.text.lower():
+            result = (False, "Serper account has no credits left")
+        else:
+            result = (False, f"Serper request failed (HTTP {resp.status_code})")
+    except httpx.TimeoutException:
+        result = (False, "Connection to Serper timed out")
+    except Exception as e:
+        logger.error(f"Error verifying Serper API key: {e}")
+        result = (False, "Failed to reach Serper. Please try again.")
+
+    _SERPER_STATUS_CACHE.update({"key": key, "ok": result[0], "message": result[1], "at": _time.monotonic()})
+    return result
 
 
 # ---------------------------------------------------------
@@ -245,7 +341,6 @@ async def save_nvidia(payload: SaveNvidiaRequest):
         raise HTTPException(status_code=400, detail="API key cannot be empty")
 
     res = write_env_file(custom_keys={"NVIDIA_API_KEY": api_key})
-    os.environ["NVIDIA_API_KEY"] = api_key
     try:
         from database import reset_nim_availability
         reset_nim_availability()
@@ -257,6 +352,12 @@ async def save_nvidia(payload: SaveNvidiaRequest):
     # Probe the authenticated NIM endpoint so the UI never shows "Connected"
     # for an invalid key.
     connected, verify_message, _ = await verify_nvidia_key(api_key)
+
+    # Only adopt the key into the live process once it has been proven valid.
+    # Blindly assigning os.environ here used to poison the whole running app
+    # with an unverified key, turning every NIM call into a 403 until restart.
+    if connected:
+        os.environ["NVIDIA_API_KEY"] = api_key
 
     if persisted and connected:
         message = "NVIDIA API Key saved and verified."
@@ -390,6 +491,16 @@ async def setup_supabase_endpoint(payload: SetupSupabaseRequest):
             detail=result.get("error", "Failed to connect and initialize Supabase tables"),
         )
 
+    # Bootstrap verified the project — adopt the creds now so the running app
+    # uses them immediately instead of after a restart.
+    _apply_env_credentials({
+        "SUPABASE_URL": payload.supabase_url.strip(),
+        "SUPABASE_ANON_KEY": payload.anon_key.strip(),
+        "SUPABASE_KEY": payload.anon_key.strip(),
+        "SUPABASE_SERVICE_ROLE_KEY": payload.service_key.strip(),
+        "SUPABASE_SERVICE_KEY": payload.service_key.strip(),
+    })
+
     tables = result.get("tables_created", [])
     return {
         "success": True,
@@ -417,7 +528,8 @@ async def wordpress_connect(payload: WordPressConnectRequest):
     if not username:
         raise HTTPException(
             status_code=400,
-            detail="A real WordPress username is required (do not leave it blank or as 'nikhil_d').",
+            detail="A real WordPress username is required. Leave it blank or as a placeholder "
+                   "value and the connection cannot be verified — enter your actual WP user name.",
         )
     password = (payload.wp_app_password or payload.app_password or "").strip()
 
@@ -501,13 +613,17 @@ async def wordpress_connect(payload: WordPressConnectRequest):
             return {
                 "connected": True,
                 "status": "success",
-                "can_publish": can_publish or True,
-                "message": f"Successfully connected to WordPress as {user_data.get('name', username)} (Role: {', '.join(roles) if roles else 'Editor'})",
+                "can_publish": can_publish,
+                "message": (
+                    f"Successfully connected to WordPress as {user_data.get('name', username)} "
+                    f"(Role: {', '.join(roles) if roles else 'unknown'})"
+                    + ("" if can_publish else ". Warning: this role may not be able to publish posts.")
+                ),
                 "user": {
                     "id": user_data.get("id"),
                     "name": user_data.get("name"),
                     "slug": user_data.get("slug"),
-                    "roles": roles or ["editor"],
+                    "roles": roles,
                 },
                 "site_url": site_url,
                 "recent_posts": posts,
@@ -519,8 +635,13 @@ async def wordpress_connect(payload: WordPressConnectRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in WordPress connection test: {e}")
-        raise HTTPException(status_code=500, detail="WordPress connection test failed. Please check your credentials.")
+        # Surface what actually broke instead of a blind "check your credentials"
+        # that hides bugs (JSON decode errors, DNS, unexpected shapes).
+        logger.error(f"Error in WordPress connection test for {site_url}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"WordPress connection test failed ({type(e).__name__}): {str(e)[:180]}",
+        )
 
 
 @router.post("/api/wordpress/save")
@@ -533,8 +654,8 @@ async def wordpress_save(payload: WordPressSaveRequest):
     if not username:
         raise HTTPException(
             status_code=400,
-            detail="A real WordPress username is required. The blank/placeholder value "
-                   "'nikhil_d' is no longer accepted — enter your actual WP user name.",
+            detail="A real WordPress username is required. Placeholder values are not "
+                   "accepted — enter your actual WP user name.",
         )
     password = (payload.wp_app_password or payload.app_password or "").strip().replace(" ", "")
     if not password:
@@ -544,6 +665,8 @@ async def wordpress_save(payload: WordPressSaveRequest):
         "WORDPRESS_SITE_URL": site_url,
         "WORDPRESS_USERNAME": username,
     })
+    # Adopt into the live process so publish/draft calls stop using stale creds.
+    _apply_env_credentials({"WORDPRESS_USERNAME": username})
 
     encrypted = encrypt_secret(password)
     supabase = get_supabase()
@@ -704,7 +827,6 @@ async def save_serper(payload: TestSerperRequest):
 
     persisted = False
     try:
-        os.environ["SERPER_API_KEY"] = key
         res = write_env_file(custom_keys={"SERPER_API_KEY": key})
         persisted = bool(res and (res.get("backend_env") or res.get("keys_set")))
     except Exception as e:
@@ -721,6 +843,8 @@ async def save_serper(payload: TestSerperRequest):
             "results_count": 0,
             "organic": [],
         }
+    # test_serper already promoted the key into the live process on success only,
+    # so an unverifiable key never overrides the working environment.
     result["persisted"] = persisted
     result["saved"] = persisted
     return result
@@ -944,6 +1068,24 @@ async def save_all_connectors(payload: SaveAllRequest):
         except Exception as e:
             logger.error(f"Failed to persist connector credentials to .env: {e}")
 
+    # Writing to disk is not enough — promote the creds into the running process
+    # so the change takes effect without a restart. Supabase is probed live first
+    # so a bad URL/key can never replace a working one in the live process.
+    if payload.supabase_url and (payload.supabase_anon_key or payload.supabase_service_key):
+        probe_url = payload.supabase_url.strip()
+        probe_key = (payload.supabase_service_key or payload.supabase_anon_key or "").strip()
+        ok, probe_msg = await _probe_supabase(probe_url, probe_key)
+        if ok:
+            _apply_env_credentials({
+                "SUPABASE_URL": probe_url,
+                "SUPABASE_ANON_KEY": (payload.supabase_anon_key or "").strip(),
+                "SUPABASE_KEY": (payload.supabase_anon_key or "").strip(),
+                "SUPABASE_SERVICE_ROLE_KEY": (payload.supabase_service_key or "").strip(),
+                "SUPABASE_SERVICE_KEY": (payload.supabase_service_key or "").strip(),
+            })
+        else:
+            logger.warning(f"[Connectors] Supabase creds saved but not adopted: {probe_msg}")
+
     # Non-secret settings already land in a durable local store.
     try:
         from services import local_store
@@ -1081,16 +1223,27 @@ async def get_connectors_status(website_id: Optional[str] = None):
         "connected": bool(nvidia_key) and nim_available,
         "is_configured": bool(nvidia_key),
         "available": nim_available,
+        "model": os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it"),
         "models_count": None,
     }
 
-    # 3. Serper Status
+    # 3. Serper Status — a non-empty key is not proof it works. Verify live (with
+    # a short cache) so an invalid/out-of-credits key is never shown as connected.
     serper_key = os.environ.get("SERPER_API_KEY", "")
+    serper_verified = False
+    serper_message: Optional[str] = None
+    if serper_key:
+        try:
+            serper_verified, serper_message = await verify_serper_key(serper_key)
+        except Exception as e:
+            serper_verified, serper_message = False, str(e)[:200]
     serper_status = {
-        "connected": bool(serper_key),
+        "connected": serper_verified,
         "is_configured": bool(serper_key),
-        "fallback_active": not bool(serper_key),
+        "fallback_active": not serper_verified,
     }
+    if serper_message:
+        serper_status["message"] = serper_message
 
     # 5. GSC Status
     gsc_connected = False
@@ -1127,49 +1280,82 @@ async def get_connectors_status(website_id: Optional[str] = None):
     }
 
     # 7. WordPress Status
+    #
+    # "connected" must mean a live connection test actually succeeded, not that
+    # a password string was saved. Previously saving creds (via PUT websites or
+    # the connect form) flipped connected=true with zero verification, so an
+    # unreachable/placeholder site showed a green "Connected (Role: Editor)"
+    # badge while every real publish failed. We now require a recorded verified
+    # flag (set only by a successful test_connection) before reporting connected.
     wp_site = os.environ.get("WORDPRESS_SITE_URL", "")
-    wp_status = {
-        "connected": bool(wp_site),
-        "is_configured": bool(wp_site),
-        "role": "Editor",
-        "site_url": wp_site,
-    }
+    wp_user = os.environ.get("WORDPRESS_USER", "") or os.environ.get("WORDPRESS_USERNAME", "")
+    wp_has_creds = bool(wp_site and os.environ.get("WORDPRESS_APP_PASSWORD"))
+    wp_verified = False
+    wp_verified_at: Optional[str] = None
+    wp_verified_role: Optional[str] = None
+    wp_error: Optional[str] = None
 
+    # Gather the persisted record (Supabase primary, local store fallback).
+    record: Dict[str, Any] = {}
     if target_id:
         try:
-            row = (
+            record = (
                 get_supabase().table("websites")
-                .select("app_password, wordpress_password, cms_url, cms_user, wordpress_user")
+                .select("app_password, wordpress_password, cms_url, url, cms_user, wordpress_user, wordpress_url")
                 .eq("id", target_id)
                 .single()
                 .execute()
                 .data or {}
             )
-            if row.get("app_password") or row.get("wordpress_password"):
-                wp_status["connected"] = True
-                if row.get("cms_url"):
-                    wp_status["site_url"] = row.get("cms_url")
         except Exception as e:
             logger.debug(f"Website connector status lookup note: {e}")
+    try:
+        from services.local_store import get_local_website, list_local_websites
+        loc = get_local_website(target_id) if target_id else None
+        # Only fall back to "first local website" when no id was requested. If a
+        # specific id was requested but is absent, borrowing another site's row
+        # would report that site's verified flag as this site's status.
+        if not loc and not target_id:
+            all_loc = list_local_websites()
+            loc = all_loc[0] if all_loc else None
+        if loc:
+            for k, v in loc.items():
+                record.setdefault(k, v)
+            if loc.get("app_password") or loc.get("wordpress_password") or loc.get("wordpress_password_encrypted"):
+                record.setdefault("app_password", loc.get("app_password") or loc.get("wordpress_password_encrypted"))
+    except Exception:
+        pass
 
-    # Fallback to local store
-    if not wp_status.get("connected"):
-        try:
-            from services.local_store import get_local_website, list_local_websites
-            loc = get_local_website(target_id) if target_id else None
-            if not loc:
-                all_loc = list_local_websites()
-                loc = all_loc[0] if all_loc else None
-            if loc and (loc.get("app_password") or loc.get("wordpress_password") or loc.get("wordpress_password_encrypted")):
-                wp_status["connected"] = True
-                wp_status["site_url"] = loc.get("wordpress_url") or loc.get("cms_url") or loc.get("url") or wp_status.get("site_url")
-        except Exception:
-            pass
+    wp_row_site = record.get("wordpress_url") or record.get("cms_url") or record.get("url") or ""
+    wp_row_user = record.get("wordpress_user") or record.get("cms_user") or ""
+    wp_has_saved_creds = bool(
+        (record.get("app_password") or record.get("wordpress_password") or record.get("wordpress_password_encrypted"))
+        and wp_row_site
+    )
+    wp_verified = bool(record.get("wp_verified"))
+    wp_verified_at = record.get("wp_verified_at")
+    wp_verified_role = record.get("wp_verified_role")
+    if record.get("wp_last_error"):
+        wp_error = record.get("wp_last_error")
 
-    # Fallback to environment variables
-    if not wp_status.get("connected") and os.environ.get("WORDPRESS_APP_PASSWORD"):
-        wp_status["connected"] = True
-        wp_status["site_url"] = os.environ.get("WORDPRESS_SITE_URL") or os.environ.get("WORDPRESS_URL") or wp_status.get("site_url")
+    site_for_status = wp_row_site or wp_site
+    configured = wp_has_saved_creds or wp_has_creds
+    # Verified is the durable truth recorded by a successful live test; it is the
+    # only thing that may turn the badge green.
+    connected = bool(wp_verified)
+
+    wp_status = {
+        "connected": connected,
+        "verified": wp_verified,
+        "is_configured": configured,
+        "role": wp_verified_role or ("Editor" if connected else None),
+        "site_url": site_for_status,
+        "wp_user": wp_row_user or wp_user or None,
+        "verified_at": wp_verified_at,
+        "status_label": "Connected" if connected else ("Credentials saved — not verified" if configured else "Not Configured"),
+    }
+    if wp_error and not connected:
+        wp_status["error"] = wp_error
 
     # 8. Slack
     slack_webhook = os.environ.get("SLACK_WEBHOOK_URL", "")
@@ -1266,7 +1452,7 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
         site = None
         if wid:
             try:
-                res = supabase.table("websites").select("cms_url, url, wordpress_url, wp_url, cms_user, wordpress_user, wp_username, app_password, wordpress_password, wp_app_password").eq("id", wid).single().execute()
+                res = supabase.table("websites").select("cms_url, url, wordpress_url, cms_user, wordpress_user, app_password, wordpress_password").eq("id", wid).single().execute()
                 site = res.data if res.data else None
             except Exception:
                 site = None
@@ -1328,9 +1514,13 @@ async def get_connector_health(request: Request, website_id: Optional[str] = Non
     except Exception:
         health["wordpress"] = "error"
         missing.append("WordPress")
-    # Serper
+    # Serper — same honesty rule: presence alone is not "connected".
     serper_key = os.getenv("SERPER_API_KEY", "")
-    health["serper"] = "connected" if serper_key else "not_set"
+    if serper_key:
+        serper_ok, _serper_msg = await verify_serper_key(serper_key)
+        health["serper"] = "connected" if serper_ok else "unverified"
+    else:
+        health["serper"] = "not_set"
     if not serper_key:
         missing.append("Serper")
     health["missing"] = missing

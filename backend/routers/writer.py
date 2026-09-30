@@ -772,8 +772,7 @@ async def content_qa_detail(website_id: str, content_id: str):
     supabase = get_supabase()
     try:
         content = supabase.table("content_log").select(
-            "id, title, content, html_content, keyword, primary_keyword, "
-            "meta_description"
+            "id, title, content, keyword, primary_keyword"
         ).eq("id", content_id).eq("website_id", website_id).single().execute().data
     except Exception:
         content = None

@@ -18,11 +18,11 @@ interface ConnectorStatus {
   total_count?: number;
   health_score?: number;
   supabase?: { connected?: boolean; is_configured?: boolean; tables_count?: number };
-  nvidia?: { connected?: boolean; is_configured?: boolean; available?: boolean; models_count?: number };
-  serper?: { connected?: boolean; is_configured?: boolean; fallback_active?: boolean };
+  nvidia?: { connected?: boolean; is_configured?: boolean; available?: boolean; model?: string; models_count?: number };
+  serper?: { connected?: boolean; is_configured?: boolean; fallback_active?: boolean; message?: string };
   gsc?: { connected?: boolean; is_configured?: boolean; status_label?: string };
   ga4?: { connected?: boolean; is_configured?: boolean; status_label?: string };
-  wordpress?: { connected?: boolean; is_configured?: boolean; role?: string; site_url?: string };
+  wordpress?: { connected?: boolean; is_configured?: boolean; verified?: boolean; role?: string; site_url?: string; status_label?: string; error?: string };
   slack?: { connected?: boolean; is_configured?: boolean };
 }
 
@@ -136,8 +136,15 @@ export default function ConnectorsPage() {
     };
     window.addEventListener("message", handleMessage);
 
+    // The website selector lives in the Topbar; without this the page keeps a
+    // stale id (or none) after the user switches sites, and connector actions
+    // silently target the wrong website.
+    const onWebsiteChanged = () => loadStatus();
+    window.addEventListener("website-changed", onWebsiteChanged);
+
     return () => {
       window.removeEventListener("message", handleMessage);
+      window.removeEventListener("website-changed", onWebsiteChanged);
     };
   }, [loadStatus]);
 
@@ -274,22 +281,26 @@ export default function ConnectorsPage() {
         setErrorMsg("Site URL, WordPress username, and App Password are all required.");
         return;
       }
-      if (!websiteId) {
-        setErrorMsg("Select a website in /websites first, then test.");
-        return;
-      }
-      // Cache first: a live test can fail (offline, wrong role) without meaning
-      // the user should have to retype their credentials next visit.
+      // Cache first, before any early return: the credentials the user typed are
+      // theirs regardless of whether a website is selected yet.
       saveConnectorCredentials({
         wordpress_site_url: wpUrl,
         wordpress_username: wpUser,
         wordpress_app_password: wpPass,
       });
-      const res = await saveWordPressForSite(websiteId, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
+      // Re-read the id instead of trusting state: the Topbar writes it to
+      // localStorage and the value may have changed since this page mounted.
+      const wid = websiteId || getCurrentWebsiteId();
+      if (!wid) {
+        setErrorMsg("Select a website in /websites first, then test. Credentials were saved locally.");
+        return;
+      }
+      setWebsiteId(wid);
+      const res = await saveWordPressForSite(wid, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
       if (res?.connected) {
         showToast(`✓ WordPress connected as ${res.wp_user || wpUser}`);
         try {
-          const posts = await get(`/api/wordpress/${websiteId}/posts?per_page=3`);
+          const posts = await get(`/api/wordpress/${wid}/posts?per_page=3`);
           setWpPosts(posts?.posts || []);
         } catch {}
         loadStatus();
@@ -309,21 +320,25 @@ export default function ConnectorsPage() {
       setErrorMsg("Please enter WordPress site URL first.");
       return;
     }
-    if (!websiteId) {
-      setErrorMsg("Select a website in /websites first, then save.");
-      return;
-    }
     setWpSaving(true);
     setErrorMsg(null);
     // Persist locally before the network call so a failed verification (or an
-    // unreachable backend) never costs the user their typed credentials.
+    // unreachable backend) never costs the user their typed credentials. This
+    // must happen before the website-id guard for the same reason.
     saveConnectorCredentials({
       wordpress_site_url: wpUrl,
       wordpress_username: wpUser,
       wordpress_app_password: wpPass,
     });
+    const wid = websiteId || getCurrentWebsiteId();
+    if (!wid) {
+      setWpSaving(false);
+      setErrorMsg("Select a website in /websites first, then save. Credentials were saved locally.");
+      return;
+    }
+    setWebsiteId(wid);
     try {
-      const res = await saveWordPressForSite(websiteId, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
+      const res = await saveWordPressForSite(wid, { siteUrl: wpUrl, username: wpUser, appPassword: wpPass });
       if (res?.connected) {
         showToast(`✓ WordPress connected as ${res.wp_user || wpUser}`);
       } else {
@@ -571,12 +586,12 @@ export default function ConnectorsPage() {
                     <span className="panel-label">1. NVIDIA NIM API (LLM & Embeddings)</span>
                   </div>
                   <span className={`badge ${status?.nvidia?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.nvidia?.connected ? "Connected (20+ Models)" : "Not Configured"}
+                    {status?.nvidia?.connected ? "Connected" : "Not Configured"}
                   </span>
                 </div>
                 <div className="panel-body">
                   <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "12px" }}>
-                    Powers the 3-agent CrewAI pipeline (<code style={{ color: "var(--accent)" }}>nvidia/nemotron-3-nano-30b-a3b</code>) and 1536d vector RAG.
+                    Powers the 3-agent CrewAI pipeline (<code style={{ color: "var(--accent)" }}>{status?.nvidia?.model || "google/gemma-4-31b-it"}</code>) and 1536d vector RAG.
                   </p>
 
                   <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
@@ -606,7 +621,7 @@ export default function ConnectorsPage() {
                         build.nvidia.com/api-keys
                       </a>
                     </span>
-                    <span>Primary Model: <code style={{ color: "var(--green)" }}>nemotron-3-nano-30b-a3b</code></span>
+                    <span>Primary Model: <code style={{ color: "var(--green)" }}>{status?.nvidia?.model || "google/gemma-4-31b-it"}</code></span>
                   </div>
 
                   {nvidiaModels.length > 0 && (
@@ -703,7 +718,9 @@ export default function ConnectorsPage() {
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span className="panel-label">3. WordPress CMS (OAuth / Application Password)</span>
                   <span className={`badge ${status?.wordpress?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.wordpress?.connected ? "Connected (Role: Editor)" : "Not Configured"}
+                    {status?.wordpress?.connected
+                      ? `Connected (Role: ${status?.wordpress?.role || "verified"})`
+                      : (status?.wordpress?.is_configured ? "Credentials saved — not verified" : "Not Configured")}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -787,7 +804,11 @@ export default function ConnectorsPage() {
                 <div className="panel-head" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="panel-label">Serper.dev (Google SERP)</span>
                   <span className={`badge ${status?.serper?.connected ? "badge-green" : "badge-amber"}`}>
-                    {status?.serper?.connected ? "Connected" : "Not Configured"}
+                    {status?.serper?.connected
+                      ? "Connected"
+                      : status?.serper?.is_configured
+                      ? "Key Rejected"
+                      : "Not Configured"}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -799,6 +820,11 @@ export default function ConnectorsPage() {
                     placeholder={status?.serper?.is_configured ? MASK : "serper api key"}
                     style={{ width: "100%", padding: "8px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)", marginBottom: "10px" }}
                   />
+                  {status?.serper?.is_configured && !status?.serper?.connected && status?.serper?.message && (
+                    <div style={{ fontSize: "11px", color: "var(--amber)", marginBottom: "8px" }}>
+                      {status.serper.message}
+                    </div>
+                  )}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <a href="https://serper.dev/api-keys" target="_blank" rel="noreferrer" style={{ fontSize: "11px", color: "var(--accent)" }}>
                       serper.dev/api-keys
@@ -1050,7 +1076,7 @@ export default function ConnectorsPage() {
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>NVIDIA NIM</span>
                 <strong style={{ color: status?.nvidia?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.nvidia?.connected ? "✓ 20+ Models" : "Not Set"}
+                  {status?.nvidia?.connected ? "Connected" : "Not Set"}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -1062,7 +1088,7 @@ export default function ConnectorsPage() {
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>WordPress</span>
                 <strong style={{ color: status?.wordpress?.connected ? "var(--green)" : "var(--muted)" }}>
-                  {status?.wordpress?.connected ? "✓ Editor Role" : "Not Set"}
+                  {status?.wordpress?.connected ? "✓ Verified" : (status?.wordpress?.is_configured ? "Saved — unverified" : "Not Set")}
                 </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>

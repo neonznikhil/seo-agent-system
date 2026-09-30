@@ -29,6 +29,8 @@ class CrewAutonomousRequest(BaseModel):
 async def _run_generation(payload: CrewGenerateRequest):
     """Background task for blog generation."""
     from agents.crew_blog_writer import generate_blog_with_self_healing
+    from services.local_store import mark_run_active, mark_run_finished
+    mark_run_active(payload.blog_id)
     try:
         await generate_blog_with_self_healing(
             topic=payload.topic,
@@ -40,6 +42,19 @@ async def _run_generation(payload: CrewGenerateRequest):
         )
     except Exception as e:
         logger.error(f"[CrewAPI] Background generation failed: {e}")
+        # Persist the failure: without this the placeholder row stays
+        # "generating/running" in storage forever and only the status endpoint's
+        # age check masks it, so listings keep showing a run that is really dead.
+        try:
+            from services.local_store import save_local_content
+            save_local_content({
+                "id": payload.blog_id,
+                "status": "failed",
+                "pipeline_status": "failed",
+                "message": f"Generation failed: {str(e)[:200]}",
+            })
+        except Exception as save_err:
+            logger.warning(f"[CrewAPI] could not persist failure for {payload.blog_id}: {save_err}")
         try:
             from services.event_bus import publish
             publish(f"crew:{payload.blog_id}", {
@@ -51,6 +66,8 @@ async def _run_generation(payload: CrewGenerateRequest):
             })
         except Exception:
             pass
+    finally:
+        mark_run_finished(payload.blog_id)
 
 @router.post("/generate")
 @router.post("/api/crew/generate")
@@ -145,6 +162,35 @@ async def crew_status(blog_id: str):
     if not blog:
         from services.local_store import get_local_content, get_local_approval
         blog = get_local_content(blog_id) or get_local_approval(blog_id)
+
+    if blog:
+        # A run killed mid-flight (backend restart, crash) would otherwise report
+        # "generating" forever. But a slow run is NOT a dead one: generation can
+        # legitimately take tens of minutes when the LLM is cold or loaded. So a
+        # row is only surfaced as failed when this process is provably NOT running
+        # it (liveness check) and enough time has passed that no live run could
+        # still be holding it.
+        _status = str(blog.get("status") or "").lower()
+        if _status in ("generating", "in_progress", "running"):
+            _created = blog.get("created_at") or blog.get("updated_at")
+            _alive = False
+            try:
+                from services.local_store import is_run_active
+                _alive = is_run_active(blog.get("id") or blog_id) or is_run_active(blog_id)
+            except Exception:
+                pass
+            if _created and not _alive:
+                try:
+                    from datetime import datetime, timezone
+                    _ts = datetime.fromisoformat(str(_created).replace("Z", "+00:00"))
+                    if _ts.tzinfo is None:
+                        _ts = _ts.replace(tzinfo=timezone.utc)
+                    _age_min = (datetime.now(timezone.utc) - _ts).total_seconds() / 60.0
+                    if _age_min > 45 and not (blog.get("content") or "").strip():
+                        blog = {**blog, "status": "failed", "pipeline_status": "stalled",
+                                "message": "Generation did not finish (stalled or interrupted). Please retry."}
+                except Exception:
+                    pass
 
     if not blog:
         logs = []

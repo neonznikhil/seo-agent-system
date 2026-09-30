@@ -359,7 +359,7 @@ async def _overview_striking(wid: str) -> dict:
     supabase = get_supabase()
     try:
         rows = supabase.table("rank_tracking").select(
-            "keyword, target_keyword, current_position, position_history"
+            "target_keyword, current_position, position_history"
         ).eq("website_id", wid).execute().data or []
     except Exception:
         rows = []

@@ -84,7 +84,7 @@ async def get_roi_metrics(website_id: str):
     try:
         tech_res = (
             supabase.table("technical_audits")
-            .select("issues_count")
+            .select("issues")
             .eq("website_id", website_id)
             .order("created_at", desc=True)
             .limit(1)
@@ -92,7 +92,8 @@ async def get_roi_metrics(website_id: str):
         )
         tech_data = tech_res.data
         if tech_data and len(tech_data) > 0:
-            open_issues = tech_data[0].get("issues_count", 0)
+            issues = tech_data[0].get("issues") or []
+            open_issues = len(issues) if isinstance(issues, list) else int(issues or 0)
             technical_health_score = max(0, 100 - (open_issues * 5))
     except Exception as e:
         logger.debug(f"[ROI] technical_audits query note: {e}")

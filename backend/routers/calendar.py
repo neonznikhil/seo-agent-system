@@ -62,7 +62,7 @@ async def get_calendar(website_id: str):
         try:
             res_a = (
                 supabase.table("blog_approvals")
-                .select("id, title, status, keyword, created_at, approved_at")
+                .select("id, title, status, target_keyword, created_at")
                 .eq("website_id", website_id)
                 .order("created_at", desc=True)
                 .limit(60)
@@ -92,7 +92,7 @@ async def get_calendar(website_id: str):
                 "title": a.get("title") or "Blog Post",
                 "status": status_val,
                 "date": target.strftime("%Y-%m-%d"),
-                "keyword": a.get("keyword") or "Editorial",
+                "keyword": a.get("target_keyword") or "Editorial",
                 "type": "content",
                 "draggable": True,
             })
@@ -102,7 +102,7 @@ async def get_calendar(website_id: str):
         try:
             res_cl = (
                 supabase.table("content_log")
-                .select("id, title, status, keyword, created_at, scheduled_date")
+                .select("id, title, status, keyword, created_at")
                 .eq("website_id", website_id)
                 .limit(60)
                 .execute()
@@ -120,7 +120,7 @@ async def get_calendar(website_id: str):
                 else "draft" if cl.get("status") in ("in_progress", "draft", "generating")
                 else "pending_approval"
             )
-            d_str = (cl.get("scheduled_date") or cl.get("created_at") or "")[:10]
+            d_str = (cl.get("created_at") or "")[:10]
             unified_items.append({
                 "id": cl.get("id"),
                 "source_table": "content_log",

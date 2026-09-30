@@ -8,11 +8,14 @@ The original bugs were:
 
 from unittest.mock import AsyncMock, patch
 
+import os
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
-from routers.connectors import verify_nvidia_key
+from routers.connectors import verify_nvidia_key, verify_serper_key
+import routers.connectors as connectors_mod
 
 
 class _Resp:
@@ -22,6 +25,49 @@ class _Resp:
 
     def json(self):
         return self._payload
+
+
+@pytest.mark.asyncio
+async def test_verified_supabase_creds_are_adopted_without_restart(monkeypatch):
+    """Saving working creds must take effect in the live process immediately.
+
+    Regression: save-all/setup-supabase only wrote .env, so the running app kept
+    using the old (or placeholder) client until someone restarted the backend.
+    """
+    monkeypatch.setenv("SUPABASE_URL", "https://old.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", "old-key")
+
+    with patch.object(connectors_mod, "_probe_supabase", new=AsyncMock(return_value=(True, "ok"))), \
+         patch.object(connectors_mod, "write_env_file", return_value={"keys_set": []}):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.post("/api/connectors/save-all", json={
+                "supabase_url": "https://new.supabase.co",
+                "supabase_anon_key": "new-anon",
+                "supabase_service_key": "new-service",
+            })
+    assert res.status_code == 200
+    assert os.environ["SUPABASE_URL"] == "https://new.supabase.co"
+    assert os.environ["SUPABASE_SERVICE_ROLE_KEY"] == "new-service"
+
+
+@pytest.mark.asyncio
+async def test_unverified_supabase_creds_never_poison_live_process(monkeypatch):
+    """A credential that fails its live probe must not replace a working one."""
+    monkeypatch.setenv("SUPABASE_URL", "https://good.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "good-key")
+
+    with patch.object(connectors_mod, "_probe_supabase", new=AsyncMock(return_value=(False, "401"))), \
+         patch.object(connectors_mod, "write_env_file", return_value={"keys_set": []}):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.post("/api/connectors/save-all", json={
+                "supabase_url": "https://bogus.supabase.co",
+                "supabase_service_key": "bogus-key",
+            })
+    assert res.status_code == 200
+    assert os.environ["SUPABASE_URL"] == "https://good.supabase.co"
+    assert os.environ["SUPABASE_SERVICE_ROLE_KEY"] == "good-key"
 
 
 @pytest.mark.asyncio
@@ -80,3 +126,32 @@ async def test_supabase_bogus_url_reports_not_connected():
     data = res.json()
     assert data["connected"] is False
     assert data["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_serper_rejected_key_is_not_connected():
+    """A non-empty Serper key that the API rejects must report not-connected."""
+    async def fake_post(self, url, headers=None, json=None):
+        assert "serper.dev" in url
+        return _Resp(403, {"message": "Unauthorized."})
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        connected, message = await verify_serper_key("bogus-key", use_cache=False)
+    assert connected is False
+    assert "401/403" in message or "rejected" in message.lower()
+
+
+@pytest.mark.asyncio
+async def test_serper_valid_key_connects():
+    async def fake_post(self, url, headers=None, json=None):
+        return _Resp(200, {"organic": [{"title": "x", "link": "https://example.com"}]})
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        connected, message = await verify_serper_key("good-key", use_cache=False)
+    assert connected is True
+
+
+@pytest.mark.asyncio
+async def test_serper_empty_key_is_not_connected():
+    connected, _ = await verify_serper_key("", use_cache=False)
+    assert connected is False

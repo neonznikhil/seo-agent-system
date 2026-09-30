@@ -84,15 +84,17 @@ class AnalyticsService:
         """
         supabase = get_supabase()
         try:
-            q = supabase.table("analytics_data").select("keyword, clicks, impressions, ctr, position, created_at")
+            q = supabase.table("analytics_data").select("keyword, clicks, impressions, position, created_at")
             if website_id:
                 q = q.eq("website_id", website_id)
             rows = q.gte("position", 5).lte("position", 15).order("impressions", desc=True).limit(20).execute().data or []
             # Filter high-impression low-CTR
             gaps = []
             for r in rows:
+                # analytics_data has no ctr column; derive it from real clicks/impressions.
                 try:
-                    ctr_val = float(str(r.get("ctr", "0")).replace("%", "")) if isinstance(r.get("ctr"), str) else float(r.get("ctr", 0))
+                    imp = float(r.get("impressions", 0) or 0)
+                    ctr_val = (float(r.get("clicks", 0) or 0) / imp * 100) if imp else 0.0
                 except Exception:
                     ctr_val = 0
                 if (r.get("impressions", 0) or 0) > 1000 and ctr_val < 3.0:
@@ -100,7 +102,7 @@ class AnalyticsService:
                         "keyword": r.get("keyword"),
                         "impressions": r.get("impressions"),
                         "clicks": r.get("clicks"),
-                        "ctr": r.get("ctr"),
+                        "ctr": round(ctr_val, 2),
                         "position": r.get("position"),
                         "opportunity": f"High-impression low-CTR query ranking at position {r.get('position')}",
                         "action": "create_new_article" if float(r.get("position", 0)) > 8 else "refresh_existing",
@@ -217,16 +219,15 @@ class AnalyticsService:
         avg_position = 0.0
         try:
             cutoff_7d = (datetime.utcnow() - timedelta(days=7)).isoformat()
-            q = supabase.table("analytics_data").select("clicks, impressions, ctr, position").gte("created_at", cutoff_7d)
+            q = supabase.table("analytics_data").select("clicks, impressions, position").gte("created_at", cutoff_7d)
             if website_id:
                 q = q.eq("website_id", website_id)
             rows = q.execute().data or []
             if rows:
                 total_impressions_7d = sum(r.get("impressions", 0) or 0 for r in rows)
                 total_clicks_7d = sum(r.get("clicks", 0) or 0 for r in rows)
-                ctr_vals = [float(str(r.get("ctr", "0")).replace("%", "")) for r in rows if r.get("ctr") is not None]
-                if ctr_vals:
-                    avg_ctr = f"{round(sum(ctr_vals)/len(ctr_vals), 2)}%"
+                if total_impressions_7d:
+                    avg_ctr = f"{round(total_clicks_7d / total_impressions_7d * 100, 2)}%"
                 pos_vals = [float(r.get("position", 0)) for r in rows if r.get("position")]
                 if pos_vals:
                     avg_position = round(sum(pos_vals)/len(pos_vals), 1)

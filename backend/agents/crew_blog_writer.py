@@ -708,7 +708,7 @@ async def build_grounding_bundle(website_id: str, topic: str) -> Dict[str, Any]:
     site_info = {}
     try:
         site_res = supabase.table("websites").select(
-            "id, domain, url, cms_url, business_name, niche, target_audience, description"
+            "id, domain, url, cms_url, niche"
         ).eq("id", website_id).limit(1).execute()
         if site_res.data:
             site_info = site_res.data[0]
@@ -772,10 +772,10 @@ async def build_grounding_bundle(website_id: str, topic: str) -> Dict[str, Any]:
     # 4. Real Internal Links from website
     real_internal_links = []
     try:
-        p_rows = supabase.table("pages").select("url, title, h1").eq("website_id", website_id).limit(15).execute().data or []
+        p_rows = supabase.table("pages").select("url, title, content_text").eq("website_id", website_id).limit(15).execute().data or []
         for p in p_rows:
             u = p.get("url") or ""
-            t = p.get("title") or p.get("h1") or ""
+            t = p.get("title") or ""
             if u and t and not u.endswith((".png", ".jpg", ".pdf", ".css", ".js")):
                 real_internal_links.append({"url": u, "anchor": t[:60]})
         
@@ -1616,8 +1616,8 @@ def _enforce_year_correctness(html: str, target_keyword: str) -> str:
 # ---------------------------------------------------------------------------
 
 # Central NIM client - active models on integrate.api.nvidia.com
-NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
-NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "poolside/laguna-xs-2.1")
+NVIDIA_PRIMARY = os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it")
+NVIDIA_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "meta/llama-3.2-11b-vision-instruct")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
@@ -5075,13 +5075,49 @@ async def _direct_nim_crew_fallback(topic: str, website_id: str, business_name: 
 # Main autonomous function
 # ---------------------------------------------------------------------------
 
+def _touch_local(content_id: str, payload: Dict[str, Any]) -> None:
+    """Best-effort upsert of a local content row; never blocks generation."""
+    try:
+        from services.local_store import save_local_content
+        save_local_content(dict(payload))
+    except Exception as e:
+        logger.debug(f"[Crew] local placeholder write note for {content_id}: {e}")
+
+
 async def generate_blog_autonomous(
     topic: str,
     website_id: str,
     user_id: Optional[str] = None,
     tone: Optional[str] = None,
     word_count: Optional[int] = None,
-    blog_id: Optional[str] = None
+    blog_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Liveness-marking wrapper around the autonomous generator.
+
+    Marks the run active for its whole duration so /crew/status can distinguish
+    a slow-but-alive run from a killed one. Kept as a thin wrapper (rather than
+    sprinkled through the very long body) so every call path — router, direct,
+    self-healing retry — is covered without duplicating markers.
+    """
+    from services.local_store import mark_run_active, mark_run_finished
+    run_key = blog_id or topic
+    mark_run_active(run_key)
+    try:
+        return await _generate_blog_autonomous_body(
+            topic=topic, website_id=website_id, user_id=user_id,
+            tone=tone, word_count=word_count, blog_id=blog_id,
+        )
+    finally:
+        mark_run_finished(run_key)
+
+
+async def _generate_blog_autonomous_body(
+    topic: str,
+    website_id: str,
+    user_id: Optional[str] = None,
+    tone: Optional[str] = None,
+    word_count: Optional[int] = None,
+    blog_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """8-step autonomous CrewAI pipeline (Planner->Writer->Editor) with Quality Gate + WP + RAG.
 
@@ -5119,7 +5155,7 @@ async def generate_blog_autonomous(
             logger.debug(f"[BLOG_WRITER] event_bus publish note for {content_id}")
 
     from services.website_service import get_default_website_id
-    from services.local_store import list_local_knowledge
+    from services.local_store import list_local_knowledge, save_local_content
     if not website_id or website_id in ("default", "default-website-id", "all", "", "null", "undefined"):
         website_id = get_default_website_id()
     if not website_id:
@@ -5128,6 +5164,21 @@ async def generate_blog_autonomous(
     # FIX Problem 2 — VALIDATION: keyword must be non-empty and >=5 chars
     _validate_keyword_input(topic)
     topic = topic.strip()
+
+    # Durable placeholder written before any slow work. Without this, a crash,
+    # restart, or an in-flight run leaves /crew/status returning an unknown id
+    # forever. The final write upserts the same id with the finished article.
+    _touch_local(content_id, {
+        "id": content_id,
+        "blog_id": blog_id,
+        "website_id": website_id,
+        "title": topic,
+        "keyword": topic,
+        "content": "",
+        "status": "generating",
+        "pipeline_status": "running",
+    })
+
     await publish_phase("init", "running", f"Starting blog generation for '{topic}'")
 
     # 1. Knowledge base count check (<5 auto-trigger crawl and fallback)
@@ -5164,7 +5215,7 @@ async def generate_blog_autonomous(
         # If still < 5 rows (e.g. offline site), synthesize foundational business knowledge chunks
         if kb_count < 5:
             try:
-                site_info = supabase.table("websites").select("domain, business_name, niche").eq("id", website_id).single().execute().data or {}
+                site_info = supabase.table("websites").select("domain, niche").eq("id", website_id).single().execute().data or {}
                 dom = site_info.get("domain")
                 niche = site_info.get("niche")
                 if not dom:
@@ -5518,7 +5569,7 @@ async def generate_blog_autonomous(
     # Get niche from website settings
     niche_keywords = []
     try:
-        site_row = supabase.table("websites").select("niche,domain,business_name").eq("id", website_id).single().execute().data or {}
+        site_row = supabase.table("websites").select("niche,domain").eq("id", website_id).single().execute().data or {}
         niche = site_row.get("niche", "") or ""
         domain = site_row.get("domain", "") or ""
         # Extract keywords from niche

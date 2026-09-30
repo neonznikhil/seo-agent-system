@@ -42,7 +42,7 @@ const sectionMap: Record<string, string> = {
 };
 
 interface HealthData {
-  health_score: number;
+  health_score: number | null;
   checks: {
     nvidia_nim: string;
     supabase: string;
@@ -57,10 +57,11 @@ interface HealthData {
     failed: number;
   };
   auto_fixes_applied: number;
-  last_check: string;
-  next_check: string;
+  last_check: string | null;
+  next_check: string | null;
   issues: string[];
   auto_fixed: string[];
+  status?: string;
 }
 
 export function Topbar() {
@@ -70,26 +71,29 @@ export function Topbar() {
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>(getCurrentWebsiteId());
 
   // Dynamic Health Panel State
+  // `null` until the backend returns a real diagnostic: showing "LIVE (100%)"
+  // before anything has been measured was a fabricated-all-clear.
   const [health, setHealth] = useState<HealthData>({
-    health_score: 100,
+    health_score: null,
     checks: {
-      nvidia_nim: "ok",
-      supabase: "ok",
-      serper: "ok",
-      wordpress: "ok",
-      slack: "ok",
-      scheduler: "ok",
+      nvidia_nim: "unknown",
+      supabase: "unknown",
+      serper: "unknown",
+      wordpress: "unknown",
+      slack: "unknown",
+      scheduler: "unknown",
     },
     jobs_today: {
-      due: 8,
-      completed: 8,
+      due: 0,
+      completed: 0,
       failed: 0,
     },
     auto_fixes_applied: 0,
-    last_check: new Date().toISOString(),
-    next_check: new Date().toISOString(),
+    last_check: null,
+    next_check: null,
     issues: [],
     auto_fixed: [],
+    status: "unknown",
   });
   const [showHealthPanel, setShowHealthPanel] = useState(false);
   const [runningHealthCheck, setRunningHealthCheck] = useState(false);
@@ -176,8 +180,9 @@ export function Topbar() {
   };
 
   const score = health.health_score;
-  const isGreen = score >= 80;
-  const isYellow = score >= 50 && score < 80;
+  const isUnknown = score === null || score === undefined;
+  const isGreen = !isUnknown && score >= 80;
+  const isYellow = !isUnknown && score >= 50 && score < 80;
 
   return (
     <div className="topbar relative z-40">
@@ -200,7 +205,9 @@ export function Topbar() {
             type="button"
             onClick={() => setShowHealthPanel(!showHealthPanel)}
             className={`live-pill cursor-pointer transition-all border ${
-              isGreen
+              isUnknown
+                ? "border-zinc-500/40 hover:border-zinc-400 bg-zinc-900/40"
+                : isGreen
                 ? "border-emerald-500/40 hover:border-emerald-500 bg-emerald-950/30"
                 : isYellow
                 ? "border-amber-500/50 hover:border-amber-500 bg-amber-950/30"
@@ -210,15 +217,33 @@ export function Topbar() {
           >
             <span
               className={`live-dot ${
-                isGreen ? "bg-emerald-400" : isYellow ? "bg-amber-400" : "bg-red-500"
+                isUnknown
+                  ? "bg-zinc-400 animate-pulse"
+                  : isGreen
+                  ? "bg-emerald-400"
+                  : isYellow
+                  ? "bg-amber-400"
+                  : "bg-red-500"
               }`}
             />
             <span
               className={`font-mono text-[10px] font-bold uppercase tracking-wider ${
-                isGreen ? "text-emerald-400" : isYellow ? "text-amber-400" : "text-red-400"
+                isUnknown
+                  ? "text-zinc-400"
+                  : isGreen
+                  ? "text-emerald-400"
+                  : isYellow
+                  ? "text-amber-400"
+                  : "text-red-400"
               }`}
             >
-              {isGreen ? `LIVE (${score}%)` : isYellow ? `DEGRADED (${score}%)` : `ISSUES (${score}%)`}
+              {isUnknown
+                ? "MEASURING…"
+                : isGreen
+                ? `LIVE (${score}%)`
+                : isYellow
+                ? `DEGRADED (${score}%)`
+                : `ISSUES (${score}%)`}
             </span>
           </button>
 
@@ -239,14 +264,16 @@ export function Topbar() {
 
                 <div
                   className={`px-2.5 py-1 font-mono text-xs font-bold rounded ${
-                    isGreen
+                    isUnknown
+                      ? "bg-zinc-900 text-zinc-400 border border-zinc-500/40"
+                      : isGreen
                       ? "bg-emerald-950 text-emerald-400 border border-emerald-500/40"
                       : isYellow
                       ? "bg-amber-950 text-amber-400 border border-amber-500/40"
                       : "bg-red-950 text-red-400 border border-red-500/40"
                   }`}
                 >
-                  Score: {score}/100
+                  Score: {isUnknown ? "—" : `${score}/100`}
                 </div>
               </div>
 
@@ -266,7 +293,7 @@ export function Topbar() {
                           ? "text-emerald-400"
                           : status === "degraded"
                           ? "text-amber-400"
-                          : status === "not_configured"
+                          : status === "not_configured" || status === "unknown"
                           ? "text-neutral-500"
                           : "text-red-400"
                       }`}
@@ -277,6 +304,8 @@ export function Topbar() {
                         ? "SLOW"
                         : status === "not_configured"
                         ? "OPT"
+                        : status === "unknown"
+                        ? "PENDING"
                         : "DOWN ✕"}
                     </span>
                   </div>
@@ -288,7 +317,7 @@ export function Topbar() {
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Jobs Completed Today:</span>
                   <span className="text-white font-bold">
-                    {health.jobs_today?.completed ?? 0} / {health.jobs_today?.due ?? 8}
+                    {health.jobs_today?.completed ?? 0} / {health.jobs_today?.due ?? 0}
                   </span>
                 </div>
                 <div className="flex justify-between">

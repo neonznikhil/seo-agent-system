@@ -14,26 +14,49 @@ PLACEHOLDER_WP_USERNAMES = {
     "admin",
     "administrator",
     "root",
-    "nikhil_d",
     "your-username",
     "yourusername",
+    "your_username",
+    "your name",
+    "yourname",
     "your_user",
+    "youruser",
     "username",
     "wp-username",
+    "wp_username",
     "wpuser",
     "test",
+    "testuser",
     "demo",
     "example",
+    "exampleuser",
     "user@example.com",
     "you@example.com",
 }
+
+# NOTE: do not add a *real* account name here. This set exists to catch the
+# generic sentinels an app invents as a default; blocklisting one specific
+# person's username (the repo once listed its author's) rejects that owner's
+# genuine credentials. The hardcoded default itself was removed from the
+# WordPress service, which is the actual fix — see test_wordpress_drafting.py.
+
+# Normalising away separators catches "Your_Name", "your-name" and "YourName"
+# from a single entry so new spelling variants of the same sentinel stay caught.
+_SEPARATORS = str.maketrans("", "", "_- .")
+
+
+def _normalize(username: str) -> str:
+    return username.strip().lower().translate(_SEPARATORS)
+
+
+_NORMALIZED_PLACEHOLDERS = {_normalize(name) for name in PLACEHOLDER_WP_USERNAMES}
 
 
 def is_placeholder_wp_username(username: Optional[str]) -> bool:
     """True when the value is empty or a known placeholder sentinel."""
     if username is None:
         return True
-    return username.strip().lower() in PLACEHOLDER_WP_USERNAMES
+    return _normalize(username) in _NORMALIZED_PLACEHOLDERS
 
 
 def resolve_wp_username(*candidates: Optional[str]) -> str:

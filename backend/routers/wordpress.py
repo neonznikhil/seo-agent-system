@@ -39,12 +39,50 @@ except (ImportError, ValueError):
         from backend.services.connector_credentials import resolve_wp_username
     except (ImportError, ValueError):
         def resolve_wp_username(*candidates):
+            # Mirrors services.connector_credentials so a broken import path does
+            # not silently accept placeholder identities.
+            placeholders = {"", "admin", "administrator", "root", "username",
+                            "your_username", "yourusername", "yourname",
+                            "wpuser", "wp_username", "test", "demo", "example"}
             for c in candidates:
-                if c and c.strip().lower() not in ("", "nikhil_d"):
+                if c and c.strip().lower().replace("-", "").replace("_", "").replace(" ", "") not in {
+                    p.replace("-", "").replace("_", "").replace(" ", "") for p in placeholders
+                }:
                     return c.strip()
             return ""
 
 router = APIRouter()
+
+
+def _record_verification(website_id: str, site_url: str, username: str, diag: Dict[str, Any]) -> None:
+    """Persist the outcome of a live WordPress connection test.
+
+    The status endpoint only reports WordPress as connected when this verified
+    flag is present. Saving a credential string is NOT verification — without
+    this, an unreachable or placeholder site would show a green "Connected"
+    badge and every publish would fail. Failures are recorded too, so the UI
+    can show the real error instead of a stale success.
+    """
+    from datetime import datetime, timezone
+
+    connected = bool(diag.get("connected"))
+    now = datetime.now(timezone.utc).isoformat()
+    update: Dict[str, Any] = {
+        "wp_verified": connected,
+        "wp_verified_at": now if connected else None,
+        "wp_verified_role": (diag.get("user_role") or diag.get("role")) if connected else None,
+        "wp_last_error": None if connected else (diag.get("message") or "Verification failed"),
+        "updated_at": now,
+    }
+    try:
+        get_supabase().table("websites").update(update).eq("id", website_id).execute()
+    except Exception as e:
+        logger.debug(f"[WP verify] Supabase verification write note: {e}")
+    try:
+        from services.local_store import save_local_website
+        save_local_website({"id": website_id, **update})
+    except Exception as e:
+        logger.warning(f"[WP verify] Local verification write failed for {website_id}: {e}")
 
 
 def supabase_user_check(user_id: str):
@@ -162,6 +200,8 @@ async def connect_wordpress(website_id: str, request: Request):
             except Exception:
                 pass
 
+            _record_verification(website_id, wp_url, wp_user, test_res)
+
             return {
                 "success": True,
                 "message": f"Connected as {user_name}",
@@ -172,6 +212,7 @@ async def connect_wordpress(website_id: str, request: Request):
                 "warning": test_res.get("warning")
             }
         else:
+            _record_verification(website_id, wp_url, wp_user, test_res)
             return {
                 "success": False,
                 "message": test_res.get("message") or f"WordPress rejected credentials. Status: {test_res.get('status_code', 'error')}. Make sure you're using Application Password, not login password."
@@ -348,6 +389,16 @@ async def save_wordpress_connection(body: WordPressCredentialsIn):
     except Exception:
         pass
 
+    # Record the verification outcome against the persisted website record.
+    try:
+        from services.local_store import get_local_website
+        domain3 = clean_url.replace("https://", "").replace("http://", "").split("/")[0]
+        loc_site = get_local_website(domain3)
+        verified_id = (loc_site or {}).get("id") or domain3
+        _record_verification(verified_id, clean_url, username, diag)
+    except Exception as e:
+        logger.debug(f"[WP save] verification record note: {e}")
+
     return {
         "success": True,
         "connected": diag.get("connected", False),
@@ -493,6 +544,11 @@ async def test_wordpress_connection(website_id: str, body: WordPressCredentialsI
         except Exception as e:
             logger.warning(f"[WordPress] onboarding dispatch note: {e}")
 
+    # Record the TRUE verification outcome (success or failure) durably so the
+    # status endpoint never reports a saved-but-unverified site as connected.
+    if wid and wid not in ("default", "all", ""):
+        _record_verification(wid, url, username, diag)
+
     return {
         "success": is_connected,
         "connected": is_connected,
@@ -526,6 +582,11 @@ async def save_wordpress_credentials(website_id: str, body: WordPressCredentials
         "updated_at": datetime.utcnow().isoformat(),
         "status": "active",
     }
+    # Changing any WordPress credential invalidates prior verification: the
+    # status endpoint must not keep claiming "connected" against stale creds.
+    update_data["wp_verified"] = False
+    update_data["wp_verified_at"] = None
+    update_data["wp_last_error"] = "Credentials changed — reconnect to verify"
     if url:
         update_data["cms_url"] = url
         update_data["url"] = url

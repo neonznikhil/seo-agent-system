@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 
 from services.autonomous_health_service import (
     autonomous_health_service,
-    _latest_health_cache,
+    get_latest_health_snapshot,
 )
 from database import get_supabase, call_nim_llm
 from services.serper_service import serper_service
@@ -34,6 +34,18 @@ async def basic_health():
 async def get_autonomous_health(request: Request, website_id: Optional[str] = None):
     """Retrieve the real-time autonomous health diagnostic summary for Topbar indicator and floating panel."""
     account_id = getattr(request.state, "account_id", None)
+
+    def _normalize(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Clamp the score so the UI never renders `Score: None/100`."""
+        out = dict(payload)
+        score = out.get("health_score")
+        if score is not None:
+            try:
+                out["health_score"] = max(0, min(100, int(score)))
+            except (TypeError, ValueError):
+                out["health_score"] = None
+        out.setdefault("status", "unknown")
+        return out
     
     # Try fetching the most recent database row if available
     try:
@@ -43,20 +55,33 @@ async def get_autonomous_health(request: Request, website_id: Optional[str] = No
         res = query.order("created_at", desc=True).limit(1).execute()
         if res.data and len(res.data) > 0:
             row = res.data[0]
-            return {
-                "health_score": row.get("health_score", 100),
-                "checks": row.get("checks", _latest_health_cache.get("checks")),
-                "jobs_today": row.get("jobs_today", _latest_health_cache.get("jobs_today")),
+            stored_score = row.get("health_score")
+            snapshot = get_latest_health_snapshot()
+            checks = row.get("checks", snapshot.get("checks"))
+            return _normalize({
+                "health_score": stored_score,
+                "checks": checks,
+                "jobs_today": row.get("jobs_today", snapshot.get("jobs_today")),
                 "auto_fixes_applied": row.get("auto_fixes_applied", 0),
                 "last_check": row.get("created_at"),
-                "next_check": _latest_health_cache.get("next_check"),
+                "next_check": snapshot.get("next_check"),
                 "issues": row.get("issues", []),
                 "auto_fixed": row.get("auto_fixed", []),
-            }
+                "status": row.get("status")
+                or (
+                    "healthy"
+                    if isinstance(stored_score, (int, float)) and stored_score >= 80
+                    else "degraded"
+                    if isinstance(stored_score, (int, float)) and stored_score >= 50
+                    else "unknown"
+                    if stored_score is None
+                    else "critical"
+                ),
+            })
     except Exception as e:
         logger.debug(f"Health query fallback to cache: {e}")
 
-    return dict(_latest_health_cache)
+    return _normalize(get_latest_health_snapshot())
 
 
 @router.post("/health/autonomous/run")

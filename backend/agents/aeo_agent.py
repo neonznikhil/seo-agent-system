@@ -183,12 +183,18 @@ class AEOAgent:
         site_url = raw_url.rstrip("/")
         niche = site.get("niche") or "professional services"
 
-        # Real secondary facts from the knowledge base (services offered)
+        # Real secondary facts from the knowledge base (services offered).
+        # knowledge_base has no "title" column; use the fact text.
         kb_titles: list = []
         try:
             supabase = get_supabase()
-            kb_rows = supabase.table("knowledge_base").select("title").eq("website_id", self.website_id).limit(10).execute().data or []
-            kb_titles = [r.get("title") for r in kb_rows if r.get("title")][:10]
+            kb_rows = supabase.table("knowledge_base").select("fact, fact_type").eq("website_id", self.website_id).limit(10).execute().data or []
+            kb_titles = [
+                (r.get("fact") or "").strip()[:100]
+                or (r.get("fact_type") or "").replace("_", " ").title()
+                for r in kb_rows
+                if r.get("fact") or r.get("fact_type")
+            ][:10]
         except Exception as e:
             logger.debug(f"[AEO] entity KB lookup note: {e}")
 

@@ -101,7 +101,7 @@ class HumanWriterAgent:
         try:
             kb_rows = (
                 supabase.table("knowledge_base")
-                .select("content, fact, title, type, freshness_score, credibility_score")
+                .select("content, fact, fact_type, freshness_score, credibility_score")
                 .eq("website_id", self.website_id)
                 .order("credibility_score", desc=True)
                 .limit(40)
@@ -110,9 +110,9 @@ class HumanWriterAgent:
                 or []
             )
             self.knowledge_base = [
-                r.get("content") or r.get("fact") or r.get("title", "")
+                r.get("content") or r.get("fact") or ""
                 for r in kb_rows
-                if (r.get("content") or r.get("fact") or r.get("title"))
+                if (r.get("content") or r.get("fact"))
             ]
         except Exception:
             self.knowledge_base = []

@@ -96,7 +96,10 @@ OPENROUTER_EMBED_URL = "https://openrouter.ai/api/v1/embeddings"
 # Updated 2026-08-28: previous nv-embedqa-e5-v5 and llama-3.1-nemotron-ultra-253b-v1.5 EOL 410 -> now via nim_client central
 # Central models are defined in backend/services/nim_client.py - keep constants in sync
 NIM_EMBED_MODEL = os.getenv("NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
-NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
+# Verified live against integrate.api.nvidia.com/v1/models. The previously
+# hardcoded llama-3.x / nemotron-3-nano ids all return HTTP 410 Gone, so every
+# chat call failed with "NIM unavailable after retries" until these were fixed.
+NIM_LLM_MODEL = os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it")
 NIM_LLM_FALLBACK = os.getenv("NIM_LLM_FALLBACK", "meta/llama-3.2-11b-vision-instruct")
 # Provider selection
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia")
@@ -105,6 +108,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 _LLM_MODELS = [
     NIM_LLM_MODEL,
     NIM_LLM_FALLBACK,
+    "google/gemma-4-31b-it",
     "meta/llama-3.2-11b-vision-instruct",
 ]
 _EMBED_MODELS = [NIM_EMBED_MODEL, "nvidia/nemotron-3-embed-1b"]
@@ -450,6 +454,13 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
             if "404" in msg or "410" in msg:
                 _nim_state.update({"available": False, "http_status": 404 if "404" in msg else 410,
                                    "diagnostic": f"NVIDIA NIM: Model '{model_name}' not found / gone (EOL) — trying fallback.",
+                                   "error": msg[:300]})
+                continue
+            if "500" in msg or "503" in msg or "502" in msg or "504" in msg:
+                # Provider-side transient errors are per-model; a healthy model
+                # in the candidate list should still be tried.
+                _nim_state.update({"available": False, "http_status": 500,
+                                   "diagnostic": f"NVIDIA NIM: Model '{model_name}' returned a server error — trying fallback.",
                                    "error": msg[:300]})
                 continue
 

@@ -69,8 +69,8 @@ export function NetworkOverviewTable({ onSelectSite, activeWebsiteId }: NetworkO
 
   const filteredSites = (data?.sites || []).filter((s) => {
     const matchesSearch =
-      s.domain.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.site_name.toLowerCase().includes(searchTerm.toLowerCase());
+      (s.domain || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.site_name || "").toLowerCase().includes(searchTerm.toLowerCase());
 
     if (!matchesSearch) return false;
 

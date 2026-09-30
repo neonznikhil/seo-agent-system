@@ -17,6 +17,12 @@ load_dotenv()
 # Prevent CrewAI and OpenTelemetry from blocking on network telemetry
 os.environ.setdefault("CREWAI_TELEMETRY_OPT_OUT", "true")
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+# Server context has no TTY: CrewAI's first-run trace prompt reads stdin on a
+# daemon thread and dies with "Bad file descriptor" mid-generation. This flag is
+# read only by crewai's tracing module, so it silences the prompt without
+# affecting agent execution.
+os.environ.setdefault("CREWAI_TESTING", "true")
+os.environ.setdefault("CREWAI_TRACING_ENABLED", "false")
 
 logger = logging.getLogger("backend.config")
 

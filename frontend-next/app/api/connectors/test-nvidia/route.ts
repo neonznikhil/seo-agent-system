@@ -4,7 +4,11 @@ import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
 // Proxy the backend's live NVIDIA NIM model-list test, preserving its exact
 // status. The previous version returned `connected: true` on network failure,
 // which is how a user could see "NVIDIA connected" with an invalid key.
-const TIMEOUT_MS = 20000;
+//
+// Must exceed the backend's own 45s NIM budget: a 20s window aborted the proxy
+// first and reported "validation timed out" for perfectly valid keys whenever
+// NIM was cold or busy — the exact moment a user clicks Connect.
+const TIMEOUT_MS = 70000;
 
 export async function POST(req: Request) {
   const raw = await req.text().catch(() => "");

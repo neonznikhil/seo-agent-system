@@ -102,13 +102,18 @@ async def test_publish_post_polymorphic_create_and_publish():
     mock_resp.status_code = 201
     mock_resp.json.return_value = {"id": 999, "status": "publish", "link": "https://mysite.com/?p=999"}
 
-    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
-        with patch.object(svc, "check_publish_capability", new=AsyncMock(return_value={"can_publish": True, "roles": ["editor"]})):
-            res = await svc.publish_post(
-                website_id="test_wid",
-                title="New Article Title",
-                html_content="<p>Full article body</p>",
-                auto_publish=True,
-            )
-            assert res["success"] is True
-            assert res["wordpress_post_id"] == 999
+    # publish_post_via_crew re-resolves the site config (Supabase/local) rather
+    # than using svc.site, so without this the credentials look unconfigured and
+    # the call short-circuits before the mocked POST. Pin the config to the test
+    # fixture so the test actually exercises the create-and-publish path.
+    with patch.object(svc, "_get_site_config", return_value=svc.site):
+        with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
+            with patch.object(svc, "check_publish_capability", new=AsyncMock(return_value={"can_publish": True, "roles": ["editor"]})):
+                res = await svc.publish_post(
+                    website_id="test_wid",
+                    title="New Article Title",
+                    html_content="<p>Full article body</p>",
+                    auto_publish=True,
+                )
+                assert res["success"] is True
+                assert res["wordpress_post_id"] == 999
