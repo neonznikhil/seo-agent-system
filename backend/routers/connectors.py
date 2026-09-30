@@ -415,13 +415,13 @@ async def test_supabase_live_diagnostic():
     counts = {}
     connected = False
     try:
-        w = supabase.table("websites").select("id", count="exact").limit(1).execute()
+        w = await execute_db(supabase.table("websites").select("id", count="exact").limit(1))
         connected = True
         counts["websites"] = getattr(w, "count", len(w.data or []))
         
         for t in tables[1:]:
             try:
-                res = supabase.table(t).select("id", count="exact").limit(1).execute()
+                res = await execute_db(supabase.table(t).select("id", count="exact").limit(1))
                 counts[t] = getattr(res, "count", len(res.data or []))
             except Exception:
                 counts[t] = 0
@@ -718,7 +718,7 @@ async def wordpress_save(payload: WordPressSaveRequest):
 
     try:
         if wid and wid not in ("default", "all", ""):
-            supabase.table("websites").update({
+            await execute_db(supabase.table("websites").update({
                 "cms_url": site_url,
                 "url": site_url,
                 "cms_user": username,
@@ -728,12 +728,12 @@ async def wordpress_save(payload: WordPressSaveRequest):
                 "wordpress_password": encrypted,
                 "status": "active",
                 "updated_at": datetime.utcnow().isoformat(),
-            }).eq("id", wid).execute()
+            }).eq("id", wid))
         else:
-            existing_site = supabase.table("websites").select("id").eq("domain", domain).limit(1).execute().data
+            existing_site = (await execute_db(supabase.table("websites").select("id").eq("domain", domain).limit(1))).data
             if existing_site:
                 wid = existing_site[0]["id"]
-                supabase.table("websites").update({
+                await execute_db(supabase.table("websites").update({
                     "cms_url": site_url,
                     "url": site_url,
                     "cms_user": username,
@@ -743,9 +743,9 @@ async def wordpress_save(payload: WordPressSaveRequest):
                     "wordpress_password": encrypted,
                     "status": "active",
                     "updated_at": datetime.utcnow().isoformat(),
-                }).eq("id", wid).execute()
+                }).eq("id", wid))
             else:
-                new_site_res = supabase.table("websites").insert({
+                new_site_res = (await execute_db(supabase.table("websites").insert({
                     "domain": domain,
                     "cms_url": site_url,
                     "url": site_url,
@@ -757,7 +757,7 @@ async def wordpress_save(payload: WordPressSaveRequest):
                     "status": "active",
                     "created_at": datetime.utcnow().isoformat(),
                     "updated_at": datetime.utcnow().isoformat(),
-                }).execute().data
+                }))).data
                 if new_site_res:
                     wid = new_site_res[0]["id"]
     except Exception as e:
@@ -1303,14 +1303,14 @@ async def save_all_connectors(payload: SaveAllRequest):
         try:
             supabase = get_supabase()
             target_id = await get_default_website_id_async()
-            supabase.table("autonomous_settings").upsert({
+            await execute_db(supabase.table("autonomous_settings").upsert({
                 "website_id": target_id,
                 "auto_publish": payload.auto_publish,
                 "auto_generate": True,
                 "auto_refresh": True,
                 "target_articles_per_week": 5,
                 "updated_at": datetime.utcnow().isoformat(),
-            }).execute()
+            }))
         except Exception as e:
             logger.warning(f"Could not update autonomous settings: {e}")
 
