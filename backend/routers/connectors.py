@@ -881,6 +881,12 @@ async def test_serper(payload: Optional[TestSerperRequest] = None):
             except Exception as e:
                 logger.debug(f"Could not persist SERPER_API_KEY to .env: {e}")
 
+            try:
+                from services.serper_service import serper_service
+                serper_service.reset_circuit()
+            except Exception:
+                pass
+
             return {
                 "connected": True,
                 "status": "success",
@@ -930,6 +936,14 @@ async def save_serper(payload: TestSerperRequest):
         persisted = bool(res and (res.get("backend_env") or res.get("keys_set")))
     except Exception as e:
         logger.error(f"Failed to persist Serper key: {e}")
+
+    # The user just supplied a (possibly new) key — a breaker tripped by the old
+    # one must not keep this key marked unavailable.
+    try:
+        from services.serper_service import serper_service
+        serper_service.reset_circuit()
+    except Exception:
+        pass
 
     try:
         result = await test_serper(TestSerperRequest(api_key=key))

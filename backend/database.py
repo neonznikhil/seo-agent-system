@@ -328,7 +328,17 @@ class NIMAuthError(NIMLLMError):
     only floods the API (and the logs) with guaranteed failures."""
 
 
+class NIMRateLimitError(NIMLLMError):
+    """Raised on 429. Never retried and never tried against other models: a 429
+    is a per-key limit, so more requests only prolong it. The caller backs off."""
+
+
 _nim_http_client: Optional[httpx.AsyncClient] = None
+
+# NIM request pacing (module state). The lock serializes the gap reservation so
+# concurrent jobs cannot all fire at once and trip the provider's 429 limit.
+_last_request_time_db: float = 0.0
+_db_rate_lock: Optional[asyncio.Lock] = None
 
 
 def _get_nim_http_client() -> httpx.AsyncClient:
@@ -410,7 +420,15 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
         headers["X-Title"] = "RankForge"
     resp = await client.post(url, json=payload, headers=headers)
     if resp.status_code == 429:
-        raise httpx.HTTPStatusError("rate_limited", request=resp.request, response=resp)
+        # Honor Retry-After once; do NOT raise a retryable error, which used to
+        # make tenacity fire 3x and the caller try every model (12+ extra
+        # requests) against an endpoint that had just asked us to slow down.
+        retry_after = resp.headers.get("retry-after", "10")
+        wait_secs = min(int(retry_after) if str(retry_after).isdigit() else 10, 30)
+        import asyncio
+        logger.warning(f"[NIM] Rate limited (429) on {model_name}; waiting {wait_secs}s")
+        await asyncio.sleep(wait_secs)
+        raise NIMRateLimitError(f"NIM rate limited (429) on {model_name}")
     if resp.status_code in (401, 403):
         raise NIMAuthError(
             f"NIM returned {resp.status_code}: {resp.text[:200]}"
@@ -432,7 +450,7 @@ async def _nim_chat_request(model_name: str, messages: list, headers: dict,
     wait=wait_exponential(multiplier=1, min=1, max=15),
     retry=(
         retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError, NIMLLMError))
-        & retry_if_not_exception_type(NIMAuthError)
+        & retry_if_not_exception_type((NIMAuthError, NIMRateLimitError))
     ),
     reraise=True,
 )
@@ -457,19 +475,18 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
         if not fail_silently:
             raise NIMAuthError(msg)
         return ""
-    # Rate limiting: min 1.5s gap between requests
-    global _last_request_time_db
-    try:
-        _last_request_time_db
-    except NameError:
-        _last_request_time_db = 0.0
-    import asyncio
-    import time
-    now = time.monotonic()
-    elapsed = now - _last_request_time_db
-    if elapsed < 1.5:
-        await asyncio.sleep(1.5 - elapsed)
-    _last_request_time_db = time.monotonic()
+    # Rate limiting: min 1.5s gap between requests, reserved under a lock.
+    # Without the lock, concurrent jobs read the same stale timestamp and fired
+    # together, tripping the provider's own 429 rate limit.
+    global _last_request_time_db, _db_rate_lock
+    if _db_rate_lock is None:
+        _db_rate_lock = asyncio.Lock()
+    async with _db_rate_lock:
+        now = time.monotonic()
+        wait_secs = max(0.0, 1.5 - (now - _last_request_time_db))
+        _last_request_time_db = now + wait_secs
+    if wait_secs > 0:
+        await asyncio.sleep(wait_secs)
     
     api_key = os.getenv("NVIDIA_API_KEY") or NIM_API_KEY
 
@@ -516,6 +533,13 @@ async def call_nim_llm(prompt: str, system: str = "", website_id: Optional[str] 
                                    "diagnostic": "NVIDIA NIM: Invalid API key — update it in Connectors.",
                                    "error": msg[:300]})
                 break  # Wrong key will never succeed on other models
+            if isinstance(e, NIMRateLimitError) or "429" in msg or "rate limit" in msg.lower():
+                # A per-key rate limit applies to every model; trying the next
+                # one just adds load. Stop and let the limit clear.
+                _nim_state.update({"available": False, "http_status": 429,
+                                   "diagnostic": "NVIDIA NIM rate limited (429) — backing off.",
+                                   "error": msg[:300]})
+                break
             if "404" in msg or "410" in msg:
                 _nim_state.update({"available": False, "http_status": 404 if "404" in msg else 410,
                                    "diagnostic": f"NVIDIA NIM: Model '{model_name}' not found / gone (EOL) — trying fallback.",

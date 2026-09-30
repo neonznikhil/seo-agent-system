@@ -20,6 +20,8 @@ _CONNECTOR_STATE = {
     "credits_remaining": None,
 }
 
+_CIRCUIT_COOLDOWN_SECONDS = 60.0
+
 _SERPER_CIRCUIT = {
     "failures": 0,
     "circuit_open_until": 0.0,
@@ -64,8 +66,21 @@ class SerperService:
     def _record_circuit_failure(self):
         _SERPER_CIRCUIT["failures"] = _SERPER_CIRCUIT.get("failures", 0) + 1
         if _SERPER_CIRCUIT["failures"] >= 3:
-            _SERPER_CIRCUIT["circuit_open_until"] = time.time() + 60.0
-            logger.warning("[SerperService] Circuit breaker tripped! Pausing Serper requests for 60 seconds.")
+            _SERPER_CIRCUIT["circuit_open_until"] = time.time() + _CIRCUIT_COOLDOWN_SECONDS
+            logger.warning(
+                f"[SerperService] Circuit breaker tripped! Pausing Serper requests "
+                f"for {int(_CIRCUIT_COOLDOWN_SECONDS)} seconds."
+            )
+
+    def reset_circuit(self):
+        """Close the circuit breaker.
+
+        Called when the user (re)saves a Serper key or a live test succeeds: the
+        breaker trips after 3 consecutive failures, and without this a *valid*
+        key saved right after a bad one stayed "unavailable" until the cooldown
+        elapsed, which read to the user as "saving my key did nothing".
+        """
+        self._record_circuit_success()
 
     def toggle(self, enabled: bool) -> bool:
         _CONNECTOR_STATE["enabled"] = enabled

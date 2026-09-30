@@ -5,6 +5,19 @@ from services.serper_service import serper_service, SerperService
 from main import app
 
 
+@pytest.fixture(autouse=True)
+def _reset_serper_circuit():
+    """Keep the module-global Serper circuit breaker from leaking across tests.
+
+    The breaker is process-global, so a real 403 recorded by an earlier test in
+    the same run left it open and made these mocked tests silently skip the call
+    (they passed in isolation but failed in the full suite).
+    """
+    serper_service.reset_circuit()
+    yield
+    serper_service.reset_circuit()
+
+
 @pytest.mark.asyncio
 async def test_serper_connector_queries():
     mock_search = {

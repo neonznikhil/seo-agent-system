@@ -432,8 +432,11 @@ def get_top_10_actions(website_id: str) -> Dict[str, Any]:
 
     actions = [_enrich_preview_diff(a) for a in _generate_curated_actions_for_site(site)]
     measured = [a for a in actions if a.get("impact_clicks_per_month") is not None]
-    total_potential_clicks = sum(a["impact_clicks_per_month"] for a in measured) if measured else None
-    total_potential_value = sum(a["estimated_monthly_value"] or 0 for a in measured) if measured else None
+    # These are declared as numbers, so never emit None: an unguarded consumer
+    # doing `total >= 0` crashed with a TypeError. `impact_measured` already
+    # tells the UI the true state (nothing measured yet).
+    total_potential_clicks = sum(a["impact_clicks_per_month"] for a in measured) if measured else 0
+    total_potential_value = sum(a["estimated_monthly_value"] or 0 for a in measured) if measured else 0.0
 
     return {
         "website_id": website_id,
