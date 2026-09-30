@@ -3,7 +3,7 @@ import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
 
 // The key must reach the backend's durable store; a fabricated success here
 // would leave the user with an "Saved" toast but no usable NVIDIA key.
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 90000;
 
 export async function POST(req: Request) {
   const raw = await req.text().catch(() => "");

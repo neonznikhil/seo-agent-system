@@ -5,7 +5,7 @@ import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
 // If the backend cannot be reached we must NOT claim success — a lost write
 // means the user's keys are gone after the next restart, which is exactly the
 // bug this endpoint had.
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = 120000;
 
 export async function POST(req: Request) {
   // Read the body so it can be forwarded verbatim (a Request body is a one-shot

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildBackendUrl, BACKEND_URL, forwardHeaders } from "../../_lib/proxy";
 
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 90000;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

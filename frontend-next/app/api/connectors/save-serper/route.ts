@@ -4,7 +4,7 @@ import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
 // Persist the Serper key on the backend (durable), then relay the live test
 // result. The old handler invented a "verified and saved" response when the
 // backend was down, so the key silently never persisted.
-const TIMEOUT_MS = 20000;
+const TIMEOUT_MS = 60000;
 
 export async function POST(req: Request) {
   const raw = await req.text().catch(() => "");

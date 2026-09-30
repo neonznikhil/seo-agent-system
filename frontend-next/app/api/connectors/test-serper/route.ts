@@ -3,7 +3,7 @@ import { proxyToBackend, BACKEND_URL } from "../../_lib/proxy";
 
 // Live Serper verification must run on the backend so the same code path that
 // persists the key also validates it. Never fabricate a successful result.
-const TIMEOUT_MS = 20000;
+const TIMEOUT_MS = 60000;
 
 export async function POST(req: Request) {
   const raw = await req.text().catch(() => "");

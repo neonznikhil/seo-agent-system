@@ -86,36 +86,63 @@ async def verify_nvidia_key(api_key: str, model: Optional[str] = None) -> tuple[
     if not key:
         return False, "NVIDIA API key is required", 0
 
-    model_id = model or os.getenv("NIM_LLM_MODEL", "google/gemma-4-31b-it")
-    try:
-        # NVIDIA's first (cold) completion can take 20-30s; a 15s budget produced
-        # spurious "timed out" results for perfectly valid keys.
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={
-                    "model": model_id,
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 8,
-                },
-            )
-            if resp.status_code in (401, 403):
-                return False, "Invalid NVIDIA API key or unauthorized access", 0
-            if resp.status_code != 200:
-                return False, f"NVIDIA API request failed (HTTP {resp.status_code})", 0
+    # A single hardcoded model id made a *valid* key look invalid whenever that
+    # one id was deprecated/renamed (404) — the key works, the model doesn't.
+    # Try the configured model first, then the documented fallbacks, and only
+    # treat 401/403 as "bad key".
+    candidates: list[str] = []
+    for candidate in (
+        model,
+        os.getenv("NIM_LLM_MODEL"),
+        os.getenv("NIM_LLM_FALLBACK"),
+        "meta/llama-3.2-11b-vision-instruct",
+        "google/gemma-4-31b-it",
+    ):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
 
-            models_count = 0
-            try:
-                models_resp = await client.get(
-                    "https://integrate.api.nvidia.com/v1/models",
-                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+    last_error = "NVIDIA API request failed"
+    try:
+        # NVIDIA's first (cold) completion can take 20-30s; a short budget
+        # produced spurious "timed out" results for perfectly valid keys.
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            for model_id in candidates:
+                resp = await client.post(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={
+                        "model": model_id,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 8,
+                    },
                 )
-                if models_resp.status_code == 200:
-                    models_count = len(models_resp.json().get("data", []) or [])
-            except Exception:
-                pass
-            return True, "NVIDIA NIM key verified", models_count
+                if resp.status_code in (401, 403):
+                    return False, "Invalid NVIDIA API key or unauthorized access", 0
+                if resp.status_code == 429:
+                    # Rate limited but the key authenticated — it is valid.
+                    return True, "NVIDIA NIM key verified (rate limited; backing off)", 0
+                if resp.status_code == 404:
+                    # Model id not found — the key may still be fine; try the next.
+                    last_error = f"NVIDIA model '{model_id}' not found (HTTP 404)"
+                    continue
+                if resp.status_code != 200:
+                    # Anything else (5xx, 400, ...) is not fixed by another model;
+                    # stop instead of burning the whole timeout on retries.
+                    return False, f"NVIDIA API request failed (HTTP {resp.status_code})", 0
+
+                models_count = 0
+                try:
+                    models_resp = await client.get(
+                        "https://integrate.api.nvidia.com/v1/models",
+                        headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+                    )
+                    if models_resp.status_code == 200:
+                        models_count = len(models_resp.json().get("data", []) or [])
+                except Exception:
+                    pass
+                return True, "NVIDIA NIM key verified", models_count
+
+            return False, last_error, 0
     except httpx.TimeoutException:
         return False, "Connection to NVIDIA NIM timed out", 0
     except Exception as e:
