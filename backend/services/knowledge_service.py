@@ -675,7 +675,13 @@ class KnowledgeService:
                 sim = _cosine_similarity(query_emb, emb)
                 if sim >= 0.45 or any(w.lower() in doc_text.lower() for w in keyword.split() if len(w) > 3):
                     row_copy = dict(row)
-                    row_copy["similarity"] = max(sim, 0.60)
+                    # Record the TRUE similarity. This used to be
+                    # max(sim, 0.60), which floored a near-zero score to 0.60 and
+                    # made every consumer's >=0.55 grounding gate pass by
+                    # construction — so the "not grounded, abort" guard in
+                    # writer_agent never fired on this fallback path.
+                    row_copy["similarity"] = sim
+                    row_copy["keyword_match"] = True
                     vector_results.append(row_copy)
 
         # 2. Keyword full-text match over retrieved rows
@@ -712,10 +718,13 @@ class KnowledgeService:
         scored_list = []
         for doc in merged.values():
             v_sim = doc.get("vector_sim", 0.70)
-            freshness = float(doc.get("freshness_score", 1.0))
-            credibility = float(doc.get("credibility_score", 1.0))
+            # Supabase returns {"col": None} for a NULL column, and .get(k, default)
+            # only defaults on an ABSENT key — so float(None)/int(None) raised
+            # TypeError and killed the caller's generation entirely.
+            freshness = float(doc.get("freshness_score") or 1.0)
+            credibility = float(doc.get("credibility_score") or 1.0)
             kw_bonus = 0.10 if doc.get("keyword_match") else 0.0
-            usage_bonus = min(0.05, int(doc.get("usage_count", 0)) * 0.01)
+            usage_bonus = min(0.05, int(doc.get("usage_count") or 0) * 0.01)
             val_bonus = 0.10 if doc.get("validated") else 0.0
 
             final_score = (v_sim * 0.6) + (freshness * 0.2) + (credibility * 0.1) + kw_bonus + usage_bonus + val_bonus

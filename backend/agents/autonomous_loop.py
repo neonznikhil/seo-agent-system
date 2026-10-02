@@ -320,23 +320,22 @@ async def process_autonomous_cycle(website_id: Optional[str] = None) -> Dict[str
         result["errors"].append(f"alerts: {e}")
         logger.warning(f"[AutonomousCycle] alerts failed: {e}")
 
-    # 2. Auto-publish approval queue (every 5 min always)
-    # Delegates to scheduler job logic but also runnable standalone
+    # 2. Auto-publish approval queue.
+    # This also has its own 5-minute IntervalTrigger in scheduler.py, so two
+    # runners can race on the same rows. That is now safe because
+    # job_auto_publish_approval claims each approval atomically
+    # ('approved' -> 'publishing') before publishing, and releases the claim on
+    # failure. Previously both runners published, creating duplicate live posts.
     try:
         from .scheduler import job_auto_publish_approval
-        # job_auto_publish_approval handles its own website loop
-        if website_id:
-            await job_auto_publish_approval(website_id)
-        else:
-            await job_auto_publish_approval()
-        result["auto_published"] = 1  # flag that cycle ran
+        pub = await job_auto_publish_approval(website_id)
+        if isinstance(pub, dict):
+            result["auto_published"] = int(pub.get("published") or 0)
     except Exception as e:
-        # job may not exist yet, fallback inline
-        try:
-            await _auto_publish_inline(website_id)
-        except Exception as e2:
-            result["errors"].append(f"auto_publish: {e2}")
-            logger.debug(f"[AutonomousCycle] auto_publish note: {e2}")
+        # The old code silently swallowed this and the message was never logged,
+        # so a total auto-publish failure was invisible.
+        result["errors"].append(f"auto_publish: {e}")
+        logger.error(f"[AutonomousCycle] auto_publish failed: {e}")
     return result
 
 

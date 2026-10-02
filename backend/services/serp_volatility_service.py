@@ -24,6 +24,58 @@ class SerpVolatilityService:
     def __init__(self, website_id: Optional[str] = None):
         self.website_id = website_id or "default"
 
+    def _prior_positions(self, keyword: str) -> Dict[str, int]:
+        """url -> position from the most recent snapshot set for this keyword."""
+        try:
+            supabase = get_supabase()
+            rows = (
+                supabase.table("serp_snapshots")
+                .select("url, position, date_captured")
+                .eq("website_id", self.website_id)
+                .eq("keyword", keyword)
+                .order("date_captured", desc=True)
+                .limit(20)
+                .execute()
+                .data or []
+            )
+            out: Dict[str, int] = {}
+            for r in rows:
+                url = r.get("url")
+                if url and url not in out:
+                    try:
+                        out[url] = int(r.get("position") or 0)
+                    except (TypeError, ValueError):
+                        continue
+            return out
+        except Exception as e:
+            logger.warning(f"[SerpVolatility] prior snapshot lookup failed for '{keyword}': {e}")
+            return {}
+
+    @staticmethod
+    def _position_shift(previous: Dict[str, int], organic: List[Dict[str, Any]]) -> Optional[float]:
+        """Mean absolute position change as a percentage.
+
+        Returns None when there is nothing to compare against (first run, or no
+        prior snapshot), so the caller can skip rather than invent a number.
+        """
+        if not previous or not organic:
+            return None
+        deltas = []
+        for item in organic:
+            url = item.get("link") or item.get("url")
+            if not url or url not in previous:
+                continue
+            try:
+                new_pos = int(item.get("position") or 0)
+            except (TypeError, ValueError):
+                continue
+            old_pos = previous[url]
+            if new_pos > 0 and old_pos > 0:
+                deltas.append(abs(new_pos - old_pos))
+        if not deltas:
+            return None
+        return round((sum(deltas) / len(deltas)) / 10.0 * 100.0, 1)
+
     async def check_serp_volatility(self) -> Dict[str, Any]:
         start_t = time.time()
         logger.info("[SerpVolatility] Running 6-hour SERP volatility check across tracked keywords...")
@@ -50,7 +102,17 @@ class SerpVolatilityService:
             try:
                 res = await serper_service.search(query=kw, num=10, auto_fallback=True)
                 organic = res.get("organic", [])
-                
+
+                # A degraded Serper response must never contribute a score.
+                if res.get("source") == "unavailable" or not organic:
+                    logger.warning(
+                        f"[SerpVolatility] No live SERP data for '{kw}' "
+                        f"({res.get('error', 'empty organic')}); excluding from index."
+                    )
+                    continue
+
+                previous = self._prior_positions(kw)
+
                 for item in organic:
                     snap = {
                         "website_id": self.website_id,
@@ -66,13 +128,33 @@ class SerpVolatilityService:
                     except Exception:
                         pass
 
-                # Real 6h shift calculation (e.g. 15% to 42% volatility) based on live SERP snapshots
-                vol_score = 22.5 # 22.5% shift from live data
+                # Compute the real position shift against the previous snapshot.
+                # This used to be `vol_score = 22.5` with a comment claiming it was
+                # a live calculation, and it ran even when organic was empty — so a
+                # total Serper outage was reported as a measured "22.5% stable SERP".
+                vol_score = self._position_shift(previous, organic)
+                if vol_score is None:
+                    logger.info(
+                        f"[SerpVolatility] No prior snapshot for '{kw}'; "
+                        f"recording baseline instead of inventing a score."
+                    )
+                    continue
                 volatility_scores.append(vol_score)
             except Exception as e:
                 logger.warning(f"[SerpVolatility] Keyword '{kw}' check note: {e}")
 
-        avg_niche_volatility = round(sum(volatility_scores) / max(1, len(volatility_scores)), 1) if volatility_scores else 24.0
+        if not volatility_scores:
+            # Never fabricate an index. routers/serp.py surfaces this as a 503.
+            return {
+                "success": False,
+                "error": "No live SERP data available — cannot compute volatility "
+                         "(Serper unavailable or no prior snapshot to compare against).",
+                "snapshots_recorded": snapshots_recorded,
+                "niche_volatility_index": None,
+                "defensive_posture_active": False,
+            }
+
+        avg_niche_volatility = round(sum(volatility_scores) / len(volatility_scores), 1)
         defensive_posture_triggered = avg_niche_volatility > 35.0
 
         if defensive_posture_triggered:

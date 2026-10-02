@@ -34,8 +34,10 @@ export default function CrewPage() {
   const [autoPublish, setAutoPublish] = useState(false);
   const [todayCost, setTodayCost] = useState<number>(0);
   const [costTokens, setCostTokens] = useState<number>(0);
-  const [healthScore, setHealthScore] = useState<number>(96);
-  const [knowledgeCount, setKnowledgeCount] = useState<number>(0);
+  // null = never measured. Was hardcoded to 96, so an unreachable backend
+  // rendered a green "96/100" that looked like a real measurement.
+  const [healthScore, setHealthScore] = useState<number | null>(null);
+  const [knowledgeCount, setKnowledgeCount] = useState<number | null>(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
   const [recentBlogs, setRecentBlogs] = useState<RecentBlog[]>([]);
   const [activeTab, setActiveTab] = useState<"planner" | "writer" | "editor" | "raw">("planner");
@@ -95,11 +97,15 @@ export default function CrewPage() {
     try {
       const stats = await get(`/api/stats${wid ? `?website_id=${wid}` : ""}`);
       if (stats) {
-        setKnowledgeCount(stats.knowledge_count || 0);
+        setKnowledgeCount(stats.knowledge_count ?? 0);
         setPendingApprovalsCount(stats.pending_articles || 0);
-        if (stats.health_score) setHealthScore(stats.health_score);
+        // A legitimate 0 must render as 0, so compare against null/undefined
+        // rather than truthiness (which discarded a real 0).
+        if (stats.health_score != null) setHealthScore(stats.health_score);
       }
-    } catch {}
+    } catch {
+      setHealthScore(null);
+    }
 
     // 4. Recent Content Stream
     try {
@@ -182,6 +188,9 @@ export default function CrewPage() {
       setActiveTab("editor");
     }, 38000);
 
+    // Captured outside the try so the catch can correlate a recovery to THIS run.
+    let thisRunBlogId: string | null = null;
+
     try {
       showToast("Triggering CrewAI Planner → Writer → Editor pipeline with live SERP...");
       const res = await post("/api/crew/generate", {
@@ -189,6 +198,8 @@ export default function CrewPage() {
         primary_keyword: keyword.trim() || topic.trim(),
         website_id: wid,
       });
+
+      thisRunBlogId = res?.blog_id ?? res?.article?.blog_id ?? res?.id ?? null;
 
       clearTimeout(t1);
       clearTimeout(t2);
@@ -220,19 +231,24 @@ export default function CrewPage() {
       clearTimeout(t1);
       clearTimeout(t2);
 
-      // Auto-recovery: check if approval was generated in database
-      try {
+      // Auto-recovery: ONLY honour a draft that belongs to *this* run.
+      // Previously it fetched the whole approvals list and rendered list[0] —
+      // any article from a prior run — then marked all three agents DONE, so a
+      // failed generation showed a complete, unrelated article as this one's work.
+      const attemptedBlogId = thisRunBlogId;      try {
         const apps = await get(`/api/approvals?website_id=${wid}`);
         const list = Array.isArray(apps) ? apps : [];
-        if (list.length > 0) {
-          const latest = list[0];
-          setGenerationResult(latest);
-          setCurrentBlogId(latest.id);
+        const match = attemptedBlogId
+          ? list.find((a: any) => a?.blog_id === attemptedBlogId || a?.id === attemptedBlogId)
+          : undefined;
+        if (match) {
+          setGenerationResult(match);
+          setCurrentBlogId(match.blog_id || match.id);
           setPlannerStatus("DONE");
           setWriterStatus("DONE");
           setEditorStatus("DONE");
           setActiveTab("editor");
-          showToast("✓ Article generation recovered from approvals store!");
+          showToast("✓ This run's draft was found in the approvals store.");
           loadData();
           return;
         }
@@ -253,14 +269,16 @@ export default function CrewPage() {
     }
   };
 
-  const knowledgeCoveragePct = Math.min(100, Math.round((knowledgeCount / 50) * 100));
+  const knowledgeCoveragePct =
+    knowledgeCount == null ? null : Math.min(100, Math.round((knowledgeCount / 50) * 100));
   const plannerOutline = generationResult?.planner_outline || generationResult?.planner_outline_json;
   const writerHtml = generationResult?.writer_html || generationResult?.html;
   const finalHtml = generationResult?.final_html || generationResult?.html || writerHtml;
   const citations = generationResult?.citations || generationResult?.knowledge_used || [];
-  const seoScore = generationResult?.seo_score || 88;
-  const validationScore = generationResult?.validation_score || 0.85;
-  const groundingScore = generationResult?.grounding_score || 0.82;
+  // No invented floor — a missing score must render as unknown, not 88.
+  const seoScore = generationResult?.seo_score ?? null;
+  const validationScore = generationResult?.validation_score ?? null;
+  const groundingScore = generationResult?.grounding_score ?? null;
 
   return (
     <div className="page-container active" style={{ padding: "24px", position: "relative" }}>
@@ -307,7 +325,14 @@ export default function CrewPage() {
           {/* System Health */}
           <div style={{ padding: "6px 14px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "4px", fontSize: "12px" }}>
             <span style={{ color: "var(--muted)", textTransform: "uppercase", fontSize: "10px", display: "block" }}>System Health</span>
-            <strong style={{ color: "var(--green)" }}>{healthScore}/100</strong>
+            <strong style={{ color: healthScore == null ? "var(--muted)" : "var(--green)" }}>
+              {healthScore == null ? "—" : `${healthScore}/100`}
+            </strong>
+            {healthScore == null && (
+              <span style={{ color: "var(--muted)", display: "block", fontSize: "10px" }}>
+                backend unreachable
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -347,6 +372,16 @@ export default function CrewPage() {
               Upload Business Info
             </Link>
           </div>
+        </div>
+      )}
+
+      {/* Knowledge count could not be read at all — say so instead of implying 0 */}
+      {knowledgeCount == null && (
+        <div className="notice" style={{ borderColor: "var(--amber)", background: "rgba(245, 158, 11, 0.08)", marginBottom: "16px" }}>
+          <span className="notice-sq" style={{ background: "var(--amber)" }}></span>
+          <span>
+            <strong>Knowledge coverage unknown:</strong> could not reach the backend to read your knowledge base. This is not a measurement of zero.
+          </span>
         </div>
       )}
 
@@ -480,20 +515,20 @@ export default function CrewPage() {
                 <div style={{ display: "flex", gap: "16px", marginBottom: "16px", flexWrap: "wrap" }}>
                   <div style={{ padding: "12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "4px", flex: 1 }}>
                     <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>SEO Score</div>
-                    <div style={{ fontSize: "24px", fontWeight: 700, color: seoScore >= 85 ? "var(--green)" : "var(--amber)" }}>
-                      {seoScore}/100
+                    <div style={{ fontSize: "24px", fontWeight: 700, color: seoScore == null ? "var(--muted)" : seoScore >= 85 ? "var(--green)" : "var(--amber)" }}>
+                      {seoScore == null ? "—" : `${seoScore}/100`}
                     </div>
                   </div>
                   <div style={{ padding: "12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "4px", flex: 1 }}>
                     <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Validation Score</div>
-                    <div style={{ fontSize: "24px", fontWeight: 700, color: validationScore >= 0.8 ? "var(--green)" : "var(--amber)" }}>
-                      {(validationScore * 100).toFixed(0)}%
+                    <div style={{ fontSize: "24px", fontWeight: 700, color: validationScore == null ? "var(--muted)" : validationScore >= 0.8 ? "var(--green)" : "var(--amber)" }}>
+                      {validationScore == null ? "—" : `${(validationScore * 100).toFixed(0)}%`}
                     </div>
                   </div>
                   <div style={{ padding: "12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "4px", flex: 1 }}>
                     <div style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase" }}>Grounding Score</div>
-                    <div style={{ fontSize: "24px", fontWeight: 700, color: groundingScore >= 0.75 ? "var(--green)" : "var(--amber)" }}>
-                      {(groundingScore * 100).toFixed(0)}%
+                    <div style={{ fontSize: "24px", fontWeight: 700, color: groundingScore == null ? "var(--muted)" : groundingScore >= 0.75 ? "var(--green)" : "var(--amber)" }}>
+                      {groundingScore == null ? "—" : `${(groundingScore * 100).toFixed(0)}%`}
                     </div>
                   </div>
                 </div>
@@ -679,10 +714,14 @@ export default function CrewPage() {
           <div className="panel-body">
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <span style={{ fontSize: "12px" }}>Business Knowledge Base</span>
-              <strong style={{ color: "var(--accent)" }}>{knowledgeCoveragePct}% ({knowledgeCount} rows / 50 target)</strong>
+              <strong style={{ color: "var(--accent)" }}>
+                {knowledgeCoveragePct == null
+                  ? "— (unavailable)"
+                  : `${knowledgeCoveragePct}% (${knowledgeCount} rows / 50 target)`}
+              </strong>
             </div>
             <div style={{ width: "100%", height: "8px", background: "var(--bg)", borderRadius: "4px", overflow: "hidden", marginBottom: "16px" }}>
-              <div style={{ width: `${knowledgeCoveragePct}%`, height: "100%", background: "var(--accent)", transition: "width 0.3s" }}></div>
+              <div style={{ width: `${knowledgeCoveragePct ?? 0}%`, height: "100%", background: "var(--accent)", transition: "width 0.3s" }}></div>
             </div>
             <p style={{ fontSize: "11px", color: "var(--muted)", lineHeight: "1.4" }}>
               The CrewAI agent uses vector grounding across business info, services, locations, FAQs, and Texas legal statutes.

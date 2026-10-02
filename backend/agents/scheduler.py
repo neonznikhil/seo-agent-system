@@ -2694,8 +2694,12 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
        user identity (never "human-approved", never null).
     3. wordpress_connections has an active (is_active) row for this site.
     If any check fails: log SKIP with reason, do not publish.
+
+    Returns {"published": N, "skipped": N, "claimed_by_other": N} so callers
+    report a real count instead of assuming the cycle ran.
     """
     job_name = "auto_publish_approval"
+    totals = {"published": 0, "skipped": 0, "claimed_by_other": 0}
     for target_id in await _get_target_website_ids(website_id):
         engine = AutonomousDecisionEngine(website_id=target_id)
         decision = await engine.should_run(job_name)
@@ -2752,6 +2756,26 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                     html = appr.get("html_content") or ""
                     meta = appr.get("meta_description") or ""
                     slug = appr.get("slug") or ""
+
+                    # Atomic claim BEFORE publishing. This job is reachable from two
+                    # independent 5-minute triggers (its own IntervalTrigger and
+                    # _job_autonomous_cycle -> process_autonomous_cycle), so two runs
+                    # could read status='approved' before either wrote 'published' and
+                    # both publish to WordPress. max_instances=1 only guards a single
+                    # job id, not two different ids.
+                    try:
+                        claimed = supabase.table("blog_approvals").update(
+                            {"status": "publishing", "publishing_started_at": datetime.now(timezone.utc).isoformat()}
+                        ).eq("id", appr["id"]).eq("status", "approved").execute()
+                    except Exception as e:
+                        logger.warning(f"[SCHEDULER] auto-publish claim failed for approval {appr['id']}: {e}")
+                        continue
+                    if not getattr(claimed, "data", None):
+                        # Another runner already claimed it — skip to avoid a double post.
+                        logger.info(f"[SCHEDULER] approval {appr['id']} already claimed by another runner; skipping")
+                        totals["claimed_by_other"] += 1
+                        continue
+
                     # Real publish
                     try:
                         svc = WordPressService(website_id=target_id)
@@ -2764,6 +2788,7 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                 logger.debug(f"[SCHEDULER] blogs status update note for approval {appr.get('id')} on {target_id}")
                             supabase.table("critical_action_logs").insert({"website_id": target_id, "action": "publish", "status": "published", "payload": {"approval_id": appr["id"], "user_id": appr.get("approved_by"), "wordpress_url": pub.get("wordpress_url")}, "created_at": datetime.now(timezone.utc).isoformat()}).execute()
                             published += 1
+                            totals["published"] += 1
                             await engine.track_cost("AutoPublish", 800)
                             _add_log(job_name, "completed", f"Auto-published '{title[:40]}' on {target_id} -> {pub.get('wordpress_url')}")
                         else:
@@ -2776,6 +2801,12 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                 except Exception:
                                     logger.debug(f"[SCHEDULER] WP 401 settings update note for {target_id}")
                                 _add_log(job_name, "error", f"WP 401 auth failed on {target_id} — deactivated WP & paused auto_publish")
+                                # Release the claim so the approval is not stranded in
+                                # 'publishing' while auto_publish is now paused.
+                                try:
+                                    supabase.table("blog_approvals").update({"status": "approved", "pending_reason": msg[:300]}).eq("id", appr["id"]).eq("status", "publishing").execute()
+                                except Exception:
+                                    logger.debug(f"[SCHEDULER] claim release note for approval {appr['id']}")
                                 # realtime_alert
                                 try:
                                     alert_dict = {
@@ -2801,7 +2832,7 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                 except Exception:
                                     logger.debug(f"[SCHEDULER] realtime_alerts insert fallback note for {target_id}")
                             else:
-                                supabase.table("blog_approvals").update({"pending_reason": msg[:300]}).eq("id", appr["id"]).execute()
+                                supabase.table("blog_approvals").update({"pending_reason": msg[:300], "status": "approved"}).eq("id", appr["id"]).eq("status", "publishing").execute()
                                 _add_log(job_name, "warning", f"Publish failed for '{title[:30]}': {msg[:100]}")
                     except Exception as e:
                         msg = str(e)
@@ -2811,8 +2842,18 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
                                 supabase.table("autonomous_settings").update({"auto_publish": False}).eq("website_id", target_id).execute()
                             except Exception:
                                 logger.debug(f"[SCHEDULER] WP 401 settings update note for {target_id}")
-                            _add_log(job_name, "error", f"WP 401 — paused auto_publish on {target_id}")
+                            # Return the claim so the row is not stranded in 'publishing'
+                            # forever now that auto_publish is paused.
+                            try:
+                                supabase.table("blog_approvals").update({"status": "approved", "pending_reason": msg[:300]}).eq("id", appr["id"]).eq("status", "publishing").execute()
+                            except Exception:
+                                logger.debug(f"[SCHEDULER] claim release note for approval {appr['id']}")
+                            _add_log(job_name, "error", f"WP 401 â€” paused auto_publish on {target_id}")
                         else:
+                            try:
+                                supabase.table("blog_approvals").update({"status": "approved"}).eq("id", appr["id"]).eq("status", "publishing").execute()
+                            except Exception:
+                                logger.debug(f"[SCHEDULER] claim release note for approval {appr['id']}")
                             _add_log(job_name, "error", f"Auto-publish exception {appr.get('id')}: {msg[:120]}")
                         # Supabase down queue handled via decision engine queue_job_for_retry
                         if "Supabase" in msg or "connection" in msg.lower():
@@ -2827,6 +2868,8 @@ async def job_auto_publish_approval(website_id: Optional[str] = None):
             # Supabase down queue
             if "Supabase" in str(e) or "connection" in str(e).lower():
                 engine.queue_job_for_retry(job_name, {}, str(e))
+
+    return totals
 
 
 # ---------------------------------------------------------
@@ -3375,7 +3418,13 @@ def get_scheduler_logs(limit: int = 20) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------
 
 def _has_run_today(job_name: str) -> bool:
-    """Check brain_daily_jobs for a successful run of this job today."""
+    """Check brain_daily_jobs for a successful run of this job today.
+
+    FAILS CLOSED. Returning False on a Supabase error made every one of the 8
+    daily jobs look like it had never run, so a backend restart during a DB blip
+    re-ran full article generation (duplicate posts + double NIM/Serper spend).
+    When we cannot prove the job ran, assume it did and skip it.
+    """
     try:
         from database import get_supabase
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -3388,9 +3437,12 @@ def _has_run_today(job_name: str) -> bool:
             .execute()
         )
         return bool(res.data)
-    except Exception:
-        logger.debug(f"[SCHEDULER] _has_run_today note for {job_name}")
-        return False
+    except Exception as e:
+        logger.error(
+            f"[SCHEDULER] cannot verify run history for {job_name}: {e}. "
+            f"Treating as already-run to avoid duplicate daily jobs."
+        )
+        return True
 
 
 def _record_job_run(job_name: str, website_id: Optional[str], status: str = "completed") -> None:
