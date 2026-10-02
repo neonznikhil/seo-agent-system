@@ -7,10 +7,6 @@ from typing import Dict, List, Any, Optional
 
 from database import get_supabase, call_nim_llm, get_embedding
 from services.serper_service import serper_service
-try:
-    from services.slack_intelligence_service import slack_intelligence_service
-except ImportError:
-    from .slack_intelligence_service import slack_intelligence_service
 
 
 logger = logging.getLogger("backend.services.knowledge_evolution_service")
@@ -77,12 +73,9 @@ class KnowledgeEvolutionService:
         statute_alerts = 0
         if scholar_res.get("organic"):
             statute_alerts += 1
-            # Push critical notification
-            await slack_intelligence_service.send_crisis_alert(
-                website_id=self.website_id,
-                crisis_type="Statute & Legal Compliance Update",
-                description="New academic analysis and statutory citations detected for Tex. Civ. Prac. & Rem. Code § 16.003.",
-                action_taken="Auto-staged pending knowledge update in /knowledge for human review."
+            logger.info(
+                "[KnowledgeEvolution] Statute & legal compliance update detected for "
+                "Tex. Civ. Prac. & Rem. Code § 16.003 — staged for human review in /knowledge."
             )
 
         # Knowledge Health Score: (chunks with freshness > 0.6) / total * 100

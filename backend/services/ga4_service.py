@@ -5,6 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timedelta
 
+from database import to_thread
 from services.google_credentials import (
     GoogleCredentialsError,
     has_service_account_credentials,
@@ -50,6 +51,18 @@ def first_row_metrics(response: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not rows:
         return []
     return list(rows[0].get("metricValues") or [])
+
+
+def _run_report_request(service, property_path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Blocking GA4 Data API ``properties().runReport().execute()`` call.
+
+    googleapiclient is fully SYNCHRONOUS (an HTTP POST through urllib3), and
+    ``_ensure_initialized`` additionally performs a blocking credential refresh
+    and a discovery-document fetch. Both must run on a worker thread via
+    ``await to_thread(...)``; inline in an ``async def`` a single slow report
+    stalls every concurrent API request.
+    """
+    return service.properties().runReport(property=property_path, body=body).execute()
 
 
 class GA4Service:
@@ -190,7 +203,8 @@ class GA4Service:
             }
         
         try:
-            self._ensure_initialized()
+            # Blocking credential refresh + discovery fetch — off the event loop.
+            await to_thread(self._ensure_initialized)
             clean_id = str(self.property_id).replace("properties/", "").strip()
             
             request_body = {
@@ -205,10 +219,9 @@ class GA4Service:
                 'limit': limit
             }
             
-            response = self._service.properties().runReport(
-                property=f"properties/{clean_id}",
-                body=request_body
-            ).execute()
+            response = await to_thread(
+                _run_report_request, self._service, f"properties/{clean_id}", request_body
+            )
             
             pages = []
             for row in response.get('rows', []):
@@ -280,7 +293,7 @@ class GA4Service:
             return {'error': 'GA4 not configured', 'source': 'ga4', 'connected': False, 'has_data': False}
         
         try:
-            self._ensure_initialized()
+            await to_thread(self._ensure_initialized)
             clean_id = str(self.property_id).replace("properties/", "").strip()
             
             request_body = {
@@ -294,10 +307,9 @@ class GA4Service:
                 ]
             }
             
-            response = self._service.properties().runReport(
-                property=f"properties/{clean_id}",
-                body=request_body
-            ).execute()
+            response = await to_thread(
+                _run_report_request, self._service, f"properties/{clean_id}", request_body
+            )
             
             metrics = first_row_metrics(response)
             # has_data distinguishes "property returned no rows for this range"
@@ -377,7 +389,7 @@ async def get_recent_sessions(
             "has_data": False,
         }
     try:
-        target_service._ensure_initialized()
+        await to_thread(target_service._ensure_initialized)
         clean_id = str(target_service.property_id).replace("properties/", "").strip()
         end_date = datetime.utcnow().strftime("%Y-%m-%d")
         start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -385,10 +397,9 @@ async def get_recent_sessions(
             "dateRanges": [{"startDate": start_date, "endDate": end_date}],
             "metrics": [{"name": "sessions"}],
         }
-        response = target_service._service.properties().runReport(
-            property=f"properties/{clean_id}",
-            body=request_body
-        ).execute()
+        response = await to_thread(
+            _run_report_request, target_service._service, f"properties/{clean_id}", request_body
+        )
         metrics = first_row_metrics(response)
         sessions = int(metrics[0].get("value", 0)) if metrics else 0
         has_data = has_rows(response)

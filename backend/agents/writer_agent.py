@@ -682,17 +682,6 @@ class WriterPipeline:
             source_monitor='writer_pipeline'
         )
 
-        try:
-            from services.slack_intelligence_service import notify_content_generated
-            await notify_content_generated(
-                website_id=self.website_id,
-                title=self.generated_title,
-                word_count=word_count,
-                seo_score=round(seo_score, 1),
-            )
-        except Exception as e:
-            logger.warning(f"[agents_writer_agent] operation failed: {e}")
-
         return {
             'status': 'completed',
             'content_id': self.content_id,

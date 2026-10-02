@@ -50,7 +50,6 @@ export async function GET(req: Request) {
         gsc: { connected: false, is_configured: false, status_label: "Not connected" },
         ga4: { connected: false, is_configured: false, status_label: "Not connected" },
         wordpress: { connected: false, is_configured: false, role: null, site_url: null },
-        slack: { connected: false, is_configured: false },
       },
       { status: 502 }
     );

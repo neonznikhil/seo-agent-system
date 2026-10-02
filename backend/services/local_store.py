@@ -978,14 +978,14 @@ def list_local_keywords(website_id: Optional[str] = None, limit: int = 50) -> Li
 
 
 # ============================================================================
-# CONNECTOR SETTINGS (non-secret durable fallback: GSC/GA4/Slack/auto-publish)
+# CONNECTOR SETTINGS (non-secret durable fallback: GSC/GA4/auto-publish)
 # ============================================================================
 
 @_atomic("connector_settings.json")
 def set_local_connector_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Merge connector settings into a durable local JSON file.
 
-    Used so that saving GSC/GA4/Slack configuration survives even when Supabase
+    Used so that saving GSC/GA4 configuration survives even when Supabase
     writes are unavailable. Values that are None are ignored so a partial save
     never erases a previously stored setting.
     """
@@ -1002,37 +1002,5 @@ def get_local_connector_settings() -> Dict[str, Any]:
     if current and isinstance(current, list) and current:
         return current[0]
     return {}
-
-
-# ============================================================================
-# SLACK MESSAGE LOG (durable fallback when the slack_message_log table is absent)
-# ============================================================================
-
-@_atomic("slack_message_log.json")
-def save_local_slack_message_log(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Append a Slack dispatch record to a durable local JSON file.
-
-    Mirrors the `slack_message_log` table so observability survives when the
-    table has not been provisioned on the connected Supabase project. The insert
-    used to fail silently and the dispatch history was simply lost.
-    """
-    logs = _load_json("slack_message_log.json")
-    record = {
-        "id": entry.get("id") or str(uuid.uuid4()),
-        "created_at": datetime.utcnow().isoformat(),
-        **entry,
-    }
-    logs.append(record)
-    _save_json("slack_message_log.json", logs[-500:])
-    return record
-
-
-def list_local_slack_message_log(website_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
-    logs = _load_json("slack_message_log.json")
-    if website_id:
-        logs = [x for x in logs if x.get("website_id") == website_id]
-    return logs[-limit:][::-1]
-
-
 
 

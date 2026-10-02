@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timedelta
 
+from database import to_thread
 from services.google_credentials import (
     GoogleCredentialsError,
     has_service_account_credentials,
@@ -18,6 +19,42 @@ _GSC_PATH_KEYS = ["GSC_CREDENTIALS_PATH", "GSC_CREDENTIALS", "GOOGLE_APPLICATION
 
 
 _UNCONFIGURED_PROPERTY_ERROR = "No GSC property configured"
+
+
+# ---------------------------------------------------------------------------
+# Blocking googleapiclient calls.
+#
+# googleapiclient / google-auth are fully SYNCHRONOUS: `build()` fetches the
+# discovery document over HTTP and `.execute()` performs a blocking request
+# through urllib3. Calling either from an `async def` stalls the whole FastAPI
+# event loop, so every other API request (topbar health, website list,
+# connector status) serializes behind one GSC query — the documented
+# "everything breaks once I connect a site" symptom.
+#
+# Each call is therefore factored into a module-level plain `def` so it can be
+# dispatched with `await to_thread(...)` from the async methods below, leaving
+# the request bodies, response handling and error paths byte-for-byte identical.
+# ---------------------------------------------------------------------------
+
+
+def _build_search_analytics_request(service, site_url: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Blocking Search Analytics query (POST /webmasters/v3/sites/.../searchAnalytics/query)."""
+    return service.searchanalytics().query(siteUrl=site_url, body=body).execute()
+
+
+def _list_sitemaps_request(service, site_url: str) -> Dict[str, Any]:
+    """Blocking sitemaps.list() call."""
+    return service.sitemaps().list(siteUrl=site_url).execute()
+
+
+def _list_url_crawl_errors_request(service, site_url: str) -> Dict[str, Any]:
+    """Blocking urlcrawlerrors.mobile().list() call."""
+    return service.urlcrawlerrors().mobile().list(siteUrl=site_url).execute()
+
+
+def _list_sites_request(service) -> Dict[str, Any]:
+    """Blocking sites.list() call (used to enumerate verified properties)."""
+    return service.sites().list().execute()
 
 
 class GSCService:
@@ -174,7 +211,8 @@ class GSCService:
             )
 
         try:
-            service = self._get_service()
+            # `build()` + `.execute()` are blocking HTTP — never inline in async def.
+            service = await to_thread(self._get_service)
             
             request_body = {
                 'startDate': start_date,
@@ -183,10 +221,9 @@ class GSCService:
                 'rowLimit': row_limit
             }
             
-            result = service.searchanalytics().query(
-                siteUrl=self.website_url,
-                body=request_body
-            ).execute()
+            result = await to_thread(
+                _build_search_analytics_request, service, self.website_url, request_body
+            )
             
             keywords = []
             for row in result.get('rows', []):
@@ -238,7 +275,7 @@ class GSCService:
         if not self.has_property():
             return self._unconfigured(pages=[], total_pages=0, top_click_page=None)
         try:
-            service = self._get_service()
+            service = await to_thread(self._get_service)
             
             request_body = {
                 'startDate': (datetime.utcnow() - timedelta(days=28)).strftime('%Y-%m-%d'),
@@ -253,10 +290,9 @@ class GSCService:
                 }]
             }
             
-            result = service.searchanalytics().query(
-                siteUrl=self.website_url,
-                body=request_body
-            ).execute()
+            result = await to_thread(
+                _build_search_analytics_request, service, self.website_url, request_body
+            )
             
             pages = []
             for row in result.get('rows', []):
@@ -289,9 +325,9 @@ class GSCService:
         if not self.has_property():
             return self._unconfigured(sitemaps=[], total_sitemaps=0, sitemaps_with_errors=0)
         try:
-            service = self._get_service()
+            service = await to_thread(self._get_service)
             
-            result = service.sitemaps().list(siteUrl=self.website_url).execute()
+            result = await to_thread(_list_sitemaps_request, service, self.website_url)
             
             sitemaps = []
             for sitemap in result.get('sitemap', []):
@@ -326,11 +362,11 @@ class GSCService:
         if not self.has_property():
             return self._unconfigured(errors=[], total_errors=0)
         try:
-            service = self._get_service()
+            service = await to_thread(self._get_service)
             
-            url_crawl_errors = service.urlcrawlerrors().mobile().list(
-                siteUrl=self.website_url
-            ).execute()
+            url_crawl_errors = await to_thread(
+                _list_url_crawl_errors_request, service, self.website_url
+            )
             
             errors = []
             for error in url_crawl_errors.get('pageCrawlErrors', {}).get('mobileErrors', {}).get('errors', []):
@@ -384,8 +420,8 @@ async def list_verified_sites(
     svc = GSCService(website_url=website_url, credentials_json=credentials_json)
     if not svc.is_connected():
         raise ValueError("GSC not configured — paste the service-account JSON in Connectors")
-    service = svc._get_service()
-    sites = service.sites().list().execute()
+    service = await to_thread(svc._get_service)
+    sites = await to_thread(_list_sites_request, service)
     verified = [
         s.get("siteUrl")
         for s in (sites.get("siteEntry") or [])

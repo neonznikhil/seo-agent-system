@@ -333,7 +333,6 @@ class SaveAllRequest(BaseModel):
     gsc_credentials_json: Optional[str] = None
     ga4_property_id: Optional[str] = None
     ga4_credentials_json: Optional[str] = None
-    slack_webhook_url: Optional[str] = None
     openai_api_key: Optional[str] = None
     perplexity_api_key: Optional[str] = None
     auto_publish: Optional[bool] = True
@@ -1264,8 +1263,6 @@ async def save_generic_connector(connector_name: str, payload: GenericConnectorS
         if payload.secret:
             env_updates["GA4_CREDENTIALS_JSON"] = payload.secret
             env_updates["GA4_CREDENTIALS"] = payload.secret
-    elif c_name == "slack":
-        env_updates["SLACK_WEBHOOK_URL"] = payload.url or payload.key or ""
     elif c_name == "openai":
         env_updates["OPENAI_API_KEY"] = payload.api_key or payload.key or ""
     elif c_name == "perplexity":
@@ -1325,8 +1322,6 @@ async def save_all_connectors(payload: SaveAllRequest):
         clean_ga4_json = payload.ga4_credentials_json.strip()
         env_updates["GA4_CREDENTIALS_JSON"] = clean_ga4_json
         env_updates["GA4_CREDENTIALS"] = clean_ga4_json
-    if payload.slack_webhook_url:
-        env_updates["SLACK_WEBHOOK_URL"] = payload.slack_webhook_url.strip()
     if payload.openai_api_key:
         env_updates["OPENAI_API_KEY"] = payload.openai_api_key.strip()
     if payload.perplexity_api_key:
@@ -1361,7 +1356,7 @@ async def save_all_connectors(payload: SaveAllRequest):
             logger.warning(f"[Connectors] Supabase creds saved but not adopted: {probe_msg}")
 
     # Every OTHER saved credential must also reach the live process. Previously
-    # only Supabase was adopted, so a Serper/Google/Slack key saved through
+    # only Supabase was adopted, so a Serper/Google key saved through
     # Save-All sat in .env while `/api/connectors/status` kept reading the old
     # (empty) value until someone restarted the backend.
     #
@@ -1399,7 +1394,6 @@ async def save_all_connectors(payload: SaveAllRequest):
         local_store.set_local_connector_settings({
             "gsc_property_url": payload.gsc_property_url,
             "ga4_property_id": str(payload.ga4_property_id).replace("properties/", "").strip() if payload.ga4_property_id else payload.ga4_property_id,
-            "slack_webhook_url": payload.slack_webhook_url,
             "auto_publish": payload.auto_publish,
             "updated_at": datetime.utcnow().isoformat(),
         })
@@ -1724,13 +1718,6 @@ async def get_connectors_status(website_id: Optional[str] = None):
     if wp_error and not connected:
         wp_status["error"] = wp_error
 
-    # 8. Slack
-    slack_webhook = os.environ.get("SLACK_WEBHOOK_URL", "")
-    slack_status = {
-        "connected": bool(slack_webhook),
-        "is_configured": bool(slack_webhook),
-    }
-
     core_connectors = {
         "nvidia": nvidia_status["connected"],
         "supabase": supabase_status["connected"],
@@ -1752,7 +1739,6 @@ async def get_connectors_status(website_id: Optional[str] = None):
         "gsc": gsc_status,
         "ga4": ga4_status,
         "wordpress": wp_status,
-        "slack": slack_status,
         "website_id": target_id,
         "timestamp": datetime.utcnow().isoformat(),
     }

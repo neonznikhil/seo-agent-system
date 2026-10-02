@@ -4883,34 +4883,6 @@ Output ONLY the corrected full HTML article. Do NOT output any conversational no
     }
 
 
-async def send_slack_approval_notification(title: str, seo_score: int, website_id: str, approval_id: str):
-    """Send real Slack notification when article is ready for human approval."""
-    slack_url = os.getenv("SLACK_WEBHOOK_URL")
-    if not slack_url:
-        # Check connectors or supabase settings
-        try:
-            sb = get_supabase()
-            c_row = sb.table("connectors").select("credentials").eq("connector_type", "slack").maybe_single().execute().data
-            if c_row and c_row.get("credentials", {}).get("webhook_url"):
-                slack_url = c_row["credentials"]["webhook_url"]
-        except Exception:
-            logger.debug("[BLOG_WRITER] Slack webhook URL lookup note")
-
-    if not slack_url:
-        return
-
-    dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    payload = {
-        "text": f"🚀 *New Article Ready for Approval: {title}*\n*SEO Score:* `{seo_score}/100`\nReview & Publish at: {dashboard_url}/approvals"
-    }
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(slack_url, json=payload)
-            logger.info(f"[Slack] Sent approval notification for {approval_id}")
-    except Exception as e:
-        logger.debug(f"[Slack] Webhook notification note: {e}")
-
-
 # ---------------------------------------------------------------------------
 # FIX Problem 2 — Keyword validation & off-topic detection helpers
 # ---------------------------------------------------------------------------
@@ -5903,17 +5875,6 @@ async def _generate_blog_autonomous_body(
     except Exception as e:
         logger.debug(f"[Crew] blog_approvals insert note: {e}")
     save_local_approval(dict(app_payload, blog_id=blog_id, html_content=final_html, validation_score=val_score, grounding_score=ground_score, wp_post_id=wp_post_id, wordpress_url=wordpress_url, wp_draft_url=wp_draft_url or wordpress_url, pending_reason=pending_reason))
-
-    # Send real Slack notification
-    try:
-        await send_slack_approval_notification(
-            title=blog_row["title"],
-            seo_score=seo_score,
-            website_id=website_id,
-            approval_id=approval_id
-        )
-    except Exception as slack_err:
-        logger.debug(f"[Crew] Slack notification error: {slack_err}")
 
     # content_pipeline_logs 12 phases (crew maps to 12)
     phases = [

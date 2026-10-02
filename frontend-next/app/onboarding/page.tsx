@@ -38,7 +38,6 @@ export default function OnboardingPage() {
     { id: "keywords", label: "Discovering keywords...", status: "pending" },
     { id: "backlinks", label: "Finding backlink opportunities...", status: "pending" },
     { id: "audit", label: "Running first SEO audit...", status: "pending" },
-    { id: "slack", label: "Setting up Slack reports...", status: "pending" },
   ]);
   const [engineComplete, setEngineComplete] = useState(false);
 

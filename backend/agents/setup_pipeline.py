@@ -5,7 +5,6 @@ from typing import Dict, Any, Optional
 
 from database import get_supabase, is_nim_available
 from services.knowledge_service import KnowledgeService
-from services.slack_intelligence_service import slack_intelligence_service
 try:
     from agents.knowledge_agent import run_knowledge_agent
     from agents.research_agent import ResearchAgent
@@ -63,7 +62,6 @@ async def run_first_time_setup_pipeline(website_id: str, homepage_url: str) -> D
     3. First article generation (WriterPipeline) -> content_log + blog_approvals (status: pending)
     4. Technical SEO audit (TechSEOAgent) -> technical_audits
     5. Backlink prospecting (BacklinkAgent / OpportunityScout) -> backlink_opportunities
-    6. Slack announcement to #rankforge-daily
     """
     logger.info(f"[SetupPipeline] Starting first-time onboarding for website {website_id} ({homepage_url})...")
     results = {
@@ -168,7 +166,6 @@ async def run_first_time_setup_pipeline(website_id: str, homepage_url: str) -> D
         logger.warning(f"[SetupPipeline] Backlink prospecting error: {e}")
         results["steps"]["backlinks"] = {"status": "failed", "error": str(e)[:200]}
 
-    # Step 6: Slack Announcement — only ever claims what actually completed.
     steps = results["steps"]
     writer_status = (steps.get("writer") or {}).get("status")
     knowledge_status = (steps.get("knowledge") or {}).get("status")
@@ -177,40 +174,6 @@ async def run_first_time_setup_pipeline(website_id: str, homepage_url: str) -> D
         and (steps.get("research") or {}).get("status") == "completed"
         and writer_status == "completed"
     )
-    try:
-        domain = homepage_url.replace("https://", "").replace("http://", "").split("/")[0]
-        if fully_complete:
-            headline = f"🚀 *RankForge setup complete for {domain}!*"
-            lines = [
-                "• 📚 Knowledge Base ingested & indexed",
-                f"• 📝 First article '{article_title or top_keyword}' is ready for review on the /approvals page",
-            ]
-        else:
-            # The old message announced completion unconditionally, including when
-            # article_title was "" and health_score was None.
-            incomplete = [
-                name for name, step in steps.items()
-                if (step or {}).get("status") not in ("completed", "skipped")
-            ]
-            headline = f"⚠️ *RankForge setup INCOMPLETE for {domain}*"
-            lines = [
-                f"• Failed/unfinished steps: {', '.join(incomplete) or 'unknown'}",
-                "• No article was confirmed as written — retry from /websites",
-            ]
-        welcome_summary = "\n".join(
-            [headline] + lines + [
-                f"• 🩺 Baseline SEO Health Score: *{health_score if health_score is not None else 'not measured'}*",
-                f"• 🔗 Discovered *{opps_count}* high-intent backlink opportunities",
-            ]
-        )
-        await slack_intelligence_service.send_crisis_alert(
-            website_id=website_id,
-            title="Setup Complete" if fully_complete else "Setup Incomplete",
-            details=welcome_summary,
-            severity="info" if fully_complete else "warning",
-        )
-    except Exception as e:
-        logger.debug(f"[SetupPipeline] Slack welcome message skipped: {e}")
 
     results["completed_at"] = datetime.utcnow().isoformat()
     results["complete"] = fully_complete

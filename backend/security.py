@@ -89,8 +89,6 @@ CREDENTIAL_FIELD_NAMES = {
     "serper_api_key",
     "serper_api_key_encrypted",
     "nvidia_api_key",
-    "slack_bot_token",
-    "slack_token_encrypted",
     "ahrefs_api_key",
     "resend_api_key",
     "openai_api_key",
@@ -170,7 +168,7 @@ def is_credential_field(key: str) -> bool:
 def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     """Recursively remove any field that carries a raw credential value.
 
-    Nested dicts named like credentials (e.g. slack_credentials) keep their
+    Nested dicts named like credentials (e.g. wp_credentials) keep their
     non-secret metadata but lose any *token/password/key/webhook* entries,
     which are replaced by an `is_configured` boolean.
     """
@@ -208,13 +206,6 @@ def sanitize_website_row(row: Dict[str, Any]) -> Dict[str, Any]:
         and (row.get("cms_user") or row.get("wordpress_user"))
     )
     safe["serper_configured"] = bool(row.get("serper_api_key") or row.get("serper_api_key_encrypted"))
-    slack_creds = row.get("slack_credentials") or {}
-    if isinstance(slack_creds, dict):
-        safe["slack_workspace_name"] = slack_creds.get("workspace_name")
-        safe["slack_connected"] = bool(slack_creds.get("token_encrypted"))
-    else:
-        safe["slack_connected"] = False
-        safe["slack_workspace_name"] = None
     return safe
 
 

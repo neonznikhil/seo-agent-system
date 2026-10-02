@@ -747,16 +747,6 @@ async def publish_content_endpoint(
     except Exception as e:
         logger.warning(f"Could not mark content as published: {e}")
 
-    try:
-        from services.slack_intelligence_service import notify_content_published
-        await notify_content_published(
-            website_id=website_id,
-            title=content.get("title", ""),
-            wordpress_url=None,
-        )
-    except Exception as e:
-        logger.warning(f"[routers_writer] operation failed: {e}")
-
     return {
         "status": "published",
         "published": True,

@@ -24,7 +24,6 @@ interface ConnectorStatus {
   gsc?: { connected?: boolean; is_configured?: boolean; status_label?: string };
   ga4?: { connected?: boolean; is_configured?: boolean; status_label?: string };
   wordpress?: { connected?: boolean; is_configured?: boolean; verified?: boolean; role?: string; site_url?: string; status_label?: string; error?: string };
-  slack?: { connected?: boolean; is_configured?: boolean };
 }
 
 export default function ConnectorsPage() {
@@ -74,7 +73,6 @@ export default function ConnectorsPage() {
   const [ga4Visitors, setGa4Visitors] = useState<number | null>(null);
 
   // Section D: Optional
-  const [slackWebhook, setSlackWebhook] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [perplexityKey, setPerplexityKey] = useState("");
 
@@ -128,7 +126,6 @@ export default function ConnectorsPage() {
     if (cached.gsc_credentials_json) setGscJson(cached.gsc_credentials_json);
     if (cached.ga4_property_id) setGa4PropertyId(cached.ga4_property_id);
     if (cached.ga4_credentials_json) setGa4Json(cached.ga4_credentials_json);
-    if (cached.slack_webhook_url) setSlackWebhook(cached.slack_webhook_url);
     if (cached.openai_api_key) setOpenaiKey(cached.openai_api_key);
     if (cached.perplexity_api_key) setPerplexityKey(cached.perplexity_api_key);
 
@@ -546,7 +543,6 @@ export default function ConnectorsPage() {
       gsc_credentials_json: gscJson,
       ga4_property_id: cleanGa4Id,
       ga4_credentials_json: ga4Json,
-      slack_webhook_url: slackWebhook,
       openai_api_key: openaiKey,
       perplexity_api_key: perplexityKey,
     });
@@ -565,7 +561,6 @@ export default function ConnectorsPage() {
         gsc_credentials_json: gscJson || undefined,
         ga4_property_id: cleanGa4Id || undefined,
         ga4_credentials_json: ga4Json || undefined,
-        slack_webhook_url: slackWebhook || undefined,
         openai_api_key: openaiKey || undefined,
         perplexity_api_key: perplexityKey || undefined,
         auto_publish: autoPublish,
@@ -1072,27 +1067,14 @@ export default function ConnectorsPage() {
           </div>
 
           {/* ======================================================== */}
-          {/* SECTION D: OPTIONAL (SLACK, OPENAI, PERPLEXITY) */}
+          {/* SECTION D: OPTIONAL (OPENAI, PERPLEXITY) */}
           {/* ======================================================== */}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", color: "var(--muted)", marginBottom: "12px" }}>
               Section D: Optional Alerting & Secondary LLMs
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "10px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                  Slack Webhook URL
-                </label>
-                <input
-                  type="password"
-                  className="field"
-                  value={slackWebhook}
-                  onChange={(e) => setSlackWebhook(e.target.value)}
-                  placeholder="https://hooks.slack.com/..."
-                  style={{ width: "100%", padding: "8px", background: "var(--surface)", border: "1px solid var(--line)", color: "var(--ink)" }}
-                />
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "10px", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
                   OpenAI API Key

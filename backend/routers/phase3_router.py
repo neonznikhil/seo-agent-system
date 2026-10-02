@@ -16,7 +16,6 @@ from services.knowledge_evolution_service import KnowledgeEvolutionService
 from services.conversion_intelligence_service import ConversionIntelligenceService
 from services.crisis_response_service import CrisisResponseService
 from services.self_training_service import SelfTrainingService
-from services.slack_intelligence_service import slack_intelligence_service
 
 logger = logging.getLogger("backend.routers.phase3_router")
 
@@ -120,10 +119,3 @@ async def get_self_training_dashboard(website_id: str = "default"):
     svc = SelfTrainingService(website_id=website_id)
     res = await svc.run_self_training_cycle()
     return {"success": True, "data": res}
-
-
-# 11. Slack App Integration Test
-@router.post("/api/slack/test-report")
-async def trigger_slack_test_report(website_id: str = "default"):
-    success = await slack_intelligence_service.send_morning_brief(website_id)
-    return {"success": success, "message": "Mini Morning Brief report dispatched to Slack channel."}

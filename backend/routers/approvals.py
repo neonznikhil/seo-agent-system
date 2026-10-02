@@ -66,14 +66,6 @@ except (ImportError, ValueError):
     except (ImportError, ValueError):
         from backend.services.brain_service import BrainService
 
-try:
-    from services.slack_intelligence_service import notify_content_published
-except (ImportError, ValueError):
-    try:
-        from services.slack_intelligence_service import notify_content_published
-    except (ImportError, ValueError):
-        from backend.services.slack_intelligence_service import notify_content_published
-
 from middleware.auth import get_current_account_id
 
 logger = logging.getLogger("backend.routers.approvals")
@@ -743,11 +735,6 @@ async def approve_and_publish(approval_id: str, request: Request, user_id: Optio
             }).execute()
         except Exception as e:
             logger.debug(f"critical_action_logs approve note: {e}")
-
-        try:
-            await notify_content_published(website_id=website_id, title=title, wordpress_url=wordpress_url)
-        except Exception:
-            pass
 
         logger.info(f"[Approvals] Published {title} -> {wordpress_url} by {user_id}")
         return {

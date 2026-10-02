@@ -15,8 +15,6 @@ import httpx
 from config import (
     NVIDIA_API_KEY,
     SERPER_API_KEY,
-    SLACK_BOT_TOKEN,
-    SLACK_WEBHOOK_URL,
     FRONTEND_URL,
 )
 from database import (
@@ -41,7 +39,6 @@ _latest_health_cache: Dict[str, Any] = {
         "supabase": "unknown",
         "serper": "unknown",
         "wordpress": "unknown",
-        "slack": "unknown",
         "scheduler": "unknown",
     },
     "jobs_today": {
@@ -101,7 +98,6 @@ class AutonomousHealthService:
                 interval_secs = 300 if nim_status == "down" else 900
                 await asyncio.sleep(interval_secs)
                 await self.run_full_health_check()
-                await self._check_daily_0700_report()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -207,28 +203,6 @@ class AutonomousHealthService:
             if down_sites:
                 return {"status": "down", "down_websites": down_sites}
             return {"status": "ok", "detail": f"Verified {len(sites)} website(s)"}
-        except Exception as e:
-            return {"status": "down", "error": str(e)[:200]}
-
-    async def check_slack(self) -> Dict[str, Any]:
-        """Check 5 — Slack OAuth bot token verification."""
-        token = os.getenv("SLACK_BOT_TOKEN") or SLACK_BOT_TOKEN
-        if not token:
-            webhook = os.getenv("SLACK_WEBHOOK_URL") or SLACK_WEBHOOK_URL
-            if webhook:
-                return {"status": "ok", "detail": "Webhook configured"}
-            return {"status": "not_configured", "detail": "Slack not connected"}
-
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                res = await client.post(
-                    "https://slack.com/api/auth.test",
-                    headers={"Authorization": f"Bearer {token}"},
-                )
-                data = res.json()
-                if data.get("ok"):
-                    return {"status": "ok", "team": data.get("team")}
-                return {"status": "down", "error": data.get("error")}
         except Exception as e:
             return {"status": "down", "error": str(e)[:200]}
 
@@ -358,15 +332,12 @@ class AutonomousHealthService:
         except Exception as e:
             logger.debug(f"[AutoFix] Keyword queue check error: {e}")
 
-        # Fix 4: If NVIDIA NIM is down, set flag and send alert
+        # Fix 4: If NVIDIA NIM is down, set flag and alert
         if nim_check.get("status") == "down":
             _nim_state["available"] = False
             msg = "NVIDIA NIM unavailable — agent content generation paused. Will retry in 5 minutes."
             fixes_applied.append(msg)
-            await self._send_slack_alert(
-                "🚨 NVIDIA NIM unavailable — content generation paused. Will resume when connection restored.",
-                channel="#rankforge-alerts",
-            )
+            logger.error("🚨 NVIDIA NIM unavailable — content generation paused. Will resume when connection restored.")
 
         # Fix 5: Auto-queue missed daily scheduler job
         if scheduler_check.get("status") in ("down", "degraded"):
@@ -377,42 +348,28 @@ class AutonomousHealthService:
         return fixes_applied
 
     async def _auto_fix_wp_401(self, site: Dict[str, Any]):
-        """Mark website with auth error and alert Slack."""
+        """Mark website with auth error and record the reconnect instructions."""
         try:
             get_supabase().table("websites").update({"status": "error"}).eq("id", site["id"]).execute()
             domain = site.get("domain", "connected website")
             settings_url = f"{FRONTEND_URL}/settings"
-            await self._send_slack_alert(
-                f"🚨 WordPress credentials expired for {domain} — please reconnect at {settings_url}.",
-                channel="#rankforge-alerts",
-            )
+            logger.error(f"🚨 WordPress credentials expired for {domain} — please reconnect at {settings_url}.")
         except Exception as e:
             logger.debug(f"WP 401 alert note: {e}")
-
-    async def _send_slack_alert(self, text: str, channel: str = "#rankforge-alerts"):
-        """Deliver alert to Slack if configured."""
-        try:
-            webhook = os.getenv("SLACK_WEBHOOK_URL") or SLACK_WEBHOOK_URL
-            if webhook:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    await client.post(webhook, json={"text": text})
-        except Exception as e:
-            logger.debug(f"Slack delivery error: {e}")
 
     # -----------------------------------------------------------------------
     # COMPREHENSIVE RUN
     # -----------------------------------------------------------------------
     async def run_full_health_check(self, account_id: Optional[str] = None) -> Dict[str, Any]:
-        """Execute all 6 checks, compute health score (0-100), execute auto-fixes, and persist log."""
+        """Execute all checks, compute health score (0-100), execute auto-fixes, and persist log."""
         t0 = time.time()
 
         # Run checks in parallel
-        nim_res, sb_res, serper_res, wp_res, slack_res, sched_res = await asyncio.gather(
+        nim_res, sb_res, serper_res, wp_res, sched_res = await asyncio.gather(
             self.check_nvidia_nim(),
             self.check_supabase(),
             self.check_serper(),
             self.check_wordpress(),
-            self.check_slack(),
             self.check_scheduler(),
             return_exceptions=False,
         )
@@ -472,7 +429,6 @@ class AutonomousHealthService:
             "supabase": sb_res.get("status", "ok"),
             "serper": serper_res.get("status", "ok"),
             "wordpress": wp_res.get("status", "ok"),
-            "slack": slack_res.get("status", "ok"),
             "scheduler": sched_res.get("status", "ok"),
         }
 
@@ -518,30 +474,6 @@ class AutonomousHealthService:
             logger.debug(f"[Health] Persistence note: {e}")
 
         return result
-
-    # -----------------------------------------------------------------------
-    # DAILY 07:00 IST VERIFICATION REPORT
-    # -----------------------------------------------------------------------
-    async def _check_daily_0700_report(self):
-        """Send comprehensive morning check report at 07:00 IST."""
-        now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-        # Check if between 07:00 and 07:15 IST
-        if now_ist.hour == 7 and now_ist.minute < 16:
-            supabase = get_supabase()
-            try:
-                kw_count = len(supabase.table("keyword_opportunities").select("id").eq("status", "new").execute().data or [])
-                pending_appr = len(supabase.table("blog_approvals").select("id").eq("status", "pending").execute().data or [])
-
-                if _latest_health_cache.get("health_score", 100) >= 80:
-                    msg = f"📋 Daily System Check — All systems operational. 8 jobs scheduled. Keyword queue has {kw_count} items. {pending_appr} articles pending your approval."
-                else:
-                    issues_cnt = len(_latest_health_cache.get("issues", []))
-                    fixed_cnt = len(_latest_health_cache.get("auto_fixed", []))
-                    msg = f"⚠️ Daily System Check — {issues_cnt} issues found. Auto-fixed: {fixed_cnt}. Needs attention: {issues_cnt - fixed_cnt}. Details: {', '.join(_latest_health_cache.get('issues', []))}"
-
-                await self._send_slack_alert(msg, channel="#rankforge-daily")
-            except Exception as e:
-                logger.debug(f"Daily 07:00 report error: {e}")
 
 
 # Singleton instance

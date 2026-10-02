@@ -6,10 +6,6 @@ from typing import Dict, List, Any, Optional
 
 from database import get_supabase
 from services.serper_service import serper_service
-try:
-    from services.slack_intelligence_service import slack_intelligence_service
-except ImportError:
-    from .slack_intelligence_service import slack_intelligence_service
 
 
 logger = logging.getLogger("backend.services.serp_volatility_service")
@@ -166,7 +162,7 @@ class SerpVolatilityService:
             except Exception:
                 pass
 
-            # 2. Push critical alert & Slack alert
+            # 2. Push critical alert to the dashboard alert feed
             try:
                 supabase.table("realtime_alerts").insert({
                     "website_id": self.website_id,
@@ -177,13 +173,6 @@ class SerpVolatilityService:
                     "is_read": False,
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
-                
-                await slack_intelligence_service.send_crisis_alert(
-                    website_id=self.website_id,
-                    crisis_type="SERP Algorithm Volatility",
-                    description=f"High SERP reshuffle detected across top 20 keywords ({avg_niche_volatility}% shift in 6h).",
-                    action_taken="Activated 48h Defensive Posture Protocol: Paused new generation, initiated full E-E-A-T audit."
-                )
             except Exception:
                 pass
 

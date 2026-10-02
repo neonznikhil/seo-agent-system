@@ -3125,32 +3125,6 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
-    # Daily 08:00 IST - Slack Morning Brief
-    async def _job_slack_morning():
-        from services.slack_intelligence_service import slack_intelligence_service
-        await slack_intelligence_service.send_morning_brief()
-
-    scheduler.add_job(
-        _job_slack_morning,
-        CronTrigger(hour=8, minute=0, timezone=IST),
-        id="job_slack_morning_brief",
-        name="08:00 Slack Daily Morning Briefing",
-        replace_existing=True
-    )
-
-    # Daily 20:00 IST - Slack Evening Summary
-    async def _job_slack_evening():
-        from services.slack_intelligence_service import slack_intelligence_service
-        await slack_intelligence_service.send_evening_summary()
-
-    scheduler.add_job(
-        _job_slack_evening,
-        CronTrigger(hour=20, minute=0, timezone=IST),
-        id="job_slack_evening_summary",
-        name="20:00 Slack Daily Evening Summary",
-        replace_existing=True
-    )
-
     # Monday 07:00 IST - OpportunityScoutAgent (5 Parallel Serper Sweeps)
     async def _job_opportunity_scout():
         from agents.opportunity_scout_agent import OpportunityScoutAgent
@@ -3179,19 +3153,17 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
-    # Thursday 09:00 IST - AcquisitionMonitorAgent & Slack Report
+    # Thursday 09:00 IST - AcquisitionMonitorAgent
     async def _job_acquisition_monitor():
         from agents.acquisition_monitor_agent import AcquisitionMonitorAgent
-        from services.slack_intelligence_service import slack_intelligence_service
         agent = AcquisitionMonitorAgent()
         await agent.run()
-        await slack_intelligence_service.send_backlink_intelligence_report()
 
     scheduler.add_job(
         _job_acquisition_monitor,
         CronTrigger(day_of_week="thu", hour=9, minute=0, timezone=IST),
         id="job_acquisition_monitor",
-        name="Thu 09:00 AcquisitionMonitorAgent & Slack Backlink Report",
+        name="Thu 09:00 AcquisitionMonitorAgent",
         replace_existing=True
     )
 
@@ -3223,13 +3195,11 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
-    # Sunday 21:00 IST - AuthorityCalibrationAgent & Slack Weekly Report
+    # Sunday 21:00 IST - AuthorityCalibrationAgent 90-Day Strategy Calibration
     async def _job_authority_calibration():
         from agents.authority_calibration_agent import AuthorityCalibrationAgent
-        from services.slack_intelligence_service import slack_intelligence_service
         agent = AuthorityCalibrationAgent()
         await agent.run()
-        await slack_intelligence_service.send_weekly_intelligence_report()
 
     scheduler.add_job(
         _job_authority_calibration,

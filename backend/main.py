@@ -29,7 +29,7 @@ from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
-from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL, SLACK_WEBHOOK_URL
+from config import validate_env, REDIS_URL, ALLOWED_CORS_ORIGINS, FRONTEND_URL
 from database import get_supabase, set_account_context, call_nim_llm
 from error_handling import safe_error_response, log_server_error, get_correlation_id
 from middleware.auth import AuthMiddleware, require_auth, get_current_account_id
@@ -66,7 +66,6 @@ from routers.knowledge import router as knowledge_router
 from routers.content import router as content_router
 from routers.settings import router as settings_router
 from routers.connectors import router as connectors_router
-from routers.connectors_slack import router as connectors_slack_router
 from routers.dashboard import router as dashboard_router
 from routers.brain import router as brain_router
 from routers.autonomy import router as autonomy_router
@@ -648,7 +647,7 @@ async def get_blogs(request: Request, limit: int = 50, website_id: Optional[str]
 @app.delete("/api/content/{blog_id}")
 @app.delete("/content/{blog_id}")
 async def delete_content_item(blog_id: str, request: Request):
-    """Delete a content row with multi-tenant account verification, audit snapshot, and Slack notification."""
+    """Delete a content row with multi-tenant account verification and audit snapshot."""
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
@@ -695,17 +694,6 @@ async def delete_content_item(blog_id: str, request: Request):
 
             # 4. Delete from content_log
             supabase.table("content_log").delete().eq("id", target_row["id"]).eq("account_id", account_id).execute()
-
-            # 5. Push Slack alert
-            try:
-                if SLACK_WEBHOOK_URL:
-                    import httpx
-                    title = target_row.get("title", "Draft")
-                    kw = target_row.get("keyword", "N/A")
-                    async with httpx.AsyncClient(timeout=4.0) as client:
-                        await client.post(SLACK_WEBHOOK_URL, json={"text": f"🗑️ Draft deleted: '{title}' — {kw}"})
-            except Exception as e:
-                logger.warning("[Main] Slack alert failed: %s", e)
 
             return {"success": True, "deleted_id": blog_id, "detail": "Article draft deleted."}
 
@@ -797,10 +785,9 @@ async def root_google_oauth_start(website_id: str = "default"):
     from routers.oauth_connectors import google_oauth_start
     return await google_oauth_start(website_id=website_id)
 
-# Integration Connectors (Serper, Slack, Cost Tracking)
+# Integration Connectors (Serper, Cost Tracking)
 app.include_router(connectors_router, prefix="/api")           # /api/connectors/*
 app.include_router(connectors_serper_router, prefix="/api")    # /api/connectors/serper/*
-app.include_router(connectors_slack_router, prefix="/api")     # /api/connectors/slack/*
 app.include_router(costs_router, prefix="/api")                # /api/costs/*
 
 # Autonomous Monitoring, Schedulers & Workforce

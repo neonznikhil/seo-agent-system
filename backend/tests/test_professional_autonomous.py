@@ -92,9 +92,7 @@ def test_self_healing():
     # Supabase down queue
     assert "queue.json" in wp_content or "local_data" in _read_file("backend/database.py") or "queue" in crew_content.lower()
     # realtime_alerts - check in strategy_agent or scheduler if not in crew
-    slack_path = _resolve_path("backend/services/slack_intelligence_service.py")
-    slack_text = _read_file("backend/services/slack_intelligence_service.py").lower() if slack_path.exists() else ""
-    combined = crew_content.lower() + _read_file("backend/agents/scheduler.py").lower() + slack_text
+    combined = crew_content.lower() + _read_file("backend/agents/scheduler.py").lower()
     assert "realtime_alerts" in combined or "critical" in combined or "alert" in combined
 
 @pytest.mark.asyncio

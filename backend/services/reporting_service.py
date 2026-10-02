@@ -14,7 +14,6 @@ try:
 except ImportError:
     from backend.database import get_supabase
 
-from .slack_service import send_slack_alert
 from .email_service import send_email_alert
 from .sse_service import push_sse_alert
 
@@ -68,10 +67,8 @@ async def report_problem(
         asyncio.create_task(push_sse_alert(website_id, web_data))
         
         try:
-            website = get_supabase().table("websites").select("slack_webhook_url, alert_email").eq("id", website_id).single().execute().data
+            website = get_supabase().table("websites").select("alert_email").eq("id", website_id).single().execute().data
             if website:
-                if website.get("slack_webhook_url"):
-                    asyncio.create_task(send_slack_alert(website["slack_webhook_url"], alert))
                 if website.get("alert_email") and severity in ("critical", "high"):
                     asyncio.create_task(send_email_alert(website["alert_email"], alert))
         except Exception as e:

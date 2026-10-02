@@ -1,8 +1,8 @@
 """OAuth 2.0 flows (GSC, GA4, WordPress) and real API-key verifiers.
 
-Slack OAuth lives in connectors_slack.py. Every flow in this module performs
-REAL token exchanges against the provider — fabricated tokens, fake workspaces
-and invented credit numbers are never returned.
+Every flow in this module performs REAL token exchanges against the provider —
+fabricated tokens, fake workspaces and invented credit numbers are never
+returned.
 """
 
 import os

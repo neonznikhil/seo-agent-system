@@ -40,7 +40,7 @@ def unregister_connection(website_id: str, websocket) -> None:
 
 
 async def push_to_dashboard(website_id: str, alert: dict) -> None:
-    """Push alert to all dashboard channels - SSE + Slack + Email."""
+    """Push alert to all dashboard channels - SSE + Email."""
     from .reporting_service import report_problem
     
     await report_problem(

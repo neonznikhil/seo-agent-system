@@ -81,7 +81,7 @@ class SettingOut(BaseModel):
 # Setting keys that hold credential material. Values are never returned.
 CREDENTIAL_SETTING_KEYS = {
     "app_password", "wordpress_password", "serper_api_key", "nvidia_api_key",
-    "slack_bot_token", "ahrefs_api_key", "resend_api_key", "openai_api_key",
+    "ahrefs_api_key", "resend_api_key", "openai_api_key",
     "ga4_credentials_json", "gsc_service_account_json", "client_secret",
 }
 

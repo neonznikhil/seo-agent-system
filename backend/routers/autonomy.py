@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from database import get_supabase
+from database import get_supabase, execute_db
 from agents.scheduler import get_scheduler_status, get_scheduler_logs, run_job_now
 from agents.autonomous_decision_engine import AutonomousDecisionEngine
 from services.analytics_service import AnalyticsService
@@ -100,7 +100,9 @@ async def get_autonomous_goals():
     success_rate = 1.0
     
     try:
-        res = supabase.table("autonomous_settings").select("goals, success_rate, daily_costs").limit(1).execute().data
+        res = (await execute_db(
+            supabase.table("autonomous_settings").select("goals, success_rate, daily_costs").limit(1)
+        )).data
         if res:
             stored_goals = res[0].get("goals") or default_goals
             success_rate = float(res[0].get("success_rate", 1.0))
@@ -128,12 +130,14 @@ async def update_autonomous_goals(payload: AutonomousGoalsRequest):
     derived_keywords = payload.focus_keywords
     if not derived_keywords:
         try:
-            existing_goals = supabase.table("monthly_goals").select("focus_keywords").order("version", desc=True).limit(1).execute().data
+            existing_goals = (await execute_db(
+                supabase.table("monthly_goals").select("focus_keywords").order("version", desc=True).limit(1)
+            )).data
             if existing_goals and existing_goals[0].get("focus_keywords"):
                 derived_keywords = existing_goals[0]["focus_keywords"]
             else:
                 # Query keyword_proposals as live source
-                kp = supabase.table("keyword_proposals").select("keyword").limit(5).execute().data or []
+                kp = (await execute_db(supabase.table("keyword_proposals").select("keyword").limit(5))).data or []
                 derived_keywords = [r.get("keyword") for r in kp if r.get("keyword")]
         except Exception:
             derived_keywords = []
@@ -144,17 +148,17 @@ async def update_autonomous_goals(payload: AutonomousGoalsRequest):
     }
     
     try:
-        existing = supabase.table("autonomous_settings").select("id").limit(1).execute().data
+        existing = (await execute_db(supabase.table("autonomous_settings").select("id").limit(1))).data
         if existing:
-            supabase.table("autonomous_settings").update({
+            await execute_db(supabase.table("autonomous_settings").update({
                 "goals": goals_data,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }).eq("id", existing[0]["id"]).execute()
+            }).eq("id", existing[0]["id"]))
         else:
-            supabase.table("autonomous_settings").insert({
+            await execute_db(supabase.table("autonomous_settings").insert({
                 "goals": goals_data,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }).execute()
+            }))
             
         return {"success": True, "goals": goals_data, "message": "Autonomous goals updated."}
     except Exception as e:
@@ -187,13 +191,13 @@ async def get_cost_tracking(website_id: Optional[str] = None):
         q = supabase.table("daily_costs").select("cost_usd, tokens, agent_name, date, website_id, created_at").gte("created_at", f"{today}T00:00:00")
         if website_id:
             q = q.eq("website_id", website_id)
-        rows = q.order("created_at", desc=True).limit(50).execute().data or []
+        rows = (await execute_db(q.order("created_at", desc=True).limit(50))).data or []
         # If no rows today, also query last 30d for overview but sum today's cost separately
         if not rows:
             q2 = supabase.table("daily_costs").select("*").order("created_at", desc=True).limit(30)
             if website_id:
                 q2 = q2.eq("website_id", website_id)
-            rows = q2.execute().data or []
+            rows = (await execute_db(q2)).data or []
             # If still empty, return [] — UI shows empty state "No cost data yet"
             if not rows:
                 return {"total_tokens_tracked": 0, "total_cost_usd": 0.0, "breakdown": [], "message": "No cost data yet — costs tracked per-agent in daily_costs"}
@@ -219,7 +223,7 @@ async def get_recent_decisions():
     """Fetch last 10 autonomous decision logs from agent_memory."""
     supabase = get_supabase()
     try:
-        rows = supabase.table("agent_memory").select("id, memory_type, content, created_at").eq("memory_type", "decision").order("created_at", desc=True).limit(10).execute().data or []
+        rows = (await execute_db(supabase.table("agent_memory").select("id, memory_type, content, created_at").eq("memory_type", "decision").order("created_at", desc=True).limit(10))).data or []
         return rows
     except Exception:
         return []
@@ -240,7 +244,7 @@ async def get_autonomous_settings():
         "auto_refresh": True
     }
     try:
-        res = supabase.table("autonomous_settings").select("*").limit(1).execute().data
+        res = (await execute_db(supabase.table("autonomous_settings").select("*").limit(1))).data
         if res:
             row = res[0]
             goals = row.get("goals") or {}
@@ -271,7 +275,7 @@ async def get_blog_settings(website_id: Optional[str] = None):
         # fallback to first website
         try:
             supabase = get_supabase()
-            res = supabase.table("websites").select("id").limit(1).execute()
+            res = await execute_db(supabase.table("websites").select("id").limit(1))
             if res.data:
                 wid = res.data[0]["id"]
         except Exception as e:
@@ -295,7 +299,7 @@ async def get_blog_settings(website_id: Optional[str] = None):
             next_in_minutes = int(interval - mins_since)
     # Developer mode override: 2-min cadence
     try:
-        if _get_developer_mode_state():
+        if await _get_developer_mode_state():
             interval = 2
             if last_blog:
                 mins_since2 = (datetime.now(timezone.utc) - last_blog).total_seconds() / 60
@@ -308,7 +312,7 @@ async def get_blog_settings(website_id: Optional[str] = None):
     total_blogs = 0
     try:
         supabase = get_supabase()
-        t = supabase.table("content_log").select("id", count="exact").eq("website_id", wid).execute()
+        t = await execute_db(supabase.table("content_log").select("id", count="exact").eq("website_id", wid))
         total_blogs = t.count if t.count is not None else len(t.data or [])
     except Exception:
         try:

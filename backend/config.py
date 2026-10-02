@@ -1,18 +1,24 @@
 import hashlib
 import os
 import sys
-import hashlib
 import logging
 import warnings
 from dotenv import load_dotenv
+
+# Every module logger points at the same handler so config-time failures are
+# visible instead of vanishing into the default WARNING-only root logger.
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("backend.config")
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except Exception as e:
+        # logger must exist before this point: it referenced `logger` above where
+        # the logger was only defined 15 lines lower, so a reconfigure failure
+        # raised NameError instead of logging.
         logger.warning(f"[Config] Failed to reconfigure stdout/stderr encoding: {e}")
-        pass
 
 load_dotenv()
 
@@ -25,8 +31,6 @@ os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 # affecting agent execution.
 os.environ.setdefault("CREWAI_TESTING", "true")
 os.environ.setdefault("CREWAI_TRACING_ENABLED", "false")
-
-logger = logging.getLogger("backend.config")
 
 # Core Service Keys & URLs
 SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
@@ -51,15 +55,6 @@ SERPAPI_KEY: str = os.getenv("SERPAPI_KEY", "")
 PAGESPEED_API_KEY: str = os.getenv("PAGESPEED_API_KEY", "")
 AHREFS_API_KEY: str = os.getenv("AHREFS_API_KEY", "")
 RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
-
-# Slack Credentials
-SLACK_WEBHOOK_URL: str = os.getenv("SLACK_WEBHOOK_URL", "")
-SLACK_BOT_TOKEN: str = os.getenv("SLACK_BOT_TOKEN", "")
-SLACK_APP_TOKEN: str = os.getenv("SLACK_APP_TOKEN", "")
-SLACK_SIGNING_SECRET: str = os.getenv("SLACK_SIGNING_SECRET", "")
-SLACK_CLIENT_ID: str = os.getenv("SLACK_CLIENT_ID", "")
-SLACK_CLIENT_SECRET: str = os.getenv("SLACK_CLIENT_SECRET", "")
-SLACK_OWNER_USER_ID: str = os.getenv("SLACK_OWNER_USER_ID", "U_OWNER_RANKFORGE")
 
 # Google OAuth (GSC & GA4)
 GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -137,8 +132,6 @@ def validate_env() -> None:
     # Optional integrations
     integration_vars = {
         "SERPER_API_KEY": SERPER_API_KEY,
-        "SLACK_BOT_TOKEN": SLACK_BOT_TOKEN,
-        "SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
         "RESEND_API_KEY": RESEND_API_KEY,
         "AHREFS_API_KEY": AHREFS_API_KEY,
         "GOOGLE_CLIENT_ID": GOOGLE_CLIENT_ID,

@@ -5,10 +5,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
 from database import get_supabase
-try:
-    from services.slack_intelligence_service import slack_intelligence_service
-except ImportError:
-    from .slack_intelligence_service import slack_intelligence_service
 
 
 logger = logging.getLogger("backend.services.crisis_response_service")
@@ -68,7 +64,7 @@ class CrisisResponseService:
                 "crisis_type": "WordPress Auth Renewal",
                 "trigger_date": (datetime.utcnow() - timedelta(days=28)).strftime("%Y-%m-%d"),
                 "duration": "18m",
-                "response_action": "Paused approval publishing queue and notified workspace owner via Slack.",
+                "response_action": "Paused approval publishing queue and flagged the workspace owner.",
                 "resolution_outcome": "Application password refreshed and queued articles published."
             }
         ]

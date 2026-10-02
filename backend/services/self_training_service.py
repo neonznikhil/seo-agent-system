@@ -6,10 +6,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
 from database import get_supabase, call_nim_llm
-try:
-    from services.slack_intelligence_service import slack_intelligence_service
-except ImportError:
-    from .slack_intelligence_service import slack_intelligence_service
 
 
 logger = logging.getLogger("backend.services.self_training_service")
@@ -105,14 +101,12 @@ class SelfTrainingService:
             except Exception:
                 pass
 
-        # Notify via Slack about new learning — report only measured samples,
-        # never invented improvement percentages.
-        await slack_intelligence_service.send_new_learning_alert(
-            website_id=self.website_id,
-            pattern_name="Commercial intent and comparison guides (28 sampled drafts under review)",
-            behavior_change="Candidate prompt v2.5 adopted for 50% of drafts; Backlink DR threshold tuned to 30",
-            confidence=0.94,
-            samples_count=28
+        # Log the new learning — report only measured samples, never invented
+        # improvement percentages.
+        logger.info(
+            "[SelfTraining] New learning: commercial intent and comparison guides "
+            "(28 sampled drafts under review); candidate prompt v2.5 adopted for 50% "
+            "of drafts and Backlink DR threshold tuned to 30 (confidence 0.94)."
         )
 
         duration = time.time() - start_t

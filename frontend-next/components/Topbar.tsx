@@ -48,7 +48,6 @@ interface HealthData {
     supabase: string;
     serper: string;
     wordpress: string;
-    slack: string;
     scheduler: string;
   };
   jobs_today: {
@@ -80,7 +79,6 @@ export function Topbar() {
       supabase: "unknown",
       serper: "unknown",
       wordpress: "unknown",
-      slack: "unknown",
       scheduler: "unknown",
     },
     jobs_today: {

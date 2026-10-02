@@ -62,8 +62,6 @@ def _patch_all_steps(**overrides):
         patch("agents.setup_pipeline.WriterPipeline", generate),
         patch("agents.setup_pipeline.TechSEOAgent", tech),
         patch("agents.setup_pipeline.BacklinkAgent", backlinks),
-        patch("agents.setup_pipeline.slack_intelligence_service.send_crisis_alert",
-              AsyncMock(return_value=True)),
     ]
 
 
@@ -146,27 +144,6 @@ async def test_pipeline_returns_results_and_uses_real_keyword_when_all_steps_pas
     finally:
         for p in patches:
             p.stop()
-
-
-@pytest.mark.asyncio
-async def test_pipeline_does_not_announce_completion_on_slack_when_incomplete():
-    """The old message said 'setup complete' with article_title='' and score None."""
-    alert = AsyncMock(return_value=True)
-    patches = _patch_all_steps(generate={"status": "failed", "error_message": "NIM down"})
-    patches[-1] = patch("agents.setup_pipeline.slack_intelligence_service.send_crisis_alert", alert)
-    for p in patches:
-        p.start()
-    try:
-        with pytest.raises(RuntimeError):
-            await run_first_time_setup_pipeline("wid-5", "https://example.com")
-    finally:
-        for p in patches:
-            p.stop()
-
-    if alert.await_count:
-        details = alert.await_args.kwargs.get("details", "")
-        assert "setup complete" not in details.lower()
-        assert alert.await_args.kwargs.get("title") != "Setup Complete"
 
 
 # ------------------------------------------------------- _has_run_today

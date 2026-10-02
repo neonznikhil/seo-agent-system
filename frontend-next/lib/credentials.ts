@@ -22,7 +22,6 @@ export interface StoredConnectorCredentials {
   gsc_credentials_json?: string;
   ga4_property_id?: string;
   ga4_credentials_json?: string;
-  slack_webhook_url?: string;
   openai_api_key?: string;
   perplexity_api_key?: string;
 }

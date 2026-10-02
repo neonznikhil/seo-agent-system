@@ -539,7 +539,7 @@ export default function WebsitesPage() {
           </div>
           <div className="panel" style={{ marginTop: "12px" }}>
             <div className="panel-body" style={{ fontSize: "11px", color: "var(--muted)" }}>
-              Already connected? Manage WordPress in <a href="/connectors" style={{ color: "var(--accent)" }}>/connectors</a> (also handles Serper, GSC, Slack). For existing sites, expand the WordPress connect form below each domain.
+              Already connected? Manage WordPress in <a href="/connectors" style={{ color: "var(--accent)" }}>/connectors</a> (also handles Serper, GSC). For existing sites, expand the WordPress connect form below each domain.
             </div>
           </div>
         </div>

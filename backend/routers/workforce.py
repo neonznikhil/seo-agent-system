@@ -660,20 +660,11 @@ async def _dispatch_real_agent(agent_id: str, wid: str) -> Optional[dict]:
     """Run REAL specialist logic for concrete agents; returns None when no mapping."""
     start_t = datetime.utcnow()
 
-    async def _finish(agent_label, summary, result_payload, items_count, slack_fn=None):
+    async def _finish(agent_label, summary, result_payload, items_count):
         duration = (datetime.utcnow() - start_t).total_seconds()
         _log_agent_task(wid, agent_label, "completed", duration,
                         {"instruction": f"{agent_id} manual trigger"}, result_payload)
         await _log_agent_thought(wid, agent_label, summary)
-        if slack_fn:
-            try:
-                from services.slack_intelligence_service import slack_intelligence_service
-                if slack_fn == "success":
-                    await slack_intelligence_service.notify_agent_completion(wid, agent_label, summary, items_count)
-                else:
-                    pass
-            except Exception:
-                pass
         return {
             "success": True,
             "agent_id": agent_id,

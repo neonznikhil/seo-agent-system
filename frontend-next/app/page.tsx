@@ -2084,7 +2084,7 @@ export default function HomePage() {
                 📋 Review Pending Approvals ({metrics?.pending_articles ?? 0})
               </Link>
               <Link href="/connectors" className="btn" style={{ width: "100%", padding: "9px", textAlign: "center", textDecoration: "none", display: "block" }}>
-                🔌 Connectors (Slack/WP/Serper)
+                🔌 Connectors (WP/Serper)
               </Link>
             </div>
           </div>
