@@ -6,6 +6,11 @@ import logging
 
 logger = logging.getLogger("backend.services.slack_service")
 
+# aiohttp's default total timeout is 300s, which parks the calling task (and
+# the event loop it is queued on) for five minutes on a hung webhook. 15s is the
+# bound used elsewhere in this repo for outbound provider calls.
+SLACK_WEBHOOK_TIMEOUT_SECONDS = 15.0
+
 
 async def send_slack_alert(webhook_url: str, alert: dict) -> bool:
     """Send alert to Slack webhook."""
@@ -57,7 +62,9 @@ async def send_slack_alert(webhook_url: str, alert: dict) -> bool:
             }
         ]
         
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=SLACK_WEBHOOK_TIMEOUT_SECONDS)
+        ) as session:
             async with session.post(webhook_url, json={"blocks": blocks}) as resp:
                 if resp.status in (200, 204):
                     logger.info(f"Slack alert sent: {alert.get('id')}")

@@ -54,6 +54,20 @@ _CREDENTIAL_ENV_KEYS = (
     "WP_APP_PASSWORD",
     "NVIDIA_API_KEY",
     "SERPER_API_KEY",
+    # save-all now adopts non-Supabase keys into the live process, so these can
+    # leak between tests in the same run and change later connectors' behaviour.
+    "GSC_SITE_URL",
+    "GSC_PROPERTY",
+    "GSC_CREDENTIALS",
+    "GSC_CREDENTIALS_JSON",
+    "GA4_PROPERTY_ID",
+    "GA4_CREDENTIALS",
+    "GA4_CREDENTIALS_JSON",
+    "SLACK_BOT_TOKEN",
+    "SLACK_WEBHOOK_URL",
+    "SLACK_APP_TOKEN",
+    "OPENAI_API_KEY",
+    "PERPLEXITY_API_KEY",
 )
 
 

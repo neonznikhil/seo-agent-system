@@ -33,8 +33,33 @@ class SlackAppService:
     """
 
     def __init__(self, bot_token: Optional[str] = None):
-        self.bot_token = bot_token or SLACK_BOT_TOKEN or os.getenv("SLACK_BOT_TOKEN", "")
-        self.webhook_url = SLACK_WEBHOOK_URL or os.getenv("SLACK_WEBHOOK_URL", "")
+        # An explicit constructor argument is an override; everything else is
+        # resolved from the environment at CALL time. Capturing the env at
+        # import time (the module-level singleton is built then) meant a token
+        # saved later updated `.env`/`os.environ` but the service kept using the
+        # captured empty string, so dispatch reported "not_configured" while
+        # `is_connected_config()` said connected.
+        self._bot_token_override = bot_token
+
+    # ------------------------------------------------------------------
+    # Credential resolution (call-time, never import-time)
+    # ------------------------------------------------------------------
+    @property
+    def bot_token(self) -> str:
+        return self._bot_token_override or os.getenv("SLACK_BOT_TOKEN", "") or SLACK_BOT_TOKEN or ""
+
+    @bot_token.setter
+    def bot_token(self, value: Optional[str]) -> None:
+        self._bot_token_override = value or None
+
+    @property
+    def webhook_url(self) -> str:
+        return os.getenv("SLACK_WEBHOOK_URL", "") or SLACK_WEBHOOK_URL or ""
+
+    @webhook_url.setter
+    def webhook_url(self, value: Optional[str]) -> None:
+        if value:
+            os.environ["SLACK_WEBHOOK_URL"] = value
 
     # ------------------------------------------------------------------
     # Token resolution
@@ -60,7 +85,7 @@ class SlackAppService:
 
     @staticmethod
     def is_connected_config() -> bool:
-        return bool(SLACK_BOT_TOKEN or os.getenv("SLACK_BOT_TOKEN"))
+        return bool(os.getenv("SLACK_BOT_TOKEN") or SLACK_BOT_TOKEN)
 
     # ------------------------------------------------------------------
     # Channel management via real Slack API

@@ -79,6 +79,9 @@ async def _run_migrations() -> None:
     await loop.run_in_executor(None, _work)
 
 
+MAX_RECOVERY_ATTEMPTS = 3
+
+
 async def _recover_interrupted_jobs() -> None:
     try:
         await asyncio.sleep(5)
@@ -90,8 +93,25 @@ async def _recover_interrupted_jobs() -> None:
             return
         logger.info(f"[Startup] Recovering {len(interrupted)} interrupted background job(s)")
         for job in interrupted:
+            job_id = job.get("job_id", "")
             kind = job.get("kind")
             payload = job.get("payload") or {}
+            try:
+                attempts = int(job.get("attempts") or 0)
+            except (TypeError, ValueError):
+                attempts = 0
+            # A job that keeps crashing mid-flight used to re-run the KB crawl +
+            # research + NIM generation after every single restart, forever.
+            if attempts >= MAX_RECOVERY_ATTEMPTS:
+                mark_failed(
+                    job_id,
+                    f"abandoned after {attempts} dispatch attempt(s); manual retry required",
+                )
+                logger.error(
+                    f"[Startup] Job {job_id} ({kind}) exhausted {MAX_RECOVERY_ATTEMPTS} "
+                    "dispatch attempts — marked failed, not retried"
+                )
+                continue
             if kind == "first_time_setup" and payload.get("website_id"):
                 await dispatch_onboarding(
                     payload["website_id"],
@@ -100,7 +120,7 @@ async def _recover_interrupted_jobs() -> None:
                     bool(payload.get("has_wordpress")),
                 )
             else:
-                mark_failed(job.get("job_id", ""), "unknown job kind after restart")
+                mark_failed(job_id, "unknown job kind after restart")
     except Exception as e:
         logger.warning(f"[Startup] Job recovery failed: {e}")
 
@@ -294,6 +314,11 @@ async def _bootstrap() -> None:
 async def _shutdown() -> None:
     from services.autonomous_health_service import autonomous_health_service
 
+    try:
+        from services.continuous_monitor import stop_all_monitors
+        stop_all_monitors()
+    except Exception as e:
+        logger.warning("[Background] Monitor stop failed: %s", e)
     try:
         await autonomous_health_service.stop()
     except Exception as e:

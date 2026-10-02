@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { get, post, buildUrl } from "@/lib/api";
+import { get, post, buildUrl, buildSSEUrl } from "@/lib/api";
 import { getCurrentWebsiteId } from "@/lib/website";
 
 interface BacklinkItem {
@@ -103,7 +103,9 @@ export default function BacklinksPage() {
       showToast("OpportunityScoutAgent sweeping 5 tiers of link targets...");
 
       await new Promise<void>((resolve, reject) => {
-        const url = buildUrl(`/api/backlinks/scout/stream?website_id=${encodeURIComponent(wid)}`);
+        // buildSSEUrl carries identity — EventSource cannot send headers, which
+        // 401'd the live view in production.
+        const url = buildSSEUrl(`/api/backlinks/scout/stream?website_id=${encodeURIComponent(wid)}`);
         const source = new EventSource(url);
 
         source.onmessage = (event) => {
@@ -137,8 +139,10 @@ export default function BacklinksPage() {
       showToast("✓ Scout sweep complete!");
       loadBacklinks();
     } catch (err: any) {
-      showToast(`Scout sweep complete: updating table...`);
-      loadBacklinks();
+      // This used to announce success on failure — after a 401, a dropped
+      // connection, or a backend crash the user saw "Scout sweep complete" and
+      // an unchanged table.
+      showToast(`Scout sweep failed: ${err?.message || "stream error"}`);
     } finally {
       setIsScouting(false);
     }

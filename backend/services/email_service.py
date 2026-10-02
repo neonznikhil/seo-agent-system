@@ -8,22 +8,56 @@ logger = logging.getLogger("backend.services.email_service")
 
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:3000")
 
+# aiohttp's default total timeout is 300s, which parks the calling task for five
+# minutes on a hung provider. 15s is the bound used elsewhere in this repo.
+RESEND_TIMEOUT_SECONDS = 15.0
 
-async def send_email_alert(to_email: str, alert: dict) -> bool:
-    """Send critical alert via Resend or SMTP."""
+# Delivery statuses. `not_configured` (no provider credentials) is deliberately
+# distinct from `rejected` (provider present but refused the key) — collapsing
+# both into False made the API tell users their working setup was "not
+# configured" whenever Resend answered 401/500.
+STATUS_SENT = "sent"
+STATUS_NOT_CONFIGURED = "not_configured"
+STATUS_REJECTED = "rejected"
+STATUS_FAILED = "failed"
+
+
+async def send_email_alert_detailed(to_email: str, alert: dict) -> dict:
+    """Send a critical alert and report WHY it did or did not go out.
+
+    Returns ``{"sent": bool, "status": str, "provider": str|None,
+    "http_status": int|None, "error": str|None}``.
+    """
     try:
         if os.getenv("RESEND_API_KEY"):
             return await _send_resend_email(to_email, alert)
-        else:
-            logger.warning("No email provider configured - alert logged only")
-            return False
+        logger.warning("No email provider configured - alert logged only")
+        return {
+            "sent": False,
+            "status": STATUS_NOT_CONFIGURED,
+            "provider": None,
+            "http_status": None,
+            "error": "No email provider configured (RESEND_API_KEY is not set).",
+        }
     except Exception as e:
         logger.error(f"Email alert failed: {e}")
-        return False
+        return {
+            "sent": False,
+            "status": STATUS_FAILED,
+            "provider": "resend",
+            "http_status": None,
+            "error": str(e)[:200],
+        }
 
 
-async def _send_resend_email(to_email: str, alert: dict) -> bool:
-    """Send email via Resend API."""
+async def send_email_alert(to_email: str, alert: dict) -> bool:
+    """Send critical alert via Resend. Backwards-compatible boolean wrapper."""
+    result = await send_email_alert_detailed(to_email, alert)
+    return bool(result.get("sent"))
+
+
+async def _send_resend_email(to_email: str, alert: dict) -> dict:
+    """Send email via Resend API. Returns the detailed delivery result."""
     try:
         subject = f"[SEO ALERT] {alert.get('title', 'Alert')} - {alert.get('severity', 'info').upper()}"
         
@@ -48,7 +82,9 @@ async def _send_resend_email(to_email: str, alert: dict) -> bool:
         </html>
         """
         
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=RESEND_TIMEOUT_SECONDS)
+        ) as session:
             resp = await session.post(
                 "https://api.resend.com/emails",
                 json={
@@ -63,14 +99,36 @@ async def _send_resend_email(to_email: str, alert: dict) -> bool:
                     "Content-Type": "application/json"
                 }
             )
-            
+
             if resp.status == 201:
                 logger.info(f"Email alert sent successfully: alert_id={alert.get('id')}")
-                return True
-            else:
-                data = await resp.text()
-                logger.error(f"Resend API failed: {resp.status} {data}")
-                return False
+                return {
+                    "sent": True,
+                    "status": STATUS_SENT,
+                    "provider": "resend",
+                    "http_status": resp.status,
+                    "error": None,
+                }
+
+            data = await resp.text()
+            logger.error(f"Resend API failed: {resp.status} {data}")
+            # 401/403 means the provider IS configured and refused the key — not
+            # "no provider configured". Keep the two apart so the caller can say
+            # something actionable.
+            status = STATUS_REJECTED if resp.status in (401, 403) else STATUS_FAILED
+            return {
+                "sent": False,
+                "status": status,
+                "provider": "resend",
+                "http_status": resp.status,
+                "error": f"Resend returned HTTP {resp.status}: {data[:180]}",
+            }
     except Exception as e:
         logger.error(f"Resend email failed: {e}")
-        return False
+        return {
+            "sent": False,
+            "status": STATUS_FAILED,
+            "provider": "resend",
+            "http_status": None,
+            "error": str(e)[:200],
+        }

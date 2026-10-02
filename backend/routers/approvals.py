@@ -526,7 +526,7 @@ async def reject_approval(approval_id: str, request: Request, body: Optional[dic
 @router.post("/{approval_id}/request-revision")
 async def request_revision(approval_id: str, request: Request, body: Optional[dict] = None):
     """TASK B2: Human requests revision -> spawns revision task with user notes, updates status to 'revision_requested'."""
-    import asyncio
+    from utils.job_queue import spawn_background
     account_id = get_current_account_id(request)
     supabase = get_supabase()
     set_account_context(supabase, account_id)
@@ -570,7 +570,12 @@ Apply the requested changes while maintaining strict Elementor-safe HTML tags (h
             logger.error(f"[Approvals] Revision background task failed: {e}")
             supabase.table("blog_approvals").update({"status": "pending"}).eq("id", approval_id).execute()
 
-    asyncio.create_task(_do_revision())
+    # spawn_background (never a bare create_task): it keeps a strong reference so
+    # the task cannot be GC'd mid-flight, and it logs the real exception. A lost
+    # task left the approval in 'revision_requested' forever with no error.
+    if spawn_background(_do_revision(), name=f"approval:revision:{approval_id}") is None:
+        logger.error(f"[Approvals] Could not schedule revision for {approval_id}; resetting to pending")
+        supabase.table("blog_approvals").update({"status": "pending"}).eq("id", approval_id).execute()
     return {"id": approval_id, "status": "revision_requested", "message": "Revision requested and queued for processing."}
 
 

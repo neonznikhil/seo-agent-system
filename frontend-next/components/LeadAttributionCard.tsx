@@ -42,17 +42,29 @@ export function LeadAttributionCard({ websiteId }: LeadAttributionCardProps) {
     setLoading(true);
     setError(null);
     try {
-      const [sumRes, kwRes] = await Promise.all([
+      // allSettled so one failing endpoint does not blank the other panel.
+      const [sumRes, kwRes] = await Promise.allSettled([
         get(`/api/leads/${websiteId}/summary`),
         get(`/api/leads/${websiteId}/keyword-performance`),
       ]);
-      setSummary(sumRes);
-      setKeywords(kwRes.keywords || []);
-      if (sumRes.total_spend) {
-        setNewBudget(sumRes.total_spend.toString());
+
+      if (sumRes.status === "fulfilled") {
+        setSummary(sumRes.value);
+        if (sumRes.value?.total_spend) {
+          setNewBudget(sumRes.value.total_spend.toString());
+        }
       }
-    } catch (err: any) {
-      setError(err?.message || "Failed to load lead attribution data");
+      if (kwRes.status === "fulfilled") setKeywords(kwRes.value?.keywords || []);
+
+      const failures = [sumRes, kwRes].filter((r) => r.status === "rejected");
+      if (failures.length === 2) {
+        setError(
+          (failures[0] as PromiseRejectedResult).reason?.message ||
+            "Failed to load lead attribution data"
+        );
+      } else if (failures.length) {
+        setError("Part of the lead attribution data could not be loaded. The rest is live data.");
+      }
     } finally {
       setLoading(false);
     }

@@ -97,7 +97,12 @@ class RAGService:
         # Fetch knowledge base pool for dense scan fallback and sparse lexical scoring
         all_pool = []
         try:
-            pool_res = supabase.table("knowledge_base").select("*").limit(100).execute()
+            # Tenant isolation: an unscoped scan injected up to 100 rows from EVERY
+            # website into this site's RAG answer context.
+            pool_query = supabase.table("knowledge_base").select("*")
+            if self.website_id:
+                pool_query = pool_query.eq("website_id", self.website_id)
+            pool_res = pool_query.limit(100).execute()
             all_pool = pool_res.data or []
         except Exception as e:
             logger.warning(f"Table pool scan note in RAG retrieve: {e}")

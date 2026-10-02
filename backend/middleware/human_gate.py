@@ -7,7 +7,27 @@ from datetime import datetime
 logger = logging.getLogger("backend.middleware.human_gate")
 
 
-from middleware.auth import _validate_user_exists
+from middleware import auth as _auth_module
+from utils.errors import is_connectivity_error
+
+
+def _identity_exists(user_id: str) -> bool:
+    """_validate_user_exists that turns an unreachable identity store into a denial.
+
+    _validate_user_exists raises when Supabase is unreachable (it must not guess).
+    These gates deny by default, so without this the raise would escape as an
+    opaque 500. We resolve the function through the auth module so runtime
+    monkeypatching (and tests) of middleware.auth._validate_user_exists still works.
+    """
+    try:
+        return _auth_module._validate_user_exists(user_id)
+    except Exception as exc:
+        # Fail CLOSED: an identity we cannot verify is not an approved identity.
+        logger.error(f"[HumanGate] identity store unavailable, denying {user_id}: {exc}")
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: identity could not be verified (account store unavailable). Retry shortly.",
+        )
 
 
 def require_human(func):
@@ -39,7 +59,7 @@ def require_human(func):
                 "Human approval required - click 'Approve' button in dashboard which sends X-User-Id header"
             )
         
-        if not _validate_user_exists(user_id):
+        if not _identity_exists(user_id):
             raise HTTPException(
                 403,
                 f"Forbidden: Invalid X-User-Id '{user_id}' not found in database"
@@ -58,7 +78,7 @@ async def require_human_for_request(request: Request):
     if not user_id:
         raise HTTPException(403, "Human approval required - provide X-User-Id header")
 
-    if not _validate_user_exists(user_id):
+    if not _identity_exists(user_id):
         raise HTTPException(403, f"Forbidden: Invalid X-User-Id '{user_id}' not found in database")
 
     return user_id
@@ -91,7 +111,7 @@ async def require_verified_publisher(request: Request) -> str:
             status_code=403,
             detail="Valid X-User-Id required. Publishing without human identity is not permitted.",
         )
-    if not _validate_user_exists(user_id):
+    if not _identity_exists(user_id):
         raise HTTPException(status_code=403, detail="User not found")
     return user_id
 
@@ -119,7 +139,7 @@ def human_approval_required():
                 "Human approval required - provide X-User-Id header via dashboard Approve button"
             )
         
-        if not _validate_user_exists(user_id):
+        if not _identity_exists(user_id):
             raise HTTPException(
                 403,
                 f"Forbidden: Invalid X-User-Id '{user_id}' not found in database"

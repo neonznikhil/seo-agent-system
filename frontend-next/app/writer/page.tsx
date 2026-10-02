@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
-import { get, post } from "@/lib/api";
+import { get, post, buildSSEUrl } from "@/lib/api";
 import { getCurrentWebsiteId, setCurrentWebsiteId } from "@/lib/website";
 import { loadConnectorCredentials } from "@/lib/credentials";
 
@@ -369,7 +369,9 @@ export default function WriterPage() {
       };
 
       // Start SSE connection for real-time progress
-      const sseUrl = `/api/crew/status/${blogId}/stream`;
+      // buildSSEUrl (not a raw EventSource) so identity reaches the backend —
+      // EventSource cannot send headers, which 401'd every live view in production.
+      const sseUrl = buildSSEUrl(`/api/crew/status/${blogId}/stream`);
       try {
         eventSource = new EventSource(sseUrl);
         eventSource.onmessage = (event) => {

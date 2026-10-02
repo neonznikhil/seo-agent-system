@@ -17,8 +17,17 @@ _GSC_JSON_KEYS = ["GSC_SERVICE_ACCOUNT_JSON", "GSC_CREDENTIALS", "GOOGLE_SERVICE
 _GSC_PATH_KEYS = ["GSC_CREDENTIALS_PATH", "GSC_CREDENTIALS", "GOOGLE_APPLICATION_CREDENTIALS"]
 
 
+_UNCONFIGURED_PROPERTY_ERROR = "No GSC property configured"
+
+
 class GSCService:
-    """Google Search Console API service for real traffic data."""
+    """Google Search Console API service for real traffic data.
+
+    A Search Console property MUST be resolved (argument or env) before any live
+    query. There is deliberately no fallback property: defaulting to some
+    third-party site made an unconfigured install silently return another
+    company's real traffic as the user's own.
+    """
 
     def __init__(
         self,
@@ -30,11 +39,36 @@ class GSCService:
             website_url
             or os.getenv("GSC_SITE_URL")
             or os.getenv("GSC_PROPERTY")
-            or "https://accident.innovatcs.com"
+            or ""
         )
         self.credentials_path = credentials_path or os.getenv("GSC_CREDENTIALS_PATH")
         self.credentials_json = credentials_json
         self.service = None
+
+    def has_property(self) -> bool:
+        """True only when a real Search Console property could be resolved."""
+        return bool(str(self.website_url or "").strip())
+
+    def _unconfigured(self, **fields: Any) -> Dict[str, Any]:
+        """Degraded payload for 'no property resolved' — never a live query."""
+        logger.warning(
+            "[GSC] %s (credentials may be present, but GSC_SITE_URL/GSC_PROPERTY "
+            "and the website row are both empty). Returning an unconfigured result "
+            "instead of querying an arbitrary site.",
+            _UNCONFIGURED_PROPERTY_ERROR,
+        )
+        payload: Dict[str, Any] = {
+            "error": _UNCONFIGURED_PROPERTY_ERROR,
+            "source": "unconfigured",
+            "connected": False,
+            "data_available": False,
+            "message": (
+                "No Google Search Console property is configured for this site. "
+                "Set GSC_SITE_URL (or the website URL) in Connectors."
+            ),
+        }
+        payload.update(fields)
+        return payload
 
     def _load_oauth_credentials(self):
         """Load OAuth2 credentials from token file or environment variables."""
@@ -132,7 +166,13 @@ class GSCService:
             start_date = (datetime.utcnow() - timedelta(days=28)).strftime('%Y-%m-%d')
         if not end_date:
             end_date = datetime.utcnow().strftime('%Y-%m-%d')
-        
+
+        if not self.has_property():
+            return self._unconfigured(
+                keywords=[], total_keywords=0, total_impressions=0,
+                total_clicks=0, avg_position=0,
+            )
+
         try:
             service = self._get_service()
             
@@ -174,7 +214,8 @@ class GSCService:
                 'total_clicks': sum(k.get('clicks', 0) for k in keywords),
                 'avg_position': sum(k.get('position', 0) for k in keywords) / max(len(keywords), 1),
                 'source': 'gsc',
-                'connected': True
+                'connected': True,
+                'data_available': True
             }
         
         except Exception as e:
@@ -188,11 +229,14 @@ class GSCService:
                 'avg_position': 0,
                 'source': 'gsc',
                 'connected': self.is_connected(),
+                'data_available': False,
                 'message': 'Connect GSC credentials in environment variables'
             }
     
     async def get_top_pages(self, limit: int = 100) -> Dict[str, Any]:
         """Get top performing pages by clicks."""
+        if not self.has_property():
+            return self._unconfigured(pages=[], total_pages=0, top_click_page=None)
         try:
             service = self._get_service()
             
@@ -242,6 +286,8 @@ class GSCService:
     
     async def get_sitemaps(self) -> Dict[str, Any]:
         """Get sitemap status from GSC."""
+        if not self.has_property():
+            return self._unconfigured(sitemaps=[], total_sitemaps=0, sitemaps_with_errors=0)
         try:
             service = self._get_service()
             
@@ -277,6 +323,8 @@ class GSCService:
     
     async def get_crawl_errors(self) -> Dict[str, Any]:
         """Get crawl errors from GSC."""
+        if not self.has_property():
+            return self._unconfigured(errors=[], total_errors=0)
         try:
             service = self._get_service()
             

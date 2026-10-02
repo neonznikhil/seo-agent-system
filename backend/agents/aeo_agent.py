@@ -89,6 +89,7 @@ class AEOAgent:
         competitors: list = []
 
         citations_recorded = []
+        citation_failures = 0
         brand_cited_count = 0
         total_checks = 0
 
@@ -126,8 +127,9 @@ class AEOAgent:
                 except Exception as e:
                     logger.debug(f"[AEO] SERP cross-check note: {e}")
 
-            if is_brand_cited:
-                brand_cited_count += 1
+            # total_checks counts every query actually evaluated. brand_cited_count
+            # is the SoV numerator and must only count PERSISTED citations, so it is
+            # incremented after the insert succeeds.
             total_checks += 1
 
             row = {
@@ -145,17 +147,30 @@ class AEOAgent:
             try:
                 supabase.table("aeo_citations").insert(row).execute()
                 citations_recorded.append(row)
+                if is_brand_cited:
+                    brand_cited_count += 1
             except Exception as e:
-                logger.warning(f"Could not record aeo_citation: {e}")
-                citations_recorded.append(row)
+                # Do NOT count a citation that never reached aeo_citations — the
+                # run used to report these, so SoV was derived from rows that
+                # did not exist.
+                citation_failures += 1
+                logger.warning(f"Could not record aeo_citation for '{q[:60]}': {e}")
 
         sov_percentage = round((brand_cited_count / max(1, total_checks)) * 100, 1) if total_checks > 0 else 0.0
+
+        if citation_failures:
+            logger.error(
+                f"[AEO] {citation_failures}/{total_checks} citation(s) failed to persist for "
+                f"website_id={self.website_id}"
+            )
 
         return {
             "queries_tracked": total_checks,
             "brand_cited_count": brand_cited_count,
             "sov_percentage": sov_percentage,
-            "citations": citations_recorded
+            "citations": citations_recorded,
+            "citations_recorded": len(citations_recorded),
+            "citations_failed": citation_failures,
         }
 
     # ---------------------------------------------------------

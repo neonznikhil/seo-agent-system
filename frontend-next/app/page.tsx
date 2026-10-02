@@ -219,6 +219,13 @@ export default function HomePage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
+  // Failures must not render in the green success banner — a reader (and any
+  // screenshot) reads green as "ok". These used to call showToast with text like
+  // "Workflow run failed: ...", producing a green box full of red text.
+  const showError = (msg: string) => {
+    setError(msg);
+  };
+
   useEffect(() => {
     const id = getCurrentWebsiteId();
     if (id) setWebsiteId(id);
@@ -235,16 +242,24 @@ export default function HomePage() {
       setError(null);
 
       let sites: Website[] = [];
+      let sitesError = false;
       try {
         const res = await get("/api/websites");
         sites = Array.isArray(res) ? res : res?.websites || [];
-      } catch {}
+      } catch {
+        // Swallowing this made an unreachable backend look exactly like a brand
+        // new account: "No audit yet", 0 articles, 0 clicks, no error shown.
+        sitesError = true;
+      }
       setWebsites(sites);
 
       if ((!activeId || activeId === "default") && sites.length > 0) activeId = sites[0].id;
       if (!activeId) {
         setMetrics(null);
         setLoading(false);
+        if (sitesError) {
+          setError("Cannot reach the RankForge backend. Check that it is running, then retry.");
+        }
         return;
       }
       setWebsiteId(activeId);
@@ -323,7 +338,7 @@ export default function HomePage() {
       } catch {}
       fetchDashboardData();
     } catch (err: any) {
-      showToast(`Workflow run failed: ${err.message || "execution error"}`);
+      showError(`Workflow run failed: ${err.message || "execution error"}`);
     } finally {
       setRunningWorkflow(null);
     }
@@ -408,10 +423,10 @@ export default function HomePage() {
         } catch {}
         showToast(`Connected to ${siteUrl} as ${targetUser}.`);
       } else {
-        showToast(res.error || `WordPress: ${res.message || "Could not verify credentials"}`);
+        showError(res.error || `WordPress: ${res.message || "Could not verify credentials"}`);
       }
     } catch (e: any) {
-      showToast(`Verification failed: ${e.message}`);
+      showError(`Verification failed: ${e.message}`);
     } finally {
       setWpTesting(false);
     }
@@ -461,7 +476,7 @@ export default function HomePage() {
       setBlogsGeneratedToday((prev) => prev + 1);
       fetchDashboardData();
     } catch (e: any) {
-      showToast(`Generation failed: ${e.message || "backend unreachable"}. No article was created.`);
+      showError(`Generation failed: ${e.message || "backend unreachable"}. No article was created.`);
       fetchDashboardData();
     } finally {
       setIsGenerating(false);
@@ -719,7 +734,7 @@ export default function HomePage() {
       setSelectedArticle(null);
       fetchDashboardData();
     } catch (err: any) {
-      showToast(`Approval failed: ${err.message}`);
+      showError(`Approval failed: ${err.message}`);
     } finally {
       setApprovingId(null);
     }
@@ -748,7 +763,7 @@ export default function HomePage() {
         fetchDashboardData();
       }, 300);
     } catch (err: any) {
-      showToast(`Delete failed: ${err.message}`);
+      showError(`Delete failed: ${err.message}`);
       setDeletingId(null);
     }
   };
@@ -765,7 +780,7 @@ export default function HomePage() {
       setAutoPublish(newVal);
       showToast(newVal ? "Auto-publish ON (explicit opt-in) — approved drafts will publish" : "Auto-publish OFF — drafts only, manual approval needed");
     } catch (e: any) {
-      showToast(`Toggle failed: ${e.message}`);
+      showError(`Toggle failed: ${e.message}`);
     }
   };
 
@@ -786,7 +801,7 @@ export default function HomePage() {
       await post(`/api/scheduler/run-now/${jobId}`, {});
       showToast(`Job ${jobId} triggered — check logs`);
     } catch (e: any) {
-      showToast(`Run failed: ${e.message}`);
+      showError(`Run failed: ${e.message}`);
     }
   };
 

@@ -114,113 +114,139 @@ async def generate_queued_pages(website_id: str, limit: int = 2) -> Dict[str, An
             {"status": "writing"}
         ).eq("id", item["id"]).execute()
 
-        staged = False
-        last_issues: list = []
+        try:
+            staged = False
+            last_issues: list = []
 
-        for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
-            attempt_topic = topic if attempt == 1 else f"{topic} ({'v2' if attempt == 2 else 'final'})"
-            gen = await generate_content(
-                website_id=website_id,
-                topic=attempt_topic,
-                primary_keyword=keyword or None,
-            )
-            content_id = gen.get("content_id")
-            if not content_id or gen.get("status") != "completed":
-                logger.warning(
-                    f"[AutoPublisher] generation attempt {attempt} failed for '{keyword}': {gen}"
+            for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
+                attempt_topic = topic if attempt == 1 else f"{topic} ({'v2' if attempt == 2 else 'final'})"
+                gen = await generate_content(
+                    website_id=website_id,
+                    topic=attempt_topic,
+                    primary_keyword=keyword or None,
                 )
-                continue
+                content_id = gen.get("content_id")
+                if not content_id or gen.get("status") != "completed":
+                    logger.warning(
+                        f"[AutoPublisher] generation attempt {attempt} failed for '{keyword}': {gen}"
+                    )
+                    continue
 
-            row = (
-                supabase.table("content_log")
-                .select("id,title,content")
-                .eq("id", content_id)
-                .single()
-                .execute()
-                .data
-                or {}
-            )
-            title = row.get("title") or attempt_topic
-            html = row.get("content") or ""
+                row = (
+                    supabase.table("content_log")
+                    .select("id,title,content")
+                    .eq("id", content_id)
+                    .single()
+                    .execute()
+                    .data
+                    or {}
+                )
+                title = row.get("title") or attempt_topic
+                html = row.get("content") or ""
 
-            # NIM outage guard: never stage empty/fabricated content
-            if len(html.strip()) < 300:
-                last_issues = ["Generation returned insufficient real content"]
-                result["gate_rejections"] += 1
-                continue
+                # NIM outage guard: never stage empty/fabricated content
+                if len(html.strip()) < 300:
+                    last_issues = ["Generation returned insufficient real content"]
+                    result["gate_rejections"] += 1
+                    continue
 
-            seo = await SEOAgent(website_id).run(raw_html=html, keyword=keyword)
-            gate = await validate_content(
-                website_id=website_id,
-                title=title,
-                meta_description=seo.get("meta_description", ""),
-                keyword=keyword,
-                html=html,
-            )
+                seo = await SEOAgent(website_id).run(raw_html=html, keyword=keyword)
+                gate = await validate_content(
+                    website_id=website_id,
+                    title=title,
+                    meta_description=seo.get("meta_description", ""),
+                    keyword=keyword,
+                    html=html,
+                )
 
-            if not gate["passed"]:
-                last_issues = gate["issues"]
-                result["gate_rejections"] += 1
+                if not gate["passed"]:
+                    last_issues = gate["issues"]
+                    result["gate_rejections"] += 1
+                    await brain.remember(
+                        website_id=website_id,
+                        memory_type="failure",
+                        title=f"Quality gate rejected: {keyword}",
+                        content=f"Score {gate['score']} < {gate['threshold']}. Issues: {last_issues[:5]}",
+                        source_type="quality_gate",
+                        source_id=str(item["id"]),
+                        confidence=0.7,
+                    )
+                    continue
+
+                # Gate passed -> stage for HUMAN approval. No WordPress calls here.
+                await _stage_for_approval(
+                    website_id=website_id,
+                    title=title,
+                    html_content=html,
+                    seo_title=seo.get("seo_title", title),
+                    meta_description=seo.get("meta_description", ""),
+                    slug=seo.get("slug", ""),
+                    keyword=keyword,
+                    seo_score=gate["score"],
+                    approval_type="new_page",
+                    wordpress_action="create",
+                    blog_id=row.get("id"),
+                    gate_issues=last_issues if last_issues else None,
+                )
+
+                supabase.table("content_log").update(
+                    {"status": "draft_pending_approval", "seo_score": gate["score"]}
+                ).eq("id", content_id).execute()
+
+                supabase.table("brain_auto_pages_queue").update(
+                    {"status": "pending_approval", "source": f"auto_publisher|score={gate['score']}"}
+                ).eq("id", item["id"]).execute()
+
                 await brain.remember(
                     website_id=website_id,
-                    memory_type="failure",
-                    title=f"Quality gate rejected: {keyword}",
-                    content=f"Score {gate['score']} < {gate['threshold']}. Issues: {last_issues[:5]}",
-                    source_type="quality_gate",
-                    source_id=str(item["id"]),
-                    confidence=0.7,
+                    memory_type="success",
+                    title=f"Draft ready for approval: {keyword}",
+                    content=(
+                        f"Generated '{title}' for '{keyword}'. Gate score {gate['score']}. "
+                        f"Attempts: {attempt}. Staged in blog_approvals - awaiting human publish."
+                    ),
+                    source_type="auto_publisher",
+                    source_id=str(content_id),
+                    confidence=0.85,
                 )
-                continue
 
-            # Gate passed -> stage for HUMAN approval. No WordPress calls here.
-            await _stage_for_approval(
-                website_id=website_id,
-                title=title,
-                html_content=html,
-                seo_title=seo.get("seo_title", title),
-                meta_description=seo.get("meta_description", ""),
-                slug=seo.get("slug", ""),
-                keyword=keyword,
-                seo_score=gate["score"],
-                approval_type="new_page",
-                wordpress_action="create",
-                blog_id=row.get("id"),
-                gate_issues=last_issues if last_issues else None,
-            )
+                result["staged_for_approval"] += 1
+                staged = True
+                break
 
-            supabase.table("content_log").update(
-                {"status": "draft_pending_approval", "seo_score": gate["score"]}
-            ).eq("id", content_id).execute()
+            if not staged:
+                result["failed"] += 1
+                supabase.table("brain_auto_pages_queue").update(
+                    {
+                        "status": "failed",
+                        "reason": "; ".join(last_issues[:3]) or "generation failed",
+                    }
+                ).eq("id", item["id"]).execute()
 
-            supabase.table("brain_auto_pages_queue").update(
-                {"status": "pending_approval", "source": f"auto_publisher|score={gate['score']}"}
-            ).eq("id", item["id"]).execute()
-
-            await brain.remember(
-                website_id=website_id,
-                memory_type="success",
-                title=f"Draft ready for approval: {keyword}",
-                content=(
-                    f"Generated '{title}' for '{keyword}'. Gate score {gate['score']}. "
-                    f"Attempts: {attempt}. Staged in blog_approvals - awaiting human publish."
-                ),
-                source_type="auto_publisher",
-                source_id=str(content_id),
-                confidence=0.85,
-            )
-
-            result["staged_for_approval"] += 1
-            staged = True
-            break
-
-        if not staged:
+        except Exception as e:
+            # generate_content was previously unguarded: one exception abandoned
+            # the whole batch with the row left in "writing" and the item neither
+            # retried nor counted.
+            logger.error(f"[AutoPublisher] item {item.get('id')} ('{keyword}') crashed: {e}")
             result["failed"] += 1
-            supabase.table("brain_auto_pages_queue").update(
-                {
-                    "status": "failed",
-                    "reason": "; ".join(last_issues[:3]) or "generation failed",
-                }
-            ).eq("id", item["id"]).execute()
+            try:
+                supabase.table("brain_auto_pages_queue").update(
+                    {"status": "failed", "reason": f"auto_publisher error: {e}"[:500]}
+                ).eq("id", item["id"]).eq("status", "writing").execute()
+            except Exception as db_err:
+                logger.error(f"[AutoPublisher] could not mark item {item.get('id')} failed: {db_err}")
+        finally:
+            # Safety net: "writing" is not a re-selected status, so anything left
+            # in it is dropped from the queue permanently. Release it back to a
+            # re-runnable state — a no-op once the row reached a terminal status.
+            try:
+                supabase.table("brain_auto_pages_queue").update(
+                    {"status": "queued_for_writing"}
+                ).eq("id", item["id"]).eq("status", "writing").execute()
+            except Exception as release_err:
+                logger.error(
+                    f"[AutoPublisher] could not release item {item.get('id')} from 'writing': {release_err}"
+                )
 
     logger.info(f"[AutoPublisher] website={website_id} result={result}")
     return result

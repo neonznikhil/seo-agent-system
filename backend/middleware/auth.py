@@ -23,6 +23,7 @@ from starlette.responses import JSONResponse
 
 from config import JWT_SECRET, JWT_ALGORITHM
 from database import get_supabase, set_account_context
+from utils.errors import is_connectivity_error
 
 logger = logging.getLogger("backend.middleware.auth")
 
@@ -79,9 +80,20 @@ def _extract_bearer_token(request: Request) -> Optional[str]:
 
 
 def _validate_user_exists(user_id: str) -> bool:
-    """Validate that user exists in accounts/users table via Supabase."""
+    """Validate that user exists in accounts/users table via Supabase.
+
+    Returns True/False. Raises the underlying exception when the database is
+    UNREACHABLE so the caller can answer 503 (retryable) instead of guessing.
+
+    This used to `return user_id == DEFAULT_ACCOUNT_ID` on any exception, which
+    failed OPEN: during a Supabase outage every request carrying
+    `X-User-Id: a0000000-0000-0000-0000-000000000001` was admitted as the admin
+    account. Worse, a valid non-default user got a permanent 403 "Account not
+    found" because the DB was simply unreachable. Neither is honest.
+    """
     if not user_id:
         return False
+    supabase = None
     try:
         supabase = get_supabase()
         # Check accounts table
@@ -96,9 +108,19 @@ def _validate_user_exists(user_id: str) -> bool:
         w_res = supabase.table("websites").select("id").eq("account_id", user_id).limit(1).execute()
         if w_res.data and len(w_res.data) > 0:
             return True
-        return user_id == DEFAULT_ACCOUNT_ID
+        # Genuinely queried and not found.
+        return False
     except Exception as e:
-        logger.debug(f"User existence check note: {e}")
+        if is_connectivity_error(e):
+            # Cannot prove identity either way — never admit, never deny.
+            logger.error(f"[Auth] identity check unavailable for {user_id}: {e}")
+            raise
+        # Non-connectivity failure (e.g. a table is missing). Only tolerate the
+        # single-tenant default identity outside production; in production an
+        # unverifiable identity is rejected.
+        logger.warning(f"[Auth] identity lookup error for {user_id}: {e}")
+        if IS_PRODUCTION:
+            return False
         return user_id == DEFAULT_ACCOUNT_ID
 
 
@@ -189,7 +211,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
         else:
             # If authenticated via header alone without JWT, ensure it exists in database
             if not verified_account_id:
-                if not _validate_user_exists(final_account_id):
+                try:
+                    exists = _validate_user_exists(final_account_id)
+                except Exception as exc:
+                    # The identity store is unreachable, so this identity cannot be
+                    # proven. DENY (fail closed) — the old code admitted it when it
+                    # happened to be the default admin id. We answer 403 rather than
+                    # 503 deliberately: an unverifiable identity must not be treated
+                    # as merely "retry later" on a write path.
+                    logger.error(f"[Auth] identity store unavailable, denying {final_account_id}: {exc}")
+                    return JSONResponse(
+                        status_code=403,
+                        content={
+                            "detail": "Forbidden: identity could not be verified "
+                                      "(account store unavailable). Retry shortly."
+                        },
+                        headers={"Retry-After": "5"},
+                    )
+                if not exists:
                     return JSONResponse(status_code=403, content={"detail": f"Forbidden: Account '{final_account_id}' not found."})
 
         request.state.account_id = final_account_id

@@ -223,6 +223,14 @@ async def serper_maps(payload: MapsPayload):
 async def serper_autocomplete(payload: AutocompletePayload):
     """Google autocomplete expansions for seed keyword expansion."""
     res = await serper_service.autocomplete(query=payload.query)
+    if not isinstance(res, dict):
+        # Never report success with a null payload — that reads as "no results"
+        # when the real problem is that the provider call produced nothing.
+        return {
+            "success": False,
+            "data": {"source": "unavailable", "query": payload.query, "suggestions": []},
+            "error": "Serper autocomplete returned no result object",
+        }
     return {"success": True, "data": res}
 
 

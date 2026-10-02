@@ -62,6 +62,11 @@ export default function CrewPage() {
     setTimeout(() => setNoticeMsg(null), 4000);
   };
 
+  // Failures belong in the red error banner, not the green "ok" notice.
+  const showError = (msg: string) => {
+    setError(msg);
+  };
+
   const loadData = useCallback(async () => {
     let wid = getCurrentWebsiteId();
     if (!wid) {
@@ -135,7 +140,7 @@ export default function CrewPage() {
       await post("/api/autonomous/settings", { auto_publish: nextVal });
       showToast(`Auto-publish switched ${nextVal ? "ON (explicit opt-in)" : "OFF (drafts only)"}`);
     } catch (e: any) {
-      showToast(`Setting update note: ${e.message}`);
+      showError(`Setting update failed: ${e.message}`);
     }
   };
 

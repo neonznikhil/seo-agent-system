@@ -66,10 +66,19 @@ async def get_serp_monitor(
         if website_id:
             q = q.eq("website_id", website_id)
         res = q.order("created_at", desc=True).limit(limit).execute()
-        return {"success": True, "data": res.data or []}
+        return {"success": True, "data": res.data or [], "data_available": True}
     except Exception as e:
-        logger.warning(f"serp.monitor fallback: {e}")
-        return {"success": True, "data": []}
+        logger.warning(f"serp.monitor read failed: {e}")
+        # An unreadable table is not "no SERP rows tracked". Report the failure so
+        # the UI can say "couldn't read" instead of showing a real-looking empty
+        # competitor list.
+        return {
+            "success": False,
+            "data": [],
+            "data_available": False,
+            "error": str(e)[:200],
+            "message": "SERP monitor data could not be read; the empty list is not 'no data'.",
+        }
 
 
 @router.get("/volatility")

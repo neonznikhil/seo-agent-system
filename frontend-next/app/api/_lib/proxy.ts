@@ -62,6 +62,20 @@ export async function proxyToBackend(
   bodyOverride?: string | undefined
 ): Promise<Response> {
   const headers = forwardHeaders(req);
+
+  // EventSource (used for every SSE view) cannot attach custom headers, so the
+  // browser cannot send X-User-Id. The backend requires it in production and
+  // answered 401, leaving writer/monitoring/backlinks live views permanently
+  // dead. Let those callers pass identity in the query string and promote it to
+  // the header here, on the server, where it is not exposed to cross-origin JS.
+  if (!headers["x-user-id"]) {
+    const incoming = new URL(req.url).searchParams.get("user_id");
+    if (incoming) {
+      headers["X-User-Id"] = incoming;
+      headers["x-user-id"] = incoming;
+    }
+  }
+
   const body = ["POST", "PUT", "PATCH"].includes(req.method)
     ? bodyOverride !== undefined
       ? bodyOverride
@@ -78,6 +92,23 @@ export async function proxyToBackend(
 }
 
 /**
+ * Response headers worth preserving from the backend.
+ *
+ * `retry-after` in particular: the backend sets it on 503s and rate-limit 429s,
+ * and the client reads it to decide how long to wait. Rebuilding the response
+ * without it degraded every backend-directed retry to a hardcoded default.
+ */
+function forwardResponseHeaders(res: Response): Headers {
+  const headers = new Headers();
+  const passthrough = ["retry-after", "x-request-id", "content-type"];
+  for (const key of passthrough) {
+    const value = res.headers.get(key);
+    if (value) headers.set(key, value);
+  }
+  return headers;
+}
+
+/**
  * Proxy and return a NextResponse that preserves the backend's status code and
  * body. On network failure it returns 502 — never a fabricated success.
  */
@@ -90,11 +121,12 @@ export async function proxyJson(
   try {
     const res = await proxyToBackend(path, req, timeoutMs, bodyOverride);
     const text = await res.text().catch(() => "");
-    if (!text) return new NextResponse(null, { status: res.status });
+    const extra = forwardResponseHeaders(res);
+    if (!text) return new NextResponse(null, { status: res.status, headers: extra });
     try {
-      return NextResponse.json(JSON.parse(text), { status: res.status });
+      return NextResponse.json(JSON.parse(text), { status: res.status, headers: extra });
     } catch {
-      return new NextResponse(text, { status: res.status });
+      return new NextResponse(text, { status: res.status, headers: extra });
     }
   } catch (err: any) {
     const isTimeout =
@@ -134,6 +166,9 @@ export async function proxyStream(
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        ...(res.headers.get("retry-after")
+          ? { "Retry-After": res.headers.get("retry-after") as string }
+          : {}),
       },
     });
   } catch (err: any) {

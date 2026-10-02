@@ -230,7 +230,10 @@ async def connect_wordpress(website_id: str, request: Request):
                 "wp_user_name": user_name,
                 "wp_url": wp_url,
                 "roles": test_res.get("roles", []),
-                "can_publish": test_res.get("can_publish", True),
+                # No True default: this gates publishing, and defaulting to True
+                # on a response that omitted the field granted publish rights the
+                # backend never verified.
+                "can_publish": test_res.get("can_publish"),
                 "warning": test_res.get("warning")
             }
         else:
@@ -454,17 +457,29 @@ async def direct_publish_wp_post(payload: Dict[str, Any], request: Request):
     from services.wordpress_service import WordPressService
     wp_svc = WordPressService(website_id)
     result = await wp_svc.create_draft(website_id, title, content)
-    
+
     if content_id:
+        # Only advance the content_log row when WordPress actually accepted the
+        # post. This used to mark "published"/"approved" unconditionally, so a 401
+        # (e.g. a Subscriber role) left the row published with wp_post_id: null —
+        # the UI showed the article as live while nothing existed in WordPress.
+        if result.get("success"):
+            new_status = "published" if status == "publish" else "approved"
+        else:
+            new_status = "publish_failed"
+            logger.warning(
+                f"[WP publish] create_draft failed for content {content_id}: "
+                f"{result.get('error') or result.get('message') or 'unknown reason'}"
+            )
         try:
             get_supabase().table("content_log").update({
-                "status": "published" if status == "publish" else "approved",
+                "status": new_status,
                 "approved_by": user_id,
                 "wp_post_id": result.get("wp_post_id"),
                 "wp_draft_url": result.get("link")
             }).eq("id", content_id).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[WP publish] content_log status update failed for {content_id}: {e}")
 
     return {
         "success": result.get("success", False),
@@ -853,7 +868,9 @@ async def oauth_callback(
 
     try:
         import aiohttp
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=20)
+        ) as session:
             async with session.post(token_url, json=payload) as resp:
                 if resp.status != 200:
                     error_text = await resp.text()
@@ -863,10 +880,15 @@ async def oauth_callback(
         expires_in = data.get("expires_in", 3600)
         expires_at = datetime.utcnow().timestamp() + expires_in
 
+        from services.wordpress_service import encrypt_token_field
+
         token_row = {
             "website_id": website_id,
-            "access_token": data.get("access_token"),
-            "refresh_token": data.get("refresh_token"),
+            # Encrypted at rest. A DB read, backup, or dump of
+            # wordpress_oauth_tokens previously yielded long-lived WordPress
+            # credentials in the clear.
+            "access_token": encrypt_token_field(data.get("access_token")),
+            "refresh_token": encrypt_token_field(data.get("refresh_token")),
             "token_type": data.get("token_type", "Bearer"),
             "expires_at": datetime.fromtimestamp(expires_at).isoformat(),
             "scope": data.get("scope"),
@@ -879,10 +901,11 @@ async def oauth_callback(
         # Mark website as OAuth enabled
         get_supabase().table("websites").update({"oauth_enabled": True}).eq("id", website_id).execute()
 
+        # Tokens are deliberately NOT returned: this response goes to the browser
+        # and through any proxy/CDN in front of it. The client only needs to know
+        # the exchange succeeded.
         return {
             "status": "connected",
-            "access_token": data.get("access_token"),
-            "refresh_token": data.get("refresh_token"),
             "expires_in": expires_in,
             "scope": data.get("scope"),
         }
@@ -907,9 +930,9 @@ async def oauth_refresh(website_id: str):
     if not new_token:
         raise HTTPException(500, "Failed to refresh token")
 
+    # Never hand a live access token to the browser (or any proxy/CDN in front).
     return {
         "status": "refreshed",
-        "access_token": new_token.get("access_token"),
         "expires_at": new_token.get("expires_at"),
     }
 

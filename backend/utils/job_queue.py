@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -94,13 +95,35 @@ def _load_jobs() -> List[Dict[str, Any]]:
 
 
 def _save_jobs(jobs: List[Dict[str, Any]]) -> None:
+    # Unique per-writer temp name: a shared "*.tmp" let one writer's os.replace
+    # discard another's job record, and raised PermissionError on Windows when
+    # two writers held the same file open.
+    tmp = f"{_JOBS_FILE}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
     try:
-        tmp = f"{_JOBS_FILE}.tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(jobs, fh, indent=2, default=str)
         os.replace(tmp, _JOBS_FILE)
     except Exception as exc:
         logger.error(f"[job_queue] could not persist job queue: {exc}")
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+
+# Guards the whole read-modify-write cycle (not each half): two concurrent
+# website connects both loaded the file, both appended, and the second
+# os.replace threw the first job record away, so that site's onboarding was
+# never recovered after a restart.
+_JOBS_LOCK = threading.RLock()
+
+
+def _mutate_jobs(mutate: Callable[[List[Dict[str, Any]]], None]) -> None:
+    """Run ``mutate`` against the queue while holding the queue lock."""
+    with _JOBS_LOCK:
+        jobs = _load_jobs()
+        mutate(jobs)
+        _save_jobs(jobs)
 
 
 def _now() -> str:
@@ -122,30 +145,32 @@ def register_job(
     make dispatch idempotent.
     """
     jid = job_id or uuid.uuid4().hex
-    jobs = _load_jobs()
-    existing = next((j for j in jobs if j.get("job_id") == jid), None)
-    if existing is not None:
-        existing.update({
-            "kind": kind,
-            "payload": payload or {},
-            "status": "pending",
-            "updated_at": _now(),
-            "attempts": int(existing.get("attempts", 0)) + 1,
-        })
-        existing.pop("error", None)
-    else:
-        jobs.append({
-            "job_id": jid,
-            "kind": kind,
-            "payload": payload or {},
-            "account_id": account_id,
-            "website_id": website_id,
-            "status": "pending",
-            "attempts": 1,
-            "created_at": _now(),
-            "updated_at": _now(),
-        })
-    _save_jobs(jobs)
+
+    def _apply(jobs: List[Dict[str, Any]]) -> None:
+        existing = next((j for j in jobs if j.get("job_id") == jid), None)
+        if existing is not None:
+            existing.update({
+                "kind": kind,
+                "payload": payload or {},
+                "status": "pending",
+                "updated_at": _now(),
+                "attempts": int(existing.get("attempts", 0)) + 1,
+            })
+            existing.pop("error", None)
+        else:
+            jobs.append({
+                "job_id": jid,
+                "kind": kind,
+                "payload": payload or {},
+                "account_id": account_id,
+                "website_id": website_id,
+                "status": "pending",
+                "attempts": 1,
+                "created_at": _now(),
+                "updated_at": _now(),
+            })
+
+    _mutate_jobs(_apply)
     return jid
 
 
@@ -162,20 +187,19 @@ def mark_failed(job_id: str, error: str) -> None:
 
 
 def _update(job_id: str, **fields: Any) -> None:
-    jobs = _load_jobs()
-    changed = False
-    for job in jobs:
-        if job.get("job_id") == job_id:
-            job.update(fields)
-            job["updated_at"] = _now()
-            changed = True
-            break
-    if changed:
-        _save_jobs(jobs)
+    def _apply(jobs: List[Dict[str, Any]]) -> None:
+        for job in jobs:
+            if job.get("job_id") == job_id:
+                job.update(fields)
+                job["updated_at"] = _now()
+                break
+
+    _mutate_jobs(_apply)
 
 
 def list_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
-    jobs = _load_jobs()
+    with _JOBS_LOCK:
+        jobs = _load_jobs()
     if status is None:
         return jobs
     return [j for j in jobs if j.get("status") == status]
@@ -183,7 +207,7 @@ def list_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
 
 def get_stats() -> Dict[str, int]:
     stats: Dict[str, int] = {}
-    for job in _load_jobs():
+    for job in list_jobs():
         key = str(job.get("status", "unknown"))
         stats[key] = stats.get(key, 0) + 1
     return stats

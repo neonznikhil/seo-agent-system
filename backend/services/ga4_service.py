@@ -24,6 +24,34 @@ _GA4_JSON_KEYS = [
 _GA4_PATH_KEYS = ["GA4_CREDENTIALS_PATH", "GOOGLE_APPLICATION_CREDENTIALS"]
 
 
+def _rows(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return GA4's `rows` list, tolerating `{"rows": []}`.
+
+    GA4 answers `{"rows": []}` (key present, list empty) for a valid property with
+    no data in range. `response.get("rows", [{}])[0]` only defaults when the key is
+    ABSENT, so it raised IndexError on the empty list — the caller's except then
+    reported valid credentials as "not configured".
+    """
+    return list(response.get("rows") or [])
+
+
+def has_rows(response: Dict[str, Any]) -> bool:
+    """True when GA4 returned at least one row.
+
+    An empty `rows` list means a valid property with no data in range, which is
+    a different fact from "not configured".
+    """
+    return bool(_rows(response))
+
+
+def first_row_metrics(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Metric values of the first GA4 row, or [] when the property has no rows."""
+    rows = _rows(response)
+    if not rows:
+        return []
+    return list(rows[0].get("metricValues") or [])
+
+
 class GA4Service:
     """Google Analytics 4 Data API service for real traffic data."""
     
@@ -155,6 +183,7 @@ class GA4Service:
             return {
                 'error': 'GA4 not configured',
                 'pages': [],
+                'has_data': False,
                 'message': 'Set GA4_PROPERTY_ID and connect Google credentials in Connectors',
                 'source': 'ga4',
                 'connected': False
@@ -203,16 +232,19 @@ class GA4Service:
                 'total_users': sum(p['total_users'] for p in pages),
                 'date_range': {'start': start_date, 'end': end_date},
                 'source': 'ga4',
-                'connected': True
+                'connected': True,
+                # An empty `rows` list means "valid property, no data in range".
+                'has_data': has_rows(response),
             }
-        
+
         except Exception as e:
             logger.error(f"GA4 API error: {e}")
             return {
                 'pages': [],
                 'error': str(e),
                 'source': 'ga4',
-                'connected': self.is_connected()
+                'connected': self.is_connected(),
+                'has_data': False,
             }
     
     async def get_content_performance(self, limit: int = 100) -> Dict[str, Any]:
@@ -245,7 +277,7 @@ class GA4Service:
     async def get_user_engagement(self) -> Dict[str, Any]:
         """Get user engagement metrics."""
         if not self.is_connected():
-            return {'error': 'GA4 not configured', 'source': 'ga4', 'connected': False}
+            return {'error': 'GA4 not configured', 'source': 'ga4', 'connected': False, 'has_data': False}
         
         try:
             self._ensure_initialized()
@@ -267,8 +299,11 @@ class GA4Service:
                 body=request_body
             ).execute()
             
-            metrics = response.get('rows', [{}])[0].get('metricValues', [])
-            
+            metrics = first_row_metrics(response)
+            # has_data distinguishes "property returned no rows for this range"
+            # from "not configured" — the credentials are proven valid here.
+            has_data = has_rows(response)
+
             return {
                 'sessions': int(metrics[0].get('value', 0)) if metrics else 0,
                 'total_users': int(metrics[1].get('value', 0)) if len(metrics) > 1 else 0,
@@ -276,11 +311,13 @@ class GA4Service:
                 'avg_session_duration': float(metrics[3].get('value', 0)) if len(metrics) > 3 else 0,
                 'screen_page_views': int(metrics[4].get('value', 0)) if len(metrics) > 4 else 0,
                 'source': 'ga4',
-                'connected': True
+                'connected': True,
+                'has_data': has_data,
+                **({} if has_data else {'message': 'GA4 returned no rows for the last 30 days (property has no data in range).'})
             }
-        
+
         except Exception as e:
-            return {'error': str(e), 'source': 'ga4', 'connected': self.is_connected()}
+            return {'error': str(e), 'source': 'ga4', 'connected': self.is_connected(), 'has_data': False}
 
 
 async def get_page_traffic(property_id: str = None) -> Dict:
@@ -337,6 +374,7 @@ async def get_recent_sessions(
             "connected": False,
             "error": "GA4 not configured — set GA4_PROPERTY_ID and connect Google credentials in Connectors",
             "sessions": 0,
+            "has_data": False,
         }
     try:
         target_service._ensure_initialized()
@@ -351,13 +389,20 @@ async def get_recent_sessions(
             property=f"properties/{clean_id}",
             body=request_body
         ).execute()
-        metrics = response.get("rows", [{}])[0].get("metricValues", [])
+        metrics = first_row_metrics(response)
         sessions = int(metrics[0].get("value", 0)) if metrics else 0
+        has_data = has_rows(response)
         return {
             "connected": True,
             "sessions": sessions,
-            "message": f"GA4 returned {sessions} sessions for the last {days} days",
+            "has_data": has_data,
+            "message": (
+                f"GA4 returned {sessions} sessions for the last {days} days"
+                if has_data
+                else f"GA4 is connected but returned no rows for the last {days} days "
+                     "(property has no data in this range)"
+            ),
         }
     except Exception as e:
         logger.error(f"GA4 recent-sessions error: {e}")
-        return {"connected": False, "error": str(e)[:200], "sessions": 0}
+        return {"connected": False, "error": str(e)[:200], "sessions": 0, "has_data": False}

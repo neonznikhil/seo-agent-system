@@ -440,13 +440,14 @@ class AutonomousDecisionEngine:
                 confidence=1.0 if success else 0.5
             )
             
-            # Update autonomous_settings success_rate
+            # Update autonomous_settings success_rate. Scoped to this tenant: the
+            # unscoped UPDATE overwrote every other website's success_rate.
             supabase.table("autonomous_settings").update({
                 "success_rate": 0.98 if success else 0.92,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }).execute()
+            }).eq("website_id", self.website_id).execute()
         except Exception as e:
-            logger.debug(f"Decision learn failed: {e}")
+            logger.warning(f"Decision learn failed for website {self.website_id}: {e}")
 
     # ---------------------------------------------------------
     # 6. Local Queue for Supabase / Network Failures

@@ -626,8 +626,22 @@ class SerperService:
                     data = res.json()
                     data.setdefault("source", "serper.dev")
                     return data
+                logger.warning(f"Serper Autocomplete HTTP {res.status_code}")
+                error_detail = f"Serper autocomplete failed (HTTP {res.status_code})"
         except Exception as e:
             logger.warning(f"Serper Autocomplete error: {e}")
+            error_detail = f"Serper autocomplete error: {str(e)[:160]}"
+
+        # Terminal return: without this the function fell off the end and returned
+        # None on a non-200/raised request, so `get_keyword_suggestions` crashed
+        # on `None.get(...)` with a 500. Matches the `search()` degraded shape.
+        return {
+            "source": "unavailable",
+            "query": query,
+            "suggestions": [],
+            "credits_used": 0,
+            "error": error_detail,
+        }
 
     def _log_cost_to_daily_costs(self, cost_usd: float = 0.001, website_id: Optional[str] = None):
         """Log Serper API call cost to daily_costs table."""
@@ -672,6 +686,11 @@ class SerperService:
         """Extract autocomplete suggestions, related searches and PAA for a seed keyword."""
         search_res = await self.search(query=query, num=10)
         auto_res = await self.autocomplete(query=query)
+        # Defensive: a degraded autocomplete must never crash this caller.
+        if not isinstance(auto_res, dict):
+            auto_res = {}
+        if not isinstance(search_res, dict):
+            search_res = {}
         suggestions = [s.get("value") for s in auto_res.get("suggestions", []) if isinstance(s, dict)]
         if not suggestions and isinstance(auto_res.get("suggestions"), list):
             suggestions = [str(s) for s in auto_res.get("suggestions", [])]

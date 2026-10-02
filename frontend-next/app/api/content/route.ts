@@ -9,11 +9,15 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  return proxyJson("/api/content", req, 30000);
+  // Forward the query string: GET and DELETE did, so any website_id / scope
+  // filter on a write was silently discarded.
+  const url = new URL(req.url);
+  return proxyJson(`/api/content${url.search}`, req, 30000);
 }
 
 export async function PUT(req: Request) {
-  return proxyJson("/api/content", req, 30000);
+  const url = new URL(req.url);
+  return proxyJson(`/api/content${url.search}`, req, 30000);
 }
 
 export async function DELETE(req: Request) {

@@ -6,7 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Query, HTTPException
 
-from database import get_supabase, call_nim_llm
+from database import get_supabase, call_nim_llm, execute_db
 
 logger = logging.getLogger("backend.routers.gsc")
 router = APIRouter()
@@ -25,19 +25,38 @@ async def get_keywords(website_id: str):
     """
     supabase = get_supabase()
 
-    # 1. Try live GSC via real GSCService API
+    # 1. Try live GSC via real GSCService API.
+    #
+    # The property MUST be resolvable before any live query. GSCService has no
+    # fallback property, so an unresolved site is reported as "unconfigured"
+    # rather than silently querying whatever site happened to be in the env.
+    site_url = None
+    site_lookup_error: Optional[str] = None
     try:
         from services.gsc_service import GSCService
-        site_url = None
+
         try:
-            site_row = supabase.table("websites").select("url, domain").eq("id", website_id).limit(1).execute().data or []
-            if site_row:
-                site_url = site_row[0].get("url") or site_row[0].get("domain")
-        except Exception:
-            site_url = None
+            site_row = await execute_db(
+                supabase.table("websites").select("url, domain").eq("id", website_id).limit(1)
+            )
+            rows = (getattr(site_row, "data", None) or [])
+            if rows:
+                site_url = rows[0].get("url") or rows[0].get("domain")
+        except Exception as e:
+            # Previously swallowed with a bare `except: site_url = None`, which
+            # hid a real DB outage behind a clean-looking response.
+            site_lookup_error = str(e)[:200]
+            logger.warning(f"[GSC] website row lookup failed for {website_id}: {site_lookup_error}")
 
         gsc = GSCService(website_url=site_url)
-        if gsc.is_connected():
+        if not gsc.has_property():
+            logger.info(
+                "[GSC] no property resolved (website row empty%s) — skipping live query",
+                " and DB read failed" if site_lookup_error else "",
+            )
+        elif not gsc.is_connected():
+            logger.info("[GSC] credentials not configured — skipping live query")
+        else:
             perf = await gsc.get_keyword_performance()
             if perf.get("error") and not perf.get("keywords"):
                 logger.warning(f"[GSC] live query failed: {perf.get('error')}")
@@ -47,6 +66,7 @@ async def get_keywords(website_id: str):
                     "success": True,
                     "connected": True,
                     "source": "gsc",
+                    "data_available": True,
                     "keywords": keywords,
                     "data": keywords,
                     "message": "Live Google Search Console data retrieved." if keywords else "GSC connected but returned no keyword rows for this date range."
@@ -80,9 +100,12 @@ async def get_keywords(website_id: str):
     return {
         "success": True,
         "connected": False,
+        "source": "unconfigured",
+        "data_available": False,
         "keywords": [],
         "data": [],
-        "message": "Google Search Console is not connected. Connect GSC credentials in Settings / Connectors to view real search performance."
+        "message": "Google Search Console is not connected. Connect GSC credentials in Settings / Connectors to view real search performance.",
+        **({"error": site_lookup_error} if site_lookup_error else {}),
     }
 
 
@@ -105,12 +128,17 @@ async def get_performance(website_id: str, start_date: Optional[str] = None, end
     keywords = data.get("keywords", []) if isinstance(data, dict) else data
     connected = bool(data.get("connected")) if isinstance(data, dict) else False
     source = data.get("source") if isinstance(data, dict) else ""
+    data_lookup_error = (data.get("error") if isinstance(data, dict) else None)
 
     # Real top pages from site_pages table if measured
     top_pages = []
+    top_pages_available = True
+    top_pages_error: Optional[str] = None
     try:
         supabase = get_supabase()
-        pages = supabase.table("site_pages").select("url, title, clicks, impressions, ctr").eq("website_id", website_id).limit(5).execute().data or []
+        pages = (await execute_db(
+            supabase.table("site_pages").select("url, title, clicks, impressions, ctr").eq("website_id", website_id).limit(5)
+        )).data or []
         for p in pages:
             if p.get("clicks") is None and p.get("impressions") is None:
                 continue
@@ -121,8 +149,11 @@ async def get_performance(website_id: str, start_date: Optional[str] = None, end
                 "impressions": p.get("impressions"),
                 "ctr": p.get("ctr"),
             })
-    except Exception:
-        pass
+    except Exception as e:
+        # A failed read must not look like "measured, and there are zero pages".
+        top_pages_available = False
+        top_pages_error = str(e)[:200]
+        logger.warning(f"[GSC] site_pages lookup failed for {website_id}: {top_pages_error}")
 
     if not connected or source != "gsc":
         # HONEST: When GSC is not connected, clicks and impressions are 0.
@@ -140,7 +171,13 @@ async def get_performance(website_id: str, start_date: Optional[str] = None, end
             "keywords": keywords,
             "opportunities": [],
             "top_pages": top_pages,
+            "top_pages_available": top_pages_available,
+            "source": source or "unconfigured",
+            # Not-connected is a genuine measured zero *for GSC only*. Callers must
+            # not render "traffic collapsed to 0" when the read itself failed.
+            "data_available": top_pages_available and not data_lookup_error,
             "message": data.get("message", "Google Search Console is not connected.") if isinstance(data, dict) else "Google Search Console is not connected.",
+            **({"error": data_lookup_error or top_pages_error} if (data_lookup_error or top_pages_error) else {}),
         }
 
     total_clicks = sum(k.get("clicks", 0) for k in keywords)
@@ -166,5 +203,9 @@ async def get_performance(website_id: str, start_date: Optional[str] = None, end
         "average_position": avg_position,
         "keywords": keywords,
         "opportunities": opportunities,
-        "top_pages": top_pages
+        "top_pages": top_pages,
+        "top_pages_available": top_pages_available,
+        "source": source or "gsc",
+        "data_available": top_pages_available,
+        **({"top_pages_error": top_pages_error} if top_pages_error else {}),
     }

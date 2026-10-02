@@ -58,9 +58,15 @@ export async function authFetch(
   }
 
   const controller = new AbortController();
+  const TIMEOUT_REASON = "Request timed out";
   const timeout = setTimeout(() => {
+    // Abort with a DOMException so fetch rejects with something whose .name we
+    // can test. Aborting with a bare string made fetch reject with THAT STRING,
+    // so error.name was undefined and every clause of isAborted below was false —
+    // the intended "still generating in the background" message was unreachable
+    // and every timeout read as a generic offline error.
     try {
-      controller.abort("Request timed out");
+      controller.abort(new DOMException(TIMEOUT_REASON, "TimeoutError"));
     } catch {
       controller.abort();
     }
@@ -99,23 +105,28 @@ export async function authFetch(
     return res;
   } catch (error: any) {
     clearTimeout(timeout);
-    const isAborted = error.name === "AbortError" ||
-                      error.name === "DOMException" ||
-                      String(error.message || "").toLowerCase().includes("abort") ||
-                      String(error.message || "").toLowerCase().includes("signal");
+    const errName = error?.name;
+    const errText = String(error?.message || error || "");
+    const isTimeout =
+      errName === "TimeoutError" ||
+      errName === "AbortError" ||
+      errText.includes(TIMEOUT_REASON) ||
+      errText.toLowerCase().includes("abort");
+    const isNetwork = errName === "TypeError" || errText.includes("Failed to fetch");
 
     const method = (options.method || "GET").toUpperCase();
     const isIdempotent = method === "GET" || method === "HEAD" || method === "PUT" || method === "DELETE";
-    if (!isAborted && isIdempotent && retryCount < 2 && (error.name === "TypeError" || error.message?.includes("Failed to fetch"))) {
+    // Only retry genuine network failures, never an abort/timeout.
+    if (isNetwork && !isTimeout && isIdempotent && retryCount < 2) {
       await new Promise((r) => setTimeout(r, 500));
       return authFetch(path, options, retryCount + 1);
     }
 
-    const message = isAborted
-      ? "Content generation is processing in the background. Please check /approvals in a few moments."
+    const message = isTimeout
+      ? "The request timed out. If this was a generation job it is still processing in the background — check /approvals in a few moments."
       : (error.message || "Failed to communicate with RankForge API");
     const err = new Error(message);
-    (err as any).isOffline = true;
+    (err as any).isTimeout = isTimeout;
     (err as any).targetUrl = targetUrl;
     throw err;
   }
@@ -224,11 +235,32 @@ export async function del(path: string, headers: Record<string, string> = {}) {
   return await res.json();
 }
 
+/**
+ * Build an EventSource URL that authenticates.
+ *
+ * The native EventSource API cannot attach custom headers, so the backend never
+ * saw X-User-Id and answered 401 in production — every live view was permanently
+ * dead. Identity travels in the query string and the Next proxy promotes it back
+ * to the header server-side.
+ */
+export function buildSSEUrl(path: string): string {
+  const base = buildUrl(path);
+  if (typeof window === "undefined") return base;
+  const uid =
+    localStorage.getItem("user-id") ||
+    localStorage.getItem("account-id") ||
+    "a0000000-0000-0000-0000-000000000001";
+  const wid = localStorage.getItem("current-website-id") || localStorage.getItem("active_website_id") || "";
+  const joiner = base.includes("?") ? "&" : "?";
+  return `${base}${joiner}user_id=${encodeURIComponent(uid)}${
+    wid && wid !== "default" ? `&website_id=${encodeURIComponent(wid)}` : ""
+  }`;
+}
+
 export function createSSE(path: string, onMessage: (event: MessageEvent) => void): EventSource | null {
   if (typeof window === "undefined") return null;
   try {
-    const url = buildUrl(path);
-    const source = new EventSource(url);
+    const source = new EventSource(buildSSEUrl(path));
     source.onmessage = onMessage;
     source.onerror = () => source.close();
     return source;

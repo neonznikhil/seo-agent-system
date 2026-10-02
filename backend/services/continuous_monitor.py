@@ -35,17 +35,18 @@ async def rank_monitor_loop():
         start_time = time.time()
         iteration = 0
         issues_found = 0
+        total_issues = 0
         last_website_id = "unknown"
-        
+
         try:
             websites = get_supabase().table("websites").select("*").execute().data or []
-            
+
             for website in websites:
                 website_id = website["id"]
                 last_website_id = website_id
                 iteration += 1
                 issues_found = 0
-                
+
                 try:
                     monitor = RankMonitor(website_id)
                     
@@ -140,9 +141,13 @@ async def rank_monitor_loop():
                         data={"website_id": website_id},
                         source_monitor="rank_monitor"
                     )
-            
+
+                # Cycle total must accumulate across every site, not be reset by
+                # the next iteration of the loop.
+                total_issues += issues_found
+
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id=last_website_id, monitor_type="rank_monitor", status="completed", checked_urls=iteration*20, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="rank_monitor", status="completed", checked_urls=iteration*20, issues_found=total_issues, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Rank monitor loop crashed: {e}")
@@ -161,17 +166,18 @@ async def serp_monitor_loop():
         start_time = time.time()
         iteration = 0
         issues_found = 0
+        total_issues = 0
         last_website_id = "unknown"
-        
+
         try:
             websites = get_supabase().table("websites").select("*").execute().data or []
-            
+
             for website in websites:
                 website_id = website["id"]
                 last_website_id = website_id
                 iteration += 1
                 issues_found = 0
-                
+
                 try:
                     monitor = SERPMonitor(website_id)
                     top_keywords = await monitor.get_top_keywords(limit=10)
@@ -213,9 +219,11 @@ async def serp_monitor_loop():
                         data={"website_id": website_id},
                         source_monitor="serp_monitor"
                     )
-            
+
+                total_issues += issues_found
+
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id=last_website_id, monitor_type="serp_monitor", status="completed", checked_urls=iteration*10, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="serp_monitor", status="completed", checked_urls=iteration*10, issues_found=total_issues, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"SERP monitor loop crashed: {e}")
@@ -236,11 +244,12 @@ async def competitor_monitor_loop():
         last_website_id = None
         iteration = 0
         issues_found = 0
+        total_issues = 0
         last_website_id = "unknown"
-        
+
         try:
             websites = get_supabase().table("websites").select("*").execute().data or []
-            
+
             for website in websites:
                 website_id = website["id"]
                 last_website_id = website_id
@@ -331,9 +340,11 @@ async def competitor_monitor_loop():
                         data={"website_id": website_id},
                         source_monitor="competitor_monitor"
                     )
-            
+
+                total_issues += issues_found
+
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id=last_website_id, monitor_type="competitor_monitor", status="completed", checked_urls=iteration, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="competitor_monitor", status="completed", checked_urls=iteration, issues_found=total_issues, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Competitor monitor loop crashed: {e}")
@@ -354,17 +365,18 @@ async def tech_monitor_loop():
         last_website_id = None
         iteration = 0
         issues_found = 0
+        total_issues = 0
         last_website_id = "unknown"
-        
+
         try:
             websites = get_supabase().table("websites").select("*").execute().data or []
-            
+
             for website in websites:
                 website_id = website["id"]
                 last_website_id = website_id
                 iteration += 1
                 issues_found = 0
-                
+
                 try:
                     monitor = TechMonitor(website_id)
                     pages_to_check = await monitor.get_top_pages(limit=5)
@@ -433,9 +445,11 @@ async def tech_monitor_loop():
                         data={"website_id": website_id},
                         source_monitor="tech_monitor"
                     )
-            
+
+                total_issues += issues_found
+
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id=last_website_id, monitor_type="tech_monitor", status="completed", checked_urls=iteration*5, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="tech_monitor", status="completed", checked_urls=iteration*5, issues_found=total_issues, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Tech monitor loop crashed: {e}")
@@ -455,12 +469,17 @@ async def geo_monitor_loop():
         last_website_id = None
         iteration = 0
         issues_found = 0
+        total_issues = 0
 
         try:
             websites = get_supabase().table("websites").select("*").execute().data or []
 
             for website in websites:
                 website_id = website["id"]
+                # log_monitoring() validates website_id with uuid.UUID and silently
+                # drops the row when it is None, so without this assignment every
+                # GEO run recorded nothing at all.
+                last_website_id = website_id
                 iteration += 1
                 issues_found = 0
 
@@ -518,13 +537,15 @@ async def geo_monitor_loop():
                         source_monitor="geo_monitor",
                     )
 
+                total_issues += issues_found
+
             execution_ms = int((time.time() - start_time) * 1000)
             await log_monitoring(
                 website_id=last_website_id,
                 monitor_type="geo_monitor",
                 status="completed",
                 checked_urls=iteration * 10,
-                issues_found=issues_found,
+                issues_found=total_issues,
                 execution_ms=execution_ms,
             )
 
@@ -546,17 +567,18 @@ async def structure_monitor_loop():
         last_website_id = None
         iteration = 0
         issues_found = 0
+        total_issues = 0
         last_website_id = "unknown"
-        
+
         try:
             websites = get_supabase().table("websites").select("*").execute().data or []
-            
+
             for website in websites:
                 website_id = website["id"]
                 last_website_id = website_id
                 iteration += 1
                 issues_found = 0
-                
+
                 try:
                     monitor = StructureMonitor(website_id)
                     issues = await monitor.analyze_structure()
@@ -584,9 +606,11 @@ async def structure_monitor_loop():
                         data={"website_id": website_id},
                         source_monitor="structure_monitor"
                     )
-            
+
+                total_issues += issues_found
+
             execution_ms = int((time.time() - start_time) * 1000)
-            await log_monitoring(website_id=last_website_id, monitor_type="structure_monitor", status="completed", checked_urls=iteration, issues_found=issues_found, execution_ms=execution_ms)
+            await log_monitoring(website_id=last_website_id, monitor_type="structure_monitor", status="completed", checked_urls=iteration, issues_found=total_issues, execution_ms=execution_ms)
             
         except Exception as e:
             logger.error(f"Structure monitor loop crashed: {e}")
@@ -600,6 +624,7 @@ async def _staggered_start(coro, initial_delay: int):
 
 
 _MONITORS_STARTED = False
+_MONITOR_TASKS: List[Any] = []
 
 
 def start_all_monitors():
@@ -608,20 +633,69 @@ def start_all_monitors():
     Idempotent: setup_scheduler() and the app lifespan both call this, and
     without the guard that registered 12 loops (double the intended 6), doubling
     API spend and alerts.
+
+    The guard is only set once every loop actually spawned. Setting it first meant
+    a failed spawn (no running loop) permanently blocked monitoring for the whole
+    process lifetime while the log still claimed all six started.
     """
     global _MONITORS_STARTED
     if _MONITORS_STARTED:
         logger.info("[Monitoring] Monitor loops already started — skipping duplicate registration")
         return
-    _MONITORS_STARTED = True
     from utils.job_queue import spawn_background
-    spawn_background(_staggered_start(rank_monitor_loop, 20), name="monitor:rank")
-    spawn_background(_staggered_start(serp_monitor_loop, 40), name="monitor:serp")
-    spawn_background(_staggered_start(competitor_monitor_loop, 60), name="monitor:competitor")
-    spawn_background(_staggered_start(tech_monitor_loop, 80), name="monitor:tech")
-    spawn_background(_staggered_start(geo_monitor_loop, 100), name="monitor:geo")
-    spawn_background(_staggered_start(structure_monitor_loop, 120), name="monitor:structure")
+
+    specs = (
+        ("monitor:rank", rank_monitor_loop, 20),
+        ("monitor:serp", serp_monitor_loop, 40),
+        ("monitor:competitor", competitor_monitor_loop, 60),
+        ("monitor:tech", tech_monitor_loop, 80),
+        ("monitor:geo", geo_monitor_loop, 100),
+        ("monitor:structure", structure_monitor_loop, 120),
+    )
+
+    started: List[Any] = []
+    failed: List[str] = []
+    for name, loop_fn, delay in specs:
+        task = spawn_background(_staggered_start(loop_fn, delay), name=name)
+        if task is None:
+            failed.append(name)
+        else:
+            started.append(task)
+
+    if failed:
+        # Roll back so the next caller retries cleanly instead of leaving a
+        # half-started set plus a guard that says "already running".
+        for task in started:
+            try:
+                task.cancel()
+            except Exception:
+                pass
+        logger.error(
+            f"[Monitoring] Failed to spawn monitor loops: {', '.join(failed)} — "
+            "monitoring NOT started; a later call will retry"
+        )
+        return
+
+    _MONITOR_TASKS[:] = started
+    _MONITORS_STARTED = True
     logger.info("[Monitoring] All 6 monitor loops registered with staggered start")
+
+
+def stop_all_monitors():
+    """Cancel the monitor loops and clear the guard so a restart can respawn them.
+
+    Without this the guard stayed True for the lifetime of the module, so a
+    restarted automation runtime came back with zero monitoring loops.
+    """
+    global _MONITORS_STARTED
+    for task in list(_MONITOR_TASKS):
+        try:
+            task.cancel()
+        except Exception:
+            pass
+    _MONITOR_TASKS.clear()
+    _MONITORS_STARTED = False
+    logger.info("[Monitoring] Monitor loops cancelled; start guard cleared")
 
 
 async def run_all_monitors(website_id: str) -> Dict[str, Any]:

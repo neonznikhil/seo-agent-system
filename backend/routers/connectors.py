@@ -1133,7 +1133,11 @@ async def _verify_ga4_live(property_id: Optional[str], credentials_json: Optiona
                 "metrics": [{"name": "sessions"}],
             },
         ).execute()
-        metrics = response.get("rows", [{}])[0].get("metricValues", [])
+        # GA4 answers {"rows": []} for a valid property with no data in range.
+        # `response.get("rows", [{}])[0]` raised IndexError there, so the live
+        # check reported working credentials as a connection failure.
+        from services.ga4_service import first_row_metrics
+        metrics = first_row_metrics(response)
         return int(metrics[0].get("value", 0)) if metrics else 0
 
     sessions = await asyncio.wait_for(asyncio.to_thread(_call), timeout=20.0)
@@ -1216,14 +1220,16 @@ async def test_ga4_stream(payload: Optional[TestGa4Request] = None, website_id: 
                 "active_visitors": None,
                 "message": str(data.get("error"))[:200],
             }
-        # `get_page_traffic` reports the total under `total_sessions`; reading the
-        # nonexistent `sessions` key always produced 0 active visitors.
+        # `get_page_traffic` reports the total under `total_sessions` and the page
+        # rows under `pages`; reading the nonexistent `sessions` / `top_pages`
+        # keys always produced 0 active visitors and an empty page list.
         sessions = int(data.get("total_sessions", 0) or 0)
         return {
             "connected": True,
             "stream_status": "live",
             "active_visitors": sessions,
-            "top_pages": data.get("top_pages", [])[:5],
+            "has_data": bool(data.get("has_data", True)),
+            "top_pages": data.get("pages", [])[:5],
         }
     except Exception as exc:
         return {
@@ -1353,6 +1359,39 @@ async def save_all_connectors(payload: SaveAllRequest):
             })
         else:
             logger.warning(f"[Connectors] Supabase creds saved but not adopted: {probe_msg}")
+
+    # Every OTHER saved credential must also reach the live process. Previously
+    # only Supabase was adopted, so a Serper/Google/Slack key saved through
+    # Save-All sat in .env while `/api/connectors/status` kept reading the old
+    # (empty) value until someone restarted the backend.
+    #
+    # Adoption here is safe even for unverified values: status reports
+    # `is_configured` from presence and `connected` only from a live probe, so an
+    # unverifiable key shows up as configured-but-unverified instead of
+    # "disconnected until restart". SUPABASE_* stays on the probe-gated path
+    # above, where a failed probe must not replace a working client.
+    if env_updates:
+        non_supabase_updates = {k: v for k, v in env_updates.items() if not k.startswith("SUPABASE")}
+        if non_supabase_updates:
+            try:
+                os.environ.update(non_supabase_updates)
+            except Exception as e:
+                logger.error(f"[Connectors] Failed to apply saved credentials to the live process: {e}")
+        # A newly supplied Serper key must not stay blocked by a breaker tripped
+        # by whatever key preceded it.
+        if non_supabase_updates.get("SERPER_API_KEY"):
+            try:
+                from services.serper_service import serper_service
+                serper_service.reset_circuit()
+            except Exception:
+                pass
+        # A cached Serper status belongs to the previous key.
+        if "SERPER_API_KEY" in non_supabase_updates:
+            _SERPER_STATUS_CACHE.update({"key": None, "ok": None, "message": None, "at": 0.0})
+        # Cached GSC/GA4 live verdicts belong to the previous credentials.
+        for _cached_key in ("gsc", "ga4"):
+            if any(k.startswith(_cached_key.upper()) for k in non_supabase_updates):
+                _GOOGLE_STATUS_CACHE.pop(_cached_key, None)
 
     # Non-secret settings already land in a durable local store.
     try:

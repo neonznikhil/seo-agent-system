@@ -139,7 +139,13 @@ def get_network_overview(account_id: Optional[str] = None) -> Dict[str, Any]:
         elif has_audit and audits and audits[0].get("crawled_urls"):
             crawled = audits[0].get("crawled_urls", [])
             total_pages = len(crawled)
-            indexed = len([u for u in crawled if u.get("status") == 200 or u.get("status_code") == 200])
+            # crawled_urls is not guaranteed to hold dicts. A plain-string entry
+            # made u.get(...) raise AttributeError and 500 the whole overview for
+            # every tenant using this endpoint.
+            indexed = len([
+                u for u in crawled
+                if isinstance(u, dict) and (u.get("status") == 200 or u.get("status_code") == 200)
+            ])
         else:
             indexed = 0
             total_pages = 0

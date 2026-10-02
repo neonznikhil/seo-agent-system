@@ -34,6 +34,47 @@ except (ImportError, ValueError):
 logger = logging.getLogger("backend.services.wordpress_service")
 
 
+def _looks_encrypted(value: str) -> bool:
+    """Fernet tokens are urlsafe-base64 and always start with 'gAAAA'."""
+    return isinstance(value, str) and value.startswith("gAAAA")
+
+
+def encrypt_token_field(value: Optional[str]) -> Optional[str]:
+    """Encrypt a token before persisting it.
+
+    Raises rather than falling back to plaintext: ENCRYPTION_KEY is mandatory in
+    config, so a failure here means the deployment is misconfigured, and storing
+    a long-lived OAuth credential in the clear is exactly the bug this fixes.
+    """
+    if not value:
+        return None
+    if _looks_encrypted(value):
+        return value
+    from services.wordpress_oauth_service import encrypt_token
+
+    return encrypt_token(value)
+
+
+def decrypt_token_field(value: Optional[str]) -> Optional[str]:
+    """Decrypt a stored token, tolerating legacy plaintext rows.
+
+    Rows written before encryption was added are still plaintext; those must keep
+    working, otherwise every already-connected site silently loses its WordPress
+    link on upgrade.
+    """
+    if not value:
+        return None
+    if not _looks_encrypted(value):
+        return value
+    try:
+        from services.wordpress_oauth_service import decrypt_token
+
+        return decrypt_token(value)
+    except Exception as e:
+        logger.warning(f"[WP OAuth] token decrypt failed (key mismatch or corruption): {e}")
+        return None
+
+
 class WordPressService:
     def __init__(self, website_id: str):
         self.website_id = website_id
@@ -328,7 +369,18 @@ class WordPressService:
                                 "endpoint": ep, "roles": roles, "can_publish": can_publish, "warning": warning
                             }
                         except Exception:
-                            return {"connected": True, "status_code": 200, "user_name": username, "message": "Connected ✅", "roles": [], "can_publish": True, "endpoint": ep}
+                            # HTTP 200 but the body is not JSON (a caching/security
+                            # plugin returning an HTML error page). Auth did succeed,
+                            # but we cannot prove the role, so do NOT fabricate
+                            # can_publish=True — that gate controls auto-publishing.
+                            logger.warning(f"[WP] 200 with non-JSON body from {ep}; roles unverifiable")
+                            return {
+                                "connected": True, "status_code": 200, "user_name": username,
+                                "message": "Authenticated, but the WordPress REST response was not JSON "
+                                           "(a security/caching plugin is likely intercepting). Roles unverifiable.",
+                                "roles": [], "can_publish": None, "endpoint": ep,
+                                "warning": "Could not verify WordPress role — publishing is blocked until resolved.",
+                            }
                     if " " in password:
                         resp2 = await client.get(ep, auth=(username, password.replace(" ", "")))
                         if resp2.status_code == 200:
@@ -341,7 +393,14 @@ class WordPressService:
                                     warning2 = f"WordPress user needs Editor role - Go to WP Admin > Users > Role = Editor - current role: {roles2} - cannot publish"
                                 return {"connected": True, "status_code": 200, "user_name": data2.get("name", username), "message": f"Connected as {data2.get('name', username)} (trimmed) ✅ roles={roles2} can_publish={can_publish2}", "endpoint": ep, "roles": roles2, "can_publish": can_publish2, "warning": warning2}
                             except Exception:
-                                return {"connected": True, "status_code": 200, "user_name": username, "message": "Connected ✅", "roles": [], "can_publish": True, "endpoint": ep}
+                                logger.warning(f"[WP] 200 with non-JSON body from {ep}; roles unverifiable")
+                                return {
+                                    "connected": True, "status_code": 200, "user_name": username,
+                                    "message": "Authenticated, but the WordPress REST response was not JSON "
+                                               "(a security/caching plugin is likely intercepting). Roles unverifiable.",
+                                    "roles": [], "can_publish": None, "endpoint": ep,
+                                    "warning": "Could not verify WordPress role — publishing is blocked until resolved.",
+                                }
                     if resp.status_code == 403:
                         logger.warning(f"Hostinger/Security protection detected - trying alternative for {ep}")
                         if "wp-json" in ep:
@@ -1044,40 +1103,6 @@ class WordPressService:
             logger.error(f"[WP Crew] publish_post_via_crew failed: {e}")
             return {"success": False, "message": str(e)[:300], "status_code": 0}
 
-    async def get_site_info(self) -> dict:
-        """Fetch site info with graceful fallback so 404 is never thrown for configured sites."""
-        base_url = self.get_base_url()
-        domain = self.site.get("domain") or (base_url.replace("https://", "").replace("http://", "").split("/")[0] if base_url else "WordPress Site")
-        fallback_info = {
-            "name": domain,
-            "url": base_url or f"https://{domain}",
-            "home": base_url or f"https://{domain}",
-            "status": "configured",
-            "domain": domain,
-        }
-        if not base_url:
-            return fallback_info
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        }
-        try:
-            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-                resp = await client.get(f"{base_url}/wp-json/", headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return {
-                        "name": data.get("name") or domain,
-                        "description": data.get("description", ""),
-                        "url": data.get("url") or base_url,
-                        "home": data.get("home") or base_url,
-                        "wp_version": data.get("wp_version") if isinstance(data.get("wp_version"), str) else None,
-                        "status": "live",
-                    }
-        except Exception as e:
-            logger.warning(f"Error fetching WP site info: {e}")
-        return fallback_info
-
     async def connect(self) -> dict:
         """Test and verify active WordPress connection."""
         base_url = self.get_base_url()
@@ -1161,7 +1186,10 @@ class WordPressService:
                 "user": user,
                 "user_name": test_result.get("user_name"),
                 "roles": test_result.get("roles", []),
-                "can_publish": test_result.get("can_publish", True),
+                # Do not default to True: this gates auto-publishing, and a
+                # fabricated True on an unverified account let dispatch_onboarding
+                # fire against a site we could not actually authenticate to.
+                "can_publish": test_result.get("can_publish"),
                 "warning": test_result.get("warning"),
             }
         return {
@@ -1174,7 +1202,10 @@ class WordPressService:
 
 
     def _get_oauth_token(self) -> Optional[dict]:
-        """Read the stored WordPress OAuth token for this website, if any."""
+        """Read the stored WordPress OAuth token for this website, if any.
+
+        Tokens are decrypted on read so callers keep seeing plaintext tokens.
+        """
         try:
             rows = (
                 get_supabase()
@@ -1187,7 +1218,12 @@ class WordPressService:
                 .data
                 or []
             )
-            return rows[0] if rows else None
+            if not rows:
+                return None
+            row = dict(rows[0])
+            row["access_token"] = decrypt_token_field(row.get("access_token"))
+            row["refresh_token"] = decrypt_token_field(row.get("refresh_token"))
+            return row
         except Exception as e:
             logger.warning(f"[WP OAuth] token read failed: {e}")
             return None
@@ -1227,8 +1263,8 @@ class WordPressService:
         expires_in = data.get("expires_in", 3600)
         row = {
             "website_id": self.website_id,
-            "access_token": data.get("access_token"),
-            "refresh_token": data.get("refresh_token") or refresh_token,
+            "access_token": encrypt_token_field(data.get("access_token")),
+            "refresh_token": encrypt_token_field(data.get("refresh_token") or refresh_token),
             "token_type": data.get("token_type", "Bearer"),
             "expires_at": datetime.fromtimestamp(datetime.utcnow().timestamp() + expires_in).isoformat(),
             "scope": data.get("scope"),

@@ -22,6 +22,7 @@ from config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
     BACKEND_URL, WP_SITE_URL, WORDPRESS_URL,
     REDIS_URL,
+    JWT_SECRET,
 )
 from database import get_supabase
 from security import encrypt_secret, decrypt_secret
@@ -383,8 +384,12 @@ async def ga4_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
 # 3. WORDPRESS DEEP-LINK APPLICATION PASSWORDS
 # -----------------------------------------------------------------------------
 @router.get("/connectors/wordpress/verify-url")
-async def verify_wp_url(site_url: str):
-    """Verify that WordPress REST API is reachable at site URL."""
+async def verify_wp_url(site_url: str, website_id: str = "default"):
+    """Verify that WordPress REST API is reachable at site URL.
+
+    website_id is bound into the signed state so the app-password callback can
+    verify the request came from this flow and store against the right row.
+    """
     clean_url = site_url.strip().rstrip("/")
     if not clean_url.startswith("http"):
         clean_url = f"https://{clean_url}"
@@ -405,8 +410,60 @@ async def verify_wp_url(site_url: str):
         "status_code": status_code,
         "message": "REST API reachable." if reachable else f"REST API check returned HTTP {status_code}",
         "site_url": clean_url,
-        "authorize_deep_link": f"{clean_url}/wp-admin/authorize-application.php?app_name=RankForge&success_url={BACKEND_URL}/api/connectors/wordpress/app-password/callback",
+        # The callback now requires this signed state, so it must be minted here.
+        "authorize_deep_link": (
+            f"{clean_url}/wp-admin/authorize-application.php"
+            f"?app_name=RankForge"
+            f"&success_url={BACKEND_URL}/api/connectors/wordpress/app-password/callback"
+            f"&state={_wp_state(website_id)}"
+        ),
     }
+
+
+def _wp_state(website_id: str, issued_at: Optional[float] = None) -> str:
+    """Build a signed, expiring state value for the WordPress app-password flow.
+
+    WordPress's authorize-application.php redirects the browser back with GET
+    parameters, so the callback is reachable by anyone who knows the URL. Without
+    a state check that is a CSRF hole: an attacker-crafted link stores credentials
+    on the victim's account. HMAC-signed with JWT_SECRET (stdlib hmac — no new dep).
+    """
+    import hashlib
+    import hmac
+    import time as _time
+
+    ts = str(int(issued_at if issued_at is not None else _time.time()))
+    payload = f"{website_id}|{ts}"
+    sig = hmac.new(
+        str(JWT_SECRET).encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    return f"{website_id}.{ts}.{sig}"
+
+
+def _verify_wp_state(state: Optional[str], max_age_seconds: int = 1800) -> Optional[str]:
+    """Return the website_id from a valid state, else None."""
+    import hashlib
+    import hmac
+    import time as _time
+
+    if not state:
+        return None
+    parts = state.split(".")
+    if len(parts) != 3:
+        return None
+    website_id, ts, sig = parts
+    try:
+        issued = int(ts)
+    except (TypeError, ValueError):
+        return None
+    if _time.time() - issued > max_age_seconds:
+        return None
+    expected = hmac.new(
+        str(JWT_SECRET).encode(), f"{website_id}|{ts}".encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    if not hmac.compare_digest(expected, sig):
+        return None
+    return website_id
 
 
 @router.get("/api/connectors/wordpress/app-password/callback")
@@ -415,25 +472,57 @@ async def wp_app_password_callback(
     user_login: Optional[str] = None,
     password: Optional[str] = None,
     site_url: Optional[str] = None,
-    website_id: str = "default"
+    website_id: str = "default",
+    state: Optional[str] = None,
 ):
-    """Receives the WordPress Application Password, encrypts it, stores on website row."""
-    if user_login and password:
+    """Receives the WordPress Application Password, encrypts it, stores on website row.
+
+    Requires a valid signed `state`. Previously there was no CSRF check at all, the
+    write failure was swallowed, and the popup reported success even when nothing
+    was received or nothing was stored.
+    """
+    verified_website_id = _verify_wp_state(state)
+    if not verified_website_id:
+        return _popup_html(
+            False,
+            "wordpress",
+            "Could not verify this authorization request (missing or expired state). "
+            "Start again from the Connectors page.",
+        )
+
+    if not user_login or not password:
+        return _popup_html(
+            False,
+            "wordpress",
+            "Authorization failed: no Application Password was returned by WordPress.",
+        )
+
+    try:
         supabase = get_supabase()
         resolved_url = site_url or WP_SITE_URL or WORDPRESS_URL or ""
-        if website_id != "default":
-            try:
-                encrypted = encrypt_secret(password)
-                supabase.table("websites").update({
-                    "wordpress_user": user_login,
-                    "cms_user": user_login,
-                    "wordpress_password": encrypted,
-                    "app_password": encrypted,
-                    "wordpress_url": resolved_url,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }).eq("id", website_id).execute()
-            except Exception as e:
-                logger.warning(f"[WP callback] credential save failed: {e}")
+        encrypted = encrypt_secret(password)
+        result = supabase.table("websites").update({
+            "wordpress_user": user_login,
+            "cms_user": user_login,
+            "wordpress_password": encrypted,
+            "app_password": encrypted,
+            "wordpress_url": resolved_url,
+            "updated_at": datetime.utcnow().isoformat(),
+        }).eq("id", verified_website_id).execute()
+        # PostgREST is all-or-nothing; a swallowed write previously produced a
+        # green popup for a credential that was never stored.
+        if getattr(result, "data", None) is None:
+            logger.error(f"[WP callback] no row returned for website {verified_website_id}")
+            return _popup_html(
+                False, "wordpress",
+                "Could not store the Application Password. Check that the website row exists.",
+            )
+    except Exception as e:
+        logger.error(f"[WP callback] credential save failed: {e}")
+        return _popup_html(
+            False, "wordpress",
+            "Could not store the Application Password. Check backend logs.",
+        )
 
     return _popup_html(True, "wordpress", "Application Password authorized and stored encrypted.")
 
@@ -610,7 +699,9 @@ async def gsc_oauth_refresh(payload: TokenRefreshRequest):
     result = await _refresh_oauth_token(payload.website_id, "gsc_credentials")
     if not result:
         return JSONResponse(status_code=400, content={"success": False, "error": "Token refresh failed - no valid refresh token or credentials."})
-    return JSONResponse(content={"success": True, "access_token": result["access_token"], "expires_at": result["expires_at"]})
+    # The refreshed access token is NOT returned: this response reaches the
+    # browser and any proxy/CDN in front of it. Only the expiry matters.
+    return JSONResponse(content={"success": True, "expires_at": result["expires_at"]})
 
 
 @router.post("/api/connectors/ga4/oauth/refresh")
@@ -618,4 +709,6 @@ async def ga4_oauth_refresh(payload: TokenRefreshRequest):
     result = await _refresh_oauth_token(payload.website_id, "ga4_credentials")
     if not result:
         return JSONResponse(status_code=400, content={"success": False, "error": "Token refresh failed - no valid refresh token or credentials."})
-    return JSONResponse(content={"success": True, "access_token": result["access_token"], "expires_at": result["expires_at"]})
+    # The refreshed access token is NOT returned: this response reaches the
+    # browser and any proxy/CDN in front of it. Only the expiry matters.
+    return JSONResponse(content={"success": True, "expires_at": result["expires_at"]})

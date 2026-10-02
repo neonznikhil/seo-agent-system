@@ -82,19 +82,32 @@ export function CompetitorTrackerCard({ websiteId }: CompetitorTrackerCardProps)
     setLoading(true);
     setError(null);
     try {
-      const [compRes, sovRes, pagesRes, matrixRes] = await Promise.all([
+      // allSettled, not all: one 404 (e.g. new-pages) previously discarded the
+      // three responses that DID load, blanking every panel in the card.
+      const [compRes, sovRes, pagesRes, matrixRes] = await Promise.allSettled([
         get(`/api/competitors/${websiteId}`),
         get(`/api/competitors/${websiteId}/share-of-voice`),
         get(`/api/competitors/${websiteId}/new-pages`),
         get(`/api/competitors/${websiteId}/outranking-matrix`),
       ]);
 
-      setCompetitors(compRes.competitors || []);
-      setSovData(sovRes);
-      setNewPages(pagesRes.new_pages || []);
-      setOutrankingMatrix(matrixRes.outranked_queries || []);
-    } catch (err: any) {
-      setError(err?.message || "Failed to load competitor intelligence data.");
+      const val = <T,>(r: PromiseSettledResult<any>, fallback: T): T =>
+        r.status === "fulfilled" ? r.value : fallback;
+
+      setCompetitors(val<any>(compRes, {}).competitors || []);
+      setSovData(val<any>(sovRes, null));
+      setNewPages(val<any>(pagesRes, {}).new_pages || []);
+      setOutrankingMatrix(val<any>(matrixRes, {}).outranked_queries || []);
+
+      const failures = [compRes, sovRes, pagesRes, matrixRes].filter((r) => r.status === "rejected");
+      if (failures.length === 4) {
+        setError(
+          (failures[0] as PromiseRejectedResult).reason?.message ||
+            "Failed to load competitor intelligence data."
+        );
+      } else if (failures.length) {
+        setError(`${failures.length} of 4 competitor panels could not be loaded. The rest is live data.`);
+      }
     } finally {
       setLoading(false);
     }

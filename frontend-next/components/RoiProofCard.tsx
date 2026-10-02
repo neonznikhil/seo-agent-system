@@ -68,14 +68,24 @@ export function RoiProofCard({ websiteId }: RoiProofCardProps) {
     setLoading(true);
     setError(null);
     try {
-      const [listRes, sumRes] = await Promise.all([
+      // allSettled so a failure on one endpoint does not discard the other.
+      const [listRes, sumRes] = await Promise.allSettled([
         get(`/api/roi-proof/${websiteId}/proof-list`),
         get(`/api/roi-proof/${websiteId}/summary`),
       ]);
-      setFixes(listRes.tracked_fixes || []);
-      setSummary(sumRes);
-    } catch (err: any) {
-      setError(err?.message || "Failed to load ROI proof data.");
+
+      if (listRes.status === "fulfilled") setFixes(listRes.value?.tracked_fixes || []);
+      if (sumRes.status === "fulfilled") setSummary(sumRes.value);
+
+      const failures = [listRes, sumRes].filter((r) => r.status === "rejected");
+      if (failures.length === 2) {
+        setError(
+          (failures[0] as PromiseRejectedResult).reason?.message ||
+            "Failed to load ROI proof data."
+        );
+      } else if (failures.length) {
+        setError("Part of the ROI proof data could not be loaded. The rest is live data.");
+      }
     } finally {
       setLoading(false);
     }
