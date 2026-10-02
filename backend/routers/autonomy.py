@@ -612,37 +612,37 @@ async def save_blog_schedule(request: Request):
     except Exception as e:
         # Fallback: try update/insert without new columns, or goals JSON
         try:
-            existing = supabase.table("autonomous_settings").select("id").eq("website_id", website_id).limit(1).execute().data
+            existing = (await execute_db(supabase.table("autonomous_settings").select("id").eq("website_id", website_id).limit(1))).data
             if existing:
-                supabase.table("autonomous_settings").update({
+                await execute_db(supabase.table("autonomous_settings").update({
                     "generation_interval_minutes": interval_minutes,
                     "daily_blog_target": int(daily_target),
                     "schedule_label": label,
                     "auto_generate_enabled": True,
                     "updated_at": now_str
-                }).eq("id", existing[0]["id"]).execute()
+                }).eq("id", existing[0]["id"]))
                 saved = True
             else:
                 # try insert with account_id
                 try:
-                    acct = supabase.table("accounts").select("id").limit(1).execute().data or []
+                    acct = (await execute_db(supabase.table("accounts").select("id").limit(1))).data or []
                     account_id = acct[0]["id"] if acct else None
                 except Exception:
                     account_id = None
                 row = {"website_id": website_id, "generation_interval_minutes": interval_minutes, "daily_blog_target": int(daily_target), "schedule_label": label, "auto_generate_enabled": True, "updated_at": now_str}
                 if account_id:
                     row["account_id"] = account_id
-                supabase.table("autonomous_settings").insert(row).execute()
+                await execute_db(supabase.table("autonomous_settings").insert(row))
                 saved = True
         except Exception as e2:
             logger.warning(f"blog-schedule DB fallback to goals JSON/local: {e2}")
             # store in goals JSON or local
             try:
-                existing2 = supabase.table("autonomous_settings").select("id, goals").eq("website_id", website_id).limit(1).execute().data
+                existing2 = (await execute_db(supabase.table("autonomous_settings").select("id, goals").eq("website_id", website_id).limit(1))).data
                 if existing2:
                     goals = (existing2[0].get("goals") or {})
                     goals.update({"generation_interval_minutes": interval_minutes, "schedule_label": label, "daily_blog_target": int(daily_target)})
-                    supabase.table("autonomous_settings").update({"goals": goals, "updated_at": now_str}).eq("id", existing2[0]["id"]).execute()
+                    await execute_db(supabase.table("autonomous_settings").update({"goals": goals, "updated_at": now_str}).eq("id", existing2[0]["id"]))
                     saved = True
             except Exception as e:
                 logger.warning(f"[routers_autonomy] operation failed: {e}")
@@ -674,7 +674,7 @@ async def save_blog_schedule(request: Request):
         # wrapper for per-website
         async def _per_site_wrapper(site_id=website_id):
             # call scheduler helper for single site — reuse run_autonomous_blog_generation filtered
-            websites = await get_supabase().table("websites").select("id, url, domain").eq("id", site_id).limit(1).execute().data if False else None
+            websites = (await execute_db(get_supabase().table("websites").select("id, url, domain").eq("id", site_id).limit(1))).data if False else None
             # Instead directly invoke run_autonomous_blog_generation which loops all sites; we wrap to target single
             from backend.agents.scheduler import get_autonomous_settings, get_last_blog_time, count_knowledge_base_rows, trigger_auto_crawl, get_today_spend, get_daily_budget_limit, ai_pick_best_keyword, run_crew_blog_writer, log_autonomous_decision, is_keyword_too_similar, get_all_active_websites
             # reuse main logic but for single site: we just call the global function which already handles all sites — for per-site we call filtered version
@@ -706,7 +706,7 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
     # Handle developer_mode if provided (also set file for scheduler bypass)
     if payload.developer_mode is not None:
         try:
-            _set_developer_mode_state(payload.developer_mode)
+            await _set_developer_mode_state(payload.developer_mode)
         except Exception as e:
             logger.warning(f"[routers_autonomy] operation failed: {e}")
         # Also return early with developer_mode status
@@ -721,21 +721,21 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
             "message": f"Developer mode {'enabled' if payload.developer_mode else 'disabled'}"
         }
     try:
-        existing = supabase.table("autonomous_settings").select("id").limit(1).execute().data
+        existing = (await execute_db(supabase.table("autonomous_settings").select("id").limit(1))).data
         if existing:
-            supabase.table("autonomous_settings").update({
+            await execute_db(supabase.table("autonomous_settings").update({
                 "auto_publish": payload.auto_publish,
                 "auto_generate": payload.auto_generate,
                 "auto_refresh": payload.auto_refresh,
                 "updated_at": now_str
-            }).eq("id", existing[0]["id"]).execute()
+            }).eq("id", existing[0]["id"]))
         else:
-            supabase.table("autonomous_settings").insert({
+            await execute_db(supabase.table("autonomous_settings").insert({
                 "auto_publish": payload.auto_publish,
                 "auto_generate": payload.auto_generate,
                 "auto_refresh": payload.auto_refresh,
                 "updated_at": now_str
-            }).execute()
+            }))
 
         return {
             "success": True,
