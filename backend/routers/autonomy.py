@@ -753,23 +753,23 @@ async def update_autonomous_settings(payload: AutonomousSettingsRequest):
         err_msg = str(e)
         if "auto_refresh" in err_msg or "PGRST204" in err_msg:
             try:
-                existing2 = supabase.table("autonomous_settings").select("id, goals").limit(1).execute().data
+                existing2 = (await execute_db(supabase.table("autonomous_settings").select("id, goals").limit(1))).data
                 if existing2:
                     goals = (existing2[0].get("goals") or {})
                     goals["auto_refresh"] = payload.auto_refresh
-                    supabase.table("autonomous_settings").update({
+                    await execute_db(supabase.table("autonomous_settings").update({
                         "auto_publish": payload.auto_publish,
                         "auto_generate": payload.auto_generate,
                         "goals": goals,
                         "updated_at": now_str
-                    }).eq("id", existing2[0]["id"]).execute()
+                    }).eq("id", existing2[0]["id"]))
                 else:
-                    supabase.table("autonomous_settings").insert({
+                    await execute_db(supabase.table("autonomous_settings").insert({
                         "auto_publish": payload.auto_publish,
                         "auto_generate": payload.auto_generate,
                         "goals": {"auto_refresh": payload.auto_refresh},
                         "updated_at": now_str
-                    }).execute()
+                    }))
                 logger.info("Autonomous settings persisted via goals fallback (auto_refresh column missing)")
                 return {
                     "success": True,
