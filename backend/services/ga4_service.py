@@ -2,7 +2,7 @@ import json
 import asyncio
 import os
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timedelta
 
 from services.google_credentials import (
@@ -14,23 +14,35 @@ from services.google_credentials import (
 logger = logging.getLogger("backend.services.ga4_service")
 
 _GA4_SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
-_GA4_JSON_KEYS = ["GA4_CREDENTIALS_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON"]
+_GA4_JSON_KEYS = [
+    "GA4_CREDENTIALS_JSON",
+    "GA4_CREDENTIALS",
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "GSC_CREDENTIALS",
+    "GSC_SERVICE_ACCOUNT_JSON",
+]
 _GA4_PATH_KEYS = ["GA4_CREDENTIALS_PATH", "GOOGLE_APPLICATION_CREDENTIALS"]
 
 
 class GA4Service:
     """Google Analytics 4 Data API service for real traffic data."""
     
-    def __init__(self, property_id: str = None, credentials_path: str = None):
+    def __init__(self, property_id: str = None, credentials_path: str = None, credentials_json: Optional[Union[str, dict]] = None):
         self._property_id = property_id
         self._credentials_path = credentials_path
+        self._credentials_json = credentials_json
         self._initialized = False
         self._service = None
         self._credentials = None
 
     @property
     def property_id(self) -> Optional[str]:
-        return self._property_id or os.getenv("GA4_PROPERTY_ID")
+        pid = self._property_id or os.getenv("GA4_PROPERTY_ID")
+        if pid and isinstance(pid, str):
+            pid = pid.strip()
+            if pid.startswith("properties/"):
+                pid = pid[len("properties/"):]
+        return pid
 
     @property_id.setter
     def property_id(self, val: Optional[str]):
@@ -100,10 +112,10 @@ class GA4Service:
             
             if not creds:
                 # The Connectors UI saves the pasted service-account JSON as
-                # GA4_CREDENTIALS_JSON; the helper accepts a file path or JSON.
+                # GA4_CREDENTIALS_JSON / GA4_CREDENTIALS; helper accepts a file path, dict, or JSON string.
                 creds = load_service_account_credentials(
                     scopes=_GA4_SCOPES,
-                    candidates=[self.credentials_path],
+                    candidates=[self._credentials_json, self.credentials_path],
                     json_env_keys=_GA4_JSON_KEYS,
                     path_env_keys=_GA4_PATH_KEYS,
                 )
@@ -124,7 +136,7 @@ class GA4Service:
         if self._has_oauth_tokens():
             return bool(self.property_id)
         return bool(self.property_id) and has_service_account_credentials(
-            candidates=[self.credentials_path],
+            candidates=[self._credentials_json, self.credentials_path],
             json_env_keys=_GA4_JSON_KEYS,
             path_env_keys=_GA4_PATH_KEYS,
         )
@@ -288,31 +300,54 @@ class _GA4SingletonWrapper(GA4Service):
     def __init__(self):
         super().__init__()
 
-    async def get_recent_sessions(self, website_id: str = None, days: int = 7) -> Dict[str, Any]:
-        return await get_recent_sessions(website_id=website_id, days=days)
+    async def get_recent_sessions(
+        self,
+        website_id: str = None,
+        days: int = 7,
+        property_id: Optional[str] = None,
+        credentials_json: Optional[Union[str, dict]] = None
+    ) -> Dict[str, Any]:
+        return await get_recent_sessions(
+            website_id=website_id,
+            days=days,
+            property_id=property_id,
+            credentials_json=credentials_json
+        )
 
 
 ga4_service = _GA4SingletonWrapper()
 
 
-async def get_recent_sessions(website_id: str = None, days: int = 7) -> Dict[str, Any]:
+async def get_recent_sessions(
+    website_id: str = None,
+    days: int = 7,
+    property_id: Optional[str] = None,
+    credentials_json: Optional[Union[str, dict]] = None
+) -> Dict[str, Any]:
     """Real GA4 call returning total sessions over the last `days` days."""
-    if not ga4_service.is_connected():
+    target_service = ga4_service
+    if property_id is not None or credentials_json is not None:
+        target_service = GA4Service(
+            property_id=property_id or ga4_service.property_id,
+            credentials_json=credentials_json
+        )
+
+    if not target_service.is_connected():
         return {
             "connected": False,
             "error": "GA4 not configured — set GA4_PROPERTY_ID and connect Google credentials in Connectors",
             "sessions": 0,
         }
     try:
-        ga4_service._ensure_initialized()
-        clean_id = str(ga4_service.property_id).replace("properties/", "").strip()
+        target_service._ensure_initialized()
+        clean_id = str(target_service.property_id).replace("properties/", "").strip()
         end_date = datetime.utcnow().strftime("%Y-%m-%d")
         start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
         request_body = {
             "dateRanges": [{"startDate": start_date, "endDate": end_date}],
             "metrics": [{"name": "sessions"}],
         }
-        response = ga4_service._service.properties().runReport(
+        response = target_service._service.properties().runReport(
             property=f"properties/{clean_id}",
             body=request_body
         ).execute()

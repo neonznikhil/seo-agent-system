@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timedelta
 
 from services.google_credentials import (
@@ -13,23 +13,27 @@ from services.google_credentials import (
 logger = logging.getLogger("backend.services.gsc_service")
 
 _GSC_SCOPES = ["https://www.googleapis.com/auth/webmasters"]
-_GSC_JSON_KEYS = ["GSC_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT_JSON"]
+_GSC_JSON_KEYS = ["GSC_SERVICE_ACCOUNT_JSON", "GSC_CREDENTIALS", "GOOGLE_SERVICE_ACCOUNT_JSON", "GA4_CREDENTIALS_JSON", "GA4_CREDENTIALS"]
 _GSC_PATH_KEYS = ["GSC_CREDENTIALS_PATH", "GSC_CREDENTIALS", "GOOGLE_APPLICATION_CREDENTIALS"]
 
 
 class GSCService:
     """Google Search Console API service for real traffic data."""
 
-    def __init__(self, website_url: str = None, credentials_path: str = None):
+    def __init__(
+        self,
+        website_url: str = None,
+        credentials_path: str = None,
+        credentials_json: Optional[Union[str, dict]] = None,
+    ):
         self.website_url = (
             website_url
             or os.getenv("GSC_SITE_URL")
             or os.getenv("GSC_PROPERTY")
             or "https://accident.innovatcs.com"
         )
-        # `credentials_path` may be a file path *or* the service-account JSON
-        # itself; the Connectors UI saves the pasted JSON, so both must work.
-        self.credentials = credentials_path or os.getenv("GSC_SERVICE_ACCOUNT_JSON")
+        self.credentials_path = credentials_path or os.getenv("GSC_CREDENTIALS_PATH")
+        self.credentials_json = credentials_json
         self.service = None
 
     def _load_oauth_credentials(self):
@@ -94,7 +98,7 @@ class GSCService:
         try:
             creds = load_service_account_credentials(
                 scopes=_GSC_SCOPES,
-                candidates=[self.credentials],
+                candidates=[self.credentials_json, self.credentials_path],
                 json_env_keys=_GSC_JSON_KEYS,
                 path_env_keys=_GSC_PATH_KEYS,
             )
@@ -111,11 +115,10 @@ class GSCService:
         if self._load_oauth_credentials() is not None:
             return True
         return has_service_account_credentials(
-            candidates=[self.credentials],
+            candidates=[self.credentials_json, self.credentials_path],
             json_env_keys=_GSC_JSON_KEYS,
             path_env_keys=_GSC_PATH_KEYS,
         )
-
     async def get_keyword_performance(self, 
                                        start_date: str = None,
                                        end_date: str = None,
@@ -325,9 +328,12 @@ async def get_top_pages(website_url: str = None, limit: int = 100) -> Dict:
     return await service.get_top_pages(limit)
 
 
-async def list_verified_sites(website_url: str = None) -> List[str]:
+async def list_verified_sites(
+    website_url: str = None,
+    credentials_json: Optional[Union[str, dict]] = None
+) -> List[str]:
     """Return the list of verified Search Console properties for the configured account."""
-    svc = GSCService(website_url)
+    svc = GSCService(website_url=website_url, credentials_json=credentials_json)
     if not svc.is_connected():
         raise ValueError("GSC not configured — paste the service-account JSON in Connectors")
     service = svc._get_service()

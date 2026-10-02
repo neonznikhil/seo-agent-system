@@ -436,7 +436,7 @@ export default function ConnectorsPage() {
       if (res?.connected) {
         showToast(res.message || "✓ GSC credentials verified and saved.");
       } else {
-        setErrorMsg(res?.message || "GSC not connected. Check the service-account JSON.");
+        setErrorMsg(res?.message || res?.error || res?.detail || "GSC not connected. Check the service-account JSON.");
       }
       loadStatus();
     } catch (e: any) {
@@ -466,13 +466,20 @@ export default function ConnectorsPage() {
   const handleTestGa4 = async () => {
     setGa4Testing(true);
     setErrorMsg(null);
-    saveConnectorCredentials({ ga4_property_id: ga4PropertyId, ga4_credentials_json: ga4Json });
+    const cleanGa4Id = ga4PropertyId.replace(/^properties\//i, "").trim();
+    if (cleanGa4Id !== ga4PropertyId) {
+      setGa4PropertyId(cleanGa4Id);
+    }
+    saveConnectorCredentials({
+      ga4_property_id: cleanGa4Id,
+      ga4_credentials_json: ga4Json,
+    });
     try {
-      const res = await post("/api/connectors/test-ga4", { property_id: ga4PropertyId, credentials_json: ga4Json });
+      const res = await post("/api/connectors/test-ga4", { property_id: cleanGa4Id, credentials_json: ga4Json });
       if (res?.connected) {
         showToast(res.message || "✓ GA4 connected successfully.");
       } else {
-        setErrorMsg(res?.message || "GA4 not connected. Check the Property ID and service-account JSON.");
+        setErrorMsg(res?.message || res?.error || res?.detail || "GA4 not connected. Check the Property ID and service-account JSON.");
       }
       loadStatus();
     } catch (e: any) {
@@ -484,10 +491,14 @@ export default function ConnectorsPage() {
 
   // Test GA4 Stream
   const handleTestGa4Stream = async () => {
-    saveConnectorCredentials({ ga4_property_id: ga4PropertyId, ga4_credentials_json: ga4Json });
+    const cleanGa4Id = ga4PropertyId.replace(/^properties\//i, "").trim();
+    if (cleanGa4Id !== ga4PropertyId) {
+      setGa4PropertyId(cleanGa4Id);
+    }
+    saveConnectorCredentials({ ga4_property_id: cleanGa4Id, ga4_credentials_json: ga4Json });
     try {
       const res = await post("/api/connectors/test-ga4-stream", {
-        property_id: ga4PropertyId || undefined,
+        property_id: cleanGa4Id || undefined,
         credentials_json: ga4Json || undefined,
       });
       if (res?.connected) {
@@ -517,6 +528,10 @@ export default function ConnectorsPage() {
     // backend refuses to persist it, so caching it would only re-populate a
     // rejected value on reload. Cache the site URL, skip the fake identity.
     const wpUsernameIsReal = !isPlaceholderWordPressUsername(wpUser);
+    const cleanGa4Id = ga4PropertyId.replace(/^properties\//i, "").trim();
+    if (cleanGa4Id !== ga4PropertyId) {
+      setGa4PropertyId(cleanGa4Id);
+    }
     saveConnectorCredentials({
       nvidia_api_key: nvidiaKey,
       supabase_url: supabaseUrl,
@@ -529,7 +544,7 @@ export default function ConnectorsPage() {
       serper_api_key: serperKey,
       gsc_property_url: gscUrl,
       gsc_credentials_json: gscJson,
-      ga4_property_id: ga4PropertyId,
+      ga4_property_id: cleanGa4Id,
       ga4_credentials_json: ga4Json,
       slack_webhook_url: slackWebhook,
       openai_api_key: openaiKey,
@@ -548,7 +563,7 @@ export default function ConnectorsPage() {
         serper_api_key: serperKey || undefined,
         gsc_property_url: gscUrl || undefined,
         gsc_credentials_json: gscJson || undefined,
-        ga4_property_id: ga4PropertyId || undefined,
+        ga4_property_id: cleanGa4Id || undefined,
         ga4_credentials_json: ga4Json || undefined,
         slack_webhook_url: slackWebhook || undefined,
         openai_api_key: openaiKey || undefined,

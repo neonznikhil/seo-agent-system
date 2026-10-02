@@ -1050,7 +1050,7 @@ async def test_gsc(payload: Optional[TestGscRequest] = None):
     silently ignored. Persistence is reported per sink instead of a blanket
     "saved" that could hide a lost write.
     """
-    cred_json = (payload.credentials_json if payload else None) or os.getenv("GSC_SERVICE_ACCOUNT_JSON")
+    cred_json = (payload.credentials_json if payload else None) or os.getenv("GSC_SERVICE_ACCOUNT_JSON") or os.getenv("GSC_CREDENTIALS")
     property_url = (payload.property_url if payload else None) or os.getenv("GSC_SITE_URL")
 
     if cred_json:
@@ -1117,7 +1117,7 @@ async def _verify_ga4_live(property_id: Optional[str], credentials_json: Optiona
     import asyncio
 
     from services.ga4_service import GA4Service
-    svc = GA4Service(property_id=property_id, credentials_path=credentials_json)
+    svc = GA4Service(property_id=property_id, credentials_json=credentials_json)
     if not svc.is_connected():
         return {"connected": False, "status": "not_configured", "sessions_last_7_days": None,
                 "message": "GA4 not connected. Set the Property ID and paste service-account JSON in Connectors."}
@@ -1149,8 +1149,9 @@ async def _verify_ga4_live(property_id: Optional[str], credentials_json: Optiona
 @router.post("/connectors/test-ga4")
 async def test_ga4(payload: Optional[TestGa4Request] = None):
     """Verify GA4 Data API connection live, then persist credentials durably."""
-    prop_id = ((payload.property_id if payload else None) or "").strip() or os.getenv("GA4_PROPERTY_ID", "")
-    cred_json = ((payload.credentials_json if payload else None) or "").strip() or os.getenv("GA4_CREDENTIALS_JSON", "")
+    raw_prop_id = ((payload.property_id if payload else None) or "").strip() or os.getenv("GA4_PROPERTY_ID", "")
+    prop_id = raw_prop_id.replace("properties/", "").strip() if raw_prop_id else ""
+    cred_json = ((payload.credentials_json if payload else None) or "").strip() or os.getenv("GA4_CREDENTIALS_JSON", "") or os.getenv("GA4_CREDENTIALS", "")
 
     if cred_json:
         try:
@@ -1178,6 +1179,7 @@ async def test_ga4(payload: Optional[TestGa4Request] = None):
         env_updates["GA4_PROPERTY_ID"] = prop_id
     if cred_json:
         env_updates["GA4_CREDENTIALS_JSON"] = cred_json
+        env_updates["GA4_CREDENTIALS"] = cred_json
     settings: Dict[str, Any] = {}
     if prop_id:
         settings["ga4_property_id"] = prop_id
@@ -1189,8 +1191,9 @@ async def test_ga4(payload: Optional[TestGa4Request] = None):
 @router.post("/connectors/test-ga4-stream")
 async def test_ga4_stream(payload: Optional[TestGa4Request] = None, website_id: Optional[str] = Query(None)):
     """Live GA4 realtime stream status for the selected website."""
-    prop_id = ((payload.property_id if payload else None) or "").strip() or os.getenv("GA4_PROPERTY_ID", "")
-    cred_json = ((payload.credentials_json if payload else None) or "").strip() or os.getenv("GA4_CREDENTIALS_JSON", "")
+    raw_prop_id = ((payload.property_id if payload else None) or "").strip() or os.getenv("GA4_PROPERTY_ID", "")
+    prop_id = raw_prop_id.replace("properties/", "").strip() if raw_prop_id else ""
+    cred_json = ((payload.credentials_json if payload else None) or "").strip() or os.getenv("GA4_CREDENTIALS_JSON", "") or os.getenv("GA4_CREDENTIALS", "")
     if not prop_id:
         return {
             "connected": False,
@@ -1200,7 +1203,7 @@ async def test_ga4_stream(payload: Optional[TestGa4Request] = None, website_id: 
 
     try:
         from services.ga4_service import GA4Service
-        svc = GA4Service(property_id=prop_id, credentials_path=cred_json or None)
+        svc = GA4Service(property_id=prop_id, credentials_json=cred_json or None)
         data = await svc.get_page_traffic(
             start_date=(datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d"),
             end_date=datetime.utcnow().strftime("%Y-%m-%d"),
@@ -1248,10 +1251,13 @@ async def save_generic_connector(connector_name: str, payload: GenericConnectorS
         env_updates["GSC_SITE_URL"] = payload.url or ""
         if payload.secret:
             env_updates["GSC_SERVICE_ACCOUNT_JSON"] = payload.secret
+            env_updates["GSC_CREDENTIALS"] = payload.secret
     elif c_name == "ga4":
-        env_updates["GA4_PROPERTY_ID"] = payload.property_id or payload.key or ""
+        raw_prop_id = payload.property_id or payload.key or ""
+        env_updates["GA4_PROPERTY_ID"] = str(raw_prop_id).replace("properties/", "").strip()
         if payload.secret:
             env_updates["GA4_CREDENTIALS_JSON"] = payload.secret
+            env_updates["GA4_CREDENTIALS"] = payload.secret
     elif c_name == "slack":
         env_updates["SLACK_WEBHOOK_URL"] = payload.url or payload.key or ""
     elif c_name == "openai":
@@ -1304,11 +1310,15 @@ async def save_all_connectors(payload: SaveAllRequest):
     if payload.gsc_property_url:
         env_updates["GSC_SITE_URL"] = payload.gsc_property_url.strip()
     if payload.gsc_credentials_json:
-        env_updates["GSC_SERVICE_ACCOUNT_JSON"] = payload.gsc_credentials_json.strip()
+        clean_gsc_json = payload.gsc_credentials_json.strip()
+        env_updates["GSC_SERVICE_ACCOUNT_JSON"] = clean_gsc_json
+        env_updates["GSC_CREDENTIALS"] = clean_gsc_json
     if payload.ga4_property_id:
-        env_updates["GA4_PROPERTY_ID"] = payload.ga4_property_id.strip()
+        env_updates["GA4_PROPERTY_ID"] = str(payload.ga4_property_id).replace("properties/", "").strip()
     if payload.ga4_credentials_json:
-        env_updates["GA4_CREDENTIALS_JSON"] = payload.ga4_credentials_json.strip()
+        clean_ga4_json = payload.ga4_credentials_json.strip()
+        env_updates["GA4_CREDENTIALS_JSON"] = clean_ga4_json
+        env_updates["GA4_CREDENTIALS"] = clean_ga4_json
     if payload.slack_webhook_url:
         env_updates["SLACK_WEBHOOK_URL"] = payload.slack_webhook_url.strip()
     if payload.openai_api_key:
@@ -1349,7 +1359,7 @@ async def save_all_connectors(payload: SaveAllRequest):
         from services import local_store
         local_store.set_local_connector_settings({
             "gsc_property_url": payload.gsc_property_url,
-            "ga4_property_id": payload.ga4_property_id,
+            "ga4_property_id": str(payload.ga4_property_id).replace("properties/", "").strip() if payload.ga4_property_id else payload.ga4_property_id,
             "slack_webhook_url": payload.slack_webhook_url,
             "auto_publish": payload.auto_publish,
             "updated_at": datetime.utcnow().isoformat(),
