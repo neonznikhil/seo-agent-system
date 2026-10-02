@@ -896,7 +896,7 @@ async def _get_developer_mode_state() -> bool:
         logger.warning(f"[routers_autonomy] operation failed: {e}")
     return False
 
-def _set_developer_mode_state(enabled: bool):
+async def _set_developer_mode_state(enabled: bool):
     import json as _json
     from pathlib import Path as _Path
     # Persist to both local files for scheduler and local_store
@@ -913,21 +913,21 @@ def _set_developer_mode_state(enabled: bool):
     # Also persist to DB
     try:
         supabase = get_supabase()
-        existing = supabase.table("autonomous_settings").select("id").limit(1).execute().data or []
+        existing = (await execute_db(supabase.table("autonomous_settings").select("id").limit(1))).data or []
         if existing:
             try:
-                supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]).execute()
+                await execute_db(supabase.table("autonomous_settings").update({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]))
             except Exception:
                 # fallback to goals JSON
-                cur = supabase.table("autonomous_settings").select("goals").eq("id", existing[0]["id"]).single().execute().data or {}
+                cur = (await execute_db(supabase.table("autonomous_settings").select("goals").eq("id", existing[0]["id"]).single())).data or {}
                 goals = cur.get("goals") or {}
                 goals["developer_mode"] = enabled
-                supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]).execute()
+                await execute_db(supabase.table("autonomous_settings").update({"goals": goals, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", existing[0]["id"]))
         else:
             try:
-                supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
+                await execute_db(supabase.table("autonomous_settings").insert({"developer_mode": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}))
             except Exception:
-                supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
+                await execute_db(supabase.table("autonomous_settings").insert({"goals": {"developer_mode": enabled}, "updated_at": datetime.now(timezone.utc).isoformat()}))
     except Exception as e:
         logger.debug(f"DB developer_mode persist note: {e}")
     # Reschedule scheduler jobs for 1 blog per 2 min in dev mode
@@ -969,12 +969,12 @@ def _set_developer_mode_state(enabled: bool):
 @router.get("/developer-mode")
 async def get_developer_mode():
     """Get current developer mode state."""
-    enabled = _get_developer_mode_state()
+    enabled = await _get_developer_mode_state()
     return {"enabled": enabled, "developer_mode": enabled}
 
 @router.post("/api/developer-mode")
 @router.post("/developer-mode")
 async def set_developer_mode(payload: DeveloperModeRequest):
     """Enable/disable developer mode to bypass daily limits."""
-    _set_developer_mode_state(payload.enabled)
+    await _set_developer_mode_state(payload.enabled)
     return {"success": True, "enabled": payload.enabled, "developer_mode": payload.enabled, "message": f"Developer mode {'enabled' if payload.enabled else 'disabled'} — {'daily limits bypassed' if payload.enabled else 'daily limits enforced'}"}
