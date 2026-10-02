@@ -824,7 +824,7 @@ async def autonomy_overview():
     published_today = 0
     
     try:
-        b_res = supabase.table("content_log").select("id, status, created_at").execute()
+        b_res = await execute_db(supabase.table("content_log").select("id, status, created_at"))
         rows = b_res.data or []
         total_blogs = len(rows)
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -833,19 +833,19 @@ async def autonomy_overview():
         logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
-        app_res = supabase.table("blog_approvals").select("id", count="exact").eq("status", "pending").execute()
+        app_res = await execute_db(supabase.table("blog_approvals").select("id", count="exact").eq("status", "pending"))
         pending_approvals = app_res.count if app_res.count is not None else len(app_res.data or [])
     except Exception as e:
         logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
-        mem_res = supabase.table("brain_memory").select("id", count="exact").execute()
+        mem_res = await execute_db(supabase.table("brain_memory").select("id", count="exact"))
         brain_memories = mem_res.count if mem_res.count is not None else len(mem_res.data or [])
     except Exception as e:
         logger.warning(f"[routers_autonomy] operation failed: {e}")
         
     try:
-        kb_res = supabase.table("knowledge_base").select("id", count="exact").execute()
+        kb_res = await execute_db(supabase.table("knowledge_base").select("id", count="exact"))
         kb_count = kb_res.count if kb_res.count is not None else len(kb_res.data or [])
     except Exception as e:
         logger.warning(f"[routers_autonomy] operation failed: {e}")
@@ -867,7 +867,7 @@ async def autonomy_overview():
 class DeveloperModeRequest(BaseModel):
     enabled: bool = False
 
-def _get_developer_mode_state() -> bool:
+async def _get_developer_mode_state() -> bool:
     import json as _json
     from pathlib import Path as _Path
     # Check env first
@@ -886,10 +886,10 @@ def _get_developer_mode_state() -> bool:
             logger.warning(f"[routers_autonomy] operation failed: {e}")
     try:
         supabase = get_supabase()
-        rows = supabase.table("autonomous_settings").select("developer_mode").limit(1).execute().data or []
+        rows = (await execute_db(supabase.table("autonomous_settings").select("developer_mode").limit(1))).data or []
         if rows and rows[0].get("developer_mode") is True:
             return True
-        rows2 = supabase.table("autonomous_settings").select("goals").limit(1).execute().data or []
+        rows2 = (await execute_db(supabase.table("autonomous_settings").select("goals").limit(1))).data or []
         if rows2 and (rows2[0].get("goals") or {}).get("developer_mode") is True:
             return True
     except Exception as e:
