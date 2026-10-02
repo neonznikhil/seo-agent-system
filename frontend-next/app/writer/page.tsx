@@ -332,6 +332,11 @@ export default function WriterPage() {
       setStatusMessage("⚠️ WordPress not connected — article will still generate and queue as local draft. Connect WordPress in /websites to auto-push drafts.");
     }
 
+    // Declared outside the try so the catch/finally can close it. Declaring it
+    // inside would leave it in the temporal dead zone if anything above threw,
+    // masking the real error with a ReferenceError.
+    let eventSource: EventSource | null = null;
+
     try {
       setGenerating(true);
       setError(null);
@@ -365,7 +370,6 @@ export default function WriterPage() {
 
       // Start SSE connection for real-time progress
       const sseUrl = `/api/crew/status/${blogId}/stream`;
-      let eventSource: EventSource | null = null;
       try {
         eventSource = new EventSource(sseUrl);
         eventSource.onmessage = (event) => {
@@ -391,6 +395,7 @@ export default function WriterPage() {
       // Await real completion via SSE or polling (up to 180s)
       let blog: any = null;
       let statusRes: any = null;
+      let timedOut = false;
 
       await new Promise<void>((resolve) => {
         let isDone = false;
@@ -439,7 +444,10 @@ export default function WriterPage() {
         }, 3000);
 
         // Max safety timeout (180s)
+        // A timeout is NOT a success: record it so the block below can report an
+        // honest failure instead of rendering "generated — SEO 95/100".
         const maxTimeout = setTimeout(() => {
+          timedOut = true;
           finish();
         }, 180000);
       });
@@ -447,7 +455,23 @@ export default function WriterPage() {
       // Fetch final result if not populated from polling
       if (!blog) {
         statusRes = await get(`/api/crew/status/${blogId}`);
-        blog = statusRes?.blog || res?.article || {};
+        blog = statusRes?.blog || null;
+      }
+
+      const TERMINAL_OK = ["published", "draft", "pending", "completed", "approved"];
+      const blogStatus = blog?.status || statusRes?.status || res?.status;
+      const reachedTerminalState = !!blog && TERMINAL_OK.includes(String(blogStatus));
+
+      if (!reachedTerminalState) {
+        if (eventSource) { try { eventSource.close(); } catch {} }
+        const serverStatus = statusRes?.status || blog?.status || res?.status;
+        const detail =
+          serverStatus === "failed" || serverStatus === "stalled"
+            ? `Generation failed${blog?.error ? `: ${blog.error}` : ". Check /approvals or the backend logs."}`
+            : timedOut
+              ? `Generation is still running in the background after 3 minutes. Check /approvals shortly — nothing has been confirmed as written yet.`
+              : "Generation did not reach a completed state. Nothing was confirmed as written.";
+        throw new Error(detail);
       }
 
       setActiveStage("✅ Complete!");
@@ -461,9 +485,9 @@ export default function WriterPage() {
       } else if (wpUrl) {
         setWpDraftMsg(`WordPress draft ready: ${wpUrl}`);
       }
-      setStatusMessage(
-        `✅ "${blog.title || targetTitle || kw}" generated — SEO ${blog.seo_score || 95}/100 · ${blog.word_count || wordCountTarget} words`
-      );
+      const scoreLabel = blog.seo_score != null ? `SEO ${blog.seo_score}/100` : "SEO score unavailable";
+      const wordLabel = blog.word_count != null ? `${blog.word_count} words` : "word count unavailable";
+      setStatusMessage(`✅ "${blog.title || targetTitle || kw}" generated — ${scoreLabel} · ${wordLabel}`);
 
       // Auto-draft to WordPress if needed
       const hasWpDraft = !!blog.wordpress_url || !!res.wordpress_url || res.real_wp_draft_created;
@@ -491,6 +515,11 @@ export default function WriterPage() {
       setTimeout(() => loadSuggestions(selectedWebsiteId), 800);
     } catch (err: any) {
       setActiveStage("");
+      // Clear any stale success banner — it used to survive into the next run and
+      // read as "this one worked too".
+      setStatusMessage(null);
+      setCompletedResult(null);
+      setWpDraftMsg(null);
       let msg = err.message || "Failed to generate blog article";
       if (msg.includes("Knowledge base is empty") || msg.includes("No website connected")) {
         msg += " — Run a knowledge crawl in /knowledge first, or the system will auto-synthesize facts.";
@@ -500,6 +529,7 @@ export default function WriterPage() {
       }
       setError(msg);
     } finally {
+      if (eventSource) { try { eventSource.close(); } catch {} }
       setGenerating(false);
       setTimeout(() => setActiveStage(""), 2500);
     }
