@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
 from services.serper_service import serper_service, SerperService
+from utils.errors import raise_db_or_500
 from auto_supabase import write_env_file
 
 logger = logging.getLogger("backend.routers.connectors_serper")
@@ -125,7 +126,11 @@ async def serper_save_key(payload: SerperSaveKeyPayload, website_id: Optional[st
         raise HTTPException(status_code=400, detail="API key cannot be empty")
 
     # 1. Real verification call before saving anything
-    valid = await serper_service.verify_key(api_key)
+    try:
+        valid = await serper_service.verify_key(api_key)
+    except Exception as exc:
+        # Serper unreachable is retryable and is NOT an invalid key — report 503.
+        raise_db_or_500(exc, "Could not reach Serper.dev to validate the key.")
     if not valid:
         return {"success": False, "error": "Invalid API key — Serper rejected it. Check your key at serper.dev/dashboard"}
 

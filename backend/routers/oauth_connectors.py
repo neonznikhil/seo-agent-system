@@ -485,7 +485,11 @@ async def verify_serper_key(payload: VerifyApiKeyRequest):
     """Real Serper.dev verification through the shared service."""
     from services.serper_service import serper_service
 
-    valid = await serper_service.verify_key(payload.api_key)
+    try:
+        valid = await serper_service.verify_key(payload.api_key)
+    except Exception as exc:
+        from utils.errors import raise_db_or_500
+        raise_db_or_500(exc, "Could not reach Serper.dev to validate the key.")
     if not valid:
         return {"success": False, "error": "Serper rejected this key. Check it at serper.dev/dashboard"}
 

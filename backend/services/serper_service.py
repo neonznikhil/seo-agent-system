@@ -351,6 +351,49 @@ class SerperService:
     # ---------------------------------------------------------
     # 3. Connector Health & Credits Probing
     # ---------------------------------------------------------
+    async def verify_key(self, api_key: str) -> bool:
+        """Verify a *candidate* key against the live Serper API before it is saved.
+
+        Returns True only when Serper definitively accepts the key. A 401/403 (or
+        any 4xx) means the key itself is bad. Network/5xx failures are re-raised
+        so the route layer reports a retryable 503 rather than mislabelling an
+        outage as "invalid API key" (see utils.errors.raise_db_or_500).
+        """
+        if not api_key or len(api_key.strip()) <= 5:
+            return False
+
+        headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+        body = {"q": "rankforge key validation", "num": 1}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/search", headers=headers, json=body
+                )
+        except httpx.RequestError as exc:
+            # Connectivity problem, not a bad key — let the caller surface 503.
+            _CONNECTOR_STATE["last_error"] = str(exc)[:200]
+            raise
+
+        if response.status_code == 200:
+            # A key the user just supplied proves the breaker is stale; without
+            # this a valid key saved right after a bad one stayed "unavailable".
+            self.reset_circuit()
+            _CONNECTOR_STATE["last_successful_call"] = datetime.now(timezone.utc).isoformat()
+            _CONNECTOR_STATE["last_error"] = None
+            return True
+
+        if response.status_code in (401, 403, 400):
+            return False
+
+        if response.status_code == 429 or response.status_code >= 500:
+            _CONNECTOR_STATE["last_error"] = f"Serper HTTP {response.status_code}"
+            self._record_circuit_failure()
+            return False
+
+        _CONNECTOR_STATE["last_error"] = f"Serper HTTP {response.status_code}"
+        return False
+
     async def check_status(self) -> Dict[str, Any]:
         """Ping Serper.dev with a lightweight test query to verify key validity and health."""
         if not self.api_key:

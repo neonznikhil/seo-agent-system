@@ -109,7 +109,10 @@ async def get_status(request: Request):
 @router.delete("/disconnect")
 async def disconnect_wp(request: Request):
     user_id = _get_user_id(request)
-    await disconnect(user_id)
+    # `disconnect` is a plain sync def (see wordpress_oauth.py); awaiting it
+    # raised "object NoneType can't be used in 'await' expression" -> 500,
+    # and the row was never deleted, so the UI kept showing "connected".
+    disconnect(user_id)
     return {"disconnected": True}
 
 
@@ -124,9 +127,12 @@ async def test_connection(request: Request):
         username = connection.get("wp_username")
         encrypted_password = connection.get("encrypted_password")
         password = decrypt(encrypted_password)
-        user_info = test_wp_connection(site_url, username, password)
-        return TestResponse(ok=True, user_info=user_info)
+        # test_wp_connection is async; calling it without await put a coroutine
+        # into a Pydantic dict field -> ValidationError -> 500 on every call.
+        user_info = await test_wp_connection(site_url, username, password)
+        return TestResponse(ok=bool(user_info), user_info=user_info)
     except Exception as e:
+        logger.warning(f"WordPress connection test failed: {e}")
         return TestResponse(ok=False, error=str(e))
 
 
